@@ -59,7 +59,7 @@ export default function AppointmentsPage() {
                 <span className="text-sm font-medium text-green-600">+8 from yesterday</span>
               </div>
             </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
               <Calendar className="text-white" size={20} />
             </div>
           </div>
@@ -71,11 +71,11 @@ export default function AppointmentsPage() {
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Completed</p>
               <p className="text-2xl font-bold text-gray-900 mt-1">28</p>
               <div className="flex items-center mt-2">
-                <CheckCircle className="h-3 w-3 text-orange-500 mr-1" />
-                <span className="text-sm font-medium text-orange-600">67% success rate</span>
+                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                <span className="text-sm font-medium text-green-600">67% success rate</span>
               </div>
             </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center">
               <CheckCircle className="text-white" size={20} />
             </div>
           </div>
@@ -155,7 +155,7 @@ export default function AppointmentsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 10:00
               </div>
               <div>
@@ -178,11 +178,11 @@ export default function AppointmentsPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
                 Scheduled
               </span>
               <div className="flex items-center space-x-2">
-                <button className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                <button className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                   <Eye size={16} />
                 </button>
                 <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
@@ -197,7 +197,7 @@ export default function AppointmentsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 09:30
               </div>
               <div>
@@ -220,11 +220,11 @@ export default function AppointmentsPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+              <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
                 Completed
               </span>
               <div className="flex items-center space-x-2">
-                <button className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                <button className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
                   <Eye size={16} />
                 </button>
                 <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
@@ -239,7 +239,7 @@ export default function AppointmentsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-300 to-orange-400 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 14:15
               </div>
               <div>
@@ -262,11 +262,11 @@ export default function AppointmentsPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+              <span className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
                 Scheduled
               </span>
               <div className="flex items-center space-x-2">
-                <button className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                <button className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
                   <Eye size={16} />
                 </button>
                 <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
@@ -308,7 +308,7 @@ export default function AppointmentsPage() {
                 Cancelled
               </span>
               <div className="flex items-center space-x-2">
-                <button className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                <button className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                   <Eye size={16} />
                 </button>
                 <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">

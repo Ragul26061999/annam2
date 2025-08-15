@@ -1,6 +1,7 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/api/patients/[id]/route": "app/api/patients/[id]/route.js",
+  "/appointment-dashboard/page": "app/appointment-dashboard/page.js",
   "/appointments/page": "app/appointments/page.js",
   "/dashboard/page": "app/dashboard/page.js",
   "/doctor-management/page": "app/doctor-management/page.js",

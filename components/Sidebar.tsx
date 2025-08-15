@@ -37,19 +37,25 @@ const Sidebar: React.FC = () => {
       href: '/dashboard', 
       label: 'Dashboard', 
       icon: <LayoutDashboard size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-blue-600'
     },
     { 
       href: '/patients', 
       label: 'Patients', 
       icon: <Users size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-green-600'
     },
     { 
       href: '/doctors', 
       label: 'Doctors', 
       icon: <Stethoscope size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-purple-600'
+    },
+    { 
+      href: '/doctor-management', 
+      label: 'Doctor Management', 
+      icon: <UserCog size={18} />, 
+      color: 'text-indigo-600'
     },
     { 
       href: '/staff', 
@@ -61,32 +67,32 @@ const Sidebar: React.FC = () => {
       href: '/appointments', 
       label: 'Appointments', 
       icon: <Calendar size={18} />, 
-      color: 'text-orange-600',
+      color: 'text-teal-600',
       badge: '42'
     },
     { 
       href: '/workstation', 
       label: 'Workstation', 
       icon: <Activity size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-cyan-600'
     },
     { 
       href: '/pharmacy', 
       label: 'Pharmacy', 
       icon: <Pill size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-pink-600'
     },
     { 
       href: '/beds', 
       label: 'Bed Management', 
       icon: <Bed size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-yellow-600'
     },
     { 
       href: '/finance', 
       label: 'Finance', 
       icon: <DollarSign size={18} />, 
-      color: 'text-orange-600'
+      color: 'text-emerald-600'
     },
   ];
 
@@ -143,28 +149,28 @@ const Sidebar: React.FC = () => {
               href={item.href}
               className={`group flex items-center px-4 py-3 rounded-xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm ${
                 isActive 
-                  ? 'bg-gradient-to-r from-orange-100/90 to-orange-200/70 text-orange-700 shadow-lg border border-orange-200/50' 
-                  : 'text-gray-600 hover:bg-gradient-to-r hover:from-orange-50/80 hover:to-orange-100/60 hover:text-orange-700 hover:shadow-md'
+                  ? 'bg-white/90 shadow-lg border border-gray-200/50' 
+                  : 'text-gray-600 hover:bg-white/60 hover:shadow-md'
               }`}
             >
               {/* Active indicator */}
               {isActive && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-400 to-orange-500 rounded-r-full shadow-sm"></div>
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${item.color.replace('text-', 'bg-')} rounded-r-full shadow-sm`}></div>
               )}
               
               {/* Icon */}
-              <div className={`flex-shrink-0 ${isActive ? 'text-orange-600' : 'text-orange-500'} transition-colors duration-300`}>
+              <div className={`flex-shrink-0 ${item.color} transition-colors duration-300`}>
                 {item.icon}
               </div>
               
               {/* Label and Badge */}
               {!isCollapsed && (
                 <div className="flex items-center justify-between w-full ml-3">
-                  <span className="font-medium text-sm">{item.label}</span>
+                  <span className={`font-medium text-sm ${isActive ? item.color : 'text-gray-600'}`}>{item.label}</span>
                   {item.badge && (
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
                       isActive 
-                        ? 'bg-orange-200 text-orange-700' 
+                        ? `${item.color.replace('text-', 'bg-')}/20 ${item.color}` 
                         : 'bg-gray-200 text-gray-600'
                     }`}>
                       {item.badge}

@@ -137,7 +137,7 @@ export default function DoctorsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 PS
               </div>
               <div className="ml-3">
@@ -170,13 +170,13 @@ export default function DoctorsPage() {
             </div>
           </div>
 
-          <div className="bg-orange-50 rounded-xl p-3 mb-4">
+          <div className="bg-blue-50 rounded-xl p-3 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-orange-700">Today's Schedule</p>
-              <span className="text-xs text-orange-600">12/30 slots</span>
+              <p className="text-xs font-medium text-blue-700">Today's Schedule</p>
+              <span className="text-xs text-blue-600">12/30 slots</span>
             </div>
-            <p className="text-sm text-orange-900">9:00 AM - 5:00 PM</p>
-            <p className="text-xs text-orange-600">Next: Sarah Johnson at 10:00 AM</p>
+            <p className="text-sm text-blue-900">9:00 AM - 5:00 PM</p>
+            <p className="text-xs text-blue-600">Next: Sarah Johnson at 10:00 AM</p>
           </div>
 
           <div className="flex items-center justify-between mb-4">
@@ -192,7 +192,7 @@ export default function DoctorsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+            <button className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
               <Eye size={14} className="mr-1" />
               View
             </button>
@@ -207,7 +207,7 @@ export default function DoctorsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 RK
               </div>
               <div className="ml-3">
@@ -240,13 +240,13 @@ export default function DoctorsPage() {
             </div>
           </div>
 
-          <div className="bg-orange-50 rounded-xl p-3 mb-4">
+          <div className="bg-green-50 rounded-xl p-3 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-orange-700">Today's Schedule</p>
-              <span className="text-xs text-orange-600">18/25 slots</span>
+              <p className="text-xs font-medium text-green-700">Today's Schedule</p>
+              <span className="text-xs text-green-600">18/25 slots</span>
             </div>
-            <p className="text-sm text-orange-900">8:00 AM - 4:00 PM</p>
-            <p className="text-xs text-orange-600">Next: Emma Watson at 2:15 PM</p>
+            <p className="text-sm text-green-900">8:00 AM - 4:00 PM</p>
+            <p className="text-xs text-green-600">Next: Emma Watson at 2:15 PM</p>
           </div>
 
           <div className="flex items-center justify-between mb-4">
@@ -262,7 +262,7 @@ export default function DoctorsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+            <button className="flex-1 flex items-center justify-center bg-green-50 text-green-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-green-100 transition-colors">
               <Eye size={14} className="mr-1" />
               View
             </button>
@@ -277,7 +277,7 @@ export default function DoctorsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-300 to-orange-400 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
                 AS
               </div>
               <div className="ml-3">
@@ -286,7 +286,7 @@ export default function DoctorsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+              <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
                 Busy
               </span>
               <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
@@ -298,25 +298,25 @@ export default function DoctorsPage() {
           <div className="space-y-2 mb-4">
             <div className="flex items-center text-sm text-gray-600">
               <Stethoscope size={14} className="mr-2" />
-              Emergency Medicine • 8 years exp
+              Orthopedics • 8 years exp
             </div>
             <div className="flex items-center text-sm text-gray-600">
               <Award size={14} className="mr-2" />
-              MD, Emergency Medicine
+              MD, Orthopedics
             </div>
             <div className="flex items-center text-sm text-gray-600">
               <MapPin size={14} className="mr-2" />
-              Emergency • Ground Floor
+              Room 003 • Third Floor
             </div>
           </div>
 
-          <div className="bg-red-50 rounded-xl p-3 mb-4 border border-red-200">
+          <div className="bg-purple-50 rounded-xl p-3 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-red-700">Today's Schedule</p>
-              <span className="text-xs text-red-600">24/24 slots</span>
+              <p className="text-xs font-medium text-purple-700">Today's Schedule</p>
+              <span className="text-xs text-purple-600">20/25 slots</span>
             </div>
-            <p className="text-sm text-red-900">24/7 Emergency Duty</p>
-            <p className="text-xs text-red-600">Currently: Emergency Case</p>
+            <p className="text-sm text-purple-900">10:00 AM - 6:00 PM</p>
+            <p className="text-xs text-purple-600">Next: Michael Brown at 3:30 PM</p>
           </div>
 
           <div className="flex items-center justify-between mb-4">
@@ -332,7 +332,7 @@ export default function DoctorsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+            <button className="flex-1 flex items-center justify-center bg-purple-50 text-purple-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-purple-100 transition-colors">
               <Eye size={14} className="mr-1" />
               View
             </button>
