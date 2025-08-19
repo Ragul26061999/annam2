@@ -1,45 +1,100 @@
-import React, { useState } from 'react';
-import { Search, Plus, Edit, Trash2, Calendar, Filter, UserPlus, UserCog } from 'lucide-react';
-
-// Mock data for staff members
-const staffMembers = [
-  {
-    id: 1,
-    name: 'Sarah Davis',
-    role: 'Head Nurse',
-    department: 'ICU',
-    shift: 'Morning',
-    contact: '+1 (555) 123-4567',
-    image: 'https://images.pexels.com/photos/5214997/pexels-photo-5214997.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=1'
-  },
-  {
-    id: 2,
-    name: 'Michael Thompson',
-    role: 'Lab Technician',
-    department: 'Laboratory',
-    shift: 'Evening',
-    contact: '+1 (555) 234-5678',
-    image: 'https://images.pexels.com/photos/5407206/pexels-photo-5407206.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=1'
-  },
-  {
-    id: 3,
-    name: 'Emily Wilson',
-    role: 'Nurse',
-    department: 'Emergency',
-    shift: 'Night',
-    contact: '+1 (555) 345-6789',
-    image: 'https://images.pexels.com/photos/5214949/pexels-photo-5214949.jpeg?auto=compress&cs=tinysrgb&w=50&h=50&dpr=1'
-  }
-];
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, Edit, Trash2, Calendar, Filter, UserPlus, UserCog, AlertCircle } from 'lucide-react';
+import { 
+  getStaffMembers, 
+  getDepartments, 
+  getRoles, 
+  createStaffMember, 
+  updateStaffMember, 
+  deleteStaffMember,
+  bulkDeleteStaff,
+  StaffMember 
+} from '../lib/staffService';
 
 const StaffManagement: React.FC = () => {
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedRole, setSelectedRole] = useState('');
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [roles, setRoles] = useState<string[]>([]);
+  
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState<any>(null);
-  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
 
-  const handleRowSelect = (id: number) => {
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    loadStaffMembers();
+  }, [searchTerm, selectedDepartment, selectedRole]);
+
+  const loadInitialData = async () => {
+    try {
+      const [departmentsData, rolesData] = await Promise.all([
+        getDepartments(),
+        getRoles()
+      ]);
+      setDepartments(departmentsData);
+      setRoles(rolesData);
+    } catch (err) {
+      console.error('Error loading initial data:', err);
+    }
+  };
+
+  const loadStaffMembers = async () => {
+    try {
+      setLoading(true);
+      const filters: any = {};
+      if (searchTerm) filters.search = searchTerm;
+      if (selectedDepartment) filters.department = selectedDepartment;
+      if (selectedRole) filters.role = selectedRole;
+      
+      const data = await getStaffMembers(filters);
+      setStaffMembers(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading staff members:', err);
+      setError('Failed to load staff members');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this staff member?')) {
+      try {
+        await deleteStaffMember(id);
+        await loadStaffMembers();
+      } catch (err) {
+        console.error('Error deleting staff member:', err);
+        alert('Failed to delete staff member');
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+    
+    if (window.confirm(`Are you sure you want to delete ${selectedRows.length} staff members?`)) {
+      try {
+        await bulkDeleteStaff(selectedRows);
+        setSelectedRows([]);
+        await loadStaffMembers();
+      } catch (err) {
+        console.error('Error bulk deleting staff:', err);
+        alert('Failed to delete staff members');
+      }
+    }
+  };
+
+  const handleRowSelect = (id: string) => {
     if (selectedRows.includes(id)) {
       setSelectedRows(selectedRows.filter(rowId => rowId !== id));
     } else {
@@ -55,6 +110,43 @@ const StaffManagement: React.FC = () => {
     }
   };
 
+  const filteredStaffMembers = staffMembers;
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+          <div className="space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-16 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+            <span className="text-red-800">{error}</span>
+          </div>
+          <button 
+            onClick={loadStaffMembers}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -69,10 +161,32 @@ const StaffManagement: React.FC = () => {
             <input 
               type="text" 
               placeholder="Search by name, role, department..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 bg-gray-100 rounded-xl w-96 focus:outline-none focus:ring-2 focus:ring-primary-200"
             />
             <Search className="absolute left-3 top-2.5 text-gray-500" size={20} />
           </div>
+          <select 
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="px-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200"
+          >
+            <option value="">All Departments</option>
+            {departments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
+          <select 
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+            className="px-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200"
+          >
+            <option value="">All Roles</option>
+            {roles.map(role => (
+              <option key={role} value={role}>{role}</option>
+            ))}
+          </select>
           <button className="btn-secondary flex items-center">
             <Filter size={18} className="mr-2" />
             Filter
@@ -116,7 +230,12 @@ const StaffManagement: React.FC = () => {
             <span className="text-sm text-gray-600">{selectedRows.length} selected</span>
             <div className="space-x-2">
               <button className="btn-secondary text-sm">Assign Shift</button>
-              <button className="btn-secondary text-sm text-red-500 hover:text-red-600">Delete</button>
+              <button 
+                onClick={handleBulkDelete}
+                className="btn-secondary text-sm text-red-500 hover:text-red-600"
+              >
+                Delete
+              </button>
             </div>
           </div>
         )}
@@ -191,7 +310,10 @@ const StaffManagement: React.FC = () => {
                       <button className="text-gray-400 hover:text-orange-400">
                         <Edit size={18} />
                       </button>
-                      <button className="text-gray-400 hover:text-red-400">
+                      <button 
+                        className="text-gray-400 hover:text-red-400"
+                        onClick={() => handleDeleteStaff(staff.id)}
+                      >
                         <Trash2 size={18} />
                       </button>
                     </div>

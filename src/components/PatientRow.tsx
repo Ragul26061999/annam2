@@ -3,7 +3,7 @@ import { MoreVertical } from 'lucide-react';
 
 interface PatientRowProps {
   name: string;
-  status: 'Critical' | 'Stable' | 'Recovering';
+  status: 'Critical' | 'Stable' | 'Recovering' | 'Admitted' | 'Diagnosed' | 'Consulting';
   condition: string;
   image: string;
 }
@@ -17,6 +17,12 @@ const PatientRow: React.FC<PatientRowProps> = ({ name, status, condition, image 
         return 'text-green-500 bg-green-50';
       case 'Recovering':
         return 'text-orange-500 bg-orange-50';
+      case 'Admitted':
+        return 'text-red-500 bg-red-50';
+      case 'Diagnosed':
+        return 'text-blue-500 bg-blue-50';
+      case 'Consulting':
+        return 'text-purple-500 bg-purple-50';
       default:
         return 'text-gray-500 bg-gray-50';
     }

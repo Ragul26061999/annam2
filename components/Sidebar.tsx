@@ -17,7 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Activity,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 
 interface NavItem {
@@ -71,6 +71,12 @@ const Sidebar: React.FC = () => {
       badge: '42'
     },
     { 
+      href: '/doctor/appointments', 
+      label: 'My Appointments', 
+      icon: <Stethoscope size={18} />, 
+      color: 'text-blue-600'
+    },
+    { 
       href: '/workstation', 
       label: 'Workstation', 
       icon: <Activity size={18} />, 
@@ -91,7 +97,7 @@ const Sidebar: React.FC = () => {
     { 
       href: '/finance', 
       label: 'Finance', 
-      icon: <DollarSign size={18} />, 
+      icon: <IndianRupee size={18} />, 
       color: 'text-emerald-600'
     },
   ];

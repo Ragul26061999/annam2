@@ -15,16 +15,20 @@ export interface BusinessRules {
   allowWeekendBooking: boolean;
   emergencySlotBuffer: number; // minutes
   followUpGracePeriod: number; // days
+  allowEmergencyBooking: boolean;
+  emergencyMaxAdvanceDays: number;
 }
 
 // Default business rules
 const DEFAULT_BUSINESS_RULES: BusinessRules = {
-  maxAppointmentsPerDay: 20,
-  minAdvanceBookingHours: 2,
-  maxAdvanceBookingDays: 90,
-  allowWeekendBooking: false,
-  emergencySlotBuffer: 15,
-  followUpGracePeriod: 7
+  maxAppointmentsPerDay: 30, // Increased for hospital capacity
+  minAdvanceBookingHours: 0, // No minimum advance booking for immediate care
+  maxAdvanceBookingDays: 180, // Extended to 6 months for better planning
+  allowWeekendBooking: true, // Hospitals operate 24/7
+  emergencySlotBuffer: 10, // Reduced buffer for faster emergency response
+  followUpGracePeriod: 14, // Extended grace period for follow-ups
+  allowEmergencyBooking: true,
+  emergencyMaxAdvanceDays: 30 // Extended emergency booking window
 };
 
 /**
@@ -56,32 +60,43 @@ export async function validateAppointmentData(
   const now = new Date();
   const dayOfWeek = appointmentDateTime.getDay();
 
-  // Check if appointment is in the past
-  if (appointmentDateTime <= now) {
+  // Check if appointment is in the past (allow current time for immediate appointments)
+  if (appointmentDateTime < now) {
     errors.push('Appointment cannot be scheduled in the past');
   }
 
-  // Check minimum advance booking time
-  const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-  if (hoursUntilAppointment < businessRules.minAdvanceBookingHours) {
-    errors.push(`Appointments must be booked at least ${businessRules.minAdvanceBookingHours} hours in advance`);
-  }
+  // Emergency appointments have different validation rules
+  if (appointmentData.isEmergency && businessRules.allowEmergencyBooking) {
+    // Emergency appointments can be booked immediately (no minimum advance time)
+    
+    // Emergency appointments have extended advance booking window
+    const daysUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysUntilAppointment > businessRules.emergencyMaxAdvanceDays) {
+      errors.push(`Emergency appointments cannot be booked more than ${businessRules.emergencyMaxAdvanceDays} days in advance`);
+    }
+    
+    // Emergency appointments can be scheduled on weekends
+    // Emergency appointments can be scheduled outside normal business hours (24/7)
+  } else {
+    // Regular appointment validation - no minimum advance booking time
+    // Only check if it's not in the past (already handled above)
+    
+    // Check maximum advance booking time
+    const daysUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysUntilAppointment > businessRules.maxAdvanceBookingDays) {
+      errors.push(`Appointments cannot be booked more than ${businessRules.maxAdvanceBookingDays} days in advance`);
+    }
 
-  // Check maximum advance booking time
-  const daysUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysUntilAppointment > businessRules.maxAdvanceBookingDays) {
-    errors.push(`Appointments cannot be booked more than ${businessRules.maxAdvanceBookingDays} days in advance`);
-  }
+    // Weekend booking is now allowed by default
+    if (!businessRules.allowWeekendBooking && (dayOfWeek === 0 || dayOfWeek === 6)) {
+      warnings.push('Weekend appointments may have limited availability');
+    }
 
-  // Check weekend booking policy
-  if (!businessRules.allowWeekendBooking && (dayOfWeek === 0 || dayOfWeek === 6)) {
-    errors.push('Weekend appointments are not allowed');
-  }
-
-  // Check business hours (9 AM to 6 PM)
-  const appointmentHour = appointmentDateTime.getHours();
-  if (appointmentHour < 9 || appointmentHour >= 18) {
-    errors.push('Appointments must be scheduled between 9:00 AM and 6:00 PM');
+    // Check business hours (7 AM to 8 PM) for regular appointments - extended hours for hospital
+    const appointmentHour = appointmentDateTime.getHours();
+    if (appointmentHour < 7 || appointmentHour >= 20) {
+      warnings.push('Appointments outside 7:00 AM to 8:00 PM may have limited doctor availability');
+    }
   }
 
   // Validate appointment duration
@@ -351,6 +366,14 @@ export async function validateAppointmentWithSuggestions(
   return validation;
 }
 
+// Helper function to extract token from notes
+export function extractTokenFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  
+  const tokenMatch = notes.match(/Token:\s*([A-Z]\d{3})/);
+  return tokenMatch ? tokenMatch[1] : null;
+}
+
 // Types for appointment management
 export interface AppointmentData {
   patientId: string;
@@ -362,6 +385,8 @@ export interface AppointmentData {
   symptoms?: string;
   chiefComplaint?: string;
   notes?: string;
+  isEmergency?: boolean;
+  sessionType?: 'morning' | 'afternoon' | 'evening' | 'emergency';
 }
 
 export interface Appointment {
@@ -388,7 +413,18 @@ export interface Appointment {
   
   // Related data
   patient?: any;
-  doctor?: any;
+  doctor?: {
+    id: string;
+    doctor_id?: string;
+    specialization: string;
+    qualification?: string;
+    department?: string;
+    user: {
+      name: string;
+      phone: string;
+      email: string;
+    };
+  };
 }
 
 export interface AppointmentSlot {
@@ -398,6 +434,8 @@ export interface AppointmentSlot {
   doctorId: string;
   doctorName: string;
   specialization: string;
+  sessionType?: 'morning' | 'afternoon' | 'evening';
+  isEmergency?: boolean;
 }
 
 /**
@@ -433,6 +471,34 @@ export async function generateAppointmentId(): Promise<string> {
 }
 
 /**
+ * Generate a unique token number for an appointment (per doctor per day)
+ */
+export async function generateAppointmentToken(
+  doctorId: string, 
+  appointmentDate: string
+): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('doctor_id', doctorId)
+      .eq('appointment_date', appointmentDate)
+      .in('status', ['scheduled', 'confirmed', 'in_progress', 'completed']);
+
+    if (error) {
+      console.error('Error getting appointment token count:', error);
+      throw new Error('Failed to generate appointment token');
+    }
+
+    const tokenNumber = ((count || 0) + 1);
+    return tokenNumber;
+  } catch (error) {
+    console.error('Error generating appointment token:', error);
+    throw error;
+  }
+}
+
+/**
  * Create a new appointment
  */
 export async function createAppointment(
@@ -453,7 +519,20 @@ export async function createAppointment(
       console.warn('Appointment warnings:', validation.warnings.join('; '));
     }
     
+    // Verify that the doctor exists in the doctors table
+    const { data: existingDoctor } = await supabase
+      .from('doctors')
+      .select('id')
+      .eq('id', appointmentData.doctorId)
+      .single();
+    
+    if (!existingDoctor) {
+      throw new Error(`Doctor with ID ${appointmentData.doctorId} not found. Only registered doctors can have appointments.`);
+    }
+    
     const appointmentId = await generateAppointmentId();
+    // Generate per-doctor-per-day token number
+    const token = await generateAppointmentToken(appointmentData.doctorId, appointmentData.appointmentDate);
     
     const appointmentRecord = {
       appointment_id: appointmentId,
@@ -464,11 +543,9 @@ export async function createAppointment(
       duration_minutes: appointmentData.durationMinutes || 30,
       type: appointmentData.type,
       status: 'scheduled',
-      symptoms: appointmentData.symptoms || null,
-      chief_complaint: appointmentData.chiefComplaint || null,
-      notes: appointmentData.notes || null,
+      symptoms: appointmentData.chiefComplaint || appointmentData.symptoms || null,
+      notes: appointmentData.notes ? `Token: ${token} | ${appointmentData.notes}` : `Token: ${token}`,
       created_by: createdBy || null,
-      prescriptions: []
     };
 
     const { data: appointment, error } = await supabase
@@ -476,14 +553,7 @@ export async function createAppointment(
       .insert([appointmentRecord])
       .select(`
         *,
-        patient:patients(id, patient_id, name, phone, email),
-        doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
-          user:users(name, phone, email)
-        )
+        patient:patients(id, patient_id, name, phone, email)
       `)
       .single();
 
@@ -492,7 +562,25 @@ export async function createAppointment(
       throw new Error(`Failed to create appointment: ${error.message}`);
     }
 
-    return appointment;
+    // Fetch doctor information from doctors table
+    const { data: doctorInfo } = await supabase
+      .from('doctors')
+      .select(`
+        id,
+        specialization,
+        qualification,
+        user:users(name, phone, email)
+      `)
+      .eq('id', appointmentData.doctorId)
+      .single();
+
+    // Attach doctor info to appointment
+    const appointmentWithDoctor = {
+      ...appointment,
+      doctor: doctorInfo
+    };
+
+    return appointmentWithDoctor;
   } catch (error) {
     console.error('Error creating appointment:', error);
     throw error;
@@ -525,14 +613,7 @@ export async function getAppointments(options: {
       .from('appointments')
       .select(`
         *,
-        patient:patients(id, patient_id, name, phone, email),
-        doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
-          user:users(name, phone, email)
-        )
+        patient:patients(id, patient_id, name, phone, email)
       `, { count: 'exact' });
 
     // Apply filters
@@ -576,8 +657,36 @@ export async function getAppointments(options: {
       throw new Error(`Failed to fetch appointments: ${error.message}`);
     }
 
+    // Fetch doctor information separately for each appointment
+    const appointmentsWithDoctors = await Promise.all(
+      (appointments || []).map(async (appointment) => {
+        let doctorInfo = null;
+        
+        // First try to get from doctors table
+        const { data: doctorData } = await supabase
+          .from('doctors')
+          .select(`
+            id,
+            specialization,
+            qualification,
+            user:users(name, phone, email)
+          `)
+          .eq('id', appointment.doctor_id)
+          .single();
+        
+        if (doctorData) {
+          doctorInfo = doctorData;
+        }
+        
+        return {
+          ...appointment,
+          doctor: doctorInfo
+        };
+      })
+    );
+
     return {
-      appointments: appointments || [],
+      appointments: appointmentsWithDoctors,
       total: count || 0,
       page,
       limit
@@ -599,10 +708,8 @@ export async function getAppointmentById(appointmentId: string): Promise<Appoint
         *,
         patient:patients(id, patient_id, name, phone, email, date_of_birth, gender, address),
         doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
+          id,
+          specialization,
           qualification,
           user:users(name, phone, email)
         )
@@ -638,10 +745,8 @@ export async function updateAppointmentStatus(
         *,
         patient:patients(id, patient_id, name, phone, email),
         doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
+          id,
+          specialization,
           user:users(name, phone, email)
         )
       `)
@@ -689,10 +794,8 @@ export async function updateAppointmentMedicalInfo(
         *,
         patient:patients(id, patient_id, name, phone, email),
         doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
+          id,
+          specialization,
           user:users(name, phone, email)
         )
       `)
@@ -723,10 +826,8 @@ export async function getPatientAppointmentHistory(
       .select(`
         *,
         doctor:doctors(
-          id, 
-          doctor_id, 
-          specialization, 
-          department,
+          id,
+          specialization,
           user:users(name, phone, email)
         )
       `)
@@ -783,22 +884,33 @@ export async function getDoctorAppointmentSchedule(
  */
 export async function getAvailableSlots(
   doctorId: string,
-  date: string
+  date: string,
+  isEmergency: boolean = false
 ): Promise<AppointmentSlot[]> {
   try {
-    // Get doctor information
-    const { data: doctor, error: doctorError } = await supabase
+    // Get doctor information - check both doctors table and users with MD role
+    let doctor: any = null;
+    let doctorError: any = null;
+    
+    // First try to get from doctors table
+    const { data: doctorData, error: docError } = await supabase
       .from('doctors')
       .select(`
         *,
-        user:users(name)
+        user:users(name, role)
       `)
-      .eq('doctor_id', doctorId)
+      .eq('id', doctorId)
       .single();
+    
+    if (doctorData) {
+      doctor = doctorData;
+    } else {
+      doctorError = docError;
+    }
 
-    if (doctorError) {
+    if (doctorError || !doctor) {
       console.error('Error fetching doctor:', doctorError);
-      throw new Error(`Doctor not found: ${doctorError.message}`);
+      throw new Error(`Doctor not found: ${doctorError?.message || 'Doctor does not exist'}`);
     }
 
     // Get existing appointments for the date
@@ -830,7 +942,42 @@ export async function getAvailableSlots(
       return slots; // Doctor not available on this day
     }
 
-    // Generate slots for each available session
+    // For emergency appointments, generate 24/7 slots
+    if (isEmergency) {
+      // Generate emergency slots every 30 minutes for 24 hours
+      for (let hour = 0; hour < 24; hour++) {
+        for (let minute = 0; minute < 60; minute += 30) {
+          const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          
+          // Check if slot is available
+          const isBooked = existingAppointments?.some(apt => {
+            const aptTime = apt.appointment_time;
+            const aptDuration = apt.duration_minutes || 30;
+            const aptEndTime = new Date(`2000-01-01T${aptTime}`);
+            aptEndTime.setMinutes(aptEndTime.getMinutes() + aptDuration);
+            
+            const slotTime = new Date(`2000-01-01T${timeString}`);
+            const slotEndTime = new Date(slotTime);
+            slotEndTime.setMinutes(slotEndTime.getMinutes() + 30);
+            
+            return (slotTime < aptEndTime && slotEndTime > new Date(`2000-01-01T${aptTime}`));
+          });
+
+          slots.push({
+            date,
+            time: timeString,
+            available: !isBooked,
+            doctorId,
+            doctorName: doctor.user?.name || 'Unknown',
+            specialization: doctor.specialization,
+            isEmergency: true
+          });
+        }
+      }
+      return slots;
+    }
+
+    // Generate slots for each available session (regular appointments)
     const sessionTimes = {
       morning: { start: '09:00', end: '12:00' },
       afternoon: { start: '14:00', end: '17:00' },
@@ -875,7 +1022,8 @@ export async function getAvailableSlots(
             available: !isBooked,
             doctorId,
             doctorName: doctor.user?.name || 'Unknown',
-            specialization: doctor.specialization
+            specialization: doctor.specialization,
+            sessionType: sessionName as 'morning' | 'afternoon' | 'evening'
           });
           
           slotsGenerated++;

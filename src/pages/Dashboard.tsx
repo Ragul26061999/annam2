@@ -1,12 +1,69 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Calendar, Pill, Bed, TrendingUp, ArrowUpRight } from 'lucide-react';
 
 // Components
 import StatCard from '../components/StatCard';
 import AppointmentItem from '../components/AppointmentItem';
 import PatientRow from '../components/PatientRow';
+import { getDashboardData, DashboardData } from '../lib/dashboardService';
 
 const Dashboard: React.FC = () => {
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const data = await getDashboardData();
+      setDashboardData(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="animate-pulse">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <span className="text-red-800">{error}</span>
+          <button 
+            onClick={loadDashboardData}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!dashboardData) {
+    return null;
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -18,31 +75,31 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Total Patients" 
-          value="1,284" 
-          change="+8.2%" 
+          value={dashboardData.stats.totalPatients.toLocaleString()} 
+          change="+0%" 
           trend="up" 
           icon={<Users className="text-orange-300" />} 
         />
         <StatCard 
-          title="Appointments" 
-          value="42" 
-          change="+12.5%" 
+          title="Today's Appointments" 
+          value={dashboardData.stats.todayAppointments.toString()} 
+          change="+0%" 
           trend="up" 
           icon={<Calendar className="text-blue-400" />} 
         />
         <StatCard 
-          title="Medicine Stock" 
-          value="842" 
-          change="-3.4%" 
-          trend="down" 
-          icon={<Pill className="text-green-400" />} 
+          title="Available Beds" 
+          value={dashboardData.stats.availableBeds.toString()} 
+          change={`${dashboardData.stats.bedOccupancyRate}% occupied`} 
+          trend="up" 
+          icon={<Bed className="text-green-400" />} 
         />
         <StatCard 
-          title="Bed Occupancy" 
-          value="87%" 
-          change="+2.1%" 
+          title="Active Doctors" 
+          value={dashboardData.stats.availableDoctors.toString()} 
+          change={`of ${dashboardData.stats.totalDoctors} total`} 
           trend="up" 
-          icon={<Bed className="text-red-400" />} 
+          icon={<Users className="text-red-400" />} 
         />
       </div>
       
@@ -58,41 +115,16 @@ const Dashboard: React.FC = () => {
           </div>
           
           <div className="card divide-y divide-gray-100">
-            <AppointmentItem 
-              name="Sarah Johnson" 
-              time="10:00 AM" 
-              date="Today" 
-              type="Follow-up" 
-              image="https://images.pexels.com/photos/761963/pexels-photo-761963.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <AppointmentItem 
-              name="Michael Rodriguez" 
-              time="11:30 AM" 
-              date="Today" 
-              type="Consultation" 
-              image="https://images.pexels.com/photos/769745/pexels-photo-769745.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <AppointmentItem 
-              name="Emma Watson" 
-              time="2:15 PM" 
-              date="Today" 
-              type="Check-up" 
-              image="https://images.pexels.com/photos/4714992/pexels-photo-4714992.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <AppointmentItem 
-              name="David Kim" 
-              time="3:45 PM" 
-              date="Today" 
-              type="Surgery Prep" 
-              image="https://images.pexels.com/photos/2128807/pexels-photo-2128807.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <AppointmentItem 
-              name="Lisa Chen" 
-              time="9:30 AM" 
-              date="Tomorrow" 
-              type="Follow-up" 
-              image="https://images.pexels.com/photos/1542085/pexels-photo-1542085.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
+            {dashboardData.recentAppointments.map((appointment) => (
+              <AppointmentItem 
+                key={appointment.id}
+                name={appointment.patientName} 
+                time={appointment.appointmentTime} 
+                date={appointment.appointmentDate} 
+                type={appointment.type} 
+                image="https://images.pexels.com/photos/761963/pexels-photo-761963.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
+              />
+            ))}
           </div>
         </div>
         
@@ -106,30 +138,15 @@ const Dashboard: React.FC = () => {
           </div>
           
           <div className="card">
-            <PatientRow 
-              name="James Wilson" 
-              status="Critical" 
-              condition="Heart Failure" 
-              image="https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <PatientRow 
-              name="Olivia Martinez" 
-              status="Stable" 
-              condition="Pneumonia" 
-              image="https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <PatientRow 
-              name="Noah Parker" 
-              status="Recovering" 
-              condition="Post-Op" 
-              image="https://images.pexels.com/photos/837140/pexels-photo-837140.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
-            <PatientRow 
-              name="Sophia Lee" 
-              status="Stable" 
-              condition="Diabetes" 
-              image="https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
-            />
+            {dashboardData.recentPatients.map((patient) => (
+              <PatientRow 
+                key={patient.id}
+                name={patient.name} 
+                status={patient.status as 'Critical' | 'Stable' | 'Recovering' | 'Admitted' | 'Diagnosed' | 'Consulting'} 
+                condition={patient.condition} 
+                image="https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1"
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -142,49 +159,24 @@ const Dashboard: React.FC = () => {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="flex flex-col">
-            <span className="text-gray-500 text-sm">ICU Beds</span>
-            <div className="flex items-end mt-2">
-              <span className="text-2xl font-medium text-gray-900">16/20</span>
-              <span className="text-red-500 text-xs ml-2">80% occupied</span>
+          {dashboardData.bedStatus.map((status, index) => (
+            <div key={index} className="flex flex-col">
+              <span className="text-gray-500 text-sm">{status.bedType} Beds</span>
+              <div className="flex items-end mt-2">
+                <span className="text-2xl font-medium text-gray-900">{status.occupied}/{status.total}</span>
+                <span className={`text-xs ml-2 ${
+                  status.occupancyRate > 80 ? 'text-red-500' : 
+                  status.occupancyRate > 60 ? 'text-orange-500' : 'text-green-500'
+                }`}>{status.occupancyRate}% occupied</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div className={`h-2 rounded-full ${
+                  status.occupancyRate > 80 ? 'bg-red-400' : 
+                  status.occupancyRate > 60 ? 'bg-orange-300' : 'bg-green-400'
+                }`} style={{ width: `${status.occupancyRate}%` }}></div>
+              </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div className="bg-red-400 h-2 rounded-full" style={{ width: '80%' }}></div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col">
-            <span className="text-gray-500 text-sm">General Beds</span>
-            <div className="flex items-end mt-2">
-              <span className="text-2xl font-medium text-gray-900">124/150</span>
-              <span className="text-orange-500 text-xs ml-2">83% occupied</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div className="bg-orange-300 h-2 rounded-full" style={{ width: '83%' }}></div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col">
-            <span className="text-gray-500 text-sm">Emergency Room</span>
-            <div className="flex items-end mt-2">
-              <span className="text-2xl font-medium text-gray-900">12/30</span>
-              <span className="text-green-500 text-xs ml-2">40% occupied</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div className="bg-green-400 h-2 rounded-full" style={{ width: '40%' }}></div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col">
-            <span className="text-gray-500 text-sm">Operating Rooms</span>
-            <div className="flex items-end mt-2">
-              <span className="text-2xl font-medium text-gray-900">5/8</span>
-              <span className="text-orange-500 text-xs ml-2">63% in use</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div className="bg-orange-300 h-2 rounded-full" style={{ width: '63%' }}></div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

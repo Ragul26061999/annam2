@@ -14,14 +14,14 @@ import {
   ArrowRight,
   AlertTriangle
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import PrescriptionManagement from '../../components/PrescriptionManagement';
 
 const Workstation: React.FC = () => {
   const [activeTab, setActiveTab] = useState('today');
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [showAppointmentDetailsModal, setShowAppointmentDetailsModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
-  const navigate = useNavigate();
 
   // Mock data for today's schedule
   const todaySchedule = [
@@ -132,7 +132,7 @@ const Workstation: React.FC = () => {
   ];
 
   const handlePatientClick = (patientId: string) => {
-    navigate(`/patients/${patientId}`);
+    console.log(`Navigate to patient: ${patientId}`);
   };
 
   const handleAppointmentClick = (appointment: any) => {
@@ -349,67 +349,7 @@ const Workstation: React.FC = () => {
       {/* e-Prescriptions Tab */}
       {activeTab === 'prescriptions' && (
         <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-gray-900">e-Prescriptions</h2>
-            <button 
-              className="btn-primary flex items-center"
-              onClick={() => setShowPrescriptionModal(true)}
-            >
-              <Plus size={18} className="mr-2" />
-              New Prescription
-            </button>
-          </div>
-
-          <div className="card">
-            {prescriptions.map((prescription) => (
-              <div 
-                key={prescription.id} 
-                className="p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer"
-                onClick={() => handlePatientClick(prescription.patientId)}
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center">
-                    <img 
-                      src={prescription.image} 
-                      alt={prescription.patientName} 
-                      className="h-10 w-10 rounded-full mr-3" 
-                    />
-                    <div>
-                      <h3 className="font-medium text-gray-900">{prescription.patientName}</h3>
-                      <p className="text-sm text-gray-500">{prescription.date}</p>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                    prescription.status === 'Active' ? 'bg-success-100 text-success-600' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {prescription.status}
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {prescription.medications.map((medication, index) => (
-                    <div key={index} className="flex items-start">
-                      <div className="h-6 w-6 rounded-full bg-primary-100 flex items-center justify-center text-primary-500 mr-3">
-                        <Pill size={14} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{medication.name} {medication.dosage}</p>
-                        <p className="text-sm text-gray-500">{medication.frequency}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-end space-x-3 mt-4">
-                  <button className="btn-secondary text-sm py-1 px-3 flex items-center">
-                    <Edit size={14} className="mr-1" />
-                    Edit
-                  </button>
-                  <button className="btn-primary text-sm py-1 px-3">Print</button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <PrescriptionManagement doctorId="1" />
         </div>
       )}
 

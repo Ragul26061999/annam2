@@ -25,7 +25,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import AppointmentBookingForm from './AppointmentBookingForm';
-import { getAppointments, updateAppointmentStatus, cancelAppointment, Appointment } from '../src/lib/appointmentService';
+import { getAppointments, updateAppointmentStatus, cancelAppointment, Appointment, extractTokenFromNotes } from '../src/lib/appointmentService';
 import { getAllDoctors } from '../src/lib/doctorService';
 import { getAllPatients } from '../src/lib/patientService';
 
@@ -434,6 +434,13 @@ const AppointmentManagement: React.FC = () => {
                             <div className="text-sm text-gray-500">
                               ID: {appointment.patient?.patient_id}
                             </div>
+                            {extractTokenFromNotes(appointment?.notes) && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                  Token {extractTokenFromNotes(appointment.notes)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>

@@ -447,7 +447,7 @@ const DoctorManagementDashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence>
               {filteredDoctors.map((doctor) => {
-                const { icon: Icon, color } = getDepartmentIcon(doctor.department);
+                const { icon: Icon, color } = getDepartmentIcon(doctor.department || 'General');
                 return (
                   <motion.div
                     key={doctor.id}
@@ -502,8 +502,8 @@ const DoctorManagementDashboard: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-500">Status</span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(doctor.availability_status)}`}>
-                          {formatStatus(doctor.availability_status)}
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(doctor.availability_status || 'unavailable')}`}>
+                          {formatStatus(doctor.availability_status || 'unavailable')}
                         </span>
                       </div>
                     </div>
@@ -567,8 +567,8 @@ const DoctorManagementDashboard: React.FC = () => {
                       <td className="py-4 px-6 text-gray-700">{doctor.department}</td>
                       <td className="py-4 px-6 text-gray-700">{doctor.room_number}</td>
                       <td className="py-4 px-6">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(doctor.availability_status)}`}>
-                          {formatStatus(doctor.availability_status)}
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(doctor.availability_status || 'unavailable')}`}>
+                          {formatStatus(doctor.availability_status || 'unavailable')}
                         </span>
                       </td>
                       <td className="py-4 px-6">

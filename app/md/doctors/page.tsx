@@ -126,7 +126,7 @@ export default function DoctorsPage() {
         {/* Doctors Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {/* Doctor Card 1 */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 hover:shadow-xl hover:scale-105 transition-all duration-300">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center">
                 <div className="w-14 h-14 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
@@ -184,7 +184,7 @@ export default function DoctorsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+            <button className="flex-1 flex items-center justify-center bg-primary-50 text-primary-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-primary-100 transition-colors">
               <Eye size={14} className="mr-1" />
               View
             </button>
@@ -254,7 +254,7 @@ export default function DoctorsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+            <button className="flex-1 flex items-center justify-center bg-primary-50 text-primary-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-primary-100 transition-colors">
               <Eye size={14} className="mr-1" />
               View
             </button>

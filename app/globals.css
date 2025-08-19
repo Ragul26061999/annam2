@@ -28,15 +28,15 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium text-sm backdrop-blur-sm;
+    @apply bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium text-sm backdrop-blur-sm;
   }
 
   .btn-secondary {
-    @apply bg-white/80 hover:bg-white/90 text-gray-700 px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium text-sm border border-orange-100/50 backdrop-blur-sm;
+    @apply bg-white/80 hover:bg-white/90 text-hospital-700 px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium text-sm border border-hospital-200/50 backdrop-blur-sm;
   }
 
   .card {
-    @apply bg-white/90 rounded-2xl p-6 shadow-lg border border-orange-50/50 backdrop-blur-sm;
+    @apply bg-white/90 rounded-2xl p-6 shadow-lg border border-hospital-100/50 backdrop-blur-sm;
   }
 
   .glass-card {
@@ -44,7 +44,7 @@
   }
 
   .input-field {
-    @apply bg-white/90 border border-orange-200/50 rounded-xl px-4 py-3 w-full focus:outline-none focus:ring-2 focus:ring-orange-300/50 focus:border-orange-400/50 transition-all duration-300 text-sm backdrop-blur-sm;
+    @apply bg-white/90 border border-hospital-200/50 rounded-xl px-4 py-3 w-full focus:outline-none focus:ring-2 focus:ring-primary-300/50 focus:border-primary-400/50 transition-all duration-300 text-sm backdrop-blur-sm;
   }
 
   .badge {
@@ -52,11 +52,11 @@
   }
 
   .badge-primary {
-    @apply bg-orange-50 text-orange-700;
+    @apply bg-primary-50 text-primary-700;
   }
 
   .badge-success {
-    @apply bg-green-50 text-green-700;
+    @apply bg-medical-50 text-medical-700;
   }
 
   .badge-warning {
@@ -64,15 +64,15 @@
   }
 
   .table-row {
-    @apply border-b border-gray-100 hover:bg-gray-50 transition-colors;
+    @apply border-b border-hospital-100 hover:bg-hospital-50 transition-colors;
   }
 
   .nav-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-orange-50/80 hover:to-orange-100/60 text-gray-600 hover:text-orange-700 transition-all duration-300 text-sm font-medium backdrop-blur-sm;
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-primary-50/80 hover:to-primary-100/60 text-hospital-600 hover:text-primary-700 transition-all duration-300 text-sm font-medium backdrop-blur-sm;
   }
 
   .nav-link.active {
-    @apply bg-gradient-to-r from-orange-100/90 to-orange-200/70 text-orange-700 shadow-lg border border-orange-200/50 backdrop-blur-md;
+    @apply bg-gradient-to-r from-primary-100/90 to-primary-200/70 text-primary-700 shadow-lg border border-primary-200/50 backdrop-blur-md;
   }
 
   .neu-icon {
@@ -90,38 +90,42 @@
 
   /* Sidebar styles */
   .sidebar-item {
-    @apply flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50/80 hover:to-orange-100/60 hover:text-orange-700 rounded-xl transition-all duration-300 backdrop-blur-sm;
+    @apply flex items-center space-x-3 px-4 py-3 text-hospital-700 hover:bg-gradient-to-r hover:from-primary-50/80 hover:to-primary-100/60 hover:text-primary-700 rounded-xl transition-all duration-300 backdrop-blur-sm;
   }
 
   .sidebar-item.active {
-    @apply bg-gradient-to-r from-orange-100/90 to-orange-200/70 text-orange-700 font-semibold shadow-lg border border-orange-200/50 backdrop-blur-md;
+    @apply bg-gradient-to-r from-primary-100/90 to-primary-200/70 text-primary-700 font-semibold shadow-lg border border-primary-200/50 backdrop-blur-md;
   }
 
   /* Dashboard card styles */
   .stat-card {
-    @apply bg-gradient-to-br from-white/90 to-orange-50/30 rounded-2xl shadow-xl p-6 border border-orange-100/50 backdrop-blur-md hover:shadow-2xl transition-all duration-300;
+    @apply bg-gradient-to-br from-white/90 to-hospital-50/30 rounded-2xl shadow-xl p-6 border border-hospital-100/50 backdrop-blur-md hover:shadow-2xl transition-all duration-300;
   }
 
   /* Glass morphism effects */
   .glass-bg {
-    @apply bg-gradient-to-br from-orange-50/40 to-white/60 backdrop-blur-xl;
+    @apply bg-gradient-to-br from-hospital-50/40 to-white/60 backdrop-blur-xl;
   }
 
   .glass-sidebar {
-    @apply bg-gradient-to-b from-white/95 to-orange-50/80 backdrop-blur-xl border-r border-orange-100/50;
+    @apply bg-gradient-to-b from-white/95 to-hospital-50/80 backdrop-blur-xl border-r border-hospital-100/50;
   }
 
   /* Enhanced gradients */
-  .gradient-orange {
-    @apply bg-gradient-to-r from-orange-400 to-orange-500;
+  .gradient-primary {
+    @apply bg-gradient-to-r from-primary-400 to-primary-500;
   }
 
-  .gradient-orange-soft {
-    @apply bg-gradient-to-r from-orange-100/80 to-orange-200/60;
+  .gradient-medical {
+    @apply bg-gradient-to-r from-medical-400 to-medical-500;
   }
 
-  .gradient-orange-hover {
-    @apply hover:bg-gradient-to-r hover:from-orange-500 hover:to-orange-600;
+  .gradient-primary-soft {
+    @apply bg-gradient-to-r from-primary-100/80 to-primary-200/60;
+  }
+
+  .gradient-primary-hover {
+    @apply hover:bg-gradient-to-r hover:from-primary-500 hover:to-primary-600;
   }
 
   .stat-card:hover {

@@ -219,6 +219,7 @@ export async function getAllDoctors(options: {
   department?: string;
   availabilityStatus?: string;
   searchTerm?: string;
+  includeMD?: boolean;
 } = {}): Promise<{ 
   doctors: Doctor[]; 
   total: number; 
@@ -226,9 +227,10 @@ export async function getAllDoctors(options: {
   limit: number; 
 }> {
   try {
-    const { page = 1, limit = 20, specialization, department, availabilityStatus, searchTerm } = options;
+    const { page = 1, limit = 20, specialization, department, availabilityStatus, searchTerm, includeMD = false } = options;
     const offset = (page - 1) * limit;
 
+    // Fetch regular doctors
     let query = supabase
       .from('doctors')
       .select(`
@@ -236,7 +238,7 @@ export async function getAllDoctors(options: {
         user:users(id, name, email, phone, address)
       `, { count: 'exact' });
 
-    // Apply filters
+    // Apply filters for regular doctors
     if (specialization) {
       query = query.eq('specialization', specialization);
     }
@@ -260,10 +262,16 @@ export async function getAllDoctors(options: {
       `);
     }
 
-    // Apply pagination
+    // Get regular doctors
     const { data: doctors, error, count } = await query
       .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false });
+
+    let allDoctors = doctors || [];
+    let totalCount = count || 0;
+
+    // MD users are no longer included in doctor listings
+    // This functionality has been removed as per system requirements
 
     if (error) {
       console.error('Error fetching doctors:', error);
@@ -271,7 +279,7 @@ export async function getAllDoctors(options: {
     }
 
     // Add computed fields for compatibility
-    const enhancedDoctors = doctors?.map(doctor => ({
+    const enhancedDoctors = allDoctors?.map(doctor => ({
       ...doctor,
       doctor_id: doctor.license_number, // Use license_number as doctor_id
       department: getSpecializationDepartment(doctor.specialization),
@@ -286,7 +294,7 @@ export async function getAllDoctors(options: {
 
     return {
       doctors: enhancedDoctors,
-      total: count || 0,
+      total: totalCount,
       page,
       limit
     };
@@ -301,6 +309,7 @@ export async function getAllDoctors(options: {
  */
 export async function getAllDoctorsSimple(): Promise<Doctor[]> {
   try {
+    // Fetch regular doctors
     const { data: doctors, error } = await supabase
       .from('doctors')
       .select(`
@@ -321,8 +330,13 @@ export async function getAllDoctorsSimple(): Promise<Doctor[]> {
       throw new Error(`Failed to fetch doctors: ${error.message}`);
     }
 
+    let allDoctors = doctors || [];
+
+    // MD users are no longer included in doctor listings
+    // This functionality has been removed as per system requirements
+
     // Add computed fields for compatibility
-    const enhancedDoctors = doctors?.map(doctor => ({
+    const enhancedDoctors = allDoctors?.map(doctor => ({
       ...doctor,
       doctor_id: doctor.license_number, // Use license_number as doctor_id
       department: getSpecializationDepartment(doctor.specialization),
@@ -585,6 +599,165 @@ export async function getAvailableDoctors(
 }
 
 /**
+ * Get available time slots for a specific doctor on a given date
+ */
+export async function getDoctorAvailableSlots(
+  doctorId: string,
+  date: string
+): Promise<{
+  morning: string[];
+  afternoon: string[];
+  evening: string[];
+}> {
+  try {
+    // Get doctor details
+    const doctor = await getDoctorById(doctorId);
+    
+    // Get existing appointments for the date
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('appointment_time, duration')
+      .eq('doctor_id', doctorId)
+      .eq('appointment_date', date)
+      .in('status', ['scheduled', 'confirmed', 'in_progress']);
+
+    if (error) {
+      console.error('Error fetching appointments:', error);
+      throw new Error(`Failed to fetch appointments: ${error.message}`);
+    }
+
+    const bookedSlots = new Set(
+      (appointments || []).map(apt => apt.appointment_time)
+    );
+
+    // Generate available slots based on doctor's availability_hours
+    const availabilityHours = doctor.availability_hours || {
+      sessions: {
+        morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
+        afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 10 },
+        evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
+      },
+      availableSessions: ['morning', 'afternoon', 'evening']
+    };
+
+    const slots = {
+      morning: [] as string[],
+      afternoon: [] as string[],
+      evening: [] as string[]
+    };
+
+    // Generate 30-minute slots for each session
+    for (const session of availabilityHours.availableSessions || ['morning', 'afternoon', 'evening']) {
+      const sessionConfig = availabilityHours.sessions[session];
+      if (!sessionConfig) continue;
+
+      const startTime = sessionConfig.startTime;
+      const endTime = sessionConfig.endTime;
+      const maxPatients = sessionConfig.maxPatients;
+
+      const sessionSlots = generateTimeSlots(startTime, endTime, 30); // 30-minute intervals
+      
+      // Filter out booked slots and limit by maxPatients
+      const availableSlots = sessionSlots
+        .filter(slot => !bookedSlots.has(slot))
+        .slice(0, maxPatients);
+
+      slots[session as keyof typeof slots] = availableSlots;
+    }
+
+    return slots;
+  } catch (error) {
+    console.error('Error getting doctor available slots:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate time slots between start and end time with given interval
+ */
+function generateTimeSlots(startTime: string, endTime: string, intervalMinutes: number): string[] {
+  const slots: string[] = [];
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  
+  const startTotalMinutes = startHour * 60 + startMinute;
+  const endTotalMinutes = endHour * 60 + endMinute;
+  
+  for (let minutes = startTotalMinutes; minutes < endTotalMinutes; minutes += intervalMinutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const timeString = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    slots.push(timeString);
+  }
+  
+  return slots;
+}
+
+/**
+ * Get doctors with their available slots for a specific date
+ */
+export async function getDoctorsWithAvailableSlots(
+  date: string,
+  specialization?: string
+): Promise<Array<Doctor & { availableSlots: { morning: string[]; afternoon: string[]; evening: string[] } }>> {
+  try {
+    // Get available doctors
+    const doctors = await getAvailableDoctors(date, '09:00', specialization);
+    
+    // Get available slots for each doctor
+    const doctorsWithSlots = await Promise.all(
+      doctors.map(async (doctor) => {
+        const availableSlots = await getDoctorAvailableSlots(doctor.id, date);
+        return {
+          ...doctor,
+          availableSlots
+        };
+      })
+    );
+
+    // Filter out doctors with no available slots
+    return doctorsWithSlots.filter(doctor => 
+      doctor.availableSlots.morning.length > 0 ||
+      doctor.availableSlots.afternoon.length > 0 ||
+      doctor.availableSlots.evening.length > 0
+    );
+  } catch (error) {
+    console.error('Error getting doctors with available slots:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if a specific time slot is available for a doctor
+ */
+export async function isSlotAvailable(
+  doctorId: string,
+  date: string,
+  time: string
+): Promise<boolean> {
+  try {
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('doctor_id', doctorId)
+      .eq('appointment_date', date)
+      .eq('appointment_time', time)
+      .in('status', ['scheduled', 'confirmed', 'in_progress'])
+      .limit(1);
+
+    if (error) {
+      console.error('Error checking slot availability:', error);
+      return false;
+    }
+
+    return !appointments || appointments.length === 0;
+  } catch (error) {
+    console.error('Error checking slot availability:', error);
+    return false;
+  }
+}
+
+/**
  * Get doctor statistics
  */
 export async function getDoctorStats(doctorId?: string): Promise<{
@@ -797,10 +970,7 @@ export async function updateDoctor(
     // Fetch and return the updated doctor with user data
     const { data: updatedDoctor, error: selectError } = await supabase
       .from('doctors')
-      .select(`
-        *,
-        user:users(id, name, email, phone, address)
-      `)
+      .select('*')
       .eq('id', doctorId)
       .single();
 
@@ -809,7 +979,22 @@ export async function updateDoctor(
       throw new Error(`Failed to fetch updated doctor: ${selectError.message}`);
     }
 
-    return updatedDoctor;
+    // Fetch user data separately
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, name, email, phone, address')
+      .eq('id', updatedDoctor.user_id)
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user data:', userError);
+      // Don't throw error, just return doctor without user data
+    }
+
+    return {
+      ...updatedDoctor,
+      user: userData || undefined
+    };
   } catch (error) {
     console.error('Error updating doctor:', error);
     throw error;

@@ -6,17 +6,18 @@ import {
   User,
   Stethoscope,
   MapPin,
-  DollarSign,
+  IndianRupee,
   Save,
   X,
   Search,
   ChevronDown,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Zap
 } from 'lucide-react';
 import { getAllDoctors, getAllSpecializations, Doctor } from '../src/lib/doctorService';
-import { createAppointment, getAvailableSlots, AppointmentData } from '../src/lib/appointmentService';
+import { createAppointment, getAvailableSlots, AppointmentData, extractTokenFromNotes } from '../src/lib/appointmentService';
 import { getAllPatients } from '../src/lib/patientService';
 
 interface Patient {
@@ -63,7 +64,9 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     durationMinutes: 30,
     type: 'consultation',
     symptoms: '',
-    notes: ''
+    notes: '',
+    isEmergency: false,
+    sessionType: 'morning'
   });
 
   // Data states
@@ -78,6 +81,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
   // Search states
   const [patientSearch, setPatientSearch] = useState('');
   const [doctorSearch, setDoctorSearch] = useState('');
+  const [isEmergency, setIsEmergency] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -89,7 +93,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     if (formData.doctorId && formData.appointmentDate) {
       loadAvailableSlots();
     }
-  }, [formData.doctorId, formData.appointmentDate]);
+  }, [formData.doctorId, formData.appointmentDate, formData.isEmergency]);
 
   const loadInitialData = async () => {
     try {
@@ -132,7 +136,8 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     try {
       const slots = await getAvailableSlots(
         formData.doctorId,
-        formData.appointmentDate
+        formData.appointmentDate,
+        formData.isEmergency
       );
       setAvailableSlots(slots.map((slot: any) => ({
         time: slot.time,
@@ -156,7 +161,8 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
       setError('');
       
       const appointment = await createAppointment(formData);
-      setSuccess('Appointment booked successfully!');
+      const token = extractTokenFromNotes(appointment?.notes);
+      setSuccess(token ? `Appointment for ${selectedPatient?.first_name} ${selectedPatient?.last_name} booked successfully! Your token number is ${token}.` : `Appointment for ${selectedPatient?.first_name} ${selectedPatient?.last_name} booked successfully!`);
       
       setTimeout(() => {
         onSuccess?.(appointment);
@@ -180,7 +186,9 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
       durationMinutes: 30,
       type: 'consultation',
       symptoms: '',
-      notes: ''
+      notes: '',
+      isEmergency: false,
+      sessionType: 'morning'
     });
     setError('');
     setSuccess('');
@@ -189,6 +197,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     setSelectedSpecialization('');
     setPatientSearch('');
     setDoctorSearch('');
+    setIsEmergency(false);
     onClose();
   };
 
@@ -216,6 +225,47 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     return maxDate.toISOString().split('T')[0];
   };
 
+  // Filter out past time slots for today
+  const getAvailableTimeSlotsForToday = (slots: TimeSlot[]) => {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    if (formData.appointmentDate !== today) {
+      return slots; // Not today, return all slots
+    }
+    
+    // For today, filter out past times (allow up to 5 minutes before)
+    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+    const currentTimeString = `${fiveMinutesFromNow.getHours().toString().padStart(2, '0')}:${fiveMinutesFromNow.getMinutes().toString().padStart(2, '0')}`;
+    
+    return slots.filter(slot => {
+      if (!slot.available) return true; // Show unavailable slots for reference
+      return slot.time >= currentTimeString;
+    });
+  };
+
+  // Get available dates for selected doctor
+  const getAvailableDatesForDoctor = () => {
+    if (!selectedDoctor) return [];
+    
+    const dates = [];
+    const today = new Date();
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    
+    // Get doctor's working days
+    const workingDays = selectedDoctor.availability_hours?.workingDays || [1, 2, 3, 4, 5, 6]; // Default Mon-Sat
+    
+    for (let d = new Date(today); d <= maxDate; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      if (workingDays.includes(dayOfWeek)) {
+        dates.push(d.toISOString().split('T')[0]);
+      }
+    }
+    
+    return dates;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -223,38 +273,25 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 text-white">
+          <div className="bg-white px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold">Book New Appointment</h2>
-                <p className="text-orange-100 mt-1">Schedule a consultation with our doctors</p>
+                <h2 className="text-xl font-semibold text-gray-800">Book New Appointment</h2>
+                <p className="text-gray-500 mt-1 text-sm">Step {step} of 4: {['Select Patient', 'Select Doctor', 'Select Date & Time', 'Confirm Details'][step - 1]}</p>
               </div>
               <button
                 onClick={handleClose}
-                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-xl transition-colors"
+                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={24} />
               </button>
             </div>
-
-            {/* Progress Steps */}
-            <div className="flex items-center mt-6 space-x-4">
-              {[1, 2, 3, 4].map((stepNumber) => (
-                <div key={stepNumber} className="flex items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step >= stepNumber 
-                      ? 'bg-white text-orange-600' 
-                      : 'bg-orange-400 text-white'
-                  }`}>
-                    {step > stepNumber ? <CheckCircle size={16} /> : stepNumber}
-                  </div>
-                  {stepNumber < 4 && (
-                    <div className={`w-12 h-0.5 mx-2 ${
-                      step > stepNumber ? 'bg-white' : 'bg-orange-400'
-                    }`} />
-                  )}
-                </div>
-              ))}
+            {/* Progress Bar */}
+            <div className="mt-4 bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${(step / 4) * 100}%` }}
+              ></div>
             </div>
           </div>
 
@@ -396,7 +433,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                                 {doctor.room_number}
                               </div>
                               <div className="flex items-center text-sm text-gray-500">
-                                <DollarSign size={14} className="mr-1" />
+                                <IndianRupee size={14} className="mr-1" />
                                 ₹{doctor.consultation_fee}
                               </div>
                             </div>
@@ -435,13 +472,75 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                   <div className="text-center">
                     <Calendar className="mx-auto h-12 w-12 text-orange-500 mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900">Select Date & Time</h3>
-                    <p className="text-gray-500 mt-2">Choose your preferred appointment slot</p>
+                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.first_name} {selectedPatient.last_name}</p>}
                   </div>
+
+                  {/* Emergency Booking Toggle */}
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Zap className="text-red-500" size={20} />
+                        <div>
+                          <h4 className="font-medium text-gray-900">Emergency Appointment</h4>
+                          <p className="text-sm text-gray-500">Available 24/7 with flexible scheduling</p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isEmergency}
+                          onChange={(e) => {
+                            setIsEmergency(e.target.checked);
+                            setFormData(prev => ({ ...prev, isEmergency: e.target.checked }));
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Session Type Selection (for regular appointments) */}
+                  {!isEmergency && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-3">
+                        Preferred Session
+                      </label>
+                      <div className="grid grid-cols-3 gap-3">
+                        {['morning', 'afternoon', 'evening'].map((session) => (
+                          <button
+                            key={session}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, sessionType: session as 'morning' | 'afternoon' | 'evening' }))}
+                            className={`p-3 border rounded-xl text-center transition-all ${
+                              formData.sessionType === session
+                                ? 'border-orange-500 bg-orange-50 text-orange-700'
+                                : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                            }`}
+                          >
+                            <div className="font-medium capitalize">{session}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {session === 'morning' && '9:00 AM - 12:00 PM'}
+                              {session === 'afternoon' && '2:00 PM - 5:00 PM'}
+                              {session === 'evening' && '6:00 PM - 9:00 PM'}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Appointment Date
+                        {selectedDoctor && (
+                           <span className="text-xs text-gray-500 ml-2">
+                             (Available on: {selectedDoctor.availability_hours?.workingDays?.map((day: number) => 
+                               ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]
+                             ).join(', ') || 'Mon-Sat'})
+                           </span>
+                         )}
                       </label>
                       <input
                         type="date"
@@ -452,6 +551,13 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                         required
                       />
+                      {selectedDoctor && formData.appointmentDate && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getAvailableDatesForDoctor().includes(formData.appointmentDate) 
+                            ? '✓ Doctor available on this date' 
+                            : '⚠️ Doctor may not be available on this date'}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -475,27 +581,45 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-3">
                         Available Time Slots
+                        <span className="text-xs text-gray-500 ml-2">
+                          (Real-time availability - can book up to 5 minutes before)
+                        </span>
                       </label>
-                      <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-                        {availableSlots.map((slot) => (
-                          <button
-                            key={slot.time}
-                            type="button"
-                            disabled={!slot.available}
-                            onClick={() => setFormData(prev => ({ ...prev, appointmentTime: slot.time }))}
-                            className={`p-3 text-sm font-medium rounded-xl transition-all ${
-                              formData.appointmentTime === slot.time
-                                ? 'bg-orange-500 text-white'
-                                : slot.available
-                                ? 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
-                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            <Clock size={14} className="inline mr-1" />
-                            {slot.time}
-                          </button>
-                        ))}
-                      </div>
+                      {availableSlots.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <Clock className="mx-auto h-8 w-8 mb-2" />
+                          <p>Loading available time slots...</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+                          {getAvailableTimeSlotsForToday(availableSlots).map((slot) => (
+                            <button
+                              key={slot.time}
+                              type="button"
+                              disabled={!slot.available}
+                              onClick={() => setFormData(prev => ({ ...prev, appointmentTime: slot.time }))}
+                              className={`p-3 text-sm font-medium rounded-xl transition-all ${
+                                formData.appointmentTime === slot.time
+                                  ? 'bg-orange-500 text-white'
+                                  : slot.available
+                                  ? 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <Clock size={14} className="inline mr-1" />
+                              {slot.time}
+                              {!slot.available && (
+                                <div className="text-xs mt-1">Booked</div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {formData.appointmentDate === new Date().toISOString().split('T')[0] && (
+                        <p className="text-xs text-blue-600 mt-2">
+                          ℹ️ For today's appointments, only future time slots (5+ minutes from now) are shown
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -525,7 +649,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                   <div className="text-center">
                     <CheckCircle className="mx-auto h-12 w-12 text-orange-500 mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900">Additional Details</h3>
-                    <p className="text-gray-500 mt-2">Provide any additional information</p>
+                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.first_name} {selectedPatient.last_name}</p>}
                   </div>
 
                   <div className="space-y-4">

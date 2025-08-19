@@ -166,7 +166,7 @@ const DoctorDetailsCard: React.FC<DoctorDetailsCardProps> = ({ doctor }) => {
           <div className="space-y-3">
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="font-medium">Harvard Medical School</p>
-              <p className="text-sm text-gray-500">MD in Cardiovascular Surgery</p>
+              <p className="text-sm text-gray-500">Doctor of Medicine in Cardiovascular Surgery</p>
               <p className="text-xs text-gray-500 mt-1">2005 - 2009</p>
             </div>
             <div className="p-3 bg-gray-50 rounded-lg">
