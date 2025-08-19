@@ -126,45 +126,22 @@ export function generateRealisticBarcodeSVG(barcodeId: string): string {
 
 /**
  * Update patient with barcode ID
+ * Note: This function is currently disabled as barcode_id column doesn't exist in the database
  */
 export async function updatePatientWithBarcode(patientId: string, barcodeId: string): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from('patients')
-      .update({ barcode_id: barcodeId })
-      .eq('patient_id', patientId);
-    
-    if (error) {
-      console.error('Error updating patient with barcode:', error);
-      throw new Error(`Failed to update patient with barcode: ${error.message}`);
-    }
-  } catch (error) {
-    console.error('Error updating patient with barcode:', error);
-    throw error;
-  }
+  console.log('Barcode update skipped - barcode_id column not available in database schema');
+  // Function disabled as barcode_id column doesn't exist
+  return;
 }
 
 /**
  * Get patient by barcode ID
+ * Note: This function is currently disabled as barcode_id column doesn't exist in the database
  */
 export async function getPatientByBarcodeId(barcodeId: string): Promise<any> {
-  try {
-    const { data: patient, error } = await supabase
-      .from('patients')
-      .select('*')
-      .eq('barcode_id', barcodeId)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching patient by barcode:', error);
-      throw new Error(`Patient not found: ${error.message}`);
-    }
-    
-    return patient;
-  } catch (error) {
-    console.error('Error fetching patient by barcode:', error);
-    throw error;
-  }
+  console.log('Barcode lookup skipped - barcode_id column not available in database schema');
+  // Function disabled as barcode_id column doesn't exist
+  throw new Error('Barcode functionality is currently unavailable - barcode_id column not in database schema');
 }
 
 /**
@@ -220,13 +197,14 @@ export function extractBarcodeInfo(barcodeId: string): {
 
 /**
  * Generate barcode for existing patient
+ * Note: This function is modified to work without database barcode_id column
  */
 export async function generateBarcodeForPatient(patientId: string): Promise<string> {
   try {
-    // Check if patient already has a barcode
+    // Check if patient exists
     const { data: patient, error } = await supabase
       .from('patients')
-      .select('barcode_id, patient_id')
+      .select('patient_id')
       .eq('patient_id', patientId)
       .single();
     
@@ -234,20 +212,14 @@ export async function generateBarcodeForPatient(patientId: string): Promise<stri
       throw new Error(`Patient not found: ${error.message}`);
     }
     
-    // If patient already has a barcode, return it
-    if (patient.barcode_id && patient.barcode_id.trim() !== '') {
-      return patient.barcode_id;
-    }
-    
-    // Generate new barcode
+    // Generate new barcode based on patient ID
     const barcodeId = generateBarcodeId(patientId);
     
-    // Update patient with barcode
-    await updatePatientWithBarcode(patientId, barcodeId);
-    
+    // We don't update the database since barcode_id column doesn't exist
+    // Just return the generated barcode
     return barcodeId;
   } catch (error) {
     console.error('Error generating barcode for patient:', error);
     throw error;
   }
-} 
+}

@@ -183,7 +183,7 @@ export async function insertPatientRecord(
     const patientData = {
       // Basic Information
       patient_id: uhid,
-      barcode_id: barcodeId, // Add barcode ID
+      // barcode_id field removed as it doesn't exist in the database schema
       name: fullName,
       date_of_birth: registrationData.dateOfBirth,
       gender: registrationData.gender.toLowerCase(),
