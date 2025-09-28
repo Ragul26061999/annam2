@@ -70,6 +70,13 @@ export default function NewBillingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrPreviewBatch, setQrPreviewBatch] = useState<MedicineBatch | null>(null);
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'credit'>('cash');
+  // Patient search state
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientResults, setPatientResults] = useState<Array<{ id: string; patient_id: string; name: string; phone?: string }>>([]);
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
   // Utility: get QR image URL for given data
   const getQrUrl = (data: string, size: number = 200) => {
@@ -125,6 +132,29 @@ export default function NewBillingPage() {
   useEffect(() => {
     loadMedicines();
   }, []);
+
+  // Search registered patients by name, UHID, or phone
+  useEffect(() => {
+    const run = async () => {
+      const term = patientSearch.trim();
+      if (customer.type !== 'patient' || term.length < 2) {
+        setPatientResults([]);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('id, patient_id, name, phone')
+          .or(`name.ilike.%${term}%,patient_id.ilike.%${term}%,phone.ilike.%${term}%`)
+          .limit(10);
+        if (error) throw error;
+        setPatientResults(data || []);
+      } catch (e) {
+        console.error('Patient search error:', e);
+      }
+    };
+    run();
+  }, [patientSearch, customer.type]);
 
   // Filter medicines based on search (including batch number)
   const filteredMedicines = medicines.filter(medicine => {
@@ -231,22 +261,33 @@ export default function NewBillingPage() {
       alert('Please add items to the bill');
       return;
     }
-
-    if (!customer.name?.trim()) {
-      alert('Please enter customer name');
-      return;
-    }
-
-    if (!customer.phone?.trim()) {
-      alert('Please enter customer phone number');
-      return;
-    }
-
-    // Validate phone number format
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(customer.phone.replace(/\D/g, ''))) {
-      alert('Please enter a valid 10-digit phone number');
-      return;
+    // Validate depending on type
+    if (customer.type === 'patient') {
+      if (!customer.patient_id) {
+        alert('Please select a registered patient');
+        return;
+      }
+      if (!customer.name?.trim()) {
+        alert('Selected patient record has no name. Please re-select or contact admin.');
+        return;
+      }
+    } else {
+      if (!customer.name?.trim()) {
+        alert('Please enter customer name');
+        return;
+      }
+      if (!customer.phone?.trim()) {
+        alert('Please enter customer phone number');
+        return;
+      }
+      // Validate phone number format (handle possible undefined safely)
+      const phoneRegex = /^[0-9]{10}$/;
+      const phoneRaw = customer.phone ?? '';
+      const phoneDigits = phoneRaw.replace(/\D/g, '');
+      if (!phoneRegex.test(phoneDigits)) {
+        alert('Please enter a valid 10-digit phone number');
+        return;
+      }
     }
 
     // Check for expired batches before processing
@@ -269,14 +310,16 @@ export default function NewBillingPage() {
         .from('pharmacy_bills')
         .insert({
           customer_name: customer.name.trim(),
-          customer_phone: customer.phone.trim(),
+          // For patients, phone can be null; for walk-ins, store trimmed value
+          customer_phone: customer.type === 'patient' ? (customer.phone ?? null) : (customer.phone ?? '').trim(),
           customer_type: customer.type,
           subtotal: calculateTotal(),
           discount_amount: 0,
           tax_amount: 0,
           total_amount: calculateTotal(),
-          payment_method: 'cash',
-          payment_status: 'completed',
+          payment_method: paymentMethod,
+          payment_status: paymentMethod === 'credit' ? 'pending' : 'completed',
+          patient_id: customer.type === 'patient' ? customer.patient_id : null,
           created_by: null // Will be set to actual user ID when authentication is implemented
         })
         .select()
@@ -325,6 +368,7 @@ export default function NewBillingPage() {
       // Reset form
       setBillItems([]);
       setCustomer({ type: 'walk_in', name: '', phone: '' });
+      setPaymentMethod('cash');
       
       // Reload medicines to update stock
       loadMedicines();
@@ -485,55 +529,111 @@ export default function NewBillingPage() {
 
           {/* Bill Summary */}
           <div className="space-y-6">
-            {/* Customer Information */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <User className="h-6 w-6 text-green-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Customer Information</h2>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Type</label>
-                  <select
-                    value={customer.type}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => 
-                      setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
-                    }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="walk_in">Walk-in Customer</option>
-                    <option value="patient">Registered Patient</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
-                  <input
-                    type="text"
-                    value={customer.name}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                      setCustomer({ ...customer, name: e.target.value })
-                    }
-                    placeholder="Enter customer name"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                  <input
-                    type="text"
-                    value={customer.phone || ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                      setCustomer({ ...customer, phone: e.target.value })
-                    }
-                    placeholder="Enter phone number"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
+          {/* Customer Information */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <User className="h-6 w-6 text-green-600" />
+              <h2 className="text-xl font-semibold text-gray-900">Customer Information</h2>
             </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Type</label>
+                <select
+                  value={customer.type}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => 
+                    setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="walk_in">Walk-in Customer</option>
+                  <option value="patient">Registered Patient</option>
+                </select>
+              </div>
+              {customer.type === 'patient' ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Search Patient (name / UHID / phone)</label>
+                    <input
+                      type="text"
+                      value={patientSearch}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPatientSearch(e.target.value); setShowPatientDropdown(true); }}
+                      placeholder="Start typing to search registered patients..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {showPatientDropdown && patientResults.length > 0 && (
+                      <div className="absolute z-10 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                        {patientResults.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+                              setPatientSearch(`${p.name} · ${p.patient_id}`);
+                              setShowPatientDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                          >
+                            <div className="text-sm">
+                              <div className="font-medium text-gray-900">{p.name}</div>
+                              <div className="text-gray-600">UHID: {p.patient_id}{p.phone ? ` • ${p.phone}` : ''}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Patient Name</label>
+                      <input
+                        type="text"
+                        value={customer.name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomer({ ...customer, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                      <input
+                        type="text"
+                        value={customer.phone || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomer({ ...customer, phone: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
+                    <input
+                      type="text"
+                      value={customer.name}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                        setCustomer({ ...customer, name: e.target.value })
+                      }
+                      placeholder="Enter customer name"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                    <input
+                      type="text"
+                      value={customer.phone || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                        setCustomer({ ...customer, phone: e.target.value })
+                      }
+                      placeholder="Enter phone number"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
             {/* Bill Items */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -600,7 +700,7 @@ export default function NewBillingPage() {
 
               {/* Generate Bill Button */}
               <button
-                onClick={generateBill}
+                onClick={() => setShowPaymentModal(true)}
                 disabled={loading || billItems.length === 0}
                 className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-xl hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
@@ -619,6 +719,50 @@ export default function NewBillingPage() {
             </div>
           </div>
         </div>
+        {/* Payment Method Modal */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => !loading && setShowPaymentModal(false)}></div>
+            <div className="relative bg-white w-full max-w-md mx-auto rounded-2xl shadow-xl border border-gray-100 p-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Select Payment Method</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'upi' | 'credit')}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="credit">Credit (Due)</option>
+                  </select>
+                  {paymentMethod === 'credit' && (
+                    <p className="text-xs text-gray-600 mt-2">This will mark the payment status as Pending. You can settle later.</p>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setShowPaymentModal(false)}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => { setShowPaymentModal(false); await generateBill(); }}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300"
+                  >
+                    Confirm & Generate
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -4,8 +4,8 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 interface StatCardProps {
   title: string;
   value: string;
-  change: string;
-  trend: 'up' | 'down';
+  change?: string; // optional change text
+  trend?: 'up' | 'down'; // optional trend direction
   icon: ReactNode;
 }
 
@@ -21,12 +21,14 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, trend, icon }
           {icon}
         </div>
       </div>
-      <div className={`flex items-center mt-4 text-sm ${trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-        {trend === 'up' ? <TrendingUp size={16} className="mr-1" /> : <TrendingDown size={16} className="mr-1" />}
-        {change} from last month
-      </div>
+      {typeof change !== 'undefined' && (
+        <div className={`flex items-center mt-4 text-sm ${trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-gray-500'}`}>
+          {trend === 'up' ? <TrendingUp size={16} className="mr-1" /> : trend === 'down' ? <TrendingDown size={16} className="mr-1" /> : null}
+          {change}
+        </div>
+      )}
     </div>
   );
 };
 
-export default StatCard; 
+export default StatCard;

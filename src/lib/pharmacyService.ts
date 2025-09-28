@@ -6,22 +6,26 @@ import { supabase } from './supabase';
 
 export interface Medication {
   id: string;
-  medication_code: string;
+  medicine_code: string;
   name: string;
   generic_name: string;
   manufacturer: string;
   category: string;
   dosage_form: string;
   strength: string;
-  unit_price: number;
-  stock_quantity: number;
+  unit: string;
+  total_stock: number;
+  available_stock: number;
   minimum_stock_level: number;
-  maximum_stock_level?: number;
-  batch_number?: string;
-  expiry_date?: string;
-  storage_conditions?: string;
+  purchase_price: number;
+  selling_price: number;
+  mrp: number;
   prescription_required: boolean;
+  storage_conditions?: string;
+  side_effects?: string;
   status: 'active' | 'inactive' | 'discontinued';
+  location?: string;
+  barcode?: string;
   created_at: string;
   updated_at: string;
 }
@@ -82,9 +86,31 @@ export interface PharmacyBillItem {
   id?: string;
   medication_id: string;
   medication_name?: string;
+  batch_id?: string;
   quantity: number;
   unit_price: number;
   total_price: number;
+  batch_number?: string;
+  expiry_date?: string;
+}
+
+// Batch purchase history entry for inventory UI
+export interface BatchPurchaseHistoryEntry {
+  bill_id: string;
+  bill_number: string;
+  purchased_at: string;
+  patient_id: string;
+  // Display name for UI. For registered patients, this is the patient name.
+  // For walk-in customers, this will be the bill's patient_name (if present) or 'Walk-in Customer'.
+  patient_name: string;
+  // Optional UHID for registered patients (patients.patient_id). Not set for walk-ins.
+  patient_uhid?: string;
+  medication_id: string;
+  medication_name: string;
+  quantity: number;
+  unit_price: number;
+  total_amount: number;
+  payment_status: string;
 }
 
 export interface PrescriptionDispensing {
@@ -111,10 +137,10 @@ export async function getMedications(filters?: {
 }): Promise<Medication[]> {
   try {
     let query = supabase
-      .from('medications')
-      .select('*')
-      .order('name');
+      .from('medicines')
+      .select('*');
 
+    // Apply filters
     if (filters?.category) {
       query = query.eq('category', filters.category);
     }
@@ -123,15 +149,17 @@ export async function getMedications(filters?: {
       query = query.eq('prescription_required', filters.prescription_required);
     }
 
+    if (filters?.search) {
+      query = query.or(`name.ilike.%${filters.search}%,generic_name.ilike.%${filters.search}%,medicine_code.ilike.%${filters.search}%`);
+    }
+
     if (filters?.status) {
       query = query.eq('status', filters.status);
+    } else {
+      query = query.eq('status', 'active');
     }
 
-    if (filters?.search) {
-      query = query.or(`name.ilike.%${filters.search}%,generic_name.ilike.%${filters.search}%,medication_code.ilike.%${filters.search}%`);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await query.order('name');
 
     if (error) {
       console.error('Error fetching medications:', error);
@@ -148,13 +176,16 @@ export async function getMedications(filters?: {
 export async function getMedicationById(id: string): Promise<Medication | null> {
   try {
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('*')
       .eq('id', id)
       .single();
 
     if (error) {
-      console.error('Error fetching medication:', error);
+      if (error.code === 'PGRST116') {
+        return null; // No rows found
+      }
+      console.error('Error fetching medication by ID:', error);
       throw error;
     }
 
@@ -168,11 +199,11 @@ export async function getMedicationById(id: string): Promise<Medication | null> 
 export async function getLowStockMedications(): Promise<Medication[]> {
   try {
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('*')
-      .filter('stock_quantity', 'lte', 'minimum_stock_level')
+      .filter('available_stock', 'lt', 'minimum_stock_level')
       .eq('status', 'active')
-      .order('stock_quantity');
+      .order('available_stock', { ascending: true });
 
     if (error) {
       console.error('Error fetching low stock medications:', error);
@@ -229,14 +260,14 @@ export async function addStock(
 
     // Update medication stock quantity
     const { data: currentMed } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('stock_quantity')
       .eq('id', medicationId)
       .single();
 
     if (currentMed) {
       await supabase
-        .from('medications')
+        .from('medicines')
         .update({
           stock_quantity: currentMed.stock_quantity + quantity,
           unit_price: unitPrice,
@@ -326,7 +357,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
         p.prescription_items?.map(item => item.medication_id) || []
       );
       const { data: medicines } = await supabase
-        .from('medications')
+        .from('medicines')
         .select('id, name, generic_name')
         .in('id', medicineIds);
 
@@ -386,7 +417,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
         d.prescription_dispensed_items?.map(item => item.medication_id) || []
       );
       const { data: medications } = await supabase
-        .from('medications')
+        .from('medicines')
         .select('id, name, generic_name, strength, dosage_form')
         .in('id', medicationIds);
 
@@ -445,16 +476,15 @@ export async function getPharmacyDashboardStats(): Promise<{
   try {
     // Get total medications
     const { count: totalMedications } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
 
     // Get low stock count
-    const { count: lowStockCount } = await supabase
-      .from('medications')
-      .select('*', { count: 'exact', head: true })
-      .filter('stock_quantity', 'lte', 'minimum_stock_level')
-      .eq('status', 'active');
+    const { data: lowStockData } = await supabase
+      .rpc('get_low_stock_medicines');
+
+    const lowStockCount = lowStockData?.length || 0;
 
     // Get today's sales
     const today = new Date().toISOString().split('T')[0];
@@ -467,21 +497,21 @@ export async function getPharmacyDashboardStats(): Promise<{
 
     const todaySales = todaySalesData?.reduce((sum, transaction) => sum + transaction.total_amount, 0) || 0;
 
-    // Get pending bills count
+    // Get pending bills count (align with 'pharmacy_bills')
     const { count: pendingBills } = await supabase
-      .from('pharmacy_billing')
+      .from('pharmacy_bills')
       .select('*', { count: 'exact', head: true })
       .eq('payment_status', 'pending');
 
     // Get total revenue (this month)
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
     const { data: revenueData } = await supabase
-      .from('pharmacy_billing')
-      .select('final_amount')
-      .eq('payment_status', 'paid')
+      .from('pharmacy_bills')
+      .select('total_amount')
+      .eq('payment_status', 'completed')
       .gte('created_at', firstDayOfMonth);
 
-    const totalRevenue = revenueData?.reduce((sum, bill) => sum + bill.final_amount, 0) || 0;
+    const totalRevenue = revenueData?.reduce((sum, bill) => sum + bill.total_amount, 0) || 0;
 
     // Get prescriptions dispensed today
     const { count: prescriptionsDispensed } = await supabase
@@ -508,6 +538,49 @@ export async function getPharmacyDashboardStats(): Promise<{
       pendingBills: 0,
       totalRevenue: 0,
       prescriptionsDispensed: 0
+    };
+  }
+}
+
+// =====================================================
+// STOCK SUMMARY STATS
+// =====================================================
+
+export async function getStockSummaryStats(): Promise<{
+  remainingUnits: number;
+  soldUnitsThisMonth: number;
+  purchasedUnitsThisMonth: number;
+}> {
+  try {
+    // Remaining stock = sum of current_quantity across all medicine_batches
+    const { data: batches, error: batchesError } = await supabase
+      .from('medicine_batches')
+      .select('current_quantity');
+
+    if (batchesError) {
+      console.error('Error fetching batches for stock summary:', batchesError);
+      throw batchesError;
+    }
+
+    const remainingUnits = (batches || [])
+      .reduce((sum: number, b: any) => sum + (b.current_quantity || 0), 0);
+
+    // We no longer track purchased/sold summary via pharmacy_stock_transactions.
+    // Return zeros to avoid querying a non-existent relation.
+    const purchasedUnitsThisMonth = 0;
+    const soldUnitsThisMonth = 0;
+
+    return {
+      remainingUnits,
+      soldUnitsThisMonth,
+      purchasedUnitsThisMonth,
+    };
+  } catch (error) {
+    console.error('Error in getStockSummaryStats:', error);
+    return {
+      remainingUnits: 0,
+      soldUnitsThisMonth: 0,
+      purchasedUnitsThisMonth: 0,
     };
   }
 }
@@ -597,7 +670,7 @@ export async function searchMedications(searchTerm: string): Promise<Medication[
 export async function getMedicationCategories(): Promise<string[]> {
   try {
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('category')
       .eq('status', 'active');
 
@@ -628,7 +701,7 @@ export async function adjustStock(
   try {
     // Get current stock
     const { data: medication, error: medicationError } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('stock_quantity')
       .eq('id', medicationId)
       .single();
@@ -642,7 +715,7 @@ export async function adjustStock(
 
     // Update medication stock
     const { error: updateError } = await supabase
-      .from('medications')
+      .from('medicines')
       .update({ 
         stock_quantity: newStockQuantity,
         updated_at: new Date().toISOString()
@@ -688,7 +761,14 @@ export async function adjustStock(
 
 export async function createPharmacyBill(
   patientId: string,
-  items: { medication_id: string; quantity: number; unit_price: number }[],
+  items: { 
+    medication_id: string; 
+    quantity: number; 
+    unit_price: number;
+    batch_id?: string;
+    batch_number?: string;
+    expiry_date?: string;
+  }[],
   discount: number,
   taxRate: number,
   paymentMethod: string,
@@ -706,18 +786,26 @@ export async function createPharmacyBill(
     const billNumber = `PH${Date.now()}`;
 
     // Create bill
+    // NOTE: Align with current schema 'pharmacy_bills'.
+    // This function is legacy and may not be used by the new billing page,
+    // but we keep it consistent so other callers behave correctly.
     const { data: bill, error: billError } = await supabase
-      .from('pharmacy_billing')
+      .from('pharmacy_bills')
       .insert({
         bill_number: billNumber,
-        patient_id: patientId,
+        patient_id: patientId || null,
+        // customer_type is unknown from this legacy signature; treat as 'patient' when patientId is provided
+        customer_type: patientId ? 'patient' : 'walk_in',
+        customer_name: null,
+        customer_phone: null,
+        bill_date: new Date().toISOString(),
         subtotal,
-        discount: discountAmount,
+        discount_amount: discountAmount,
         tax_amount: taxAmount,
-        tax_rate: taxRate,
-        final_amount: totalAmount,
+        total_amount: totalAmount,
         payment_method: paymentMethod,
-        payment_status: 'paid',
+        // Normalize to new status semantics: paid/completed -> 'completed'; credit -> 'pending'
+        payment_status: paymentMethod === 'credit' ? 'pending' : 'completed',
         created_by: userId,
         created_at: new Date().toISOString()
       })
@@ -735,41 +823,45 @@ export async function createPharmacyBill(
         .from('pharmacy_bill_items')
         .insert({
           bill_id: bill.id,
-          medication_id: item.medication_id,
+          medicine_id: item.medication_id,
+          batch_id: item.batch_id || null,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          total_price: item.quantity * item.unit_price
+          total_amount: item.quantity * item.unit_price,
+          batch_number: item.batch_number || null,
+          expiry_date: item.expiry_date || null
         });
+      // Update batch stock: decrement medicine_batches.current_quantity
+      // Prefer batch_id if provided; otherwise use batch_number
+      let batchSelector: { column: 'id' | 'batch_number'; value: string } | null = null;
+      if (item.batch_id) {
+        batchSelector = { column: 'id', value: item.batch_id };
+      } else if (item.batch_number) {
+        batchSelector = { column: 'batch_number', value: item.batch_number };
+      }
 
-      // Update medication stock
-      const { data: medication } = await supabase
-        .from('medications')
-        .select('stock_quantity')
-        .eq('id', item.medication_id)
-        .single();
+      if (batchSelector) {
+        const { data: batchRow, error: batchFetchError } = await supabase
+          .from('medicine_batches')
+          .select('id, current_quantity')
+          .eq(batchSelector.column, batchSelector.value)
+          .limit(1)
+          .maybeSingle();
 
-      if (medication) {
-        const newStock = Math.max(0, medication.stock_quantity - item.quantity);
-        await supabase
-          .from('medications')
-          .update({ stock_quantity: newStock })
-          .eq('id', item.medication_id);
-
-        // Create stock transaction
-        const transactionId = `SALE-${Date.now()}-${item.medication_id}`;
-        await supabase
-          .from('pharmacy_stock_transactions')
-          .insert({
-            medication_id: item.medication_id,
-            transaction_id: transactionId,
-            transaction_type: 'sale',
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            total_amount: item.quantity * item.unit_price,
-            notes: `Sold via bill ${billNumber}`,
-            created_by: userId,
-            created_at: new Date().toISOString()
+        if (!batchFetchError && batchRow) {
+          const newQty = Math.max(0, (batchRow.current_quantity || 0) - item.quantity);
+          await supabase
+            .from('medicine_batches')
+            .update({ current_quantity: newQty })
+            .eq('id', batchRow.id);
+        } else {
+          console.warn('Batch not found for decrementing stock', {
+            selector: batchSelector,
+            error: batchFetchError
           });
+        }
+      } else {
+        console.warn('No batch_id or batch_number provided for bill item; skipping batch stock update', item);
       }
     }
 
@@ -792,10 +884,10 @@ export async function createPharmacyBill(
 export async function getPharmacyBills(patientId?: string): Promise<PharmacyBilling[]> {
   try {
     let query = supabase
-      .from('pharmacy_billing')
+      .from('pharmacy_bills')
       .select(`
         *,
-        patient:patients(first_name, last_name)
+        patient:patients(name, patient_id)
       `)
       .order('created_at', { ascending: false });
 
@@ -810,11 +902,13 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
       return [];
     }
 
-    // Transform data to include patient name and total_amount
+    // Transform data to include display patient_name and normalized payment_status
     const bills = data?.map(bill => ({
       ...bill,
-      patient_name: bill.patient ? `${bill.patient.first_name} ${bill.patient.last_name}` : 'Unknown',
-      total_amount: bill.final_amount,
+      // If linked to a registered patient, use patient's name; otherwise use customer_name for walk-in
+      patient_name: bill.patient ? bill.patient.name : (bill.customer_name || 'Walk-in Customer'),
+      total_amount: bill.total_amount,
+      payment_status: bill.payment_status,
       items: [] // Items would need to be fetched separately if needed
     })) || [];
 
@@ -822,6 +916,188 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
   } catch (error) {
     console.error('Error in getPharmacyBills:', error);
     return [];
+  }
+}
+
+// =====================================================
+// BATCH PURCHASE HISTORY (by batch_number)
+// =====================================================
+
+export async function getBatchPurchaseHistory(batchNumber: string): Promise<BatchPurchaseHistoryEntry[]> {
+  try {
+    // 1) Fetch bill items for the given batch number
+    const { data: items, error: itemsError } = await supabase
+      .from('pharmacy_bill_items')
+      .select('id, bill_id, medicine_id, quantity, unit_price, total_amount, batch_number, created_at')
+      .eq('batch_number', batchNumber)
+      .order('id', { ascending: false });
+
+    if (itemsError) {
+      console.error('Error fetching bill items by batch_number:', itemsError);
+      return [];
+    }
+
+    if (!items || items.length === 0) {
+      return [];
+    }
+
+    // 2) Bulk fetch bills (align with current schema 'pharmacy_bills')
+    const billIds = Array.from(new Set(items.map(i => i.bill_id))).filter(Boolean);
+    const { data: bills, error: billsError } = await supabase
+      .from('pharmacy_bills')
+      .select('id, bill_number, patient_id, customer_name, bill_date, created_at, payment_status')
+      .in('id', billIds);
+
+    if (billsError) {
+      console.error('Error fetching bills for batch history:', billsError);
+    }
+
+    // 3) Bulk fetch patients
+    const patientIds = Array.from(new Set((bills || []).map(b => b.patient_id))).filter(Boolean);
+    const { data: patients, error: patientsError } = await supabase
+      .from('patients')
+      .select('id, name, patient_id')
+      .in('id', patientIds);
+
+    if (patientsError) {
+      console.error('Error fetching patients for batch history:', patientsError);
+    }
+
+    // 4) Bulk fetch medicines
+    const medicationIds = Array.from(new Set(items.map(i => i.medicine_id))).filter(Boolean);
+    const { data: meds, error: medsError } = await supabase
+      .from('medicines')
+      .select('id, name')
+      .in('id', medicationIds);
+
+    if (medsError) {
+      console.error('Error fetching medicines for batch history:', medsError);
+    }
+
+    // 5) Join data locally (with safe fallbacks)
+    const result: BatchPurchaseHistoryEntry[] = items.map(i => {
+      const bill = (bills || []).find(b => b.id === i.bill_id);
+      const patient = bill ? (patients || []).find(p => p.id === bill.patient_id) : undefined;
+      const med = (meds || []).find(m => m.id === i.medicine_id);
+
+      return {
+        bill_id: bill?.id || i.bill_id,
+        bill_number: bill?.bill_number || 'N/A',
+        // Prefer bill.created_at, fall back to item.created_at to avoid Invalid Date in UI
+        purchased_at: bill?.bill_date || bill?.created_at || i.created_at || '',
+        patient_id: bill?.patient_id || '',
+        // If the bill is linked to a registered patient, show their name; include UHID separately.
+        // Otherwise, prefer bill.patient_name (walk-in) or default label.
+        patient_name: bill?.patient_id
+          ? (patient?.name || 'Unknown')
+          : (bill?.customer_name || 'Walk-in Customer'),
+        patient_uhid: bill?.patient_id ? (patient?.patient_id || undefined) : undefined,
+        medication_id: i.medicine_id,
+        medication_name: med?.name || 'Unknown',
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total_amount: i.total_amount,
+        // Normalize payment status for UI: show 'paid' for completed/paid, else pending/other as-is
+        payment_status: bill?.payment_status
+          ? ((bill.payment_status === 'completed' || bill.payment_status === 'paid') ? 'paid' : bill.payment_status)
+          : 'pending'
+      };
+    });
+
+    // Sort by date desc (handle invalid/empty dates gracefully)
+    result.sort((a, b) => {
+      const aTime = a.purchased_at ? new Date(a.purchased_at).getTime() : 0;
+      const bTime = b.purchased_at ? new Date(b.purchased_at).getTime() : 0;
+      return bTime - aTime;
+    });
+    return result;
+  } catch (error) {
+    console.error('Error in getBatchPurchaseHistory:', error);
+    return [];
+  }
+}
+
+// =====================================================
+// PER-BATCH STOCK STATS (Remaining, Sold this month, Purchased this month)
+// =====================================================
+
+export async function getBatchStockStats(batchNumber: string): Promise<{
+  remainingUnits: number;
+  soldUnitsThisMonth: number;
+  purchasedUnitsThisMonth: number;
+}> {
+  try {
+    // Time window: current calendar month
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+    // Remaining units for the batch from medicine_batches.current_quantity
+    const { data: batchRow, error: batchError } = await supabase
+      .from('medicine_batches')
+      .select('current_quantity')
+      .eq('batch_number', batchNumber)
+      .limit(1)
+      .maybeSingle();
+
+    if (batchError) {
+      console.error('Error fetching batch remaining quantity:', batchError);
+    }
+
+    const remainingUnits = (batchRow?.current_quantity ?? 0) as number;
+
+    // Sold units this month: sum of pharmacy_bill_items.quantity for this batch_number
+    // Filter by bills created in the current month, prefer bill_date if available
+    const { data: billItems, error: billItemsError } = await supabase
+      .from('pharmacy_bill_items')
+      .select('bill_id, quantity, batch_number')
+      .eq('batch_number', batchNumber);
+
+    if (billItemsError) {
+      console.error('Error fetching bill items for batch stats:', billItemsError);
+    }
+
+    let soldUnitsThisMonth = 0;
+    if (billItems && billItems.length > 0) {
+      const billIds = Array.from(new Set(billItems.map(i => i.bill_id))).filter(Boolean);
+      const { data: bills, error: billsError } = await supabase
+        .from('pharmacy_bills')
+        .select('id, bill_date, created_at, payment_status')
+        .in('id', billIds)
+        .gte('bill_date', monthStart)
+        .lt('bill_date', nextMonthStart);
+
+      if (billsError) {
+        console.error('Error filtering bills for batch sold stats:', billsError);
+      }
+
+      const validBillIds = new Set(
+        (bills || [])
+          .filter(b => (b.payment_status === 'completed' || b.payment_status === 'paid'))
+          .map(b => b.id)
+      );
+
+      soldUnitsThisMonth = billItems
+        .filter(i => validBillIds.has(i.bill_id))
+        .reduce((sum, i) => sum + (i.quantity || 0), 0);
+    }
+
+    // Purchased units this month removed per schema; return 0 to avoid errors.
+    const purchasedUnitsThisMonth = 0;
+
+    return {
+      remainingUnits,
+      soldUnitsThisMonth,
+      purchasedUnitsThisMonth
+    };
+  } catch (error) {
+    console.error('Error in getBatchStockStats:', error);
+    // Fail-safe defaults
+    return {
+      remainingUnits: 0,
+      soldUnitsThisMonth: 0,
+      purchasedUnitsThisMonth: 0
+    };
   }
 }
 
@@ -858,7 +1134,7 @@ export async function dispensePrescription(
 
     // Update medication stock
     const { data: medication } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('stock_quantity')
       .eq('id', medicationId)
       .single();
@@ -866,7 +1142,7 @@ export async function dispensePrescription(
     if (medication) {
       const newStock = Math.max(0, medication.stock_quantity - quantityDispensed);
       await supabase
-        .from('medications')
+        .from('medicines')
         .update({ stock_quantity: newStock })
         .eq('id', medicationId);
 

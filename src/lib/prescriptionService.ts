@@ -81,7 +81,7 @@ export async function getMedicines(options: {
     const { search, category, status = 'active' } = options;
     
     let query = supabase
-      .from('medications')
+      .from('medicines')
       .select('*')
       .eq('status', status)
       .order('name');
@@ -114,7 +114,7 @@ export async function getMedicines(options: {
 export async function getMedicineById(medicineId: string): Promise<{ medicine: Medicine | null; error: any }> {
   try {
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('*')
       .eq('id', medicineId)
       .single();
@@ -490,7 +490,7 @@ export async function getDoctorPrescriptions(doctorId: string): Promise<{ prescr
 export async function getMedicineCategories(): Promise<{ categories: string[]; error: any }> {
   try {
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('category')
       .not('category', 'is', null)
       .eq('status', 'active');
@@ -518,7 +518,7 @@ export async function searchMedicines(searchTerm: string): Promise<{ medicines: 
     }
 
     const { data, error } = await supabase
-      .from('medications')
+      .from('medicines')
       .select('*')
       .or(`name.ilike.%${searchTerm}%,generic_name.ilike.%${searchTerm}%`)
       .eq('status', 'active')

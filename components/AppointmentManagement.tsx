@@ -429,7 +429,7 @@ const AppointmentManagement: React.FC = () => {
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">
-                              {appointment.patient?.first_name} {appointment.patient?.last_name}
+                              {appointment.patient?.name}
                             </div>
                             <div className="text-sm text-gray-500">
                               ID: {appointment.patient?.patient_id}

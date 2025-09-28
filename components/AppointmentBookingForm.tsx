@@ -23,8 +23,7 @@ import { getAllPatients } from '../src/lib/patientService';
 interface Patient {
   id: string;
   patient_id: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   phone: string;
   email?: string;
 }
@@ -162,7 +161,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
       
       const appointment = await createAppointment(formData);
       const token = extractTokenFromNotes(appointment?.notes);
-      setSuccess(token ? `Appointment for ${selectedPatient?.first_name} ${selectedPatient?.last_name} booked successfully! Your token number is ${token}.` : `Appointment for ${selectedPatient?.first_name} ${selectedPatient?.last_name} booked successfully!`);
+      setSuccess(token ? `Appointment for ${selectedPatient?.name} booked successfully! Your token number is ${token}.` : `Appointment for ${selectedPatient?.name} booked successfully!`);
       
       setTimeout(() => {
         onSuccess?.(appointment);
@@ -202,7 +201,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
   };
 
   const filteredPatients = patients.filter((patient: any) =>
-    `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(patientSearch.toLowerCase()) ||
+    `${patient.name}`.toLowerCase().includes(patientSearch.toLowerCase()) ||
     patient.patient_id.toLowerCase().includes(patientSearch.toLowerCase()) ||
     patient.phone.includes(patientSearch)
   );
@@ -349,7 +348,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                         <div className="flex items-center justify-between">
                           <div>
                             <h4 className="font-medium text-gray-900">
-                              {patient.first_name} {patient.last_name}
+                              {patient.name}
                             </h4>
                             <p className="text-sm text-gray-500">ID: {patient.patient_id}</p>
                             <p className="text-sm text-gray-500">Phone: {patient.phone}</p>
@@ -472,7 +471,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                   <div className="text-center">
                     <Calendar className="mx-auto h-12 w-12 text-orange-500 mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900">Select Date & Time</h3>
-                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.first_name} {selectedPatient.last_name}</p>}
+                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.name}</p>}
                   </div>
 
                   {/* Emergency Booking Toggle */}
@@ -649,7 +648,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                   <div className="text-center">
                     <CheckCircle className="mx-auto h-12 w-12 text-orange-500 mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900">Additional Details</h3>
-                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.first_name} {selectedPatient.last_name}</p>}
+                    {selectedPatient && <p className="text-gray-500 mt-2">For: {selectedPatient.name}</p>}
                   </div>
 
                   <div className="space-y-4">
@@ -687,7 +686,7 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
                       <div className="flex justify-between">
                         <span className="text-gray-600">Patient:</span>
                         <span className="font-medium">
-                          {selectedPatient?.first_name} {selectedPatient?.last_name}
+                          {selectedPatient?.name}
                         </span>
                       </div>
                       <div className="flex justify-between">
