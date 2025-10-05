@@ -339,28 +339,31 @@ export default function NewBillingPage() {
         expiry_date: item.batch.expiry_date
       }));
 
-      const { error: itemsError } = await supabase
+      const { data: insertedItems, error: itemsError } = await supabase
         .from('pharmacy_bill_items')
-        .insert(billItemsData);
+        .insert(billItemsData)
+        .select('id, medicine_id, batch_number, expiry_date, quantity, unit_price');
 
       if (itemsError) throw itemsError;
 
-      // Update stock quantities
-      for (const item of billItems) {
-        const newQuantity = item.batch.current_quantity - item.quantity;
-        
-        if (newQuantity < 0) {
-          throw new Error(`Insufficient stock for ${item.medicine.name}`);
-        }
+      // Record stock transactions (ledger-only) for each inserted bill item
+      for (const inserted of insertedItems || []) {
+        const { error: txError } = await supabase
+          .from('stock_transactions')
+          .insert({
+            medication_id: inserted.medicine_id,
+            transaction_type: 'sale',
+            quantity: -inserted.quantity,
+            unit_price: inserted.unit_price,
+            batch_number: inserted.batch_number || null,
+            expiry_date: inserted.expiry_date || null,
+            reference_id: inserted.id,
+            reference_type: 'pharmacy_bill_item',
+            performed_by: null,
+            transaction_date: billData.bill_date || new Date().toISOString()
+          });
 
-        const { error: stockError } = await supabase
-          .from('medicine_batches')
-          .update({ 
-            current_quantity: newQuantity 
-          })
-          .eq('id', item.batch.id);
-
-        if (stockError) throw stockError;
+        if (txError) throw txError;
       }
 
       alert(`Bill generated successfully! Bill Number: ${billData.bill_number || billData.id}`);

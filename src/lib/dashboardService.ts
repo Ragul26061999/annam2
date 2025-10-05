@@ -95,36 +95,74 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       `, { count: 'exact', head: true })
       .eq('bed_allocations.status', 'active');
 
-    // Get total appointments
-    const { count: totalAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true });
-
-    // Get today's appointments
+    // Get total appointments - try new table first, then legacy
+    let totalAppointments = 0;
+    let todayAppointments = 0;
+    let upcomingAppointments = 0;
+    let completedAppointments = 0;
+    let cancelledAppointments = 0;
+    
     const today = new Date().toISOString().split('T')[0];
-    const { count: todayAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .eq('appointment_date', today);
+    
+    try {
+      // Try new appointment table
+      const { count: newTotal } = await supabase
+        .from('appointment')
+        .select('*', { count: 'exact', head: true });
+      totalAppointments = newTotal || 0;
+      
+      const { count: newToday } = await supabase
+        .from('appointment')
+        .select('*', { count: 'exact', head: true })
+        .gte('scheduled_at', today)
+        .lt('scheduled_at', `${today}T23:59:59`);
+      todayAppointments = newToday || 0;
+      
+      const { count: newUpcoming } = await supabase
+        .from('appointment')
+        .select('*', { count: 'exact', head: true })
+        .gt('scheduled_at', `${today}T23:59:59`);
+      upcomingAppointments = newUpcoming || 0;
+      
+      // For new table, we'll assume all are scheduled for now
+      completedAppointments = 0;
+      cancelledAppointments = 0;
+    } catch (newTableError) {
+      // Fall back to legacy appointments table
+      try {
+        const { count: legacyTotal } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true });
+        totalAppointments = legacyTotal || 0;
 
-    // Get upcoming appointments (future dates)
-    const { count: upcomingAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .gt('appointment_date', today)
-      .in('status', ['scheduled', 'confirmed']);
+        const { count: legacyToday } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('appointment_date', today);
+        todayAppointments = legacyToday || 0;
 
-    // Get completed appointments
-    const { count: completedAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'completed');
+        const { count: legacyUpcoming } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .gt('appointment_date', today)
+          .in('status', ['scheduled', 'confirmed']);
+        upcomingAppointments = legacyUpcoming || 0;
 
-    // Get cancelled appointments
-    const { count: cancelledAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'cancelled');
+        const { count: legacyCompleted } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'completed');
+        completedAppointments = legacyCompleted || 0;
+
+        const { count: legacyCancelled } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'cancelled');
+        cancelledAppointments = legacyCancelled || 0;
+      } catch (legacyError) {
+        console.warn('Both appointment tables failed:', { newTableError, legacyError });
+      }
+    }
 
     // Get total doctors
     const { count: totalDoctors } = await supabase
@@ -230,28 +268,82 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
   try {
     const today = new Date().toISOString().split('T')[0];
     
-    const { data: appointments, error } = await supabase
-      .from('appointments')
-      .select(`
-        id,
-        appointment_time,
-        appointment_date,
-        type,
-        status,
-        patients!inner(name),
-        doctors!inner(
-          users!inner(name)
-        )
-      `)
-      .eq('appointment_date', today)
-      .order('appointment_time', { ascending: true })
-      .limit(limit);
+    // Try the new appointment table structure first
+    let appointments: any[] = [];
+    let error: any = null;
+    
+    try {
+      const { data: newAppointments, error: newError } = await supabase
+        .from('appointment')
+        .select(`
+          id,
+          scheduled_at,
+          encounter:encounter(
+            patient:patients(name),
+            clinician:doctors(
+              user:users(name)
+            )
+          )
+        `)
+        .gte('scheduled_at', today)
+        .lt('scheduled_at', `${today}T23:59:59`)
+        .order('scheduled_at', { ascending: true })
+        .limit(limit);
+      
+      if (newError) throw newError;
+      
+      appointments = (newAppointments || []).map((apt: any) => ({
+        id: apt.id,
+        patientName: apt.encounter?.patient?.name || 'Unknown Patient',
+        appointmentTime: new Date(apt.scheduled_at).toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        appointmentDate: new Date(apt.scheduled_at).toISOString().split('T')[0],
+        type: 'Consultation',
+        status: 'scheduled',
+        doctorName: apt.encounter?.clinician?.user?.name || 'Unknown Doctor',
+        patientInitials: getInitials(apt.encounter?.patient?.name || 'Unknown Patient'),
+      }));
+    } catch (newTableError) {
+      // Fall back to legacy appointments table
+      const { data: legacyAppointments, error: legacyError } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          appointment_time,
+          appointment_date,
+          type,
+          status,
+          patients!inner(name),
+          doctors!inner(
+            users!inner(name)
+          )
+        `)
+        .eq('appointment_date', today)
+        .order('appointment_time', { ascending: true })
+        .limit(limit);
+
+      if (legacyError) {
+        console.error('Error fetching appointments from both tables:', { newTableError, legacyError });
+        return [];
+      }
+      
+      appointments = legacyAppointments || [];
+      error = legacyError;
+    }
 
     if (error) {
       console.error('Error fetching appointments:', error);
       return [];
     }
 
+    // If we already processed new appointments, return them
+    if (appointments.length > 0 && appointments[0].patientName) {
+      return appointments;
+    }
+    
+    // Otherwise, process legacy appointments
     return (appointments || []).map((appointment: any) => {
       const patientName = appointment.patients?.name || 'Unknown Patient';
       const doctorName = appointment.doctors?.users?.name || 'Unknown Doctor';

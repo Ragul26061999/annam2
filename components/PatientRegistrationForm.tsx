@@ -132,17 +132,8 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
   };
 
   const validateStep = (step: number): boolean => {
-    const newErrors: Partial<PatientRegistrationData> = {};
-
-    if (step === 1) {
-      // Personal Information - Only First Name mandatory
-      if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-      // All other fields are now optional
-    }
-    // All other steps are optional, no validation needed
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // All fields are now optional - no validation needed
+    return true;
   };
 
   const generatePreviewUHID = async () => {
@@ -180,23 +171,15 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate only mandatory step (1 - First Name only)
-    const isValid = validateStep(1);
-    if (!isValid) {
-      setCurrentStep(1);
-      return;
-    }
-
-    if (isValid) {
-      // Ensure UHID is generated before submission
-      if (!previewUHID) {
-        const uhidGenerated = await generatePreviewUHID();
-        if (!uhidGenerated) {
-          return;
-        }
+    // No validation needed - all fields are optional
+    // Ensure UHID is generated before submission
+    if (!previewUHID) {
+      const uhidGenerated = await generatePreviewUHID();
+      if (!uhidGenerated) {
+        return;
       }
-      await onSubmit(formData, previewUHID);
     }
+    await onSubmit(formData, previewUHID);
   };
 
   const renderPersonalInfoStep = () => (
@@ -207,7 +190,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
         </div>
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Personal Information</h3>
-          <p className="text-sm text-gray-500">Basic patient details <span className="text-red-500">* All fields mandatory</span></p>
+          <p className="text-sm text-gray-500">Basic patient details <span className="text-gray-400">(All fields optional)</span></p>
         </div>
       </div>
 
@@ -235,7 +218,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-            First Name <span className="text-red-500">*</span>
+            First Name <span className="text-gray-400">(Optional)</span>
           </label>
           <input
             type="text"
@@ -250,7 +233,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
         <div>
           <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-            Last Name <span className="text-red-500">*</span>
+            Last Name <span className="text-gray-400">(Optional)</span>
           </label>
           <input
             type="text"
@@ -265,7 +248,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
         <div>
           <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 mb-1">
-            Date of Birth <span className="text-red-500">*</span>
+            Date of Birth <span className="text-gray-400">(Optional)</span>
           </label>
           <input
             type="date"
@@ -279,7 +262,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
         <div>
           <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
-            Gender <span className="text-red-500">*</span>
+            Gender <span className="text-gray-400">(Optional)</span>
           </label>
           <select
             id="gender"
@@ -316,7 +299,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
         <div>
           <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-            Phone Number <span className="text-red-500">*</span>
+            Phone Number <span className="text-gray-400">(Optional)</span>
           </label>
           <input
             type="tel"
@@ -346,7 +329,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
       <div>
         <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-          Complete Address <span className="text-red-500">*</span>
+          Complete Address <span className="text-gray-400">(Optional)</span>
         </label>
         <textarea
           id="address"
@@ -434,7 +417,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
           <div>
             <label htmlFor="admissionType" className="block text-sm font-medium text-gray-700 mb-1">
-              Type of Admission <span className="text-red-500">*</span>
+              Type of Admission <span className="text-gray-400">(Optional)</span>
             </label>
             <select
               id="admissionType"
@@ -509,7 +492,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
         <div className="mt-4">
           <label htmlFor="primaryComplaint" className="block text-sm font-medium text-gray-700 mb-1">
-            Primary Complaint / Reason for Visit <span className="text-red-500">*</span>
+            Primary Complaint / Reason for Visit <span className="text-gray-400">(Optional)</span>
           </label>
           <textarea
             id="primaryComplaint"

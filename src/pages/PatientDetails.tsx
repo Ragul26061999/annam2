@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -16,9 +16,11 @@ import {
   AlertCircle,
   FileText,
   ChevronRight,
-  Heart
+  Heart,
+  Loader2,
+  User
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { getPatientByUHID } from '../lib/patientService';
 
 // Mock patient data (in a real app, this would come from an API)
 const patients = [
@@ -95,26 +97,100 @@ const patients = [
 const PatientDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState('overview');
-  
-  // Find the patient by ID (in a real app, this would be a DB/API call)
-  const patient = patients.find(p => p.id === id);
-  
-  if (!patient) {
-    return <div className="text-center py-10">Patient not found</div>;
-  }
-  
-  const getStatusColor = () => {
-    switch (patient.status) {
-      case 'Critical':
-        return 'text-red-500 bg-red-50';
-      case 'Stable':
-        return 'text-green-500 bg-green-50';
-      case 'Recovering':
-        return 'text-orange-500 bg-orange-50';
-      default:
-        return 'text-gray-500 bg-gray-50';
+  const [patient, setPatient] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (id) {
+      loadPatientDetails(id);
+    }
+  }, [id]);
+
+  const loadPatientDetails = async (patientId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const patientData = await getPatientByUHID(patientId);
+      setPatient(patientData);
+    } catch (err) {
+      console.error('Error loading patient details:', err);
+      setError('Failed to load patient details. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const calculateAge = (dateOfBirth: string) => {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <span className="ml-2 text-gray-600">Loading patient details...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="mx-auto h-12 w-12 text-red-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Patient</h3>
+        <p className="text-gray-500 mb-4">{error}</p>
+        <button
+          onClick={() => loadPatientDetails(id!)}
+          className="btn-primary"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  if (!patient) {
+    return (
+      <div className="text-center py-12">
+        <User className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Patient not found</h3>
+        <p className="text-gray-500 mb-4">Could not find a relationship between 'patients' and 'appointments' in the schema cache</p>
+        <Link to="/patients" className="btn-primary">
+          Back to Patients
+        </Link>
+      </div>
+    );
+  }
+  
+  const getPatientStatus = () => {
+    if (patient.is_critical) {
+      return {
+        label: 'Critical',
+        color: 'text-red-500 bg-red-50'
+      };
+    } else if (patient.is_admitted) {
+      return {
+        label: 'Admitted',
+        color: 'text-orange-500 bg-orange-50'
+      };
+    } else {
+      return {
+        label: 'Stable',
+        color: 'text-green-500 bg-green-50'
+      };
+    }
+  };
+
+  const patientStatus = getPatientStatus();
+  const age = patient.date_of_birth ? calculateAge(patient.date_of_birth) : 'N/A';
   
   return (
     <div className="space-y-6">
@@ -126,8 +202,8 @@ const PatientDetails: React.FC = () => {
             <span>Back to Patients</span>
           </Link>
           <h1 className="text-gray-900">{patient.name}</h1>
-          <span className={`ml-4 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
-            {patient.status}
+          <span className={`ml-4 px-3 py-1 rounded-full text-sm font-medium ${patientStatus.color}`}>
+            {patientStatus.label}
           </span>
         </div>
         
@@ -148,28 +224,34 @@ const PatientDetails: React.FC = () => {
         <div className="flex">
           {/* Patient Image and Basic Info */}
           <div className="flex items-start w-1/3">
-            <img 
-              src={patient.image} 
-              alt={patient.name} 
-              className="h-24 w-24 rounded-xl object-cover mr-6" 
-            />
+            <div className={`h-24 w-24 rounded-xl flex items-center justify-center text-white font-bold text-2xl mr-6 ${
+              patient.is_critical ? 'bg-red-600' : 
+              patient.is_admitted ? 'bg-orange-500' : 'bg-green-500'
+            }`}>
+              {patient.name.charAt(0).toUpperCase()}
+            </div>
             <div>
               <h2 className="text-gray-900">{patient.name}</h2>
-              <p className="text-gray-500 mt-1">{patient.age} years, {patient.gender}</p>
+              <p className="text-gray-500 mt-1">{age} years, {patient.gender}</p>
+              <p className="text-sm text-gray-400">ID: {patient.patient_id}</p>
               
               <div className="mt-4 space-y-2">
                 <div className="flex items-center text-gray-600">
                   <Phone size={16} className="mr-2" />
                   <span>{patient.phone}</span>
                 </div>
-                <div className="flex items-center text-gray-600">
-                  <Mail size={16} className="mr-2" />
-                  <span>{patient.email}</span>
-                </div>
-                <div className="flex items-center text-gray-600">
-                  <MapPin size={16} className="mr-2" />
-                  <span>{patient.address}</span>
-                </div>
+                {patient.email && (
+                  <div className="flex items-center text-gray-600">
+                    <Mail size={16} className="mr-2" />
+                    <span>{patient.email}</span>
+                  </div>
+                )}
+                {patient.address && (
+                  <div className="flex items-center text-gray-600">
+                    <MapPin size={16} className="mr-2" />
+                    <span>{patient.address}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -180,21 +262,31 @@ const PatientDetails: React.FC = () => {
             
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-500">Diagnosis:</span>
-                <span className="text-gray-900 font-medium">{patient.diagnosis}</span>
+                <span className="text-gray-500">Primary Complaint:</span>
+                <span className="text-gray-900 font-medium">{patient.primary_complaint || 'N/A'}</span>
               </div>
+              {patient.admission_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Admitted:</span>
+                  <span className="text-gray-900">{new Date(patient.admission_date).toLocaleDateString()}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-gray-500">Admitted:</span>
-                <span className="text-gray-900">{patient.admissionDate}</span>
+                <span className="text-gray-500">Admission Type:</span>
+                <span className="text-gray-900 capitalize">{patient.admission_type || 'N/A'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Doctor:</span>
-                <span className="text-gray-900">{patient.doctor}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Room:</span>
-                <span className="text-gray-900">{patient.room}</span>
-              </div>
+              {patient.room_number && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Room:</span>
+                  <span className="text-gray-900">{patient.room_number}</span>
+                </div>
+              )}
+              {patient.department_ward && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Ward:</span>
+                  <span className="text-gray-900">{patient.department_ward}</span>
+                </div>
+              )}
             </div>
           </div>
           
@@ -204,31 +296,41 @@ const PatientDetails: React.FC = () => {
             
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="text-gray-500 text-sm">Blood Type</span>
-                <p className="text-gray-900 font-medium">{patient.bloodType}</p>
+                <span className="text-gray-500 text-sm">Blood Group</span>
+                <p className="text-gray-900 font-medium">{patient.blood_group || 'N/A'}</p>
               </div>
               <div>
-                <span className="text-gray-500 text-sm">Height</span>
-                <p className="text-gray-900">{patient.height}</p>
+                <span className="text-gray-500 text-sm">Gender</span>
+                <p className="text-gray-900 capitalize">{patient.gender || 'N/A'}</p>
               </div>
               <div>
-                <span className="text-gray-500 text-sm">Weight</span>
-                <p className="text-gray-900">{patient.weight}</p>
+                <span className="text-gray-500 text-sm">Marital Status</span>
+                <p className="text-gray-900 capitalize">{patient.marital_status || 'N/A'}</p>
               </div>
               <div>
                 <span className="text-gray-500 text-sm">Insurance</span>
-                <p className="text-gray-900">{patient.insurance}</p>
+                <p className="text-gray-900">{patient.insurance_provider || 'N/A'}</p>
               </div>
             </div>
             
             {/* Alerts */}
-            {patient.allergies.length > 0 && (
+            {patient.allergies && patient.allergies.trim() && (
               <div className="mt-4 p-2 bg-red-50 rounded-lg">
                 <div className="flex items-center text-red-500 text-sm font-medium mb-1">
                   <AlertCircle size={14} className="mr-1" />
                   Allergies
                 </div>
-                <p className="text-gray-700 text-sm">{patient.allergies.join(', ')}</p>
+                <p className="text-gray-700 text-sm">{patient.allergies}</p>
+              </div>
+            )}
+            
+            {patient.chronic_conditions && patient.chronic_conditions.trim() && (
+              <div className="mt-2 p-2 bg-orange-50 rounded-lg">
+                <div className="flex items-center text-orange-500 text-sm font-medium mb-1">
+                  <AlertCircle size={14} className="mr-1" />
+                  Chronic Conditions
+                </div>
+                <p className="text-gray-700 text-sm">{patient.chronic_conditions}</p>
               </div>
             )}
           </div>
@@ -315,7 +417,7 @@ const PatientDetails: React.FC = () => {
                 <div className="mb-4">
                   <span className="text-gray-500 text-sm">Interventions</span>
                   <ul className="mt-2 space-y-1">
-                    {patient.treatmentPlan.interventions.map((intervention, index) => (
+                    {patient.treatmentPlan.interventions.map((intervention: string, index: number) => (
                       <li key={index} className="flex items-start">
                         <span className="h-5 w-5 rounded-full bg-green-100 text-green-500 flex items-center justify-center text-xs mr-2 mt-0.5">
                           ✓
@@ -340,7 +442,7 @@ const PatientDetails: React.FC = () => {
                 </div>
                 
                 <div className="space-y-4">
-                  {patient.vitals.slice(0, 1).map((vital, index) => (
+                  {patient.vitals.slice(0, 1).map((vital: any, index: number) => (
                     <div key={index} className="border border-gray-100 rounded-xl p-4">
                       <div className="flex justify-between items-center mb-4">
                         <span className="text-sm text-gray-500">{vital.date}</span>
@@ -398,7 +500,7 @@ const PatientDetails: React.FC = () => {
                 </div>
                 
                 <div className="space-y-4">
-                  {patient.medications.map((medication, index) => (
+                  {patient.medications.map((medication: any, index: number) => (
                     <div key={index} className="flex items-start py-2 border-b border-gray-100 last:border-0">
                       <div className="h-8 w-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-500 mr-3">
                         <Pill size={16} />
@@ -422,9 +524,9 @@ const PatientDetails: React.FC = () => {
                 
                 <div className="space-y-4">
                   {patient.appointments
-                    .filter(appointment => new Date(appointment.date) > new Date())
+                    .filter((appointment: any) => new Date(appointment.date) > new Date())
                     .slice(0, 2)
-                    .map((appointment, index) => (
+                    .map((appointment: any, index: number) => (
                       <div key={index} className="flex items-start py-2 border-b border-gray-100 last:border-0">
                         <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500 mr-3">
                           <Calendar size={16} />
@@ -456,7 +558,7 @@ const PatientDetails: React.FC = () => {
                 </div>
                 
                 <div className="space-y-4">
-                  {patient.notes.slice(0, 2).map((note, index) => (
+                  {patient.notes.slice(0, 2).map((note: any, index: number) => (
                     <div key={index} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
                       <div className="flex justify-between items-center mb-2">
                         <span className="font-medium text-gray-900">{note.author}</span>
@@ -495,7 +597,7 @@ const PatientDetails: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {patient.appointments.map((appointment, index) => (
+                  {patient.appointments.map((appointment: any, index: number) => (
                     <tr key={index} className="hover:bg-orange-50">
                       <td className="py-3 px-4">
                         <div className="font-medium text-gray-900">
@@ -561,7 +663,7 @@ const PatientDetails: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {patient.medications.map((medication, index) => (
+                    {patient.medications.map((medication: any, index: number) => (
                       <tr key={index} className="hover:bg-orange-50">
                         <td className="py-3 px-4 font-medium text-gray-900">{medication.name}</td>
                         <td className="py-3 px-4 text-gray-900">{medication.dosage}</td>
@@ -592,7 +694,7 @@ const PatientDetails: React.FC = () => {
             
             <div className="card">
               <div className="grid grid-cols-7 gap-4">
-                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, index) => (
+                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day: string, index: number) => (
                   <div key={index} className="border border-gray-100 rounded-xl p-4">
                     <h4 className="font-medium text-gray-900 mb-3">{day}</h4>
                     <div className="space-y-3">
@@ -667,7 +769,7 @@ const PatientDetails: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {patient.labResults.map((lab, index) => (
+                  {patient.labResults.map((lab: any, index: number) => (
                     <tr key={index} className="hover:bg-orange-50">
                       <td className="py-3 px-4 text-gray-900">{lab.date}</td>
                       <td className="py-3 px-4 font-medium text-gray-900">{lab.name}</td>
@@ -730,7 +832,7 @@ const PatientDetails: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {patient.vitals.map((vital, index) => (
+                    {patient.vitals.map((vital: any, index: number) => (
                       <tr key={index} className="hover:bg-orange-50">
                         <td className="py-3 px-4 text-gray-900">{vital.date}</td>
                         <td className="py-3 px-4 text-gray-900">{vital.heartRate} bpm</td>
@@ -776,7 +878,7 @@ const PatientDetails: React.FC = () => {
             </div>
             
             <div className="card">
-              {patient.notes.map((note, index) => (
+              {patient.notes.map((note: any, index: number) => (
                 <div key={index} className="border-b border-gray-100 last:border-0 py-4">
                   <div className="flex justify-between items-start">
                     <div>

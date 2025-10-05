@@ -33,17 +33,19 @@ export interface Medication {
 export interface StockTransaction {
   id: string;
   medication_id: string;
-  transaction_id: string;
   transaction_type: 'purchase' | 'sale' | 'adjustment' | 'return' | 'expired';
   quantity: number;
   unit_price: number;
-  total_amount: number;
-  batch_number?: string;
-  expiry_date?: string;
-  supplier_name?: string;
-  customer_name?: string;
-  notes?: string;
-  created_by: string;
+  // total_amount is generated/calculated in DB; treat as optional/nullable in the client
+  total_amount?: number | null;
+  batch_number?: string | null;
+  expiry_date?: string | null;
+  supplier_id?: string | null;
+  notes?: string | null;
+  reference_id?: string | null;
+  reference_type?: string | null;
+  performed_by?: string | null;
+  transaction_date?: string | null;
   created_at: string;
 }
 
@@ -225,30 +227,27 @@ export async function addStock(
   medicationId: string,
   quantity: number,
   unitPrice: number,
+  supplierName?: string,
   batchNumber?: string,
   expiryDate?: string,
-  supplierName?: string,
   notes?: string,
-  createdBy?: string
+  performedBy?: string
 ): Promise<StockTransaction> {
   try {
-    // Generate transaction ID
-    const transactionId = `TXN${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
     const { data, error } = await supabase
-      .from('pharmacy_stock_transactions')
+      .from('stock_transactions')
       .insert({
         medication_id: medicationId,
-        transaction_id: transactionId,
         transaction_type: 'purchase',
         quantity,
         unit_price: unitPrice,
-        total_amount: quantity * unitPrice,
         batch_number: batchNumber,
         expiry_date: expiryDate,
-        supplier_name: supplierName,
-        notes,
-        created_by: createdBy
+        // supplier_id is the canonical column; we currently capture supplierName in notes until supplier mapping is implemented
+        supplier_id: null,
+        notes: supplierName ? `Supplier: ${supplierName}${notes ? ` | ${notes}` : ''}` : notes,
+        performed_by: performedBy ?? null,
+        transaction_date: new Date().toISOString()
       })
       .select('*')
       .single();
@@ -256,24 +255,6 @@ export async function addStock(
     if (error) {
       console.error('Error adding stock:', error);
       throw error;
-    }
-
-    // Update medication stock quantity
-    const { data: currentMed } = await supabase
-      .from('medicines')
-      .select('stock_quantity')
-      .eq('id', medicationId)
-      .single();
-
-    if (currentMed) {
-      await supabase
-        .from('medicines')
-        .update({
-          stock_quantity: currentMed.stock_quantity + quantity,
-          unit_price: unitPrice,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', medicationId);
     }
 
     return data;
@@ -290,8 +271,9 @@ export async function getStockTransactions(
 ): Promise<StockTransaction[]> {
   try {
     let query = supabase
-      .from('pharmacy_stock_transactions')
+      .from('stock_transactions')
       .select('*')
+      .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -489,7 +471,7 @@ export async function getPharmacyDashboardStats(): Promise<{
     // Get today's sales
     const today = new Date().toISOString().split('T')[0];
     const { data: todaySalesData } = await supabase
-      .from('pharmacy_stock_transactions')
+      .from('stock_transactions')
       .select('total_amount')
       .eq('transaction_type', 'sale')
       .gte('created_at', `${today}T00:00:00`)
@@ -552,23 +534,56 @@ export async function getStockSummaryStats(): Promise<{
   purchasedUnitsThisMonth: number;
 }> {
   try {
-    // Remaining stock = sum of current_quantity across all medicine_batches
-    const { data: batches, error: batchesError } = await supabase
-      .from('medicine_batches')
-      .select('current_quantity');
+    // Remaining stock: use aggregated available_stock from medicines (maintained by triggers)
+    const { data: meds, error: medsError } = await supabase
+      .from('medicines')
+      .select('available_stock');
 
-    if (batchesError) {
-      console.error('Error fetching batches for stock summary:', batchesError);
-      throw batchesError;
+    if (medsError) {
+      console.error('Error fetching medicines for stock summary:', medsError);
+      throw medsError;
     }
 
-    const remainingUnits = (batches || [])
-      .reduce((sum: number, b: any) => sum + (b.current_quantity || 0), 0);
+    const remainingUnits = (meds || [])
+      .reduce((sum: number, m: any) => sum + (m.available_stock || 0), 0);
 
-    // We no longer track purchased/sold summary via pharmacy_stock_transactions.
-    // Return zeros to avoid querying a non-existent relation.
-    const purchasedUnitsThisMonth = 0;
-    const soldUnitsThisMonth = 0;
+    // Compute purchased/sold units for the current month using transaction_date (fallback to created_at when transaction_date is null)
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+    const [txWithDateRes, txWithoutDateRes] = await Promise.all([
+      supabase
+        .from('stock_transactions')
+        .select('quantity, transaction_type, transaction_date, created_at')
+        .gte('transaction_date', monthStart)
+        .lt('transaction_date', nextMonthStart),
+      supabase
+        .from('stock_transactions')
+        .select('quantity, transaction_type, transaction_date, created_at')
+        .is('transaction_date', null)
+        .gte('created_at', monthStart)
+        .lt('created_at', nextMonthStart)
+    ]);
+
+    const txAll = [
+      ...(txWithDateRes.data || []),
+      ...(txWithoutDateRes.data || [])
+    ];
+
+    let purchasedUnitsThisMonth = 0;
+    let soldUnitsThisMonth = 0;
+
+    for (const tx of txAll) {
+      const qty = typeof tx.quantity === 'number' ? tx.quantity : Number(tx.quantity) || 0;
+      if (tx.transaction_type === 'purchase') {
+        // count positive quantities only
+        purchasedUnitsThisMonth += qty > 0 ? qty : 0;
+      } else if (tx.transaction_type === 'sale') {
+        // count absolute units sold (sale entries are typically negative)
+        soldUnitsThisMonth += Math.abs(qty);
+      }
+    }
 
     return {
       remainingUnits,
@@ -699,47 +714,17 @@ export async function adjustStock(
   userId: string
 ): Promise<StockTransaction> {
   try {
-    // Get current stock
-    const { data: medication, error: medicationError } = await supabase
-      .from('medicines')
-      .select('stock_quantity')
-      .eq('id', medicationId)
-      .single();
-
-    if (medicationError) {
-      throw new Error('Failed to fetch medication');
-    }
-
-    // Calculate new stock quantity
-    const newStockQuantity = Math.max(0, medication.stock_quantity + adjustmentQuantity);
-
-    // Update medication stock
-    const { error: updateError } = await supabase
-      .from('medicines')
-      .update({ 
-        stock_quantity: newStockQuantity,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', medicationId);
-
-    if (updateError) {
-      throw new Error('Failed to update medication stock');
-    }
-
-    // Create stock transaction record
-    const transactionId = `ADJ-${Date.now()}`;
     const { data: transaction, error: transactionError } = await supabase
-      .from('pharmacy_stock_transactions')
+      .from('stock_transactions')
       .insert({
         medication_id: medicationId,
-        transaction_id: transactionId,
         transaction_type: 'adjustment',
-        quantity: Math.abs(adjustmentQuantity),
+        // Use signed quantity so negative values reduce stock via trigger
+        quantity: adjustmentQuantity,
         unit_price: 0,
-        total_amount: 0,
         notes: `${reason}: ${notes}`,
-        created_by: userId,
-        created_at: new Date().toISOString()
+        performed_by: userId,
+        transaction_date: new Date().toISOString()
       })
       .select()
       .single();
@@ -775,99 +760,24 @@ export async function createPharmacyBill(
   userId: string
 ): Promise<PharmacyBilling> {
   try {
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
-    const discountAmount = (subtotal * discount) / 100;
-    const taxableAmount = subtotal - discountAmount;
-    const taxAmount = (taxableAmount * taxRate) / 100;
-    const totalAmount = taxableAmount + taxAmount;
+    // Delegate atomic bill creation + ledger entries to the database RPC.
+    const { data: bill, error } = await supabase.rpc('create_pharmacy_bill_with_items', {
+      p_patient_id: patientId || null,
+      p_items: items,
+      p_discount: discount,
+      p_tax_rate: taxRate,
+      p_payment_method: paymentMethod,
+      p_user_id: userId
+    });
 
-    // Generate bill number
-    const billNumber = `PH${Date.now()}`;
-
-    // Create bill
-    // NOTE: Align with current schema 'pharmacy_bills'.
-    // This function is legacy and may not be used by the new billing page,
-    // but we keep it consistent so other callers behave correctly.
-    const { data: bill, error: billError } = await supabase
-      .from('pharmacy_bills')
-      .insert({
-        bill_number: billNumber,
-        patient_id: patientId || null,
-        // customer_type is unknown from this legacy signature; treat as 'patient' when patientId is provided
-        customer_type: patientId ? 'patient' : 'walk_in',
-        customer_name: null,
-        customer_phone: null,
-        bill_date: new Date().toISOString(),
-        subtotal,
-        discount_amount: discountAmount,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
-        payment_method: paymentMethod,
-        // Normalize to new status semantics: paid/completed -> 'completed'; credit -> 'pending'
-        payment_status: paymentMethod === 'credit' ? 'pending' : 'completed',
-        created_by: userId,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (billError) {
+    if (error) {
+      console.error('create_pharmacy_bill_with_items failed:', error);
       throw new Error('Failed to create pharmacy bill');
     }
 
-    // Create bill items and update stock
-    for (const item of items) {
-      // Create bill item
-      await supabase
-        .from('pharmacy_bill_items')
-        .insert({
-          bill_id: bill.id,
-          medicine_id: item.medication_id,
-          batch_id: item.batch_id || null,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_amount: item.quantity * item.unit_price,
-          batch_number: item.batch_number || null,
-          expiry_date: item.expiry_date || null
-        });
-      // Update batch stock: decrement medicine_batches.current_quantity
-      // Prefer batch_id if provided; otherwise use batch_number
-      let batchSelector: { column: 'id' | 'batch_number'; value: string } | null = null;
-      if (item.batch_id) {
-        batchSelector = { column: 'id', value: item.batch_id };
-      } else if (item.batch_number) {
-        batchSelector = { column: 'batch_number', value: item.batch_number };
-      }
-
-      if (batchSelector) {
-        const { data: batchRow, error: batchFetchError } = await supabase
-          .from('medicine_batches')
-          .select('id, current_quantity')
-          .eq(batchSelector.column, batchSelector.value)
-          .limit(1)
-          .maybeSingle();
-
-        if (!batchFetchError && batchRow) {
-          const newQty = Math.max(0, (batchRow.current_quantity || 0) - item.quantity);
-          await supabase
-            .from('medicine_batches')
-            .update({ current_quantity: newQty })
-            .eq('id', batchRow.id);
-        } else {
-          console.warn('Batch not found for decrementing stock', {
-            selector: batchSelector,
-            error: batchFetchError
-          });
-        }
-      } else {
-        console.warn('No batch_id or batch_number provided for bill item; skipping batch stock update', item);
-      }
-    }
-
+    // The RPC returns the full bill row; reconstruct items summary locally for UI if needed.
     return {
       ...bill,
-      total_amount: totalAmount,
       items: items.map(item => ({
         medication_id: item.medication_id,
         quantity: item.quantity,
@@ -1027,63 +937,56 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
   purchasedUnitsThisMonth: number;
 }> {
   try {
-    // Time window: current calendar month
+    // Time window: current calendar month in IST
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // +05:30
+    const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
+    const monthStartIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
+    const nextMonthStartIST = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 1);
+    // Convert IST boundaries back to UTC ISO for comparison with UTC timestamps
+    const monthStart = new Date(monthStartIST.getTime() - IST_OFFSET_MS).toISOString();
+    const nextMonthStart = new Date(nextMonthStartIST.getTime() - IST_OFFSET_MS).toISOString();
 
-    // Remaining units for the batch from medicine_batches.current_quantity
-    const { data: batchRow, error: batchError } = await supabase
-      .from('medicine_batches')
-      .select('current_quantity')
-      .eq('batch_number', batchNumber)
-      .limit(1)
-      .maybeSingle();
-
-    if (batchError) {
-      console.error('Error fetching batch remaining quantity:', batchError);
-    }
-
-    const remainingUnits = (batchRow?.current_quantity ?? 0) as number;
-
-    // Sold units this month: sum of pharmacy_bill_items.quantity for this batch_number
-    // Filter by bills created in the current month, prefer bill_date if available
-    const { data: billItems, error: billItemsError } = await supabase
-      .from('pharmacy_bill_items')
-      .select('bill_id, quantity, batch_number')
+    // Ledger-first computation:
+    const { data: txAll, error: txAllError } = await supabase
+      .from('stock_transactions')
+      .select('quantity, transaction_type, transaction_date, created_at')
       .eq('batch_number', batchNumber);
 
-    if (billItemsError) {
-      console.error('Error fetching bill items for batch stats:', billItemsError);
+    if (txAllError) {
+      console.error('Error fetching stock_transactions for batch:', txAllError);
     }
 
+    let remainingUnits = 0;
     let soldUnitsThisMonth = 0;
-    if (billItems && billItems.length > 0) {
-      const billIds = Array.from(new Set(billItems.map(i => i.bill_id))).filter(Boolean);
-      const { data: bills, error: billsError } = await supabase
-        .from('pharmacy_bills')
-        .select('id, bill_date, created_at, payment_status')
-        .in('id', billIds)
-        .gte('bill_date', monthStart)
-        .lt('bill_date', nextMonthStart);
+    let purchasedUnitsThisMonth = 0;
 
-      if (billsError) {
-        console.error('Error filtering bills for batch sold stats:', billsError);
+    if (txAll && txAll.length > 0) {
+      for (const tx of txAll) {
+        const qty = typeof tx.quantity === 'number' ? tx.quantity : Number(tx.quantity) || 0;
+        remainingUnits += qty;
+        const txnDate = (tx.transaction_date as string | null) ?? (tx.created_at as string | null);
+        if (txnDate && txnDate >= monthStart && txnDate < nextMonthStart) {
+          if (tx.transaction_type === 'sale') {
+            soldUnitsThisMonth += Math.abs(qty);
+          } else if (tx.transaction_type === 'purchase') {
+            purchasedUnitsThisMonth += qty > 0 ? qty : 0;
+          }
+        }
       }
-
-      const validBillIds = new Set(
-        (bills || [])
-          .filter(b => (b.payment_status === 'completed' || b.payment_status === 'paid'))
-          .map(b => b.id)
-      );
-
-      soldUnitsThisMonth = billItems
-        .filter(i => validBillIds.has(i.bill_id))
-        .reduce((sum, i) => sum + (i.quantity || 0), 0);
+    } else {
+      // Fallback: if no transactions exist for this batch, use the batch's current_quantity
+      const { data: batchRow, error: batchError } = await supabase
+        .from('medicine_batches')
+        .select('current_quantity')
+        .eq('batch_number', batchNumber)
+        .limit(1)
+        .maybeSingle();
+      if (batchError) {
+        console.error('Error fetching batch fallback quantity:', batchError);
+      }
+      remainingUnits = Number(batchRow?.current_quantity ?? 0);
     }
-
-    // Purchased units this month removed per schema; return 0 to avoid errors.
-    const purchasedUnitsThisMonth = 0;
 
     return {
       remainingUnits,

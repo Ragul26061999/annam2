@@ -1,0 +1,114 @@
+Hospital Management System – Database Tables Reference
+
+This document defines the canonical database tables and their `.env` style variables.
+Use these variables in code/config to avoid hardcoding table names.
+
+-----------------------------------------------------
+Table Name Variables
+-----------------------------------------------------
+
+# ------- Core -------
+TABLE_USERS=core.users
+TABLE_PERSONS=core.persons
+TABLE_PATIENTS=core.patients
+TABLE_STAFF=core.staff
+TABLE_STAFF_ROLES=core.staff_roles
+TABLE_DEPARTMENTS=core.departments
+TABLE_FACILITIES=core.facilities
+TABLE_STAFF_SCHEDULES=core.staff_schedules
+
+# ------- Clinical -------
+TABLE_APPOINTMENTS=clinical.appointments
+TABLE_ENCOUNTERS=clinical.encounters
+TABLE_VITALS=clinical.vitals
+TABLE_ALLERGIES=clinical.allergies
+TABLE_SYMPTOMS=clinical.symptoms
+TABLE_MEDICAL_HISTORY=clinical.medical_history
+
+# ------- Inpatient -------
+TABLE_ADMISSIONS=inpatient.admissions
+TABLE_WARDS=inpatient.wards
+TABLE_BEDS=inpatient.beds
+TABLE_BED_ALLOCATIONS=inpatient.bed_allocations
+
+# ------- Lab -------
+TABLE_LAB_TESTS=clinical.lab_tests
+TABLE_LAB_ORDERS=clinical.lab_orders
+TABLE_LAB_ORDER_ITEMS=clinical.lab_order_items
+TABLE_LAB_RESULTS=clinical.lab_results
+
+# ------- Pharmacy -------
+TABLE_ITEMS=pharmacy.items
+TABLE_BATCHES=pharmacy.batches
+TABLE_INVENTORY_TXNS=pharmacy.inventory_txns
+TABLE_PRESCRIPTIONS=pharmacy.prescriptions
+TABLE_RX_LINES=pharmacy.rx_lines
+TABLE_DISPENSES=pharmacy.dispenses
+
+# ------- Billing -------
+TABLE_FEE_SCHEDULES=billing.fee_schedules
+TABLE_FEE_RATES=billing.fee_rates
+TABLE_CHARGES=billing.charges
+TABLE_INVOICES=billing.invoices
+TABLE_INVOICE_LINES=billing.invoice_lines
+TABLE_PAYMENTS=billing.payments
+
+# ------- Ops / Reference -------
+TABLE_AUDIT_LOG=ops.audit_log
+TABLE_ATTACHMENTS=ops.attachments
+TABLE_CODES=ref.codes
+
+-----------------------------------------------------
+Grouped List with Descriptions
+-----------------------------------------------------
+
+Core
+- core.users: Application/authentication users
+- core.persons: Shared demographics (patients & staff)
+- core.patients: Patient master data (links to persons)
+- core.staff: Staff master data (links to persons)
+- core.staff_roles: Role catalog for staff
+- core.departments: Hospital departments/units (OPD, ward, lab, pharmacy)
+- core.facilities: Multi-hospital/branch data
+- core.staff_schedules: Staff shifts/rosters
+
+Clinical
+- clinical.appointments: Scheduled consultations
+- clinical.encounters: Actual clinical visits/episodes (OPD/ER/IPD)
+- clinical.vitals: Vital signs per encounter
+- clinical.allergies: Patient allergies
+- clinical.symptoms: Symptoms recorded in an encounter
+- clinical.medical_history: Past illnesses/conditions
+
+Inpatient
+- inpatient.admissions: Admission & discharge episodes
+- inpatient.wards: Wards within a facility
+- inpatient.beds: Bed master with type/status
+- inpatient.bed_allocations: Bed assignment history
+
+Lab
+- clinical.lab_tests: Catalog of available tests
+- clinical.lab_orders: Lab orders placed per encounter
+- clinical.lab_order_items: Individual ordered tests
+- clinical.lab_results: Results with values, units, and ranges
+
+Pharmacy
+- pharmacy.items: Medicine catalog (single source of truth)
+- pharmacy.batches: Batch/expiry tracking
+- pharmacy.inventory_txns: Stock ledger (GRN, issue, dispense, return)
+- pharmacy.prescriptions: Prescriptions issued per encounter
+- pharmacy.rx_lines: Prescription line items (dose, frequency, duration)
+- pharmacy.dispenses: Records of dispensed quantities
+
+Billing
+- billing.fee_schedules: Billable services catalog
+- billing.fee_rates: Rate per service (time-bound)
+- billing.charges: Charges generated (labs, procedures, pharmacy, etc.)
+- billing.invoices: Patient invoices (encounter/admission context)
+- billing.invoice_lines: Line items in invoices
+- billing.payments: Payment history against invoices
+
+Ops / Reference
+- ops.audit_log: Immutable change log (insert/update/delete)
+- ops.attachments: Documents/images linked to records
+- ref.codes: Controlled vocabularies (diagnoses, tests, procedures)

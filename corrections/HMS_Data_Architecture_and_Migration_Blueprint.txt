@@ -1,0 +1,450 @@
+Hospital Management System – Data Architecture & Migration Blueprint
+Date: 2025-09-28
+
+Purpose
+-------
+Provide a clean, production-ready relational architecture (Postgres/Supabase) with
+schema layout, canonical tables, key columns, relationships, indexes, and a
+step-by-step migration plan from legacy tables. Use this as the single source of
+truth for build & data migration.
+
+Guiding Principles
+------------------
+1) One concept = one table (no duplicates like medicines vs medications).
+2) Schema-qualified names by domain: core, clinical, inpatient, pharmacy, billing, lab, ops, ref.
+3) Encounters are the backbone: everything ties to an encounter and/or admission.
+4) Immutable ledgers for inventory; derive stock via views/materialized views.
+5) Central billing pipe: charges -> invoices -> payments (pharmacy/lab feed charges, never their own invoices).
+6) Timestamps in UTC; track created_at/updated_at/created_by/updated_by and soft-deletes (deleted_at) everywhere.
+7) Strong FK constraints, CHECK constraints, and RLS policies with an audit log.
+
+Schemas
+-------
+core      : people, org, schedules
+clinical  : appointments, encounters, vitals, orders/results
+inpatient : admissions, beds/wards, allocations
+pharmacy  : items, batches, inventory, prescriptions, dispensing
+billing   : fee catalog, charges, invoices, payments
+ops       : audit, attachments
+ref       : controlled vocabularies/codes
+
+Environment Variables (.env)
+----------------------------
+# Core
+TABLE_USERS=core.users
+TABLE_PERSONS=core.persons
+TABLE_PATIENTS=core.patients
+TABLE_STAFF=core.staff
+TABLE_STAFF_ROLES=core.staff_roles
+TABLE_DEPARTMENTS=core.departments
+TABLE_FACILITIES=core.facilities
+TABLE_STAFF_SCHEDULES=core.staff_schedules
+
+# Clinical
+TABLE_APPOINTMENTS=clinical.appointments
+TABLE_ENCOUNTERS=clinical.encounters
+TABLE_VITALS=clinical.vitals
+TABLE_ALLERGIES=clinical.allergies
+TABLE_SYMPTOMS=clinical.symptoms
+TABLE_MEDICAL_HISTORY=clinical.medical_history
+TABLE_LAB_TESTS=clinical.lab_tests
+TABLE_LAB_ORDERS=clinical.lab_orders
+TABLE_LAB_ORDER_ITEMS=clinical.lab_order_items
+TABLE_LAB_RESULTS=clinical.lab_results
+
+# Inpatient
+TABLE_ADMISSIONS=inpatient.admissions
+TABLE_WARDS=inpatient.wards
+TABLE_BEDS=inpatient.beds
+TABLE_BED_ALLOCATIONS=inpatient.bed_allocations
+
+# Pharmacy
+TABLE_ITEMS=pharmacy.items
+TABLE_BATCHES=pharmacy.batches
+TABLE_INVENTORY_TXNS=pharmacy.inventory_txns
+TABLE_PRESCRIPTIONS=pharmacy.prescriptions
+TABLE_RX_LINES=pharmacy.rx_lines
+TABLE_DISPENSES=pharmacy.dispenses
+
+# Billing
+TABLE_FEE_SCHEDULES=billing.fee_schedules
+TABLE_FEE_RATES=billing.fee_rates
+TABLE_CHARGES=billing.charges
+TABLE_INVOICES=billing.invoices
+TABLE_INVOICE_LINES=billing.invoice_lines
+TABLE_PAYMENTS=billing.payments
+
+# Ops / Reference
+TABLE_AUDIT_LOG=ops.audit_log
+TABLE_ATTACHMENTS=ops.attachments
+TABLE_CODES=ref.codes
+
+Canonical Tables – Key Columns & Relationships
+----------------------------------------------
+[CORE]
+core.users (
+  user_id uuid PK,
+  email text UNIQUE NOT NULL,
+  person_id uuid FK -> core.persons.person_id NULL,
+  created_at, updated_at, deleted_at, created_by, updated_by
+)
+
+core.persons (
+  person_id uuid PK,
+  first_name, last_name, dob date, sex text, phone, email, address jsonb,
+  created_at, updated_at, deleted_at, created_by, updated_by
+)
+
+core.patients (
+  patient_id uuid PK,
+  person_id uuid UNIQUE NOT NULL FK -> core.persons,
+  uhid text UNIQUE NOT NULL,
+  created_at, updated_at, deleted_at, created_by, updated_by
+)
+
+core.staff (
+  staff_id uuid PK,
+  person_id uuid UNIQUE NOT NULL FK -> core.persons,
+  department_id uuid FK -> core.departments,
+  role_id uuid FK -> core.staff_roles,
+  license_no text, active_from timestamptz, active_to timestamptz,
+  created_at, updated_at, deleted_at, created_by, updated_by
+)
+
+core.staff_roles (
+  role_id uuid PK,
+  name text UNIQUE NOT NULL, scope text, created_at, updated_at
+)
+
+core.departments (
+  department_id uuid PK,
+  facility_id uuid FK -> core.facilities,
+  name text, type text CHECK (type IN ('OPD','WARD','ER','LAB','PHARMACY','ADMIN')),
+  created_at, updated_at
+)
+
+core.facilities (
+  facility_id uuid PK,
+  name text UNIQUE NOT NULL, timezone text NOT NULL,
+  created_at, updated_at
+)
+
+core.staff_schedules (
+  schedule_id uuid PK,
+  staff_id uuid FK -> core.staff,
+  starts_at timestamptz, ends_at timestamptz, pattern text,
+  created_at, updated_at
+)
+
+[CLINICAL]
+clinical.appointments (
+  appointment_id uuid PK,
+  patient_id uuid FK -> core.patients,
+  doctor_id uuid FK -> core.staff,
+  facility_id uuid FK -> core.facilities,
+  scheduled_at timestamptz, status text CHECK (status IN ('BOOKED','CANCELLED','NO_SHOW','DONE')),
+  created_at, updated_at
+)
+
+clinical.encounters (
+  encounter_id uuid PK,
+  patient_id uuid FK -> core.patients,
+  type text CHECK (type IN ('OPD','ER','IPD')),
+  start_at timestamptz NOT NULL, end_at timestamptz NULL,
+  attending_doctor_id uuid FK -> core.staff,
+  facility_id uuid FK -> core.facilities,
+  created_at, updated_at
+)
+
+clinical.vitals (
+  vital_id uuid PK,
+  encounter_id uuid FK -> clinical.encounters,
+  taken_at timestamptz NOT NULL,
+  kind text, value numeric, unit text,
+  created_at, updated_at
+)
+
+clinical.allergies (
+  allergy_id uuid PK,
+  patient_id uuid FK -> core.patients,
+  code text, description text, onset_date date, status text,
+  created_at, updated_at
+)
+
+clinical.symptoms (
+  symptom_id uuid PK,
+  encounter_id uuid FK -> clinical.encounters,
+  code text, description text, severity text,
+  created_at, updated_at
+)
+
+clinical.medical_history (
+  history_id uuid PK,
+  patient_id uuid FK -> core.patients,
+  code text, description text, recorded_at timestamptz,
+  created_at, updated_at
+)
+
+clinical.lab_tests (
+  test_id uuid PK,
+  code text UNIQUE, name text, specimen_type text,
+  created_at, updated_at
+)
+
+clinical.lab_orders (
+  order_id uuid PK,
+  encounter_id uuid FK -> clinical.encounters,
+  ordered_by uuid FK -> core.staff,
+  ordered_at timestamptz NOT NULL,
+  created_at, updated_at
+)
+
+clinical.lab_order_items (
+  order_item_id uuid PK,
+  order_id uuid FK -> clinical.lab_orders,
+  test_id uuid FK -> clinical.lab_tests,
+  status text CHECK (status IN ('ORDERED','COLLECTED','PROCESSING','RESULTED','CANCELLED')),
+  created_at, updated_at
+)
+
+clinical.lab_results (
+  result_id uuid PK,
+  order_item_id uuid FK -> clinical.lab_order_items,
+  value text, unit text, ref_range text, result_at timestamptz, status text,
+  created_at, updated_at
+)
+
+[INPATIENT]
+inpatient.admissions (
+  admission_id uuid PK,
+  encounter_id uuid UNIQUE FK -> clinical.encounters,
+  admit_at timestamptz, discharge_at timestamptz NULL, reason text,
+  facility_id uuid FK -> core.facilities,
+  created_at, updated_at
+)
+
+inpatient.wards (
+  ward_id uuid PK,
+  department_id uuid FK -> core.departments,
+  facility_id uuid FK -> core.facilities,
+  name text, created_at, updated_at
+)
+
+inpatient.beds (
+  bed_id uuid PK,
+  ward_id uuid FK -> inpatient.wards,
+  label text, type text, status text,
+  created_at, updated_at
+)
+
+inpatient.bed_allocations (
+  allocation_id uuid PK,
+  admission_id uuid FK -> inpatient.admissions,
+  bed_id uuid FK -> inpatient.beds,
+  start_at timestamptz, end_at timestamptz NULL,
+  created_at, updated_at
+)
+
+[PHARMACY]
+pharmacy.items (
+  item_id uuid PK,
+  code text UNIQUE, name text NOT NULL, form text, strength text, route text, is_active boolean default true,
+  created_at, updated_at
+)
+
+pharmacy.batches (
+  batch_id uuid PK,
+  item_id uuid FK -> pharmacy.items,
+  batch_no text, expiry date CHECK (expiry > current_date),
+  initial_qty numeric(12,3), created_at, updated_at
+)
+
+pharmacy.inventory_txns (
+  txn_id uuid PK,
+  item_id uuid FK -> pharmacy.items,
+  batch_id uuid FK -> pharmacy.batches NULL,
+  facility_id uuid FK -> core.facilities,
+  txn_type text CHECK (txn_type IN ('GRN','ADJUST','ISSUE','DISPENSE','RETURN')),
+  qty numeric(12,3) CHECK (qty <> 0),
+  unit text, ref_table text, ref_id uuid, occurred_at timestamptz default now(),
+  created_at, updated_at
+)
+
+pharmacy.prescriptions (
+  rx_id uuid PK,
+  encounter_id uuid FK -> clinical.encounters,
+  prescribed_by uuid FK -> core.staff,
+  prescribed_at timestamptz NOT NULL,
+  created_at, updated_at
+)
+
+pharmacy.rx_lines (
+  rx_line_id uuid PK,
+  rx_id uuid FK -> pharmacy.prescriptions,
+  item_id uuid FK -> pharmacy.items,
+  dose text, frequency text, duration text, route text, instructions text,
+  created_at, updated_at
+)
+
+pharmacy.dispenses (
+  dispense_id uuid PK,
+  rx_line_id uuid FK -> pharmacy.rx_lines,
+  batch_id uuid FK -> pharmacy.batches,
+  qty numeric(12,3) CHECK (qty > 0),
+  dispensed_at timestamptz, dispensed_by uuid FK -> core.staff,
+  created_at, updated_at
+)
+
+[BILLING]
+billing.fee_schedules (
+  fee_id uuid PK,
+  department_id uuid FK -> core.departments NULL,
+  code text UNIQUE, name text NOT NULL, created_at, updated_at
+)
+
+billing.fee_rates (
+  rate_id uuid PK,
+  fee_id uuid FK -> billing.fee_schedules,
+  unit text, price numeric(12,2), effective_from date, effective_to date NULL,
+  created_at, updated_at
+)
+
+billing.charges (
+  charge_id uuid PK,
+  encounter_id uuid FK -> clinical.encounters NULL,
+  admission_id uuid FK -> inpatient.admissions NULL,
+  fee_id uuid FK -> billing.fee_schedules,
+  qty numeric(12,3) CHECK (qty > 0),
+  unit_price numeric(12,2) CHECK (unit_price >= 0),
+  total numeric(14,2) GENERATED ALWAYS AS (qty * unit_price) STORED,
+  source_table text NOT NULL, source_id uuid NOT NULL,
+  created_at, updated_at
+)
+
+billing.invoices (
+  invoice_id uuid PK,
+  patient_id uuid FK -> core.patients,
+  encounter_id uuid FK -> clinical.encounters NULL,
+  admission_id uuid FK -> inpatient.admissions NULL,
+  status text CHECK (status IN ('DRAFT','ISSUED','PAID','VOID')),
+  issued_at timestamptz, due_amount numeric(14,2) default 0, paid_amount numeric(14,2) default 0,
+  created_at, updated_at
+)
+
+billing.invoice_lines (
+  line_id uuid PK,
+  invoice_id uuid FK -> billing.invoices,
+  charge_id uuid FK -> billing.charges NULL,
+  description text, amount numeric(14,2),
+  created_at, updated_at
+)
+
+billing.payments (
+  payment_id uuid PK,
+  invoice_id uuid FK -> billing.invoices,
+  method text, amount numeric(14,2) CHECK (amount > 0),
+  received_at timestamptz, ref_no text,
+  created_at, updated_at
+)
+
+[OPS / REF]
+ops.audit_log (
+  audit_id bigserial PK,
+  at timestamptz default now(), actor_user_id uuid, action text,
+  table_name text, pk jsonb, before jsonb, after jsonb
+)
+
+ops.attachments (
+  attachment_id uuid PK,
+  owner_table text, owner_id uuid,
+  url text, mime text, uploaded_by uuid, uploaded_at timestamptz default now()
+)
+
+ref.codes (
+  code text, system text, display text, PRIMARY KEY (code, system)
+)
+
+Indexes (Representative)
+-----------------------
+-- Encounters
+IDX_encounters_patient_active: (patient_id) WHERE end_at IS NULL
+-- Bed allocations
+IDX_bed_alloc_active: (bed_id) WHERE end_at IS NULL
+-- Inventory
+IDX_inv_item_time: (item_id, occurred_at DESC)
+-- Charges
+IDX_charges_context: (encounter_id, admission_id)
+
+Materialized/Normal Views
+-------------------------
+view.active_admissions: join admissions + current bed_allocations + patients
+view.stock_on_hand: sum(inventory_txns.qty) by facility_id, item_id, batch_id
+view.billing_summary: invoices + invoice_lines + patient
+
+Migration Mapping (Legacy -> Canonical)
+--------------------------------------
+users -> core.users
+patients -> core.persons + core.patients
+doctors/staff -> core.persons + core.staff (+ core.staff_roles)
+appointments -> clinical.appointments
+patient_visits -> clinical.encounters
+vitals -> clinical.vitals
+patient_allergies -> clinical.allergies
+patient_symptoms -> clinical.symptoms
+medical_history -> clinical.medical_history
+lab_tests -> clinical.lab_tests
+lab_reports -> clinical.lab_orders + clinical.lab_order_items + clinical.lab_results
+medicines + medications -> pharmacy.items (merge; keep one code)
+medicine_batches -> pharmacy.batches
+stock_transactions + pharmacy_stock_transactions -> pharmacy.inventory_txns (single ledger)
+prescriptions/prescription_items -> pharmacy.prescriptions/pharmacy.rx_lines
+prescription_dispensed/dispensing -> pharmacy.dispenses
+pharmacy_bills* / pharmacy_billing* -> billing.charges -> billing.invoices/invoice_lines
+fee_categories -> billing.fee_schedules
+fee_rates -> billing.fee_rates
+patient_admissions -> inpatient.admissions
+beds -> inpatient.beds (+ inpatient.wards)
+bed_allocations -> inpatient.bed_allocations
+billing_summary/billing_items -> billing.invoices/billing.invoice_lines
+payment_history -> billing.payments
+
+Zero-Downtime Migration Plan
+----------------------------
+1) Create new schemas & tables (no drops). Enable constraints and basic indexes.
+2) Backfill in phases:
+   - persons/patients/staff first; keep original IDs as natural keys in a legacy_id column if needed.
+   - merge medicines+medications into pharmacy.items (dedupe by code/name/strength/form).
+   - convert lab_reports into orders/items/results.
+   - convert stock into immutable inventory_txns with GRN opening balances.
+   - convert all domain charges to billing.charges; roll-up to invoices.
+3) Add compatibility views with old names pointing to new tables to keep app running.
+4) Switch application queries to schema-qualified names via .env constants.
+5) Turn on RLS and audit triggers table-by-table after app verification.
+6) Remove compatibility views and drop deprecated tables after a cool-off period.
+
+Row Level Security (RLS) – Starter Policies
+-------------------------------------------
+- patients: allow SELECT to roles doctor/pharmacy/billing scoped by encounter/admission facility.
+- encounters: staff can SELECT when attending_doctor_id = current_user_staff_id OR same facility.
+- invoices/payments: billing role full access; clinical roles read-only when linked to their encounters.
+- inventory_txns: pharmacy role write; others read-only.
+
+Data Quality / Constraints
+--------------------------
+- Enforce positive qty/amount checks where applicable.
+- Ensure expiry > current_date on batch inserts.
+- Use GENERATED ALWAYS columns for totals (e.g., charges.total).
+- Use NOT NULL and CHECK constraints on status/type enums.
+
+Cutover Checklist
+-----------------
+[ ] All backfills completed and validated (counts, sums, random spot checks)
+[ ] App switched to new .env table names
+[ ] RLS enabled and tested for each role
+[ ] Audit triggers firing
+[ ] Materialized views refreshed
+[ ] Legacy tables archived and backups taken
+[ ] Monitoring dashboards/alerts set up (invoice deltas, stock on hand, admission without bed, etc.)
+
+End of Blueprint
+----------------

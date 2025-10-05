@@ -25,7 +25,7 @@ import {
   Bed,
   LogOut
 } from 'lucide-react';
-import { getAllPatients } from '../../src/lib/patientService';
+import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import AdmissionModal from '../../src/components/AdmissionModal';
 import DischargeModal from '../../src/components/DischargeModal';
@@ -47,6 +47,8 @@ interface Patient {
   department_ward: string;
   room_number: string;
   created_at: string;
+  is_critical?: boolean;
+  is_admitted?: boolean;
   // Bed allocation fields
   bed_id?: string | null;
   admission_date?: string | null;
@@ -98,129 +100,49 @@ export default function PatientsPage() {
     }
   };
 
-  const updatePatientStatus = async (patientId: string, field: 'admission_type' | 'status', value: string) => {
+  const handleStatusUpdate = async (patientId: string, isCritical: boolean) => {
     try {
-      // Update patient status in database using existing fields
-      const updateData: any = {};
+      // Get current patient data to preserve is_admitted status
+      const currentPatient = patients.find(p => p.patient_id === patientId);
       
-      if (field === 'admission_type') {
-        updateData.admission_type = value;
-      } else if (field === 'status') {
-        updateData.status = value;
-      }
-
-      const { error } = await supabase
-        .from('patients')
-        .update(updateData)
-        .eq('id', patientId);
-
-      if (error) {
-        console.error('Error updating patient status:', error);
-        alert('Failed to update patient status. Please try again.');
+      if (!currentPatient) {
+        console.error('Patient not found in local state:', patientId);
+        alert('Patient not found. Please refresh the page.');
         return;
       }
-
-      // If changing from emergency to elective, handle bed discharge if needed
-      if (field === 'admission_type' && value === 'elective') {
-        // Check for active bed allocation
-        const { data: activeAllocation, error: allocationError } = await supabase
-          .from('bed_allocations')
-          .select('allocation_id, bed_id')
-          .eq('patient_id', patientId)
-          .eq('status', 'active')
-          .is('discharge_date', null)
-          .single();
-
-        if (!allocationError && activeAllocation) {
-          // Ask user if they want to discharge from bed
-          const shouldDischarge = confirm('This patient has an active bed allocation. Do you want to discharge them from the bed as well?');
-          
-          if (shouldDischarge) {
-            const currentDate = new Date().toISOString().split('T')[0];
-            const currentTime = new Date().toTimeString().split(' ')[0];
-            
-            await supabase
-              .from('bed_allocations')
-              .update({
-                discharge_date: currentDate,
-                discharge_time: currentTime,
-                status: 'discharged',
-                discharge_summary: 'Discharged via patient dashboard - status changed to non-critical'
-              })
-              .eq('allocation_id', activeAllocation.allocation_id);
-
-            // Update bed status to available
-            await supabase
-              .from('beds')
-              .update({ status: 'available' })
-              .eq('id', activeAllocation.bed_id);
-          }
-        }
-      }
-
-      // Refresh patient data to get updated info
-      await fetchPatients();
       
-    } catch (error) {
-      console.error('Error updating patient status:', error);
+      console.log('Updating critical status for patient:', patientId, 'to:', isCritical);
+      console.log('Current patient data:', currentPatient);
+      
+      // Pass the current is_admitted value (default to false if undefined)
+      await updatePatientStatus(patientId, currentPatient.is_admitted ?? false, isCritical);
+      await fetchPatients(); // Reload to get fresh data
+    } catch (err) {
+      console.error('Error updating patient status:', err);
       alert('Failed to update patient status. Please try again.');
     }
   };
 
+
   const fetchPatients = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Fetch all active patients
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false });
-
-      if (patientsError) {
-        console.error('Error fetching patients:', patientsError);
-        setError('Failed to fetch patients');
-        return;
-      }
-
-      // Fetch bed allocations for admitted patients
-      const { data: bedAllocations, error: bedError } = await supabase
-        .from('bed_allocations')
-        .select('patient_id, bed_id, admission_date, discharge_date, status')
-        .eq('status', 'active')
-        .is('discharge_date', null);
-
-      if (bedError) {
-        console.error('Error fetching bed allocations:', bedError);
-      }
-
-      // Create a map of patient IDs to bed info
-      const bedMap = new Map();
-      if (bedAllocations) {
-        bedAllocations.forEach(allocation => {
-          bedMap.set(allocation.patient_id, {
-            bed_id: allocation.bed_id,
-            admission_date: allocation.admission_date,
-            discharge_date: allocation.discharge_date
-          });
-        });
-      }
-
-      // Transform the data to include bed allocation info
-      const transformedData = patientsData?.map(patient => ({
-        ...patient,
-        bed_id: bedMap.get(patient.id)?.bed_id || null,
-        admission_date: bedMap.get(patient.id)?.admission_date || null,
-        discharge_date: bedMap.get(patient.id)?.discharge_date || null,
-      })) || [];
-
-      setPatients(transformedData);
-      setTotalPatients(transformedData.length);
+      // Use the patient service to get patients
+      const response = await getAllPatients({
+        page: currentPage,
+        limit: 20,
+        status: statusFilter === '' ? undefined : statusFilter,
+        searchTerm: searchTerm || undefined
+      });
       
-      // Calculate counts
-      const admitted = transformedData.filter(p => p.bed_id !== null).length;
-      const critical = transformedData.filter(p => p.admission_type === 'emergency').length;
+      setPatients(response.patients);
+      setTotalPatients(response.total);
+      
+      // Calculate counts based on new status fields
+      const admitted = response.patients.filter((p: any) => p.is_admitted).length;
+      const critical = response.patients.filter((p: any) => p.is_critical).length;
       
       setAdmittedCount(admitted);
       setCriticalCount(critical);
@@ -298,14 +220,14 @@ export default function PatientsPage() {
     }
   };
 
-  // Function to determine if patient is admitted (has active bed allocation)
+  // Function to determine if patient is admitted
   const isPatientAdmitted = (patient: Patient) => {
-    return patient.bed_id !== null;
+    return patient.is_admitted || false;
   };
 
-  // Function to determine if patient is critical (emergency admission type)
+  // Function to determine if patient is critical
   const isPatientCritical = (patient: Patient) => {
-    return patient.admission_type === 'emergency';
+    return patient.is_critical || false;
   };
 
   const getTruncatedText = (text: string, maxLength: number = 30) => {
@@ -400,6 +322,12 @@ export default function PatientsPage() {
             <button className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
               <AlertTriangle size={16} className="mr-2" />
               Emergency Register
+            </button>
+          </Link>
+          <Link href="/patients/enhanced-register">
+            <button className="flex items-center bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md border border-orange-400">
+              <UserPlus size={16} className="mr-2" />
+              Enhanced Registration
             </button>
           </Link>
           <Link href="/patients/register">
@@ -517,9 +445,9 @@ export default function PatientsPage() {
       )}
 
       {/* Patients Grid */}
-      {filteredPatients.length > 0 ? (
+      {patients.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredPatients.map((patient) => (
+          {patients.map((patient) => (
             <div key={patient.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center">
@@ -600,29 +528,29 @@ export default function PatientsPage() {
               <div className="bg-gray-50 rounded-xl p-3 mb-4">
                 <p className="text-xs font-medium text-gray-700 mb-2">Patient Status</p>
                 <div className="space-y-2">
-                  {/* Critical Status - Based on admission_type */}
+                  {/* Critical Status */}
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Critical Status</span>
-                    <div className="flex items-center gap-2">
-                      <label className="flex items-center cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center cursor-pointer group">
                         <input
                           type="radio"
                           name={`critical-${patient.id}`}
-                          checked={patient.admission_type === 'emergency'}
-                          onChange={() => updatePatientStatus(patient.id, 'admission_type', 'emergency')}
-                          className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 focus:ring-red-500 focus:ring-2"
+                          checked={patient.is_critical || false}
+                          onChange={() => handleStatusUpdate(patient.patient_id, true)}
+                          className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 focus:ring-red-500 focus:ring-2 cursor-pointer"
                         />
-                        <span className="ml-1 text-xs text-red-700">Critical</span>
+                        <span className="ml-1.5 text-xs font-medium text-red-700 group-hover:text-red-800">Critical</span>
                       </label>
-                      <label className="flex items-center cursor-pointer">
+                      <label className="flex items-center cursor-pointer group">
                         <input
                           type="radio"
                           name={`critical-${patient.id}`}
-                          checked={patient.admission_type !== 'emergency'}
-                          onChange={() => updatePatientStatus(patient.id, 'admission_type', 'elective')}
-                          className="w-4 h-4 text-gray-600 bg-gray-100 border-gray-300 focus:ring-gray-500 focus:ring-2"
+                          checked={!patient.is_critical}
+                          onChange={() => handleStatusUpdate(patient.patient_id, false)}
+                          className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500 focus:ring-2 cursor-pointer"
                         />
-                        <span className="ml-1 text-xs text-gray-700">Stable</span>
+                        <span className="ml-1.5 text-xs font-medium text-green-700 group-hover:text-green-800">Stable</span>
                       </label>
                     </div>
                   </div>
@@ -700,7 +628,7 @@ export default function PatientsPage() {
         <div className="flex justify-center">
           <div className="bg-white rounded-xl border border-gray-200 p-2">
             <p className="text-sm text-gray-600 px-4 py-2">
-              Showing {filteredPatients.length} of {totalPatients} patients
+              Showing {patients.length} of {totalPatients} patients
             </p>
           </div>
         </div>

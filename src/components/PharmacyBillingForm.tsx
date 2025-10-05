@@ -307,23 +307,24 @@ export default function PharmacyBillingForm({
 
         if (itemError) throw itemError;
 
-        // Update medication stock
-        const { data: currentMed, error: fetchError } = await supabase
-          .from('medications')
-          .select('stock_quantity')
-          .eq('id', item.medication_id)
-          .single();
+        // Ledger-first: record a stock transaction for the sale (negative quantity)
+        const txnId = `SALE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const { error: txnError } = await supabase
+          .from('stock_transactions')
+          .insert({
+            medication_id: item.medication_id,
+            transaction_id: txnId,
+            transaction_type: 'sale',
+            quantity: -item.quantity,
+            unit_price: item.unit_price,
+            // Use per-item total after discount for accurate revenue
+            total_amount: item.total_price,
+            customer_name: prescription ? prescription.patient_name : customerName || null,
+            created_by: currentUser?.id || 'unknown',
+            notes: `billing_id:${billingRecord.id}`
+          });
 
-        if (fetchError) throw fetchError;
-
-        const { error: stockError } = await supabase
-          .from('medications')
-          .update({
-            stock_quantity: currentMed.stock_quantity - item.quantity
-          })
-          .eq('id', item.medication_id);
-
-        if (stockError) throw stockError;
+        if (txnError) throw txnError;
       }
 
       // If this is a prescription billing, update prescription items as dispensed

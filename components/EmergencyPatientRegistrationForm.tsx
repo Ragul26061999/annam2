@@ -83,14 +83,8 @@ export default function EmergencyPatientRegistrationForm({
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<EmergencyPatientData> = {};
-
-    // Only First Name is mandatory
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    // All other fields are now optional
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // All fields are now optional - no validation needed
+    return true;
   };
 
   const generatePreviewUHID = async () => {
@@ -123,12 +117,15 @@ export default function EmergencyPatientRegistrationForm({
     }
   };
 
-  // Auto-generate UHID when first name is filled (only mandatory field)
+  // Auto-generate UHID when any field is filled
   React.useEffect(() => {
-    if (formData.firstName && !previewUHID && !isGeneratingUHID) {
+    const hasAnyData = Object.values(formData).some(value => 
+      typeof value === 'string' && value.trim() !== '' && value !== 'emergency'
+    );
+    if (hasAnyData && !previewUHID && !isGeneratingUHID) {
       generatePreviewUHID();
     }
-  }, [formData.firstName, previewUHID, isGeneratingUHID]);
+  }, [formData, previewUHID, isGeneratingUHID]);
 
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg border border-gray-200">
@@ -179,14 +176,14 @@ export default function EmergencyPatientRegistrationForm({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Essential Patient Information</h3>
-              <p className="text-sm text-gray-500">Required fields for emergency registration</p>
+              <p className="text-sm text-gray-500">All fields optional for emergency registration</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-                First Name <span className="text-red-500">*</span>
+                First Name <span className="text-gray-400">(Optional)</span>
               </label>
               <input
                 type="text"
@@ -201,7 +198,7 @@ export default function EmergencyPatientRegistrationForm({
 
             <div>
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name <span className="text-red-500">*</span>
+                Last Name <span className="text-gray-400">(Optional)</span>
               </label>
               <input
                 type="text"
@@ -216,7 +213,7 @@ export default function EmergencyPatientRegistrationForm({
 
             <div>
               <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 mb-1">
-                Date of Birth <span className="text-red-500">*</span>
+                Date of Birth <span className="text-gray-400">(Optional)</span>
               </label>
               <input
                 type="date"
@@ -230,7 +227,7 @@ export default function EmergencyPatientRegistrationForm({
 
             <div>
               <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
-                Gender <span className="text-red-500">*</span>
+                Gender <span className="text-gray-400">(Optional)</span>
               </label>
               <select
                 id="gender"
@@ -248,7 +245,7 @@ export default function EmergencyPatientRegistrationForm({
 
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number <span className="text-red-500">*</span>
+                Phone Number <span className="text-gray-400">(Optional)</span>
               </label>
               <input
                 type="tel"
@@ -286,7 +283,7 @@ export default function EmergencyPatientRegistrationForm({
 
           <div>
             <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-              Address <span className="text-red-500">*</span>
+              Address <span className="text-gray-400">(Optional)</span>
             </label>
             <textarea
               id="address"
@@ -312,7 +309,7 @@ export default function EmergencyPatientRegistrationForm({
 
           <div>
             <label htmlFor="primaryComplaint" className="block text-sm font-medium text-gray-700 mb-1">
-              Primary Complaint / Chief Complaint <span className="text-red-500">*</span>
+              Primary Complaint / Chief Complaint <span className="text-gray-400">(Optional)</span>
             </label>
             <textarea
               id="primaryComplaint"

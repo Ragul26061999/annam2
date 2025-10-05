@@ -1,29 +1,133 @@
-import React, { useState } from 'react';
-import { Search, Filter, Plus, SortAsc, UserPlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, Plus, SortAsc, UserPlus, AlertTriangle, Heart, Activity, User, Phone, Mail, Calendar, MapPin, Loader2, CheckCircle, XCircle, MoreVertical, Edit, Eye, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus } from '../lib/patientService';
 
-// Dummy data for patients
-const patients = [
-  { id: 1, name: 'James Wilson', gender: 'Male', age: 52, contact: '+1 (555) 123-4567', diagnosis: 'Heart Failure', status: 'Critical', lastVisit: '2023-05-12', image: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 2, name: 'Olivia Martinez', gender: 'Female', age: 34, contact: '+1 (555) 987-6543', diagnosis: 'Pneumonia', status: 'Stable', lastVisit: '2023-05-15', image: 'https://images.pexels.com/photos/3992656/pexels-photo-3992656.png?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 3, name: 'Noah Parker', gender: 'Male', age: 45, contact: '+1 (555) 234-5678', diagnosis: 'Post-Operation', status: 'Recovering', lastVisit: '2023-05-16', image: 'https://images.pexels.com/photos/837140/pexels-photo-837140.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 4, name: 'Sophia Lee', gender: 'Female', age: 67, contact: '+1 (555) 345-6789', diagnosis: 'Diabetes', status: 'Stable', lastVisit: '2023-05-17', image: 'https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 5, name: 'William Johnson', gender: 'Male', age: 58, contact: '+1 (555) 456-7890', diagnosis: 'Hypertension', status: 'Stable', lastVisit: '2023-05-18', image: 'https://images.pexels.com/photos/1516680/pexels-photo-1516680.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 6, name: 'Emma Thompson', gender: 'Female', age: 29, contact: '+1 (555) 567-8901', diagnosis: 'Pregnancy', status: 'Stable', lastVisit: '2023-05-19', image: 'https://images.pexels.com/photos/4714992/pexels-photo-4714992.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 7, name: 'Michael Rodriguez', gender: 'Male', age: 41, contact: '+1 (555) 678-9012', diagnosis: 'Asthma', status: 'Stable', lastVisit: '2023-05-20', image: 'https://images.pexels.com/photos/769745/pexels-photo-769745.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-  { id: 8, name: 'Sarah Johnson', gender: 'Female', age: 63, contact: '+1 (555) 789-0123', diagnosis: 'Arthritis', status: 'Stable', lastVisit: '2023-05-21', image: 'https://images.pexels.com/photos/761963/pexels-photo-761963.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1' },
-];
+// Patient status types
+type PatientStatus = 'critical' | 'stable' | 'recovering' | 'admitted' | 'discharged';
+
+interface Patient {
+  id: string;
+  patient_id: string;
+  name: string;
+  gender: string;
+  phone: string;
+  email?: string;
+  date_of_birth: string;
+  address: string;
+  status: string;
+  is_critical?: boolean;
+  is_admitted?: boolean;
+  primary_complaint?: string;
+  medical_history?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const PatientManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  
-  // Filter patients based on search query
-  const filteredPatients = patients.filter(patient => 
-    patient.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    patient.diagnosis.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    patient.status.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    loadPatients();
+  }, [currentPage, statusFilter, searchQuery]);
+
+  // Close action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowActionMenu(null);
+    };
+    
+    if (showActionMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showActionMenu]);
+
+  const loadPatients = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllPatients({
+        page: currentPage,
+        limit: itemsPerPage,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        searchTerm: searchQuery || undefined
+      });
+      setPatients(response.patients);
+      setTotalPatients(response.total);
+    } catch (err) {
+      console.error('Error loading patients:', err);
+      setError('Failed to load patients. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatusUpdate = async (patientId: string, isCritical?: boolean, isAdmitted?: boolean) => {
+    try {
+      setUpdatingStatus(patientId);
+      await updatePatientStatus(patientId, isAdmitted, isCritical);
+      await loadPatients(); // Reload to get fresh data
+      setShowActionMenu(null);
+    } catch (err) {
+      console.error('Error updating patient status:', err);
+      setError('Failed to update patient status.');
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
+  const getPatientStatusInfo = (patient: Patient) => {
+    if (patient.is_critical) {
+      return {
+        label: 'Critical',
+        color: 'bg-red-100 text-red-800 border-red-200',
+        icon: <AlertTriangle size={14} className="text-red-600" />,
+        priority: 1
+      };
+    } else if (patient.is_admitted) {
+      return {
+        label: 'Admitted',
+        color: 'bg-orange-100 text-orange-800 border-orange-200',
+        icon: <Activity size={14} className="text-orange-600" />,
+        priority: 2
+      };
+    } else {
+      return {
+        label: 'Stable',
+        color: 'bg-green-100 text-green-800 border-green-200',
+        icon: <CheckCircle size={14} className="text-green-600" />,
+        priority: 3
+      };
+    }
+  };
+
+  const calculateAge = (dateOfBirth: string) => {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const filteredPatients = patients.sort((a, b) => {
+    const aStatus = getPatientStatusInfo(a);
+    const bStatus = getPatientStatusInfo(b);
+    return aStatus.priority - bStatus.priority;
+  });
 
   return (
     <div className="space-y-8">
@@ -32,113 +136,343 @@ const PatientManagement: React.FC = () => {
         <p className="text-gray-500 mt-1">View and manage patient records</p>
       </div>
       
-      {/* Search and Actions */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div className="relative">
-          <input 
-            type="text" 
-            placeholder="Search patients..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 py-2 bg-gray-100 rounded-xl w-full sm:w-96 focus:outline-none focus:ring-2 focus:ring-orange-200"
-          />
-          <Search className="absolute left-3 top-2.5 text-gray-500" size={20} />
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
+            <span className="text-red-800">{error}</span>
+            <button
+              onClick={loadPatients}
+              className="ml-auto px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center">
+            <div className="p-3 bg-red-100 rounded-xl">
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Critical</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {patients.filter(p => p.is_critical).length}
+              </p>
+            </div>
+          </div>
         </div>
         
-        <div className="flex space-x-3">
-          <button className="btn-secondary flex items-center">
-            <Filter size={18} className="mr-2" />
-            Filter
-          </button>
-          <button className="btn-secondary flex items-center">
-            <SortAsc size={18} className="mr-2" />
-            Sort
-          </button>
-                      <Link to="/patients/register">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center">
+            <div className="p-3 bg-orange-100 rounded-xl">
+              <Activity className="h-6 w-6 text-orange-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Admitted</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {patients.filter(p => p.is_admitted && !p.is_critical).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center">
+            <div className="p-3 bg-green-100 rounded-xl">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Stable</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {patients.filter(p => !p.is_critical && !p.is_admitted).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center">
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <User className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Total</p>
+              <p className="text-2xl font-bold text-gray-900">{totalPatients}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input 
+              type="text" 
+              placeholder="Search by name, patient ID, or phone..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            />
+          </div>
+          
+          <div className="flex space-x-3">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            >
+              <option value="all">All Patients</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            
+            <Link to="/patients/register">
               <button className="btn-primary flex items-center">
                 <UserPlus size={18} className="mr-2" />
                 Register New Patient
               </button>
             </Link>
+          </div>
         </div>
       </div>
       
       {/* Patient Table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full table-auto">
-            <thead className="bg-gray-50 text-left text-gray-500 text-sm">
-              <tr>
-                <th className="py-4 px-6 font-medium">Patient Name</th>
-                <th className="py-4 px-6 font-medium">Gender</th>
-                <th className="py-4 px-6 font-medium">Age</th>
-                <th className="py-4 px-6 font-medium">Contact</th>
-                <th className="py-4 px-6 font-medium">Diagnosis</th>
-                <th className="py-4 px-6 font-medium">Status</th>
-                <th className="py-4 px-6 font-medium">Last Visit</th>
-                <th className="py-4 px-6 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredPatients.map((patient) => (
-                <tr key={patient.id} className="hover:bg-orange-50">
-                  <td className="py-4 px-6">
-                    <div className="flex items-center">
-                      <img 
-                        src={patient.image} 
-                        alt={patient.name} 
-                        className="h-8 w-8 rounded-full object-cover" 
-                      />
-                      <Link to={`/patients/${patient.id}`} className="ml-3 font-medium text-gray-900 hover:text-orange-400">
-                        {patient.name}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-gray-600">{patient.gender}</td>
-                  <td className="py-4 px-6 text-gray-600">{patient.age}</td>
-                  <td className="py-4 px-6 text-gray-600">{patient.contact}</td>
-                  <td className="py-4 px-6 text-gray-600">{patient.diagnosis}</td>
-                  <td className="py-4 px-6">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      patient.status === 'Critical' ? 'bg-red-50 text-red-500' :
-                      patient.status === 'Recovering' ? 'bg-orange-50 text-orange-500' :
-                      'bg-green-50 text-green-500'
-                    }`}>
-                      {patient.status}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-gray-600">{patient.lastVisit}</td>
-                  <td className="py-4 px-6">
-                    <div className="flex space-x-2">
-                      <button className="text-gray-500 hover:text-orange-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                      </button>
-                      <button className="text-gray-500 hover:text-orange-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+            <span className="ml-2 text-gray-600">Loading patients...</span>
+          </div>
+        ) : filteredPatients.length === 0 ? (
+          <div className="text-center py-12">
+            <User className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No patients found</h3>
+            <p className="text-gray-500">Try adjusting your search criteria.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Patient
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact Info
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Medical Info
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Updated
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredPatients.map((patient) => {
+                  const statusInfo = getPatientStatusInfo(patient);
+                  const age = calculateAge(patient.date_of_birth);
+                  
+                  return (
+                    <tr key={patient.id} className={`hover:bg-gray-50 ${patient.is_critical ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                            patient.is_critical ? 'bg-red-600' : 
+                            patient.is_admitted ? 'bg-orange-500' : 'bg-green-500'
+                          }`}>
+                            {patient.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="ml-4">
+                            <Link 
+                              to={`/patients/${patient.patient_id}`} 
+                              className="text-sm font-medium text-gray-900 hover:text-orange-600"
+                            >
+                              {patient.name}
+                            </Link>
+                            <div className="text-sm text-gray-500">
+                              ID: {patient.patient_id} • {patient.gender} • {age} years
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          <div className="flex items-center mb-1">
+                            <Phone size={12} className="mr-1 text-gray-400" />
+                            {patient.phone}
+                          </div>
+                          {patient.email && (
+                            <div className="flex items-center">
+                              <Mail size={12} className="mr-1 text-gray-400" />
+                              {patient.email}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {patient.primary_complaint && (
+                            <div className="mb-1 font-medium">
+                              {patient.primary_complaint}
+                            </div>
+                          )}
+                          {patient.medical_history && (
+                            <div className="text-xs text-gray-500 truncate max-w-xs">
+                              {patient.medical_history}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusInfo.color}`}>
+                            {statusInfo.icon}
+                            <span className="ml-1">{statusInfo.label}</span>
+                          </span>
+                          {patient.is_critical && (
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(patient.updated_at).toLocaleDateString()}
+                      </td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowActionMenu(showActionMenu === patient.patient_id ? null : patient.patient_id)}
+                            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                            disabled={updatingStatus === patient.patient_id}
+                          >
+                            {updatingStatus === patient.patient_id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <MoreVertical size={16} />
+                            )}
+                          </button>
+                          
+                          {showActionMenu === patient.patient_id && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 z-10">
+                              <div className="py-1">
+                                <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                                  Status Actions
+                                </div>
+                                
+                                {!patient.is_critical && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(patient.patient_id, true, patient.is_admitted)}
+                                    className="flex items-center w-full px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+                                  >
+                                    <AlertTriangle size={16} className="mr-3 text-red-500" />
+                                    Mark as Critical
+                                  </button>
+                                )}
+                                
+                                {patient.is_critical && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(patient.patient_id, false, patient.is_admitted)}
+                                    className="flex items-center w-full px-4 py-2 text-sm text-green-700 hover:bg-green-50"
+                                  >
+                                    <CheckCircle size={16} className="mr-3 text-green-500" />
+                                    Mark as Stable
+                                  </button>
+                                )}
+                                
+                                {!patient.is_admitted && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(patient.patient_id, patient.is_critical, true)}
+                                    className="flex items-center w-full px-4 py-2 text-sm text-orange-700 hover:bg-orange-50"
+                                  >
+                                    <Activity size={16} className="mr-3 text-orange-500" />
+                                    Admit Patient
+                                  </button>
+                                )}
+                                
+                                {patient.is_admitted && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(patient.patient_id, patient.is_critical, false)}
+                                    className="flex items-center w-full px-4 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                                  >
+                                    <CheckCircle size={16} className="mr-3 text-blue-500" />
+                                    Discharge Patient
+                                  </button>
+                                )}
+                                
+                                <div className="border-t border-gray-100 mt-1">
+                                  <Link
+                                    to={`/patients/${patient.patient_id}`}
+                                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <Eye size={16} className="mr-3 text-gray-500" />
+                                    View Details
+                                  </Link>
+                                  <button className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                    <Edit size={16} className="mr-3 text-gray-500" />
+                                    Edit Patient
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
         
         {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
-          <div className="text-sm text-gray-500">
-            Showing <span className="font-medium">1</span> to <span className="font-medium">{filteredPatients.length}</span> of <span className="font-medium">{patients.length}</span> patients
+        {totalPatients > itemsPerPage && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
+            <div className="text-sm text-gray-500">
+              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalPatients)}</span> of{' '}
+              <span className="font-medium">{totalPatients}</span> patients
+            </div>
+            
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="btn-secondary text-sm py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button 
+                onClick={() => setCurrentPage(Math.min(Math.ceil(totalPatients / itemsPerPage), currentPage + 1))}
+                disabled={currentPage >= Math.ceil(totalPatients / itemsPerPage)}
+                className="btn-primary text-sm py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
-          
-          <div className="flex space-x-2">
-            <button className="btn-secondary text-sm py-1">Previous</button>
-            <button className="btn-primary text-sm py-1">Next</button>
-          </div>
-        </div>
+        )}
       </div>
       
       {/* Add Patient Modal */}

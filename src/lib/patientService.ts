@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { generateBarcodeId, updatePatientWithBarcode } from './barcodeUtils';
+import { generateQRCode } from './qrCodeService';
 
 // Types - Updated to match comprehensive registration form
 export interface PatientRegistrationData {
@@ -16,6 +17,8 @@ export interface PatientRegistrationData {
   // Medical & Admission Information 
   bloodGroup: string;
   allergies: string;
+  hasDrugAllergy?: boolean;
+  drugAllergyNames?: string;
   medicalHistory: string;
   currentMedications: string;
   chronicConditions: string;
@@ -25,7 +28,7 @@ export interface PatientRegistrationData {
   admissionDate?: string;
   admissionTime?: string;
   primaryComplaint: string;
-  admissionType: string; // emergency, elective, referred
+  admissionType?: string; // emergency, elective, referred (optional for enhanced form)
   referringDoctorFacility?: string;
   consultingDoctorId?: string;
   consultingDoctorName?: string;
@@ -56,6 +59,7 @@ export interface PatientResponse {
   success: boolean;
   patient?: any;
   uhid?: string;
+  qrCode?: string;
   credentials?: {
     email: string;
     password: string;
@@ -65,46 +69,41 @@ export interface PatientResponse {
 
 /**
  * Generate a unique UHID (Unique Hospital ID) for a new patient
- * Format: UHID + current year + 6-digit sequential number
- * Example: UHID2025000001
+ * Format: AH{YY}{MM}-{XXXX} where XXXX is sequential 0001-9999, resets monthly
+ * Example: AH2510-0001 (October 2025, patient #1)
  */
 export async function generateUHID(): Promise<string> {
   const now = new Date();
   const yearTwoDigits = now.getFullYear().toString().slice(-2); // Last two digits of year
   const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Month with leading zero
+  const prefix = `AH${yearTwoDigits}${month}`;
   
   try {
-    // Generate a unique 4-digit random number
-    let uhid: string = '';
-    let isUnique = false;
-    let attempts = 0;
-    const maxAttempts = 1000;
+    // Get the count of patients registered this month
+    const { count, error } = await supabase
+      .from('patients')
+      .select('patient_id', { count: 'exact', head: true })
+      .like('patient_id', `${prefix}-%`);
     
-    while (!isUnique && attempts < maxAttempts) {
-      // Generate 4-digit random number
-      const randomNumber = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      uhid = `AH${yearTwoDigits}${month}${randomNumber}`;
-      
-      // Check if this UHID already exists
-      const { data: existing, error } = await supabase
-        .from('patients')
-        .select('patient_id')
-        .eq('patient_id', uhid)
-        .single();
-      
-      if (error && error.code === 'PGRST116') {
-        // No record found, UHID is unique
-        isUnique = true;
-      } else if (error) {
-        console.error('Error checking UHID uniqueness:', error);
-        throw new Error('Failed to generate UHID');
-      }
-      
-      attempts++;
+    if (error) {
+      console.error('Error getting patient count for UHID:', error);
+      throw new Error('Failed to generate UHID');
     }
     
-    if (!isUnique) {
-      throw new Error('Failed to generate unique UHID after maximum attempts');
+    // Sequential number starts from 0001 each month
+    const sequentialNumber = ((count || 0) + 1).toString().padStart(4, '0');
+    const uhid = `${prefix}-${sequentialNumber}`;
+    
+    // Verify uniqueness (should always be unique with sequential numbering)
+    const { data: existing, error: checkError } = await supabase
+      .from('patients')
+      .select('patient_id')
+      .eq('patient_id', uhid)
+      .single();
+    
+    if (existing) {
+      // If somehow exists, throw error (shouldn't happen with sequential)
+      throw new Error('Generated UHID already exists');
     }
     
     return uhid;
@@ -127,7 +126,23 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
   const password = 'password';
 
   try {
-    // Create auth user using Supabase Admin API
+    // Check if user already exists in users table
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('auth_id, id')
+      .eq('email', email)
+      .single();
+
+    if (existingUser && existingUser.auth_id) {
+      // User already exists, return existing credentials
+      console.log('User already exists, using existing credentials');
+      return {
+        authUser: { id: existingUser.auth_id },
+        credentials: { email, password }
+      };
+    }
+
+    // Try to create auth user using Supabase Admin API
     const { data: authUser, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -143,7 +158,45 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
 
     if (authError) {
       console.error('Error creating auth user:', authError);
+      
+      // If user already registered in auth, try to get the existing user
+      if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
+        console.log('Auth user already exists, fetching existing user');
+        
+        // Try to sign in to get the user ID
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (signInData?.user) {
+          console.log('Retrieved existing auth user:', signInData.user.id);
+          return {
+            authUser: { id: signInData.user.id },
+            credentials: { email, password }
+          };
+        }
+        
+        // If sign in fails, check if user exists in auth.users via users table
+        const { data: existingAuthUser } = await supabase
+          .from('users')
+          .select('auth_id')
+          .eq('email', email)
+          .single();
+        
+        if (existingAuthUser?.auth_id) {
+          return {
+            authUser: { id: existingAuthUser.auth_id },
+            credentials: { email, password }
+          };
+        }
+      }
+      
       throw new Error(`Failed to create authentication: ${authError.message}`);
+    }
+
+    if (!authUser?.user?.id) {
+      throw new Error('Auth user created but no ID returned');
     }
 
     return {
@@ -165,10 +218,30 @@ export async function insertPatientRecord(
   userId?: string
 ): Promise<any> {
   try {
-    const fullName = `${registrationData.firstName} ${registrationData.lastName}`;
+    // Check if patient already exists with this UHID
+    const { data: existingPatient } = await supabase
+      .from('patients')
+      .select('*')
+      .eq('patient_id', uhid)
+      .single();
+    
+    if (existingPatient) {
+      console.log('Patient already exists, returning existing patient:', existingPatient.id);
+      return existingPatient;
+    }
+    
+    // Handle optional name fields - use UHID as fallback if no name provided
+    const firstName = registrationData.firstName?.trim() || '';
+    const lastName = registrationData.lastName?.trim() || '';
+    const fullName = firstName && lastName 
+      ? `${firstName} ${lastName}` 
+      : firstName || lastName || `Patient ${uhid}`;
     
     // Generate barcode ID
     const barcodeId = generateBarcodeId(uhid);
+    
+    // Generate QR code for the UHID
+    const qrCodeDataUrl = await generateQRCode(uhid);
     
     // Prepare admission date and time
     let admissionDateTime = null;
@@ -185,12 +258,12 @@ export async function insertPatientRecord(
       patient_id: uhid,
       // barcode_id field removed as it doesn't exist in the database schema
       name: fullName,
-      date_of_birth: registrationData.dateOfBirth,
-      gender: registrationData.gender.toLowerCase(),
+      date_of_birth: registrationData.dateOfBirth || null,
+      gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
       marital_status: registrationData.maritalStatus || null,
-      phone: registrationData.phone,
+      phone: registrationData.phone || null,
       email: registrationData.email || `${uhid}@annam.com`,
-      address: registrationData.address,
+      address: registrationData.address || null,
       
       // Medical Information
       blood_group: registrationData.bloodGroup || null,
@@ -203,8 +276,8 @@ export async function insertPatientRecord(
       // New Admission Information
       admission_date: admissionDateTime,
       admission_time: registrationData.admissionTime || null,
-      primary_complaint: registrationData.primaryComplaint,
-      admission_type: registrationData.admissionType,
+      primary_complaint: registrationData.primaryComplaint || null,
+      admission_type: registrationData.admissionType || null,
       referring_doctor_facility: registrationData.referringDoctorFacility || null,
       department_ward: registrationData.departmentWard || null,
       room_number: registrationData.roomNumber || null,
@@ -227,6 +300,9 @@ export async function insertPatientRecord(
       // Additional fields
       initial_symptoms: registrationData.initialSymptoms || null,
       referred_by: registrationData.referredBy || null,
+      
+      // QR Code
+      qr_code: qrCodeDataUrl,
       
       // Link to users table
       user_id: userId || null,
@@ -254,31 +330,125 @@ export async function insertPatientRecord(
 }
 
 /**
+ * Create a party record for the patient
+ * Note: Simplified to work with actual database schema
+ */
+export async function createPartyRecord(
+  uhid: string,
+  registrationData: PatientRegistrationData
+): Promise<string> {
+  try {
+    // Handle optional name fields - use UHID as fallback if no name provided
+    const firstName = registrationData.firstName?.trim() || '';
+    const lastName = registrationData.lastName?.trim() || '';
+    const fullName = firstName && lastName 
+      ? `${firstName} ${lastName}` 
+      : firstName || lastName || `Patient ${uhid}`;
+
+    // First, try to get the actual party table structure
+    const { data: existingParties, error: schemaError } = await supabase
+      .from('party')
+      .select('*')
+      .limit(1);
+
+    if (schemaError) {
+      console.error('Error checking party schema:', schemaError);
+      // If party table doesn't exist or has issues, skip party creation
+      // and generate a UUID to use as party_id
+      console.warn('Skipping party creation, generating UUID for party_id');
+      return crypto.randomUUID();
+    }
+
+    // Build party data based on available columns
+    const partyData: any = {
+      party_code: uhid,
+      party_type: 'patient',
+      status: 'active'
+    };
+
+    // Add optional fields if they exist in schema
+    if (existingParties && existingParties.length > 0) {
+      const sampleParty = existingParties[0];
+      if ('name' in sampleParty) partyData.name = fullName;
+      if ('party_name' in sampleParty) partyData.party_name = fullName;
+      if ('phone' in sampleParty) partyData.phone = registrationData.phone || null;
+      if ('email' in sampleParty) partyData.email = registrationData.email || `${uhid}@annam.com`;
+      if ('address' in sampleParty) partyData.address = registrationData.address || null;
+    }
+
+    const { data: party, error } = await supabase
+      .from('party')
+      .insert([partyData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating party record:', error);
+      throw new Error(`Failed to create party record: ${error.message}`);
+    }
+
+    return party.id;
+  } catch (error) {
+    console.error('Error creating party record:', error);
+    throw error;
+  }
+}
+
+/**
  * Link the Supabase auth user to the users table for role management
  */
 export async function linkAuthUserToPatient(
-  authUserId: string, 
+  authUserId: string | null, 
   uhid: string, 
-  registrationData: PatientRegistrationData
+  registrationData: PatientRegistrationData,
+  partyId?: string
 ): Promise<any> {
   try {
-    const fullName = `${registrationData.firstName} ${registrationData.lastName}`;
+    const firstName = registrationData.firstName?.trim() || '';
+    const lastName = registrationData.lastName?.trim() || '';
+    const fullName = firstName && lastName 
+      ? `${firstName} ${lastName}` 
+      : firstName || lastName || `Patient ${uhid}`;
     
-    const userData = {
-      auth_id: authUserId,
-      employee_id: uhid, // Using UHID as employee_id for patients
+    const email = registrationData.email || `${uhid}@annam.com`;
+    
+    // Check if user already exists with this UHID or email
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('*')
+      .or(`employee_id.eq.${uhid},email.eq.${email}`)
+      .single();
+    
+    if (existingUser) {
+      console.log('User already exists, returning existing user:', existingUser.id);
+      return existingUser;
+    }
+    
+    const userData: any = {
+      employee_id: uhid,
       name: fullName,
-      email: registrationData.email || `${uhid}@annam.com`,
+      email: email,
+      phone: registrationData.phone || null,
+      address: registrationData.address || null,
       role: 'patient',
-      phone: registrationData.phone,
-      address: registrationData.address,
       status: 'active',
       permissions: {
-        patient_portal: true,
         view_own_records: true,
-        book_appointments: true
+        book_appointments: true,
+        view_prescriptions: true,
+        view_bills: true
       }
     };
+
+    // Only add auth_id if it's provided (optional field)
+    if (authUserId) {
+      userData.auth_id = authUserId;
+    }
+
+    // Only add party_id if it's provided (optional field)
+    if (partyId) {
+      userData.party_id = partyId;
+    }
 
     const { data: user, error } = await supabase
       .from('users')
@@ -287,7 +457,7 @@ export async function linkAuthUserToPatient(
       .single();
 
     if (error) {
-      console.error('Error linking auth user to patient:', error);
+      console.error('Error creating user record:', error);
       throw new Error(`Failed to create user record: ${error.message}`);
     }
 
@@ -360,19 +530,44 @@ export async function registerNewPatient(
     const uhid = preGeneratedUHID || await generateUHID();
     console.log('Using UHID:', uhid);
 
-    // Step 2: Create authentication credentials
-    const { authUser, credentials } = await createPatientAuthCredentials(uhid);
-    console.log('Created auth user:', authUser?.id);
+    // Step 3: Create party record (optional - may not exist in all schemas)
+    let partyId: string | undefined;
+    try {
+      partyId = await createPartyRecord(uhid, registrationData);
+      console.log('Created party record:', partyId);
+    } catch (partyError) {
+      console.warn('Party creation failed, continuing without party_id:', partyError);
+      // Continue without party_id - it's optional
+      partyId = undefined; // Explicitly set to undefined
+    }
 
-    // Step 3: Create user record in users table
-    const userRecord = await linkAuthUserToPatient(authUser.id, uhid, registrationData);
+    // Step 2: Create authentication credentials (optional - may fail)
+    let authUserId: string | null = null;
+    let credentials: { email: string; password: string } | undefined;
+    
+    try {
+      const authResult = await createPatientAuthCredentials(uhid);
+      authUserId = authResult.authUser?.id || null;
+      credentials = authResult.credentials;
+      console.log('Created auth user:', authUserId);
+    } catch (authError) {
+      console.warn('Auth creation failed, continuing without auth:', authError);
+      // Continue without auth - patient can still be registered
+      credentials = {
+        email: `${uhid}@annam.com`,
+        password: 'password'
+      };
+    }
+
+    // Step 3: Create user record in users table (auth_id and party_id are now optional)
+    const userRecord = await linkAuthUserToPatient(authUserId, uhid, registrationData, partyId);
     console.log('Created user record:', userRecord.id);
 
-    // Step 4: Insert patient record with user_id link
+    // Step 5: Insert patient record with user_id link
     const patient = await insertPatientRecord(uhid, registrationData, userRecord.id);
     console.log('Created patient record:', patient.id);
 
-    // Step 5: Create initial appointment if symptoms provided
+    // Step 6: Create initial appointment if symptoms provided
     if (registrationData.initialSymptoms?.trim() || registrationData.primaryComplaint?.trim()) {
       const appointment = await createInitialAppointment(patient.id, registrationData);
       if (appointment) {
@@ -384,6 +579,7 @@ export async function registerNewPatient(
       success: true,
       patient,
       uhid,
+      qrCode: patient.qr_code, // Include QR code in response
       credentials,
     };
 
@@ -443,56 +639,65 @@ export async function getPatientByUHID(uhid: string): Promise<any> {
 }
 
 /**
- * Get patient with related data (appointments, bills, etc.)
+ * Get patient with related data including appointments
  */
 export async function getPatientWithRelatedData(uhid: string): Promise<any> {
   try {
-    const { data: patient, error } = await supabase
-      .from('patients')
-      .select(`
-        *,
-        users:user_id (
-          id,
-          name,
-          email,
-          role,
-          status,
-          permissions
-        ),
-        appointments:appointments(
-          id,
-          appointment_id,
-          appointment_date,
-          appointment_time,
-          type,
-          status,
-          symptoms,
-          diagnosis,
-          doctor:doctors(
-            id,
-            user:users(name, specialization)
-          )
-        ),
-        bed_allocations:bed_allocations(
-          id,
-          admission_date,
-          discharge_date,
-          admission_type,
-          status,
-          bed:beds(bed_number, room_number, bed_type),
-          doctor:doctors(
-            id,
-            user:users(name, specialization)
-          )
-        )
-      `)
-      .eq('patient_id', uhid)
-      .single();
-
-    if (error) {
-      console.error('Error fetching patient with related data:', error);
-      throw new Error(`Patient not found: ${error.message}`);
+    // First get the basic patient data
+    const patient = await getPatientByUHID(uhid);
+    
+    if (!patient) {
+      throw new Error('Patient not found');
     }
+
+    // Fetch appointments from the new database structure
+    try {
+      const { data: appointments, error: appointmentsError } = await supabase
+        .from('appointment')
+        .select(`
+          *,
+          encounter:encounter(
+            patient_id,
+            clinician_id,
+            type_id,
+            start_at,
+            doctors:clinician_id(
+              id,
+              specialization,
+              user:users(name, phone, email)
+            )
+          )
+        `)
+        .eq('encounter.patient_id', patient.id)
+        .order('scheduled_at', { ascending: false });
+
+      if (!appointmentsError && appointments) {
+        // Transform appointments to match the expected format
+        patient.appointments = appointments.map((apt: any) => ({
+          id: apt.id,
+          appointment_date: apt.scheduled_at ? new Date(apt.scheduled_at).toISOString().split('T')[0] : null,
+          appointment_time: apt.scheduled_at ? new Date(apt.scheduled_at).toTimeString().split(' ')[0] : null,
+          type: 'Consultation',
+          status: 'scheduled',
+          duration_minutes: apt.duration_minutes,
+          doctor: apt.encounter?.doctors ? {
+            id: apt.encounter.doctors.id,
+            specialization: apt.encounter.doctors.specialization,
+            user: apt.encounter.doctors.user
+          } : null,
+          symptoms: null,
+          notes: apt.notes
+        }));
+      } else {
+        patient.appointments = [];
+      }
+    } catch (appointmentError) {
+      console.warn('Error fetching appointments:', appointmentError);
+      patient.appointments = [];
+    }
+
+    // Initialize other related data arrays
+    patient.bed_allocations = [];
 
     return patient;
   } catch (error) {
@@ -545,17 +750,7 @@ export async function getAllPatients(
 
     let query = supabase
       .from('patients')
-      .select(`
-        *,
-        users:user_id (
-          id,
-          name,
-          email,
-          role,
-          status,
-          permissions
-        )
-      `, { count: 'exact' });
+      .select('*', { count: 'exact' });
 
     // Apply filters
     if (status) {
@@ -590,31 +785,37 @@ export async function getAllPatients(
 
 /**
  * Update patient admission status
- * @param uhid - Patient's unique hospital ID
+ * @param patientId - Patient's unique hospital ID or database ID
  * @param isAdmitted - Whether the patient is admitted
  * @returns Promise with updated patient data
  */
 export async function updatePatientAdmissionStatus(
-  uhid: string,
+  patientId: string,
   isAdmitted: boolean
 ): Promise<any> {
   try {
+    console.log('Updating patient admission status for:', patientId, { isAdmitted });
+    
     const { data, error } = await supabase
       .from('patients')
       .update({ 
         is_admitted: isAdmitted,
         updated_at: new Date().toISOString()
       })
-      .eq('patient_id', uhid)
-      .select()
-      .single();
+      .eq('patient_id', patientId)
+      .select();
 
     if (error) {
       console.error('Error updating patient admission status:', error);
       throw new Error(`Failed to update admission status: ${error.message}`);
     }
 
-    return data;
+    if (!data || data.length === 0) {
+      throw new Error(`Patient with ID ${patientId} not found`);
+    }
+
+    console.log('Patient admission status updated successfully:', data[0]);
+    return data[0];
   } catch (error) {
     console.error('Error updating patient admission status:', error);
     throw error;
@@ -623,31 +824,37 @@ export async function updatePatientAdmissionStatus(
 
 /**
  * Update patient critical status
- * @param uhid - Patient's unique hospital ID
+ * @param patientId - Patient's unique hospital ID or database ID
  * @param isCritical - Whether the patient is in critical condition
  * @returns Promise with updated patient data
  */
 export async function updatePatientCriticalStatus(
-  uhid: string,
+  patientId: string,
   isCritical: boolean
 ): Promise<any> {
   try {
+    console.log('Updating patient critical status for:', patientId, { isCritical });
+    
     const { data, error } = await supabase
       .from('patients')
       .update({ 
         is_critical: isCritical,
         updated_at: new Date().toISOString()
       })
-      .eq('patient_id', uhid)
-      .select()
-      .single();
+      .eq('patient_id', patientId)
+      .select();
 
     if (error) {
       console.error('Error updating patient critical status:', error);
       throw new Error(`Failed to update critical status: ${error.message}`);
     }
 
-    return data;
+    if (!data || data.length === 0) {
+      throw new Error(`Patient with ID ${patientId} not found`);
+    }
+
+    console.log('Patient critical status updated successfully:', data[0]);
+    return data[0];
   } catch (error) {
     console.error('Error updating patient critical status:', error);
     throw error;
@@ -656,17 +863,38 @@ export async function updatePatientCriticalStatus(
 
 /**
  * Update both admission and critical status
- * @param uhid - Patient's unique hospital ID
+ * @param patientId - Patient's unique hospital ID or database ID
  * @param isAdmitted - Whether the patient is admitted
  * @param isCritical - Whether the patient is in critical condition
  * @returns Promise with updated patient data
  */
 export async function updatePatientStatus(
-  uhid: string,
+  patientId: string,
   isAdmitted?: boolean,
   isCritical?: boolean
 ): Promise<any> {
   try {
+    console.log('Updating patient status for:', patientId, { isAdmitted, isCritical });
+    
+    // First verify the patient exists
+    const { data: existingPatient, error: fetchError } = await supabase
+      .from('patients')
+      .select('id, patient_id, is_admitted, is_critical')
+      .eq('patient_id', patientId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching patient:', fetchError);
+      throw new Error(`Patient lookup failed: ${fetchError.message}`);
+    }
+
+    if (!existingPatient) {
+      console.error('Patient not found with patient_id:', patientId);
+      throw new Error(`Patient with ID ${patientId} not found`);
+    }
+
+    console.log('Found patient:', existingPatient);
+    
     const updateData: any = {
       updated_at: new Date().toISOString()
     };
@@ -679,19 +907,31 @@ export async function updatePatientStatus(
       updateData.is_critical = isCritical;
     }
 
-    const { data, error } = await supabase
+    console.log('Update data:', updateData);
+
+    // Update using patient_id field
+    const { data, error, count } = await supabase
       .from('patients')
       .update(updateData)
-      .eq('patient_id', uhid)
-      .select()
-      .single();
+      .eq('patient_id', patientId)
+      .select();
+
+    console.log('Update response:', { data, error, count });
 
     if (error) {
       console.error('Error updating patient status:', error);
       throw new Error(`Failed to update patient status: ${error.message}`);
     }
 
-    return data;
+    if (!data || data.length === 0) {
+      console.error('Update returned no data. This might be an RLS (Row Level Security) issue.');
+      console.error('The SELECT query worked but UPDATE did not return data.');
+      console.error('Check your Supabase RLS policies for the patients table.');
+      throw new Error(`Update returned no data for patient ID ${patientId}. This may be a permissions issue (RLS).`);
+    }
+
+    console.log('Patient status updated successfully:', data[0]);
+    return data[0];
   } catch (error) {
     console.error('Error updating patient status:', error);
     throw error;

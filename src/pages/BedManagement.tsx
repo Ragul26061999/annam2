@@ -1,93 +1,162 @@
-import React, { useState } from 'react';
-import { Search, Filter, Plus, ArrowUpRight, Clock, AlertTriangle, Bed as BedIcon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, Plus, ArrowUpRight, Clock, AlertTriangle, Bed as BedIcon, Loader2 } from 'lucide-react';
+import { getAllBeds, getBedStats, allocateBed, dischargeBed, transferBed, BedStats, Bed } from '../lib/bedAllocationService';
+import { getAllPatients } from '../lib/patientService';
+import { getAllDoctorsSimple } from '../lib/doctorService';
 
 const BedManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [beds, setBeds] = useState<Bed[]>([]);
+  const [bedStats, setBedStats] = useState<BedStats>({
+    total: 0,
+    available: 0,
+    occupied: 0,
+    maintenance: 0,
+    reserved: 0,
+    occupancyRate: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
 
-  // Mock data for bed status
-  const beds = {
-    icu: [
-      { id: 'ICU-01', patient: 'James Wilson', admissionDate: '2023-05-10', doctor: 'Dr. Robert Chen', status: 'Occupied', type: 'Critical' },
-      { id: 'ICU-02', patient: null, admissionDate: null, doctor: null, status: 'Available', type: 'Critical' },
-      { id: 'ICU-03', patient: 'Sarah Johnson', admissionDate: '2023-05-12', doctor: 'Dr. Lisa Wong', status: 'Occupied', type: 'Critical' },
-      { id: 'ICU-04', patient: 'Michael Rodriguez', admissionDate: '2023-05-11', doctor: 'Dr. James Wilson', status: 'Occupied', type: 'Critical' }
-    ],
-    general: [
-      { id: 'GW-01', patient: 'Emma Watson', admissionDate: '2023-05-09', doctor: 'Dr. Robert Chen', status: 'Occupied', type: 'General' },
-      { id: 'GW-02', patient: 'David Kim', admissionDate: '2023-05-08', doctor: 'Dr. Lisa Wong', status: 'Occupied', type: 'General' },
-      { id: 'GW-03', patient: null, admissionDate: null, doctor: null, status: 'Maintenance', type: 'General' },
-      { id: 'GW-04', patient: null, admissionDate: null, doctor: null, status: 'Available', type: 'General' },
-      { id: 'GW-05', patient: 'Olivia Martinez', admissionDate: '2023-05-10', doctor: 'Dr. James Wilson', status: 'Occupied', type: 'General' },
-      { id: 'GW-06', patient: null, admissionDate: null, doctor: null, status: 'Available', type: 'General' }
-    ],
-    emergency: [
-      { id: 'ER-01', patient: 'William Johnson', admissionDate: '2023-05-13', doctor: 'Dr. Robert Chen', status: 'Occupied', type: 'Emergency' },
-      { id: 'ER-02', patient: null, admissionDate: null, doctor: null, status: 'Available', type: 'Emergency' },
-      { id: 'ER-03', patient: null, admissionDate: null, doctor: null, status: 'Available', type: 'Emergency' },
-      { id: 'ER-04', patient: 'Noah Parker', admissionDate: '2023-05-13', doctor: 'Dr. Lisa Wong', status: 'Occupied', type: 'Emergency' }
-    ]
+  useEffect(() => {
+    loadBedData();
+    loadPatients();
+    loadDoctors();
+  }, []);
+
+  const loadBedData = async () => {
+    try {
+      setLoading(true);
+      const [bedsData, statsData] = await Promise.all([
+        getAllBeds({ limit: 100 }),
+        getBedStats()
+      ]);
+      setBeds(bedsData.beds);
+      setBedStats(statsData);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading bed data:', err);
+      setError('Failed to load bed data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPatients = async () => {
+    try {
+      const patientsData = await getAllPatients({ limit: 100 });
+      setPatients(patientsData.patients);
+    } catch (err) {
+      console.error('Error loading patients:', err);
+    }
+  };
+
+  const loadDoctors = async () => {
+    try {
+      const doctorsData = await getAllDoctorsSimple();
+      setDoctors(doctorsData);
+    } catch (err) {
+      console.error('Error loading doctors:', err);
+    }
   };
 
   const getBedStatusColor = (status: string) => {
-    switch (status) {
-      case 'Occupied':
+    switch (status.toLowerCase()) {
+      case 'occupied':
         return 'bg-red-50 text-red-600';
-      case 'Available':
+      case 'available':
         return 'bg-green-50 text-green-600';
-      case 'Maintenance':
+      case 'maintenance':
         return 'bg-orange-50 text-orange-600';
+      case 'reserved':
+        return 'bg-blue-50 text-blue-600';
       default:
         return 'bg-gray-50 text-gray-600';
     }
   };
 
-  const BedCard = ({ bed }: { bed: any }) => (
-    <div className="card">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <span className="text-lg font-medium text-gray-900">{bed.id}</span>
-          <span className={`ml-3 px-2 py-1 rounded-lg text-xs font-medium ${getBedStatusColor(bed.status)}`}>
-            {bed.status}
-          </span>
+  const groupBedsByType = (beds: Bed[]) => {
+    return beds.reduce((acc, bed) => {
+      const type = bed.bed_type || 'general';
+      if (!acc[type]) {
+        acc[type] = [];
+      }
+      acc[type].push(bed);
+      return acc;
+    }, {} as Record<string, Bed[]>);
+  };
+
+  const filteredBeds = beds.filter(bed => 
+    bed.bed_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    bed.room_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    bed.bed_type.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const groupedBeds = groupBedsByType(filteredBeds);
+
+  const BedCard = ({ bed }: { bed: Bed }) => {
+    const currentAllocation = (bed as any).current_allocation?.find((alloc: any) => alloc.status === 'active');
+    
+    return (
+      <div className="card">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <span className="text-lg font-medium text-gray-900">{bed.bed_number}</span>
+            <span className="text-sm text-gray-500 ml-2">Room {bed.room_number}</span>
+            <span className={`ml-3 px-2 py-1 rounded-lg text-xs font-medium ${getBedStatusColor(bed.status)}`}>
+              {bed.status.charAt(0).toUpperCase() + bed.status.slice(1)}
+            </span>
+          </div>
+          {bed.status === 'occupied' && (
+            <button className="text-gray-400 hover:text-orange-400">
+              <ArrowUpRight size={20} />
+            </button>
+          )}
         </div>
-        {bed.status === 'Occupied' && (
-          <button className="text-gray-400 hover:text-orange-400">
-            <ArrowUpRight size={20} />
+
+        {bed.status === 'occupied' && currentAllocation ? (
+          <>
+            <div className="space-y-2">
+              <p className="font-medium text-gray-900">{currentAllocation.patient?.name || 'Unknown Patient'}</p>
+              <p className="text-sm text-gray-500">{currentAllocation.doctor?.user?.name || 'Unknown Doctor'}</p>
+              <div className="flex items-center text-xs text-gray-500">
+                <Clock size={12} className="mr-1" />
+                Admitted {new Date(currentAllocation.admission_date).toLocaleDateString()}
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end space-x-2">
+              <button className="btn-secondary text-sm py-1 px-3">Transfer</button>
+              <button className="btn-primary text-sm py-1 px-3">Discharge</button>
+            </div>
+          </>
+        ) : bed.status === 'available' ? (
+          <button 
+            className="btn-primary w-full mt-4"
+            onClick={() => {
+              setSelectedBed(bed);
+              setShowAssignModal(true);
+            }}
+          >
+            Assign Patient
           </button>
+        ) : bed.status === 'maintenance' ? (
+          <div className="flex items-center mt-4 text-sm text-orange-500">
+            <AlertTriangle size={14} className="mr-1" />
+            Under maintenance
+          </div>
+        ) : (
+          <div className="flex items-center mt-4 text-sm text-blue-500">
+            <Clock size={14} className="mr-1" />
+            Reserved
+          </div>
         )}
       </div>
-
-      {bed.status === 'Occupied' ? (
-        <>
-          <div className="space-y-2">
-            <p className="font-medium text-gray-900">{bed.patient}</p>
-            <p className="text-sm text-gray-500">{bed.doctor}</p>
-            <div className="flex items-center text-xs text-gray-500">
-              <Clock size={12} className="mr-1" />
-              Admitted {bed.admissionDate}
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end space-x-2">
-            <button className="btn-secondary text-sm py-1 px-3">Transfer</button>
-            <button className="btn-primary text-sm py-1 px-3">Discharge</button>
-          </div>
-        </>
-      ) : bed.status === 'Available' ? (
-        <button 
-          className="btn-primary w-full mt-4"
-          onClick={() => setShowAssignModal(true)}
-        >
-          Assign Patient
-        </button>
-      ) : (
-        <div className="flex items-center mt-4 text-sm text-orange-500">
-          <AlertTriangle size={14} className="mr-1" />
-          Under maintenance
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -96,13 +165,29 @@ const BedManagement: React.FC = () => {
         <p className="text-gray-500 mt-1">Monitor and manage hospital bed occupancy</p>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
+            <span className="text-red-800">{error}</span>
+            <button
+              onClick={loadBedData}
+              className="ml-auto px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Quick Stats */}
       <div className="grid grid-cols-4 gap-6">
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-gray-500">Total Beds</p>
-              <h3 className="text-2xl font-medium text-gray-900 mt-1">14</h3>
+              <h3 className="text-2xl font-medium text-gray-900 mt-1">{bedStats.total}</h3>
             </div>
             <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
               <BedIcon className="text-gray-500" size={20} />
@@ -117,14 +202,14 @@ const BedManagement: React.FC = () => {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-gray-500">Occupied</p>
-              <h3 className="text-2xl font-medium text-gray-900 mt-1">8</h3>
+              <h3 className="text-2xl font-medium text-gray-900 mt-1">{bedStats.occupied}</h3>
             </div>
             <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
               <BedIcon className="text-red-500" size={20} />
             </div>
           </div>
           <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="bg-red-500 h-full" style={{ width: '57%' }}></div>
+            <div className="bg-red-500 h-full" style={{ width: `${bedStats.occupancyRate}%` }}></div>
           </div>
         </div>
 
@@ -132,14 +217,14 @@ const BedManagement: React.FC = () => {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-gray-500">Available</p>
-              <h3 className="text-2xl font-medium text-gray-900 mt-1">5</h3>
+              <h3 className="text-2xl font-medium text-gray-900 mt-1">{bedStats.available}</h3>
             </div>
             <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
               <BedIcon className="text-green-500" size={20} />
             </div>
           </div>
           <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="bg-green-500 h-full" style={{ width: '36%' }}></div>
+            <div className="bg-green-500 h-full" style={{ width: `${bedStats.total > 0 ? (bedStats.available / bedStats.total) * 100 : 0}%` }}></div>
           </div>
         </div>
 
@@ -147,14 +232,14 @@ const BedManagement: React.FC = () => {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-gray-500">Maintenance</p>
-              <h3 className="text-2xl font-medium text-gray-900 mt-1">1</h3>
+              <h3 className="text-2xl font-medium text-gray-900 mt-1">{bedStats.maintenance}</h3>
             </div>
             <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
               <AlertTriangle className="text-orange-500" size={20} />
             </div>
           </div>
           <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="bg-orange-500 h-full" style={{ width: '7%' }}></div>
+            <div className="bg-orange-500 h-full" style={{ width: `${bedStats.total > 0 ? (bedStats.maintenance / bedStats.total) * 100 : 0}%` }}></div>
           </div>
         </div>
       </div>
@@ -183,35 +268,41 @@ const BedManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* ICU Section */}
-      <div>
-        <h2 className="text-gray-900 mb-4">Intensive Care Unit</h2>
-        <div className="grid grid-cols-4 gap-6">
-          {beds.icu.map((bed) => (
-            <BedCard key={bed.id} bed={bed} />
-          ))}
+      {/* Loading State */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+          <span className="ml-2 text-gray-600">Loading beds...</span>
         </div>
-      </div>
-
-      {/* General Ward Section */}
-      <div>
-        <h2 className="text-gray-900 mb-4">General Ward</h2>
-        <div className="grid grid-cols-4 gap-6">
-          {beds.general.map((bed) => (
-            <BedCard key={bed.id} bed={bed} />
+      ) : (
+        <>
+          {/* Bed Sections by Type */}
+          {Object.entries(groupedBeds).map(([bedType, bedsInType]) => (
+            <div key={bedType}>
+              <h2 className="text-gray-900 mb-4 capitalize">
+                {bedType === 'icu' ? 'Intensive Care Unit' : 
+                 bedType === 'general' ? 'General Ward' :
+                 bedType === 'emergency' ? 'Emergency Room' :
+                 bedType.replace('_', ' ')} ({bedsInType.length})
+              </h2>
+              <div className="grid grid-cols-4 gap-6">
+                {bedsInType.map((bed) => (
+                  <BedCard key={bed.id} bed={bed} />
+                ))}
+              </div>
+            </div>
           ))}
-        </div>
-      </div>
-
-      {/* Emergency Section */}
-      <div>
-        <h2 className="text-gray-900 mb-4">Emergency Room</h2>
-        <div className="grid grid-cols-4 gap-6">
-          {beds.emergency.map((bed) => (
-            <BedCard key={bed.id} bed={bed} />
-          ))}
-        </div>
-      </div>
+          
+          {/* No beds message */}
+          {filteredBeds.length === 0 && (
+            <div className="text-center py-12">
+              <BedIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No beds found</h3>
+              <p className="text-gray-500">Try adjusting your search criteria.</p>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Assign Patient Modal */}
       {showAssignModal && (
@@ -239,22 +330,36 @@ const BedManagement: React.FC = () => {
                   <div>
                     <label htmlFor="patient" className="block text-sm font-medium text-gray-700">Patient</label>
                     <select id="patient" className="input-field mt-1">
-                      <option>Select Patient</option>
-                      <option>John Smith</option>
-                      <option>Maria Garcia</option>
-                      <option>Robert Johnson</option>
+                      <option value="">Select Patient</option>
+                      {patients.map((patient) => (
+                        <option key={patient.id} value={patient.id}>
+                          {patient.name} - {patient.patient_id}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
                     <label htmlFor="doctor" className="block text-sm font-medium text-gray-700">Attending Doctor</label>
                     <select id="doctor" className="input-field mt-1">
-                      <option>Select Doctor</option>
-                      <option>Dr. Robert Chen</option>
-                      <option>Dr. Lisa Wong</option>
-                      <option>Dr. James Wilson</option>
+                      <option value="">Select Doctor</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>
+                          {doctor.user?.name} - {doctor.specialization}
+                        </option>
+                      ))}
                     </select>
                   </div>
+
+                  {selectedBed && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Selected Bed</label>
+                      <div className="mt-1 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">{selectedBed.bed_number}</p>
+                        <p className="text-xs text-gray-500">Room {selectedBed.room_number} • {selectedBed.bed_type}</p>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label htmlFor="admissionDate" className="block text-sm font-medium text-gray-700">Admission Date</label>

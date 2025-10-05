@@ -125,10 +125,10 @@ export default function PatientDetailsPage({ params }: { params: Promise<{ id: s
       const patientData = await getPatientWithRelatedData(unwrappedParams.id);
       setPatient(patientData);
       
-      // Fetch vitals data
+      // Fetch vitals data using the database ID
       setVitalsLoading(true);
       try {
-        const vitalsData = await getPatientVitals(unwrappedParams.id);
+        const vitalsData = await getPatientVitals(patientData.id);
         setVitals(vitalsData);
       } catch (vitalsError) {
         console.error('Error fetching vitals data:', vitalsError);
@@ -136,10 +136,10 @@ export default function PatientDetailsPage({ params }: { params: Promise<{ id: s
         setVitalsLoading(false);
       }
 
-      // Fetch medical history data
+      // Fetch medical history data using the database ID
       setHistoryLoading(true);
       try {
-        const historyData = await getMedicalHistory(unwrappedParams.id);
+        const historyData = await getMedicalHistory(patientData.id);
         setMedicalHistory(historyData);
       } catch (historyError) {
         console.error('Error fetching medical history data:', historyError);
