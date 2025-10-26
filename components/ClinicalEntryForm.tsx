@@ -13,9 +13,12 @@ import {
   Save,
   Loader2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Eye
 } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
+import ScanDocumentUpload from './ScanDocumentUpload';
 
 interface ClinicalEntryFormProps {
   isOpen: boolean;
@@ -31,6 +34,7 @@ interface ClinicalEntryFormProps {
 type TabType = 'notes' | 'scans' | 'prescriptions' | 'injections' | 'followup' | 'surgery';
 
 interface ScanOrder {
+  id?: string;
   scan_type: string;
   scan_name: string;
   body_part: string;
@@ -40,6 +44,7 @@ interface ScanOrder {
 }
 
 interface PrescriptionOrder {
+  medication_id: string; // Link to medications table
   medication_name: string;
   generic_name: string;
   dosage: string;
@@ -79,15 +84,14 @@ export default function ClinicalEntryForm({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Clinical Notes State
+  // Clinical Notes State - Optimized and consolidated
   const [clinicalNotes, setClinicalNotes] = useState({
     chief_complaint: '',
     history_of_present_illness: '',
     physical_examination: '',
     assessment: '',
-    clinical_impression: '',
-    doctor_notes: '',
-    follow_up_notes: ''
+    plan: '', // Treatment plan
+    doctor_notes: '' // Main comprehensive notes
   });
 
   // Scans State
@@ -104,6 +108,7 @@ export default function ClinicalEntryForm({
   // Prescriptions State
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>([]);
   const [currentPrescription, setCurrentPrescription] = useState<PrescriptionOrder>({
+    medication_id: '',
     medication_name: '',
     generic_name: '',
     dosage: '',
@@ -151,14 +156,46 @@ export default function ClinicalEntryForm({
     notes: ''
   });
 
+  // Scan Upload State
+  const [showScanUpload, setShowScanUpload] = useState(false);
+  const [selectedScanForUpload, setSelectedScanForUpload] = useState<ScanOrder | null>(null);
+
+  // Medications list for prescription dropdown
+  const [medications, setMedications] = useState<any[]>([]);
+  const [loadingMedications, setLoadingMedications] = useState(false);
+
   const tabs = [
-    { id: 'notes' as TabType, label: 'Doctor Notes', icon: FileText },
-    { id: 'scans' as TabType, label: 'Scans Required', icon: Scan },
+    { id: 'notes' as TabType, label: 'Clinical Notes', icon: FileText },
+    { id: 'scans' as TabType, label: 'Scans & Imaging', icon: Scan },
     { id: 'prescriptions' as TabType, label: 'Prescriptions', icon: Pill },
     { id: 'injections' as TabType, label: 'Injections', icon: Syringe },
     { id: 'followup' as TabType, label: 'Follow-up', icon: Calendar },
     { id: 'surgery' as TabType, label: 'Surgery', icon: Scissors }
   ];
+
+  // Load medications on mount
+  React.useEffect(() => {
+    loadMedications();
+  }, []);
+
+  const loadMedications = async () => {
+    setLoadingMedications(true);
+    try {
+      const { data, error } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('status', 'active')
+        .order('name');
+      
+      if (!error && data) {
+        setMedications(data);
+      }
+    } catch (err) {
+      console.error('Error loading medications:', err);
+    } finally {
+      setLoadingMedications(false);
+    }
+  };
 
   const handleAddScan = () => {
     if (currentScan.scan_type && currentScan.scan_name && currentScan.clinical_indication) {
@@ -175,9 +212,10 @@ export default function ClinicalEntryForm({
   };
 
   const handleAddPrescription = () => {
-    if (currentPrescription.medication_name && currentPrescription.dosage && currentPrescription.frequency) {
+    if (currentPrescription.medication_id && currentPrescription.dosage && currentPrescription.frequency) {
       setPrescriptions([...prescriptions, currentPrescription]);
       setCurrentPrescription({
+        medication_id: '',
         medication_name: '',
         generic_name: '',
         dosage: '',
@@ -189,6 +227,26 @@ export default function ClinicalEntryForm({
         instructions: '',
         food_instructions: ''
       });
+    }
+  };
+
+  const handleMedicationSelect = (medicationId: string) => {
+    const medication = medications.find(m => m.id === medicationId);
+    if (medication) {
+      setCurrentPrescription({
+        ...currentPrescription,
+        medication_id: medication.id,
+        medication_name: medication.name,
+        generic_name: medication.generic_name || '',
+        form: medication.dosage_form || 'tablet'
+      });
+    }
+  };
+
+  const handleUploadScanDocument = (scan: ScanOrder, index: number) => {
+    if (scan.id) {
+      setSelectedScanForUpload(scan as any);
+      setShowScanUpload(true);
     }
   };
 
@@ -423,41 +481,28 @@ export default function ClinicalEntryForm({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Clinical Impression
+                    Treatment Plan
                   </label>
                   <textarea
-                    value={clinicalNotes.clinical_impression}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, clinical_impression: e.target.value })}
+                    value={clinicalNotes.plan}
+                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, plan: e.target.value })}
                     rows={3}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Overall clinical impression"
+                    placeholder="Treatment plan and recommendations"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Doctor Notes <span className="text-red-500">*</span>
+                    Comprehensive Doctor Notes <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={clinicalNotes.doctor_notes}
                     onChange={(e) => setClinicalNotes({ ...clinicalNotes, doctor_notes: e.target.value })}
-                    rows={5}
+                    rows={6}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Detailed doctor notes (required)"
+                    placeholder="Detailed clinical notes including diagnosis, observations, and any additional information (required)"
                     required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Follow-up Notes
-                  </label>
-                  <textarea
-                    value={clinicalNotes.follow_up_notes}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, follow_up_notes: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Notes for follow-up"
                   />
                 </div>
               </div>
@@ -561,28 +606,46 @@ export default function ClinicalEntryForm({
                 <div className="space-y-3">
                   <h3 className="text-lg font-semibold text-gray-900">Ordered Scans</h3>
                   {scans.map((scan, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-semibold text-gray-900">{scan.scan_name}</span>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            scan.urgency === 'emergency' ? 'bg-red-100 text-red-700' :
-                            scan.urgency === 'stat' ? 'bg-orange-100 text-orange-700' :
-                            scan.urgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                            {scan.urgency}
-                          </span>
+                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold text-gray-900">{scan.scan_name}</span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              scan.urgency === 'emergency' ? 'bg-red-100 text-red-700' :
+                              scan.urgency === 'stat' ? 'bg-orange-100 text-orange-700' :
+                              scan.urgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {scan.urgency}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{scan.scan_type} - {scan.body_part}</p>
+                          <p className="text-sm text-gray-500 mt-1">{scan.clinical_indication}</p>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">{scan.scan_type} - {scan.body_part}</p>
-                        <p className="text-sm text-gray-500 mt-1">{scan.clinical_indication}</p>
+                        <button
+                          onClick={() => setScans(scans.filter((_, i) => i !== index))}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setScans(scans.filter((_, i) => i !== index))}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => scan.id && handleUploadScanDocument(scan, index)}
+                            disabled={!scan.id}
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={!scan.id ? "Save clinical data first to upload documents" : "Upload scan documents"}
+                          >
+                            <Upload size={16} />
+                            <span>Upload Documents</span>
+                          </button>
+                          {!scan.id && (
+                            <span className="text-xs text-gray-500 italic">Save clinical data first</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -597,26 +660,34 @@ export default function ClinicalEntryForm({
                 <h3 className="text-lg font-semibold text-gray-900">Add Prescription</h3>
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Medication Name</label>
-                    <input
-                      type="text"
-                      value={currentPrescription.medication_name}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, medication_name: e.target.value })}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Select Medication <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={currentPrescription.medication_id}
+                      onChange={(e) => handleMedicationSelect(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Paracetamol"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Generic Name</label>
-                    <input
-                      type="text"
-                      value={currentPrescription.generic_name}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, generic_name: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Generic name"
-                    />
+                      disabled={loadingMedications}
+                    >
+                      <option value="">Select medication from inventory</option>
+                      {medications.map((med) => (
+                        <option key={med.id} value={med.id}>
+                          {med.name} ({med.generic_name}) - {med.strength} - {med.dosage_form}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingMedications && (
+                      <p className="text-sm text-gray-500 mt-1">Loading medications...</p>
+                    )}
+                    {currentPrescription.medication_id && (
+                      <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-blue-900">
+                          <span className="font-semibold">Selected:</span> {currentPrescription.medication_name}
+                          {currentPrescription.generic_name && ` (${currentPrescription.generic_name})`}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1136,6 +1207,24 @@ export default function ClinicalEntryForm({
           </div>
         </div>
       </div>
+
+      {/* Scan Document Upload Modal */}
+      {showScanUpload && selectedScanForUpload && selectedScanForUpload.id && (
+        <ScanDocumentUpload
+          isOpen={showScanUpload}
+          onClose={() => {
+            setShowScanUpload(false);
+            setSelectedScanForUpload(null);
+          }}
+          scanOrder={selectedScanForUpload as any}
+          patientId={patientId}
+          encounterId={encounterId}
+          onSuccess={() => {
+            setShowScanUpload(false);
+            setSelectedScanForUpload(null);
+          }}
+        />
+      )}
     </div>
   );
 }

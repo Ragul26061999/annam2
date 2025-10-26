@@ -24,6 +24,10 @@ import {
   getMedications, 
   getPharmacyBills 
 } from '@/src/lib/pharmacyService'
+import MedicineEntryForm from '@/src/components/MedicineEntryForm'
+import InventoryPage from './inventory/page'
+import PharmacyBillingPage from './billing/page'
+import NewBillingPage from './newbilling/page'
 
 interface Medicine {
   id: string
@@ -68,6 +72,7 @@ export default function PharmacyPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [showMedicineModal, setShowMedicineModal] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -96,7 +101,7 @@ export default function PharmacyPage() {
         medicine_code: med.medicine_code,
         name: med.name,
         category: med.category,
-        stock_quantity: med.stock_quantity,
+        stock_quantity: med.available_stock ?? med.stock_quantity ?? 0,
         unit_price: med.unit_price,
         expiry_date: med.expiry_date,
         manufacturer: med.manufacturer,
@@ -125,11 +130,11 @@ export default function PharmacyPage() {
   }
 
   const filteredMedicines = medicines.filter(medicine => {
-    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         (medicine.batch_number?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         (medicine.medicine_code?.toLowerCase().includes(searchTerm.toLowerCase()))
+    const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.batch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.medicine_code || '').toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = categoryFilter === 'all' || medicine.category === categoryFilter
     return matchesSearch && matchesCategory
   }).slice(0, 6) // Show only first 6 medicines
@@ -176,7 +181,10 @@ export default function PharmacyPage() {
             <Receipt className="w-4 h-4 mr-2" />
             New Billing
           </Link>
-          <button className="btn-primary flex items-center">
+          <button 
+            className="btn-primary flex items-center"
+            onClick={() => setShowMedicineModal(true)}
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add Medicine
           </button>
@@ -472,177 +480,29 @@ export default function PharmacyPage() {
 
       {activeTab === 'newbilling' && (
         <div className="space-y-6">
-          <div className="text-center py-12">
-            <Receipt className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">New Billing</h3>
-            <p className="text-gray-600">Create bills for existing patients or new customers</p>
-            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
-          </div>
+          <NewBillingPage embedded />
         </div>
       )}
 
       {activeTab === 'inventory' && (
         <div className="space-y-6">
-          {/* Inventory Controls */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search by name, category, manufacturer, or batch"
-                value={searchTerm}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                className="input pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategoryFilter(e.target.value)}
-                className="select"
-              >
-                <option value="all">All Categories</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Inventory Table */}
-          <div className="card p-0 overflow-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manufacturer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {medicines
-                  .filter(m => {
-                    const term = searchTerm.toLowerCase()
-                    const matchesSearch =
-                      m.name.toLowerCase().includes(term) ||
-                      m.category.toLowerCase().includes(term) ||
-                      m.manufacturer.toLowerCase().includes(term) ||
-                      m.batch_number.toLowerCase().includes(term) ||
-                      (m.medicine_code ? m.medicine_code.toLowerCase().includes(term) : false)
-                    const matchesCategory = categoryFilter === 'all' || m.category === categoryFilter
-                    return matchesSearch && matchesCategory
-                  })
-                  .sort((a, b) => {
-                    const aDate = a.expiry_date ? new Date(a.expiry_date).getTime() : Number.MAX_SAFE_INTEGER
-                    const bDate = b.expiry_date ? new Date(b.expiry_date).getTime() : Number.MAX_SAFE_INTEGER
-                    return aDate - bDate
-                  })
-                  .map((m) => {
-                    const stockStatus = getStockStatus(m)
-                    return (
-                      <tr key={m.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 flex items-center gap-2">
-                          {m.name}
-                          <span className={getBadgeClass(stockStatus.variant)}>{stockStatus.status}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{m.medicine_code || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{m.category}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{m.manufacturer}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{m.batch_number}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{m.stock_quantity}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">₹{m.unit_price}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {m.expiry_date ? new Date(m.expiry_date).toLocaleDateString() : '-'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-              </tbody>
-            </table>
-          </div>
+          <InventoryPage embedded />
         </div>
       )}
 
       {activeTab === 'billing' && (
         <div className="space-y-6">
-          {/* Billing Controls */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search by bill # or patient ID"
-                value={searchTerm}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                className="input pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategoryFilter(e.target.value)}
-                className="select"
-              >
-                <option value="all">All Statuses</option>
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-              </select>
-              <Link href="/pharmacy/newbilling" className="btn-primary flex items-center">
-                <Receipt className="w-4 h-4 mr-2" />
-                Create New Bill
-              </Link>
-            </div>
-          </div>
-
-          {/* Bills Table */}
-          <div className="card p-0 overflow-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill #</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {bills
-                  .filter(b => {
-                    const term = searchTerm.toLowerCase()
-                    const matchesSearch =
-                      b.bill_number.toLowerCase().includes(term) ||
-                      (b.patient_id ? String(b.patient_id).toLowerCase().includes(term) : false)
-                    const matchesStatus = categoryFilter === 'all' || b.payment_status === categoryFilter
-                    return matchesSearch && matchesStatus
-                  })
-                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                  .map((b) => (
-                    <tr key={b.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">#{b.bill_number}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{b.patient_id}</td>
-                      <td className="px-4 py-3 text-sm text-green-700">₹{b.total_amount}</td>
-                      <td className="px-4 py-3 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          b.payment_status === 'paid'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {b.payment_status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{new Date(b.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+          <PharmacyBillingPage embedded />
         </div>
+      )}
+      {showMedicineModal && (
+        <MedicineEntryForm
+          onClose={() => setShowMedicineModal(false)}
+          onSuccess={async () => {
+            setShowMedicineModal(false)
+            await loadData()
+          }}
+        />
       )}
     </div>
   )

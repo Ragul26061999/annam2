@@ -23,7 +23,9 @@ import {
   Hash,
   AlertTriangle,
   Bed,
-  LogOut
+  LogOut,
+  Trash2,
+  X
 } from 'lucide-react';
 import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
@@ -75,10 +77,36 @@ export default function PatientsPage() {
   // Discharge modal state
   const [dischargeModalOpen, setDischargeModalOpen] = useState(false);
   const [selectedPatientForDischarge, setSelectedPatientForDischarge] = useState<Patient | null>(null);
+  
+  // Dropdown menu state
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchPatients();
   }, [currentPage, statusFilter, searchTerm]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.dropdown-container')) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    if (openDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openDropdownId]);
 
   const fetchAdmittedCount = async () => {
     try {
@@ -233,6 +261,43 @@ export default function PatientsPage() {
   const getTruncatedText = (text: string, maxLength: number = 30) => {
     if (!text) return 'Not specified';
     return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  const handleDeleteClick = (patient: Patient) => {
+    setPatientToDelete(patient);
+    setDeleteConfirmOpen(true);
+    setOpenDropdownId(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!patientToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      // Permanently delete patient from database
+      const { error } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', patientToDelete.id);
+
+      if (error) throw error;
+
+      // Refresh the patient list
+      await fetchPatients();
+      
+      alert(`Patient ${patientToDelete.name} has been permanently deleted from the database.`);
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert('Failed to delete patient. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
+      setPatientToDelete(null);
+    }
+  };
+
+  const toggleDropdown = (patientId: string) => {
+    setOpenDropdownId(openDropdownId === patientId ? null : patientId);
   };
 
   const getInitials = (name: string) => {
@@ -479,9 +544,50 @@ export default function PatientsPage() {
                     </span>
                   )}
                   
-                  <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                    <MoreVertical size={16} className="text-gray-500" />
-                  </button>
+                  {/* Dropdown Menu */}
+                  <div className="relative dropdown-container">
+                    <button 
+                      onClick={() => toggleDropdown(patient.id)}
+                      className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <MoreVertical size={16} className="text-gray-500" />
+                    </button>
+                    
+                    {openDropdownId === patient.id && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 dropdown-container">
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              router.push(`/patients/${patient.id}`);
+                              setOpenDropdownId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <Eye size={14} />
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => {
+                              router.push(`/patients/${patient.id}`);
+                              setOpenDropdownId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <Edit3 size={14} />
+                            Edit Patient
+                          </button>
+                          <div className="border-t border-gray-200 my-1"></div>
+                          <button
+                            onClick={() => handleDeleteClick(patient)}
+                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          >
+                            <Trash2 size={14} />
+                            Delete Patient
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -658,6 +764,86 @@ export default function PatientsPage() {
           patient={selectedPatientForDischarge}
           onDischargeSuccess={handleDischargeSuccess}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmOpen && patientToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Delete Patient</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={isDeleting}
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this patient? <strong className="text-red-600">This action cannot be undone and will permanently remove all patient data from the database.</strong>
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-red-900 mb-1">Patient Details:</p>
+                <p className="text-sm text-red-800">
+                  <strong>Name:</strong> {patientToDelete.name}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>UHID:</strong> {patientToDelete.patient_id}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Phone:</strong> {patientToDelete.phone}
+                </p>
+              </div>
+              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-xs text-yellow-800 flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <strong>Warning:</strong> All associated records (appointments, vitals, medical history) will also be affected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Patient
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

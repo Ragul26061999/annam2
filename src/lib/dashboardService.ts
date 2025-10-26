@@ -86,14 +86,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
     // Get admitted patients (patients with active bed allocations)
     const { count: admittedPatients } = await supabase
-      .from('patients')
-      .select(`
-        id,
-        bed_allocations!inner(
-          status
-        )
-      `, { count: 'exact', head: true })
-      .eq('bed_allocations.status', 'active');
+      .from('bed_allocations')
+      .select('patient_id', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .is('discharge_date', null);
 
     // Get total appointments - try new table first, then legacy
     let totalAppointments = 0;
@@ -180,21 +176,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .from('beds')
       .select('*', { count: 'exact', head: true });
 
+    // Count occupied beds based on active bed allocations, not bed status
     const { count: occupiedBeds } = await supabase
-      .from('beds')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'occupied');
+      .from('bed_allocations')
+      .select('bed_id', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .is('discharge_date', null);
 
     const { count: availableBeds } = await supabase
       .from('beds')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'available');
 
-    // Get critical patients (patients with critical status)
+    // Get critical patients (patients with is_critical flag)
     const { count: criticalPatients } = await supabase
       .from('patients')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'critical');
+      .eq('is_critical', true);
 
     // Get emergency admissions today
     const { count: emergencyAdmissions } = await supabase
@@ -269,9 +267,6 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
     const today = new Date().toISOString().split('T')[0];
     
     // Try the new appointment table structure first
-    let appointments: any[] = [];
-    let error: any = null;
-    
     try {
       const { data: newAppointments, error: newError } = await supabase
         .from('appointment')
@@ -290,9 +285,12 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
         .order('scheduled_at', { ascending: true })
         .limit(limit);
       
-      if (newError) throw newError;
+      if (newError) {
+        console.warn('New appointment table query failed:', newError);
+        throw newError;
+      }
       
-      appointments = (newAppointments || []).map((apt: any) => ({
+      return (newAppointments || []).map((apt: any) => ({
         id: apt.id,
         patientName: apt.encounter?.patient?.name || 'Unknown Patient',
         appointmentTime: new Date(apt.scheduled_at).toLocaleTimeString('en-US', { 
@@ -306,59 +304,50 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
         patientInitials: getInitials(apt.encounter?.patient?.name || 'Unknown Patient'),
       }));
     } catch (newTableError) {
-      // Fall back to legacy appointments table
-      const { data: legacyAppointments, error: legacyError } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          appointment_time,
-          appointment_date,
-          type,
-          status,
-          patients!inner(name),
-          doctors!inner(
-            users!inner(name)
-          )
-        `)
-        .eq('appointment_date', today)
-        .order('appointment_time', { ascending: true })
-        .limit(limit);
+      // Fall back to legacy appointments table - silently fail if doesn't exist
+      try {
+        const { data: legacyAppointments, error: legacyError } = await supabase
+          .from('appointments')
+          .select(`
+            id,
+            appointment_time,
+            appointment_date,
+            type,
+            status,
+            patients!inner(name),
+            doctors!inner(
+              users!inner(name)
+            )
+          `)
+          .eq('appointment_date', today)
+          .order('appointment_time', { ascending: true })
+          .limit(limit);
 
-      if (legacyError) {
-        console.error('Error fetching appointments from both tables:', { newTableError, legacyError });
+        if (legacyError) {
+          console.warn('Legacy appointments table also failed:', legacyError);
+          return [];
+        }
+        
+        return (legacyAppointments || []).map((appointment: any) => {
+          const patientName = appointment.patients?.name || 'Unknown Patient';
+          const doctorName = appointment.doctors?.users?.name || 'Unknown Doctor';
+          
+          return {
+            id: appointment.id,
+            patientName,
+            appointmentTime: appointment.appointment_time,
+            appointmentDate: appointment.appointment_date,
+            type: appointment.type || 'General Consultation',
+            status: appointment.status,
+            doctorName,
+            patientInitials: getInitials(patientName),
+          };
+        });
+      } catch (legacyError) {
+        console.warn('Both appointment tables unavailable, returning empty array');
         return [];
       }
-      
-      appointments = legacyAppointments || [];
-      error = legacyError;
     }
-
-    if (error) {
-      console.error('Error fetching appointments:', error);
-      return [];
-    }
-
-    // If we already processed new appointments, return them
-    if (appointments.length > 0 && appointments[0].patientName) {
-      return appointments;
-    }
-    
-    // Otherwise, process legacy appointments
-    return (appointments || []).map((appointment: any) => {
-      const patientName = appointment.patients?.name || 'Unknown Patient';
-      const doctorName = appointment.doctors?.users?.name || 'Unknown Doctor';
-      
-      return {
-        id: appointment.id,
-        patientName,
-        appointmentTime: appointment.appointment_time,
-        appointmentDate: appointment.appointment_date,
-        type: appointment.type || 'General Consultation',
-        status: appointment.status,
-        doctorName,
-        patientInitials: getInitials(patientName),
-      };
-    });
   } catch (error) {
     console.error('Error in getRecentAppointments:', error);
     return [];
@@ -449,38 +438,58 @@ export async function getBedStatus(): Promise<BedStatus[]> {
 
 export async function getDepartmentStatus(): Promise<DepartmentStatus[]> {
   try {
-    const { data: departments, error } = await supabase
-      .from('departments')
-      .select(`
-        id,
-        name,
-        status,
-        location,
-        beds(id, status)
-      `)
-      .eq('status', 'active')
-      .order('name');
+    // Get all beds grouped by bed_type
+    const { data: beds, error } = await supabase
+      .from('beds')
+      .select('id, bed_type, status');
 
     if (error) {
-      console.error('Error fetching department status:', error);
+      console.error('Error fetching beds for department status:', error);
       return [];
     }
 
-    return (departments || []).map(dept => {
-      const totalBeds = dept.beds?.length || 0;
-      const occupiedBeds = dept.beds?.filter(bed => bed.status === 'occupied').length || 0;
-      const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+    // Get active bed allocations
+    const { data: allocations, error: allocError } = await supabase
+      .from('bed_allocations')
+      .select('bed_id')
+      .eq('status', 'active')
+      .is('discharge_date', null);
 
+    if (allocError) {
+      console.error('Error fetching bed allocations:', allocError);
+    }
+
+    const activeBedIds = new Set((allocations || []).map(a => a.bed_id));
+
+    // Group beds by type
+    const bedTypeStats: { [key: string]: { total: number; occupied: number } } = {};
+
+    (beds || []).forEach(bed => {
+      const type = bed.bed_type || 'General';
+      if (!bedTypeStats[type]) {
+        bedTypeStats[type] = { total: 0, occupied: 0 };
+      }
+      
+      bedTypeStats[type].total++;
+      if (activeBedIds.has(bed.id)) {
+        bedTypeStats[type].occupied++;
+      }
+    });
+
+    // Convert to array format
+    return Object.entries(bedTypeStats).map(([bedType, stats]) => {
+      const occupancyRate = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;
+      
       return {
-        id: dept.id,
-        name: dept.name,
-        status: dept.status,
-        location: dept.location,
-        bedCount: totalBeds,
-        occupiedBeds,
+        id: bedType.toLowerCase().replace(/\s+/g, '_'),
+        name: bedType.charAt(0).toUpperCase() + bedType.slice(1),
+        status: 'active',
+        location: null,
+        bedCount: stats.total,
+        occupiedBeds: stats.occupied,
         occupancyRate,
       };
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error('Error in getDepartmentStatus:', error);
     return [];

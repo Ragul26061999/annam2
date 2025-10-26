@@ -16,9 +16,11 @@ import {
   MoreVertical,
   Calendar,
   Activity,
-  Heart
+  Heart,
+  ArrowRightLeft
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
+import BedTransferModal from '@/src/components/BedTransferModal';
 
 interface BedData {
   id: string;
@@ -67,6 +69,7 @@ export default function BedsPage() {
   const [selectedStatus, setSelectedStatus] = useState('All Status');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showDischargeModal, setShowDischargeModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showAddBedModal, setShowAddBedModal] = useState(false);
   const [selectedBed, setSelectedBed] = useState<BedData | null>(null);
 
@@ -218,6 +221,11 @@ export default function BedsPage() {
   const handleDischargeBed = (bed: BedData) => {
     setSelectedBed(bed);
     setShowDischargeModal(true);
+  };
+
+  const handleTransferBed = (bed: BedData) => {
+    setSelectedBed(bed);
+    setShowTransferModal(true);
   };
 
   if (loading) {
@@ -470,12 +478,20 @@ export default function BedsPage() {
                 View
               </button>
               {bed.status === 'occupied' ? (
-                <button 
-                  onClick={() => handleDischargeBed(bed)}
-                  className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors">
-                  <UserMinus size={14} className="mr-1" />
-                  Discharge
-                </button>
+                <>
+                  <button 
+                    onClick={() => handleTransferBed(bed)}
+                    className="flex-1 flex items-center justify-center bg-purple-50 text-purple-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-purple-100 transition-colors">
+                    <ArrowRightLeft size={14} className="mr-1" />
+                    Transfer
+                  </button>
+                  <button 
+                    onClick={() => handleDischargeBed(bed)}
+                    className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors">
+                    <UserMinus size={14} className="mr-1" />
+                    Discharge
+                  </button>
+                </>
               ) : bed.status === 'available' ? (
                 <button 
                   onClick={() => handleAssignBed(bed)}
@@ -500,6 +516,30 @@ export default function BedsPage() {
           Load More Beds
         </button>
       </div>
+
+      {/* Bed Transfer Modal */}
+      {showTransferModal && selectedBed && selectedBed.patient_name && (
+        <BedTransferModal
+          isOpen={showTransferModal}
+          onClose={() => {
+            setShowTransferModal(false);
+            setSelectedBed(null);
+          }}
+          currentBed={{
+            id: selectedBed.id,
+            bed_number: selectedBed.bed_number,
+            room_number: selectedBed.room_number,
+            bed_type: selectedBed.bed_type,
+            patient_name: selectedBed.patient_name,
+            patient_hospital_id: selectedBed.patient_hospital_id || 'N/A'
+          }}
+          onSuccess={() => {
+            fetchBedData();
+            setShowTransferModal(false);
+            setSelectedBed(null);
+          }}
+        />
+      )}
     </div>
   );
 }

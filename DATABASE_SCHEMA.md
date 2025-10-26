@@ -1,468 +1,526 @@
-# Hospital Management System - Complete Database Schema
+# Hospital Management System - Database Schema Documentation
 
-## Overview
-This document provides a comprehensive overview of the Hospital Management System database schema, including all tables, relationships, and data structures across both `public` and `core` schemas.
-
-## Schema Architecture
-
-### Core Schema (`core`)
-The core schema contains normalized, foundational entities:
-
-#### 1. **core.persons**
-- **Purpose**: Central person registry for all individuals in the system
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `first_name`, `last_name` (VARCHAR) - Name components
-  - `date_of_birth` (DATE) - Birth date
-  - `gender` (VARCHAR) - Gender with constraints
-  - `phone`, `email` (VARCHAR) - Contact information
-  - `address` (TEXT) - Physical address
-  - `created_at`, `updated_at` (TIMESTAMPTZ) - Audit fields
-
-#### 2. **core.facilities**
-- **Purpose**: Healthcare facilities and locations
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `name` (VARCHAR) - Facility name
-  - `type` (VARCHAR) - Facility type
-  - `address` (TEXT) - Location
-  - `phone`, `email` (VARCHAR) - Contact details
-  - `status` (VARCHAR) - Active/inactive status
-
-#### 3. **core.departments**
-- **Purpose**: Hospital departments and organizational units
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `name` (VARCHAR) - Department name
-  - `facility_id` (UUID) - Foreign key to facilities
-  - `description` (TEXT) - Department description
-  - `status` (VARCHAR) - Operational status
-
-#### 4. **core.staff**
-- **Purpose**: Staff member registry
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `person_id` (UUID) - Foreign key to persons
-  - `employee_id` (VARCHAR) - Unique employee identifier
-  - `department_id` (UUID) - Foreign key to departments
-  - `hire_date` (DATE) - Employment start date
-  - `status` (VARCHAR) - Employment status
-
-#### 5. **core.staff_roles**
-- **Purpose**: Staff role assignments and permissions
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `staff_id` (UUID) - Foreign key to staff
-  - `role_name` (VARCHAR) - Role designation
-  - `permissions` (JSONB) - Role permissions
-  - `is_active` (BOOLEAN) - Role status
-
-#### 6. **core.staff_schedules**
-- **Purpose**: Staff scheduling and availability
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `staff_id` (UUID) - Foreign key to staff
-  - `schedule_date` (DATE) - Scheduled date
-  - `start_time`, `end_time` (TIME) - Work hours
-  - `schedule_type` (VARCHAR) - Schedule category
-
-#### 7. **core.patients**
-- **Purpose**: Patient registry with medical information
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `person_id` (UUID) - Foreign key to persons
-  - `patient_number` (VARCHAR) - Unique patient identifier
-  - `blood_group` (VARCHAR) - Blood type
-  - `allergies` (TEXT) - Known allergies
-  - `emergency_contact_name`, `emergency_contact_phone` (VARCHAR) - Emergency contacts
-  - `insurance_number`, `insurance_provider` (VARCHAR) - Insurance details
-
-#### 8. **core.users**
-- **Purpose**: System user accounts and authentication
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `person_id` (UUID) - Foreign key to persons
-  - `username` (VARCHAR) - Login username
-  - `email` (VARCHAR) - Email address
-  - `password_hash` (VARCHAR) - Encrypted password
-  - `role` (VARCHAR) - System role
-  - `is_active` (BOOLEAN) - Account status
-  - `last_login` (TIMESTAMPTZ) - Last login timestamp
+**Project**: Annam HMS  
+**Database**: PostgreSQL 17.4 (Supabase)  
+**Generated**: October 2025  
+**Schema**: public
 
 ---
 
-### Public Schema (`public`)
-The public schema contains operational tables and legacy compatibility:
+## Table of Contents
+1. [Core Entities](#core-entities)
+2. [Clinical Workflow](#clinical-workflow)
+3. [Billing & Payments](#billing--payments)
+4. [Pharmacy & Medications](#pharmacy--medications)
+5. [Laboratory](#laboratory)
+6. [Reference Data](#reference-data)
+7. [Relationships Overview](#relationships-overview)
 
-#### Patient Management
+---
 
-##### **public.patients** (5 rows)
-- **Purpose**: Extended patient information with admission details
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `patient_id` (VARCHAR, UNIQUE) - Patient identifier
-  - `name` (VARCHAR) - Full name
-  - `date_of_birth` (DATE) - Birth date
-  - `gender` (VARCHAR) - Gender with constraints (male/female/other)
-  - `phone`, `email` (VARCHAR) - Contact information
-  - `address` (TEXT) - Physical address
-  - `emergency_contact_name`, `emergency_contact_phone` (VARCHAR) - Emergency contacts
-  - `blood_group` (VARCHAR) - Blood type
-  - `allergies`, `medical_history` (TEXT) - Medical information
-  - `insurance_number`, `insurance_provider` (VARCHAR) - Insurance details
-  - `status` (VARCHAR) - Patient status (active/inactive/deceased)
-  - `admission_date` (TIMESTAMPTZ) - Admission timestamp
-  - `consulting_doctor_id` (UUID) - Foreign key to doctors
-  - `department_ward`, `room_number` (VARCHAR) - Location details
-  - `user_id` (UUID) - Foreign key to users
+## Core Entities
 
-##### **public.patient_admissions** (RLS enabled)
-- **Purpose**: Patient admission records
-- **Key Fields**: Admission details, dates, reasons, and status
+### 1. users
+**Purpose**: Central user registry for all system users (staff, doctors, admins)
 
-##### **public.patient_allergies** (RLS enabled)
-- **Purpose**: Detailed allergy records for patients
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| auth_id | uuid | FK → auth.users.id, NULLABLE | Supabase auth reference |
+| employee_id | varchar(20) | UNIQUE, NOT NULL | Employee identifier |
+| name | varchar(100) | NOT NULL | Full name |
+| email | varchar(255) | UNIQUE, NOT NULL | Email address |
+| role | varchar(50) | NOT NULL | User role (md, chief_doctor, doctor, nurse, admin, etc.) |
+| specialization | varchar(100) | NULLABLE | Medical specialization |
+| department | varchar(100) | NULLABLE | Department name |
+| phone | varchar(20) | NULLABLE | Contact number |
+| address | text | NULLABLE | Physical address |
+| joined_date | date | DEFAULT CURRENT_DATE | Employment start date |
+| status | varchar(20) | DEFAULT 'active' | active, inactive, suspended |
+| permissions | jsonb | DEFAULT '{}' | User permissions object |
+| party_id | uuid | FK → party.id, NULLABLE | Optional party reference |
+| created_at | timestamptz | DEFAULT now() | Record creation timestamp |
+| updated_at | timestamptz | DEFAULT now() | Last update timestamp |
 
-##### **public.patient_symptoms** (RLS enabled)
-- **Purpose**: Patient symptom tracking
+**Check Constraints**:
+- role: md, chief_doctor, doctor, nurse, admin, pharmacist, technician, receptionist, accountant, patient
+- status: active, inactive, suspended
 
-##### **public.medical_history** (RLS enabled)
-- **Purpose**: Comprehensive medical history records
+---
 
-#### Staff and User Management
+### 2. patients
+**Purpose**: Patient registry with demographics and medical information
 
-##### **public.users** (20 rows, RLS enabled)
-- **Purpose**: System users with roles and permissions
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `auth_id` (UUID) - Authentication system reference
-  - `employee_id` (VARCHAR, UNIQUE) - Employee identifier
-  - `name` (VARCHAR) - Full name
-  - `email` (VARCHAR, UNIQUE) - Email address
-  - `role` (VARCHAR) - System role with constraints (md, chief_doctor, doctor, nurse, admin, pharmacist, technician, receptionist, accountant, patient)
-  - `specialization` (VARCHAR) - Professional specialization
-  - `department` (VARCHAR) - Department assignment
-  - `phone` (VARCHAR) - Contact number
-  - `address` (TEXT) - Physical address
-  - `joined_date` (DATE) - Employment start date
-  - `status` (VARCHAR) - User status (active/inactive/suspended)
-  - `permissions` (JSONB) - User permissions
-  - `party_id` (UUID) - Foreign key to party table
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| patient_id | varchar(20) | UNIQUE, NOT NULL | UHID (Unique Health ID) |
+| name | varchar(100) | NOT NULL | Patient full name |
+| date_of_birth | date | NULLABLE | Birth date |
+| gender | varchar(20) | NULLABLE | male, female, other |
+| phone | varchar(20) | NULLABLE | Contact number |
+| email | varchar(255) | NULLABLE | Email address |
+| address | text | NULLABLE | Residential address |
+| emergency_contact_name | varchar(100) | NULLABLE | Emergency contact person |
+| emergency_contact_phone | varchar(20) | NULLABLE | Emergency contact number |
+| emergency_contact_relationship | varchar(50) | NULLABLE | Relationship to patient |
+| blood_group | varchar(10) | NULLABLE | Blood type (A+, B+, O+, etc.) |
+| allergies | text | NULLABLE | Known allergies |
+| medical_history | text | NULLABLE | Past medical history |
+| insurance_number | varchar(50) | NULLABLE | Insurance policy number |
+| insurance_provider | varchar(100) | NULLABLE | Insurance company name |
+| marital_status | varchar(20) | NULLABLE | single, married, divorced, widowed, separated |
+| current_medications | text | NULLABLE | Current medications list |
+| chronic_conditions | text | NULLABLE | Chronic diseases |
+| previous_surgeries | text | NULLABLE | Surgical history |
+| admission_date | timestamptz | NULLABLE | Current admission date |
+| admission_time | time | NULLABLE | Admission time |
+| admission_type | varchar(20) | NULLABLE | emergency, elective, referred |
+| primary_complaint | text | NULLABLE | Chief complaint |
+| referring_doctor_facility | varchar(100) | NULLABLE | Referring facility |
+| consulting_doctor_id | uuid | FK → doctors.id, NULLABLE | Assigned doctor |
+| department_ward | varchar(50) | NULLABLE | Current ward |
+| room_number | varchar(20) | NULLABLE | Room assignment |
+| guardian_name | varchar(100) | NULLABLE | Guardian name (for minors) |
+| guardian_relationship | varchar(50) | NULLABLE | Guardian relationship |
+| guardian_phone | varchar(20) | NULLABLE | Guardian contact |
+| guardian_address | text | NULLABLE | Guardian address |
+| initial_symptoms | text | NULLABLE | Presenting symptoms |
+| referred_by | varchar(100) | NULLABLE | Referral source |
+| user_id | uuid | FK → users.id, NULLABLE | Linked user account |
+| is_critical | boolean | DEFAULT false | Critical condition flag |
+| is_admitted | boolean | DEFAULT false | Currently admitted flag |
+| qr_code | text | NULLABLE | QR code data URL for UHID |
+| status | varchar(20) | DEFAULT 'active' | active, inactive, deceased |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.doctors** (6 rows, RLS enabled)
-- **Purpose**: Doctor-specific information and credentials
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `user_id` (UUID) - Foreign key to users
-  - `license_number` (VARCHAR, UNIQUE) - Medical license
-  - `specialization` (VARCHAR) - Medical specialization
-  - `qualification` (VARCHAR) - Educational qualifications
-  - `years_of_experience` (INTEGER) - Experience years
-  - `consultation_fee` (NUMERIC) - Consultation charges
-  - `availability_hours` (JSONB) - Schedule information
-  - `room_number` (VARCHAR) - Office location
-  - `max_patients_per_day` (INTEGER) - Patient capacity
-  - `status` (VARCHAR) - Doctor status (active/inactive/on_leave)
+---
 
-##### **public.staff** (RLS enabled)
-- **Purpose**: General staff information
+### 3. doctors
+**Purpose**: Doctor-specific information and credentials
 
-#### Department and Facility Management
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| user_id | uuid | FK → users.id, UNIQUE, NOT NULL | Reference to users table |
+| license_number | varchar(50) | UNIQUE, NULLABLE | Medical license number |
+| specialization | varchar(100) | NULLABLE | Medical specialty |
+| qualification | varchar(200) | NULLABLE | Educational qualifications |
+| experience_years | integer | NULLABLE | Years of experience |
+| consultation_fee | numeric(10,2) | NULLABLE | Standard consultation fee |
+| status | varchar(20) | DEFAULT 'active' | active, inactive, on_leave |
+| available_days | text[] | NULLABLE | Working days array |
+| available_hours | varchar(100) | NULLABLE | Working hours |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.departments** (10 rows, RLS enabled)
-- **Purpose**: Hospital departments and organizational structure
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `name` (VARCHAR, UNIQUE) - Department name
-  - `description` (TEXT) - Department description
-  - `head_of_department` (UUID) - Foreign key to users
-  - `location` (VARCHAR) - Physical location
-  - `phone` (VARCHAR) - Department contact
-  - `status` (VARCHAR) - Department status (active/inactive)
+---
 
-##### **public.beds** (120 rows, RLS enabled)
-- **Purpose**: Hospital bed management
-- **Primary Key**: `id` (UUID)
-- **Key Fields**:
-  - `bed_number` (VARCHAR, UNIQUE) - Bed identifier
-  - `room_number` (VARCHAR) - Room location
-  - `department_id` (UUID) - Foreign key to departments
-  - `bed_type` (VARCHAR) - Bed category (general/icu/private/semi_private/emergency)
-  - `floor_number` (INTEGER) - Floor location
-  - `daily_rate` (NUMERIC) - Daily charges
-  - `status` (VARCHAR) - Bed status (available/occupied/maintenance/reserved)
-  - `features` (TEXT[]) - Bed features array
+## Clinical Workflow
 
-##### **public.bed_allocations** (2 rows, RLS enabled)
-- **Purpose**: Bed assignment tracking
-- **Key Fields**:
-  - `bed_id`, `patient_id`, `doctor_id` (UUID) - Foreign keys
-  - `admission_date`, `discharge_date` (TIMESTAMPTZ) - Allocation period
-  - `admission_type` (VARCHAR) - Type of admission
-  - `reason` (TEXT) - Allocation reason
+### 4. encounter
+**Purpose**: Clinical encounters/visits - central to patient care workflow
 
-#### Appointment Management
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| patient_id | uuid | NOT NULL | Patient reference (no FK constraint) |
+| clinician_id | uuid | NOT NULL | Doctor reference (no FK constraint) |
+| department_id | uuid | FK → departments.id, NULLABLE | Department |
+| type_id | uuid | FK → ref_code.id, NULLABLE | Encounter type (OPD/IPD/Emergency) |
+| status_id | uuid | FK → ref_code.id, NULLABLE | Encounter status |
+| chief_complaint | text | NULLABLE | Primary complaint |
+| started_at | timestamptz | DEFAULT now() | Encounter start time |
+| ended_at | timestamptz | NULLABLE | Encounter end time |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.appointments** (RLS enabled)
-- **Purpose**: Patient appointment scheduling
-- **Key Fields**:
-  - `patient_id`, `doctor_id` (UUID) - Foreign keys
-  - `appointment_date` (DATE) - Scheduled date
-  - `appointment_time` (TIME) - Scheduled time
-  - `status` (VARCHAR) - Appointment status
-  - `reason` (TEXT) - Appointment purpose
+**Note**: This is the central table linking appointments, prescriptions, lab tests, vitals, etc.
 
-##### **public.appointment** (RLS enabled)
-- **Purpose**: Alternative appointment table structure
+---
 
-#### Clinical Operations
+### 5. appointment
+**Purpose**: Scheduled appointments
 
-##### **public.encounter** (RLS enabled)
-- **Purpose**: Patient-provider encounters
-- **Key Fields**:
-  - `patient_id`, `doctor_id`, `department_id` (UUID) - Foreign keys
-  - `encounter_date` (TIMESTAMPTZ) - Encounter timestamp
-  - `encounter_type` (VARCHAR) - Type of encounter
-  - `chief_complaint` (TEXT) - Primary complaint
-  - `diagnosis` (TEXT) - Medical diagnosis
-  - `treatment_plan` (TEXT) - Treatment recommendations
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| encounter_id | uuid | FK → encounter.id, NOT NULL | Linked encounter |
+| scheduled_at | timestamptz | NOT NULL | Appointment date/time |
+| duration_minutes | integer | DEFAULT 30 | Appointment duration |
+| status_id | uuid | FK → ref_code.id, NULLABLE | Appointment status |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.vitals** (RLS enabled)
-- **Purpose**: Patient vital signs tracking
-- **Key Fields**:
-  - `patient_id`, `encounter_id`, `recorded_by` (UUID) - Foreign keys
-  - `temperature`, `blood_pressure_systolic`, `blood_pressure_diastolic` (NUMERIC) - Vital measurements
-  - `heart_rate`, `respiratory_rate` (INTEGER) - Rate measurements
-  - `oxygen_saturation` (NUMERIC) - O2 saturation
-  - `weight`, `height` (NUMERIC) - Physical measurements
-  - `recorded_at` (TIMESTAMPTZ) - Recording timestamp
+---
 
-#### Prescription and Pharmacy Management
+### 6. vitals
+**Purpose**: Patient vital signs measurements
 
-##### **public.prescriptions** (RLS enabled)
-- **Purpose**: Medical prescriptions
-- **Key Fields**:
-  - `patient_id`, `doctor_id`, `encounter_id` (UUID) - Foreign keys
-  - `prescription_date` (DATE) - Prescription date
-  - `status` (VARCHAR) - Prescription status
-  - `notes` (TEXT) - Additional instructions
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| patient_id | uuid | FK → patients.id, NOT NULL | Patient reference |
+| encounter_id | uuid | FK → encounter.id, NOT NULL | Encounter reference |
+| recorded_by | uuid | FK → users.id, NOT NULL | Staff who recorded |
+| blood_pressure_systolic | integer | NULLABLE | Systolic BP (mmHg) |
+| blood_pressure_diastolic | integer | NULLABLE | Diastolic BP (mmHg) |
+| heart_rate | integer | NULLABLE | Heart rate (bpm) |
+| temperature | numeric(4,1) | NULLABLE | Body temperature (°F/°C) |
+| respiratory_rate | integer | NULLABLE | Breaths per minute |
+| oxygen_saturation | integer | NULLABLE | SpO2 percentage |
+| weight | numeric(5,2) | NULLABLE | Weight (kg) |
+| height | numeric(5,2) | NULLABLE | Height (cm) |
+| pain_scale | integer | NULLABLE | Pain level (0-10) |
+| blood_glucose | numeric(5,1) | NULLABLE | Blood sugar (mg/dL) |
+| notes | text | NULLABLE | Additional observations |
+| recorded_at | timestamptz | DEFAULT now() | Measurement time |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.prescription_items** (RLS enabled)
-- **Purpose**: Individual prescription items
-- **Key Fields**:
-  - `prescription_id`, `medicine_id` (UUID) - Foreign keys
-  - `quantity` (INTEGER) - Prescribed quantity
-  - `dosage` (VARCHAR) - Dosage instructions
-  - `frequency` (VARCHAR) - Administration frequency
-  - `duration` (VARCHAR) - Treatment duration
+---
 
-##### **public.prescription_dispensed** (RLS enabled)
-- **Purpose**: Dispensed prescription tracking
-- **Key Fields**:
-  - `prescription_id`, `patient_id`, `pharmacist_id` (UUID) - Foreign keys
-  - `dispensed_date` (DATE) - Dispensing date
-  - `total_amount` (NUMERIC) - Total cost
+### 7. clinical_notes
+**Purpose**: Doctor's clinical notes and observations
 
-##### **public.prescription_dispensed_items** (RLS enabled)
-- **Purpose**: Individual dispensed items
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| encounter_id | uuid | FK → encounter.id, NOT NULL | Encounter reference |
+| appointment_id | uuid | FK → appointment.id, NULLABLE | Appointment reference |
+| patient_id | uuid | FK → patients.id, NOT NULL | Patient reference |
+| doctor_id | uuid | FK → doctors.id, NOT NULL | Doctor reference |
+| chief_complaint | text | NULLABLE | Primary complaint |
+| history_of_present_illness | text | NULLABLE | HPI |
+| physical_examination | text | NULLABLE | Examination findings |
+| diagnosis | text | NULLABLE | Diagnosis |
+| treatment_plan | text | NULLABLE | Treatment recommendations |
+| follow_up_instructions | text | NULLABLE | Follow-up notes |
+| notes | text | NULLABLE | Additional notes |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.medicines** (RLS enabled)
-- **Purpose**: Medicine catalog
-- **Key Fields**:
-  - `name` (VARCHAR) - Medicine name
-  - `generic_name` (VARCHAR) - Generic name
-  - `manufacturer` (VARCHAR) - Manufacturer
-  - `dosage_form` (VARCHAR) - Form (tablet/capsule/syrup)
-  - `strength` (VARCHAR) - Medicine strength
-  - `unit_price` (NUMERIC) - Price per unit
+---
 
-##### **public.medicine_batches** (RLS enabled)
-- **Purpose**: Medicine batch tracking
-- **Key Fields**:
-  - `medicine_id` (UUID) - Foreign key
-  - `batch_number` (VARCHAR) - Batch identifier
-  - `expiry_date` (DATE) - Expiration date
-  - `quantity_received`, `quantity_remaining` (INTEGER) - Stock levels
+## Billing & Payments
 
-##### **public.stock_transactions** (RLS enabled)
-- **Purpose**: Inventory transaction tracking
+### 8. billing
+**Purpose**: Patient bills and invoices
 
-##### **public.pharmacy_bills** (RLS enabled)
-- **Purpose**: Pharmacy billing records
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| encounter_id | uuid | FK → encounter.id, NULLABLE | Encounter reference |
+| patient_id | uuid | NOT NULL | Patient reference (no FK) |
+| bill_no | text | NULLABLE | Bill number |
+| currency | text | DEFAULT 'INR' | Currency code |
+| subtotal | numeric | DEFAULT 0 | Subtotal amount |
+| discount | numeric | DEFAULT 0 | Discount amount |
+| tax | numeric | DEFAULT 0 | Tax amount |
+| total | numeric | NULLABLE | Total amount |
+| status_id | uuid | FK → ref_code.id, NULLABLE | Payment status |
+| issued_at | timestamptz | DEFAULT now() | Bill issue date |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.pharmacy_bill_items** (RLS enabled)
-- **Purpose**: Individual pharmacy bill items
+---
 
-#### Laboratory Management
+### 9. billing_item
+**Purpose**: Individual line items in bills
 
-##### **public.lab_tests** (RLS enabled)
-- **Purpose**: Laboratory test catalog
-- **Key Fields**:
-  - `test_name` (VARCHAR) - Test name
-  - `test_code` (VARCHAR) - Test identifier
-  - `category` (VARCHAR) - Test category
-  - `normal_range` (VARCHAR) - Reference range
-  - `unit` (VARCHAR) - Measurement unit
-  - `cost` (NUMERIC) - Test cost
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| billing_id | uuid | FK → billing.id, NOT NULL | Bill reference |
+| line_type_id | uuid | FK → ref_code.id, NOT NULL | Item type (consultation, medication, lab, etc.) |
+| ref_id | uuid | NULLABLE | Reference to source record |
+| description | text | NOT NULL | Item description |
+| qty | numeric | DEFAULT 1 | Quantity |
+| unit_amount | numeric | NOT NULL | Unit price |
+| total_amount | numeric | NOT NULL | Line total |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.lab_reports** (RLS enabled)
-- **Purpose**: Laboratory test reports
-- **Key Fields**:
-  - `patient_id`, `doctor_id`, `encounter_id` (UUID) - Foreign keys
-  - `test_id` (UUID) - Foreign key to lab_tests
-  - `report_date` (DATE) - Report date
-  - `status` (VARCHAR) - Report status
-  - `technician_id`, `verified_by` (UUID) - Staff references
+---
 
-##### **public.lab_result_value** (6 rows, RLS enabled)
-- **Purpose**: Individual lab test results
-- **Key Fields**:
-  - `lab_report_id` (UUID) - Foreign key
-  - `test_parameter` (VARCHAR) - Parameter name
-  - `result_value` (VARCHAR) - Test result
-  - `reference_range` (VARCHAR) - Normal range
-  - `unit` (VARCHAR) - Measurement unit
-  - `is_abnormal` (BOOLEAN) - Abnormal flag
+### 10. payment_history
+**Purpose**: Payment transaction records
 
-#### Billing and Financial Management
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| billing_id | uuid | FK → billing.id, NOT NULL | Bill reference |
+| amount | numeric | NOT NULL | Payment amount |
+| method_id | uuid | FK → ref_code.id, NOT NULL | Payment method |
+| transaction_id | varchar(100) | NULLABLE | Transaction reference |
+| notes | text | NULLABLE | Payment notes |
+| paid_at | timestamptz | DEFAULT now() | Payment timestamp |
+| created_at | timestamptz | DEFAULT now() | Record creation |
 
-##### **public.billing** (3 rows, RLS enabled)
-- **Purpose**: Main billing records
-- **Key Fields**:
-  - `patient_id`, `encounter_id` (UUID) - Foreign keys
-  - `bill_date` (DATE) - Billing date
-  - `total_amount` (NUMERIC) - Total bill amount
-  - `paid_amount` (NUMERIC) - Amount paid
-  - `status` (VARCHAR) - Payment status
-  - `payment_method` (VARCHAR) - Payment type
+---
 
-##### **public.billing_item** (3 rows, RLS enabled)
-- **Purpose**: Individual billing items
-- **Key Fields**:
-  - `billing_id` (UUID) - Foreign key
-  - `item_type` (VARCHAR) - Item category
-  - `description` (TEXT) - Item description
-  - `quantity` (INTEGER) - Item quantity
-  - `unit_price` (NUMERIC) - Price per unit
-  - `total_amount` (NUMERIC) - Line total
+## Pharmacy & Medications
 
-##### **public.billing_items** (RLS enabled)
-- **Purpose**: Alternative billing items structure
+### 11. medications
+**Purpose**: Medication master list
 
-##### **public.billing_legacy** (RLS enabled)
-- **Purpose**: Legacy billing compatibility
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| name | varchar(200) | NOT NULL | Medication name |
+| generic_name | varchar(200) | NULLABLE | Generic name |
+| category | varchar(100) | NULLABLE | Drug category |
+| manufacturer | varchar(200) | NULLABLE | Manufacturer name |
+| unit_price | numeric(10,2) | NULLABLE | Price per unit |
+| stock_quantity | integer | DEFAULT 0 | Current stock |
+| reorder_level | integer | DEFAULT 10 | Reorder threshold |
+| unit | varchar(20) | NULLABLE | Unit of measure |
+| description | text | NULLABLE | Description |
+| side_effects | text | NULLABLE | Known side effects |
+| contraindications | text | NULLABLE | Contraindications |
+| storage_instructions | text | NULLABLE | Storage requirements |
+| status | varchar(20) | DEFAULT 'active' | active, discontinued |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.billing_summaries** (RLS enabled)
-- **Purpose**: Billing summary reports
+---
 
-##### **public.fee_categories** (RLS enabled)
-- **Purpose**: Fee category definitions
+### 12. prescriptions
+**Purpose**: Doctor prescriptions
 
-##### **public.fee_rates** (RLS enabled)
-- **Purpose**: Fee rate structures
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| encounter_id | uuid | FK → encounter.id, NOT NULL | Encounter reference |
+| patient_id | uuid | FK → patients.id, NOT NULL | Patient reference |
+| doctor_id | uuid | FK → doctors.id, NOT NULL | Prescribing doctor |
+| diagnosis | text | NULLABLE | Diagnosis |
+| notes | text | NULLABLE | Prescription notes |
+| status | varchar(20) | DEFAULT 'active' | active, dispensed, cancelled |
+| valid_until | date | NULLABLE | Prescription expiry |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.payment_history** (RLS enabled)
-- **Purpose**: Payment transaction history
+---
 
-#### Support Tables
+### 13. prescription_items
+**Purpose**: Individual medications in prescriptions
 
-##### **public.party** (RLS enabled)
-- **Purpose**: Generic party/entity registry
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| prescription_id | uuid | FK → prescriptions.id, NOT NULL | Prescription reference |
+| medication_id | uuid | FK → medications.id, NOT NULL | Medication reference |
+| dosage | varchar(100) | NOT NULL | Dosage instructions |
+| frequency | varchar(100) | NOT NULL | Frequency (e.g., "twice daily") |
+| duration | varchar(100) | NULLABLE | Duration (e.g., "7 days") |
+| quantity | integer | NOT NULL | Quantity prescribed |
+| instructions | text | NULLABLE | Special instructions |
+| status | varchar(20) | DEFAULT 'pending' | pending, dispensed, cancelled |
+| dispensed_quantity | integer | DEFAULT 0 | Quantity dispensed |
+| dispensed_at | timestamptz | NULLABLE | Dispensing timestamp |
+| dispensed_by | uuid | FK → users.id, NULLABLE | Pharmacist who dispensed |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.customers** (RLS enabled)
-- **Purpose**: Customer information
+---
 
-##### **public.clinician** (RLS enabled)
-- **Purpose**: Clinician registry
+## Laboratory
 
-##### **public.patient** (RLS enabled)
-- **Purpose**: Alternative patient structure
+### 14. lab_tests
+**Purpose**: Available laboratory test catalog
 
-##### **public.ref_code** (RLS enabled)
-- **Purpose**: Reference code management
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| test_code | varchar(50) | UNIQUE, NOT NULL | Test code |
+| test_name | varchar(200) | NOT NULL | Test name |
+| category | varchar(100) | NULLABLE | Test category |
+| description | text | NULLABLE | Test description |
+| sample_type | varchar(100) | NULLABLE | Sample required |
+| preparation_instructions | text | NULLABLE | Patient preparation |
+| normal_range | varchar(200) | NULLABLE | Normal value range |
+| unit | varchar(50) | NULLABLE | Unit of measurement |
+| price | numeric(10,2) | NULLABLE | Test price |
+| turnaround_time | varchar(100) | NULLABLE | Expected TAT |
+| status | varchar(20) | DEFAULT 'active' | active, inactive |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-#### Legacy Compatibility Views
+---
 
-##### **public.appointments_legacy** (0 rows)
-- **Purpose**: Backward compatibility for appointment queries
-- **Type**: View with SECURITY DEFINER
+### 15. lab_reports
+**Purpose**: Laboratory test orders and results
 
-##### **public.billing_items_legacy** 
-- **Purpose**: Legacy billing items compatibility
-- **Type**: View with SECURITY DEFINER
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| encounter_id | uuid | FK → encounter.id, NOT NULL | Encounter reference |
+| patient_id | uuid | FK → patients.id, NOT NULL | Patient reference |
+| doctor_id | uuid | FK → doctors.id, NOT NULL | Ordering doctor |
+| lab_test_id | uuid | FK → lab_tests.id, NOT NULL | Test reference |
+| technician_id | uuid | FK → users.id, NULLABLE | Lab technician |
+| verified_by | uuid | FK → users.id, NULLABLE | Verifying doctor |
+| status | varchar(20) | DEFAULT 'pending' | pending, in_progress, completed, cancelled |
+| sample_collected_at | timestamptz | NULLABLE | Sample collection time |
+| result_available_at | timestamptz | NULLABLE | Result ready time |
+| verified_at | timestamptz | NULLABLE | Verification time |
+| notes | text | NULLABLE | Additional notes |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
 
-##### **public.lab_results_legacy**
-- **Purpose**: Legacy lab results compatibility
-- **Type**: View with SECURITY DEFINER
+---
 
-##### **public.billing_items_details**
-- **Purpose**: Detailed billing items view
-- **Type**: View with SECURITY DEFINER
+### 16. lab_result_value
+**Purpose**: Individual test result values
 
-##### **public.billing_summary_details**
-- **Purpose**: Billing summary details view
-- **Type**: View with SECURITY DEFINER
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| lab_report_id | uuid | FK → lab_reports.id, NOT NULL | Report reference |
+| parameter_name | varchar(200) | NOT NULL | Parameter name |
+| value | varchar(200) | NOT NULL | Result value |
+| unit_id | uuid | FK → ref_code.id, NULLABLE | Unit reference |
+| normal_range | varchar(200) | NULLABLE | Normal range |
+| is_abnormal | boolean | DEFAULT false | Abnormal flag |
+| created_at | timestamptz | DEFAULT now() | Record creation |
 
-##### **public.active_admissions**
-- **Purpose**: Active patient admissions view
-- **Type**: View with SECURITY DEFINER
+---
 
-## Security Implementation
+## Reference Data
 
-### Row Level Security (RLS)
-All tables in the `public` schema have RLS enabled with appropriate policies:
+### 17. ref_code
+**Purpose**: System-wide reference codes and lookup values
 
-- **User Access**: Users can view their own records
-- **Patient Access**: Patients can view their own medical records
-- **Staff Access**: Authenticated staff can view relevant records based on role
-- **Admin Access**: Administrative users have broader access rights
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| category | varchar(100) | NOT NULL | Code category |
+| code | varchar(100) | NOT NULL | Code value |
+| display | varchar(200) | NOT NULL | Display text |
+| description | text | NULLABLE | Description |
+| sort_order | integer | DEFAULT 0 | Display order |
+| is_active | boolean | DEFAULT true | Active status |
+| created_at | timestamptz | DEFAULT now() | Record creation |
 
-### Key Security Features
-- UUID primary keys for enhanced security
-- Foreign key constraints for data integrity
-- Check constraints for data validation
-- Audit trails with created_at/updated_at timestamps
-- Role-based access control through RLS policies
+**Common Categories**:
+- encounter_type: OPD, IPD, Emergency
+- encounter_status: scheduled, in_progress, completed, cancelled
+- appointment_status: scheduled, confirmed, completed, cancelled, no_show
+- billing_status: pending, partial, paid, cancelled
+- payment_method: cash, card, upi, insurance
+- billing_line_type: consultation, medication, lab_test, scan, procedure, bed_charges
 
-## Data Relationships
+---
+
+### 18. departments
+**Purpose**: Hospital departments
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | Primary key |
+| name | varchar(100) | UNIQUE, NOT NULL | Department name |
+| code | varchar(20) | UNIQUE, NULLABLE | Department code |
+| description | text | NULLABLE | Description |
+| head_of_department | uuid | FK → users.id, NULLABLE | HOD reference |
+| status | varchar(20) | DEFAULT 'active' | active, inactive |
+| created_at | timestamptz | DEFAULT now() | Record creation |
+| updated_at | timestamptz | DEFAULT now() | Last update |
+
+---
+
+## Relationships Overview
 
 ### Core Relationships
-- `core.persons` → Central entity for all individuals
-- `core.staff` → Links to persons and departments
-- `core.patients` → Links to persons with medical data
-- `core.users` → Links to persons for system access
 
-### Public Schema Relationships
-- `public.users` ↔ `public.doctors` (one-to-one)
-- `public.patients` ↔ `public.appointments` (one-to-many)
-- `public.encounter` → Central clinical record
-- `public.prescriptions` → `public.prescription_items` (one-to-many)
-- `public.billing` → `public.billing_item` (one-to-many)
-- `public.lab_reports` → `public.lab_result_value` (one-to-many)
+```
+users (1) ──< (M) doctors
+users (1) ──< (M) patients (optional)
 
-## Migration Status
+patients (1) ──< (M) encounter
+doctors (1) ──< (M) encounter
 
-### Completed Migrations
-1. **Schema Normalization**: Core entities properly normalized
-2. **Security Implementation**: RLS policies applied
-3. **Data Integrity**: Foreign key constraints enforced
-4. **Legacy Compatibility**: Views created for backward compatibility
-5. **TypeScript Integration**: Type definitions generated
+encounter (1) ──< (M) appointment
+encounter (1) ──< (M) vitals
+encounter (1) ──< (M) prescriptions
+encounter (1) ──< (M) lab_reports
+encounter (1) ──< (M) clinical_notes
+encounter (1) ──< (M) billing
 
-### Current Statistics
-- **Total Tables**: 50+ across both schemas
-- **Total Records**: 186+ records across all tables
-- **Security Policies**: Comprehensive RLS implementation
-- **Data Integrity**: 100% referential integrity maintained
+prescriptions (1) ──< (M) prescription_items
+medications (1) ──< (M) prescription_items
 
-## Next Steps
+lab_tests (1) ──< (M) lab_reports
+lab_reports (1) ──< (M) lab_result_value
 
-1. **Performance Optimization**: Index optimization for frequently queried columns
-2. **Advanced Security**: Fine-tune RLS policies based on specific requirements
-3. **Data Migration**: Migrate remaining legacy data if needed
-4. **API Integration**: Implement API endpoints using the normalized schema
-5. **Monitoring**: Set up database monitoring and alerting
+billing (1) ──< (M) billing_item
+billing (1) ──< (M) payment_history
+```
+
+### Key Design Patterns
+
+1. **Encounter-Centric**: Most clinical activities link to `encounter` table
+2. **Reference Codes**: Status and type fields use `ref_code` for flexibility
+3. **Audit Trail**: All tables have `created_at` and `updated_at` timestamps
+4. **Soft Deletes**: Status fields used instead of hard deletes
+5. **UUID Primary Keys**: All tables use UUID for distributed system compatibility
 
 ---
 
-*This schema documentation reflects the current state of the Hospital Management System database as of the latest migration. All tables include proper audit trails, security policies, and referential integrity constraints.*
+## Additional Tables
+
+### Bed Management
+- **beds**: Hospital bed inventory
+- **bed_allocations**: Patient bed assignments
+
+### Medical History
+- **medical_history**: Patient medical history records
+
+### Recommendations
+- **follow_up_appointments**: Follow-up recommendations
+- **surgery_recommendations**: Surgery recommendations
+- **scan_orders**: Imaging/scan orders
+- **injection_orders**: Injection prescriptions
+
+### Pharmacy Management
+- **medicine_batches**: Medication batch tracking
+- **stock_transactions**: Inventory transactions
+- **prescription_dispensed**: Dispensing records
+- **prescription_dispensed_items**: Dispensed item details
+
+### Reports & Documents
+- **patient_reports**: Uploaded medical documents
+
+### System
+- **role_catalog**: System roles catalog
+- **role_hierarchy**: Role hierarchy
+- **user_roles**: User role assignments
+- **party**: Party/organization records
+- **fee_categories**: Fee category definitions
+- **fee_rates**: Fee rate schedules
+
+---
+
+## Database Statistics
+
+- **Total Tables**: 40+
+- **Database Engine**: PostgreSQL 17.4
+- **Hosting**: Supabase
+- **Region**: ap-south-1
+- **RLS Enabled**: No (application-level security)
+
+---
+
+## Notes
+
+1. **No Direct FK on encounter**: `patient_id` and `clinician_id` in encounter table don't have FK constraints for flexibility
+2. **Reference Codes**: Extensively used for status and type fields
+3. **Audit Fields**: All tables maintain creation and update timestamps
+4. **Soft Deletes**: Status fields preferred over hard deletes
+5. **Flexible Schema**: JSONB fields used for extensibility (e.g., user permissions)
+
+---
+
+*Last Updated: October 2025*
+*Generated from Supabase project: zusheijhebsmjiyyeiqq*

@@ -156,7 +156,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
 
   const handleDoctorSelect = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
-    setFormData(prev => ({ ...prev, doctorId: doctor.license_number }));
+    setFormData(prev => ({ ...prev, doctorId: doctor.id }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

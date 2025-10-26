@@ -139,7 +139,7 @@ export async function getMedications(filters?: {
 }): Promise<Medication[]> {
   try {
     let query = supabase
-      .from('medicines')
+      .from('medications')
       .select('*');
 
     // Apply filters
@@ -164,21 +164,22 @@ export async function getMedications(filters?: {
     const { data, error } = await query.order('name');
 
     if (error) {
-      console.error('Error fetching medications:', error);
-      throw error;
+      console.error('Error fetching medications - Details:', JSON.stringify(error, null, 2));
+      console.error('Error message:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getMedications:', error);
-    throw error;
+    return [];
   }
 }
 
 export async function getMedicationById(id: string): Promise<Medication | null> {
   try {
     const { data, error } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('*')
       .eq('id', id)
       .single();
@@ -201,7 +202,7 @@ export async function getMedicationById(id: string): Promise<Medication | null> 
 export async function getLowStockMedications(): Promise<Medication[]> {
   try {
     const { data, error } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('*')
       .filter('available_stock', 'lt', 'minimum_stock_level')
       .eq('status', 'active')
@@ -339,7 +340,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
         p.prescription_items?.map(item => item.medication_id) || []
       );
       const { data: medicines } = await supabase
-        .from('medicines')
+        .from('medications')
         .select('id, name, generic_name')
         .in('id', medicineIds);
 
@@ -399,7 +400,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
         d.prescription_dispensed_items?.map(item => item.medication_id) || []
       );
       const { data: medications } = await supabase
-        .from('medicines')
+        .from('medications')
         .select('id, name, generic_name, strength, dosage_form')
         .in('id', medicationIds);
 
@@ -458,7 +459,7 @@ export async function getPharmacyDashboardStats(): Promise<{
   try {
     // Get total medications
     const { count: totalMedications } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
 
@@ -479,16 +480,16 @@ export async function getPharmacyDashboardStats(): Promise<{
 
     const todaySales = todaySalesData?.reduce((sum, transaction) => sum + transaction.total_amount, 0) || 0;
 
-    // Get pending bills count (align with 'pharmacy_bills')
+    // Get pending bills count (align with 'billing')
     const { count: pendingBills } = await supabase
-      .from('pharmacy_bills')
+      .from('billing')
       .select('*', { count: 'exact', head: true })
       .eq('payment_status', 'pending');
 
     // Get total revenue (this month)
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
     const { data: revenueData } = await supabase
-      .from('pharmacy_bills')
+      .from('billing')
       .select('total_amount')
       .eq('payment_status', 'completed')
       .gte('created_at', firstDayOfMonth);
@@ -534,9 +535,9 @@ export async function getStockSummaryStats(): Promise<{
   purchasedUnitsThisMonth: number;
 }> {
   try {
-    // Remaining stock: use aggregated available_stock from medicines (maintained by triggers)
+    // Remaining stock: use aggregated available_stock from medications (maintained by triggers)
     const { data: meds, error: medsError } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('available_stock');
 
     if (medsError) {
@@ -675,6 +676,143 @@ export async function getPendingPrescriptions(): Promise<PendingPrescription[]> 
 }
 
 // =====================================================
+// BARCODE FUNCTIONS
+// =====================================================
+
+export async function generateMedicineBarcode(medicationCode: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.rpc('generate_medicine_barcode', {
+      med_code: medicationCode
+    });
+
+    if (error) {
+      console.error('Error generating medicine barcode:', error);
+      throw error;
+    }
+
+    return data || '';
+  } catch (error) {
+    console.error('Error in generateMedicineBarcode:', error);
+    throw error;
+  }
+}
+
+export async function generateBatchBarcode(medicationCode: string, batchNumber: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.rpc('generate_batch_barcode', {
+      med_code: medicationCode,
+      batch_num: batchNumber
+    });
+
+    if (error) {
+      console.error('Error generating batch barcode:', error);
+      throw error;
+    }
+
+    return data || '';
+  } catch (error) {
+    console.error('Error in generateBatchBarcode:', error);
+    throw error;
+  }
+}
+
+export async function findMedicineByBarcode(barcode: string): Promise<Medication | null> {
+  try {
+    const { data, error } = await supabase
+      .from('medications')
+      .select('*')
+      .eq('barcode', barcode)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // No rows found
+      }
+      console.error('Error finding medicine by barcode:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in findMedicineByBarcode:', error);
+    throw error;
+  }
+}
+
+export async function findBatchByBarcode(barcode: string): Promise<any | null> {
+  try {
+    const { data, error } = await supabase
+      .from('medicine_batches')
+      .select(`
+        *,
+        medication:medications(name, medication_code, generic_name)
+      `)
+      .eq('batch_barcode', barcode)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // No rows found
+      }
+      console.error('Error finding batch by barcode:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in findBatchByBarcode:', error);
+    throw error;
+  }
+}
+
+// =====================================================
+// SUPPLIER FUNCTIONS
+// =====================================================
+
+export async function getSuppliers(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .select('*')
+      .eq('status', 'active')
+      .order('name');
+
+    if (error) {
+      console.error('Error fetching suppliers:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getSuppliers:', error);
+    return [];
+  }
+}
+
+export async function getSupplierById(id: string): Promise<any | null> {
+  try {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      console.error('Error fetching supplier by ID:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getSupplierById:', error);
+    throw error;
+  }
+}
+
+// =====================================================
 // UTILITY FUNCTIONS
 // =====================================================
 
@@ -685,7 +823,7 @@ export async function searchMedications(searchTerm: string): Promise<Medication[
 export async function getMedicationCategories(): Promise<string[]> {
   try {
     const { data, error } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('category')
       .eq('status', 'active');
 
@@ -761,7 +899,7 @@ export async function createPharmacyBill(
 ): Promise<PharmacyBilling> {
   try {
     // Delegate atomic bill creation + ledger entries to the database RPC.
-    const { data: bill, error } = await supabase.rpc('create_pharmacy_bill_with_items', {
+    const { data: bill, error } = await supabase.rpc('create_billing_with_items', {
       p_patient_id: patientId || null,
       p_items: items,
       p_discount: discount,
@@ -794,11 +932,8 @@ export async function createPharmacyBill(
 export async function getPharmacyBills(patientId?: string): Promise<PharmacyBilling[]> {
   try {
     let query = supabase
-      .from('pharmacy_bills')
-      .select(`
-        *,
-        patient:patients(name, patient_id)
-      `)
+      .from('billing')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (patientId) {
@@ -808,15 +943,16 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching pharmacy bills:', error);
+      console.error('Error fetching bills - Details:', JSON.stringify(error, null, 2));
+      console.error('Error message:', error.message);
       return [];
     }
 
     // Transform data to include display patient_name and normalized payment_status
     const bills = data?.map(bill => ({
       ...bill,
-      // If linked to a registered patient, use patient's name; otherwise use customer_name for walk-in
-      patient_name: bill.patient ? bill.patient.name : (bill.customer_name || 'Walk-in Customer'),
+      // For walk-in customers or if patient not linked
+      patient_name: bill.customer_name || 'Walk-in Customer',
       total_amount: bill.total_amount,
       payment_status: bill.payment_status,
       items: [] // Items would need to be fetched separately if needed
@@ -837,7 +973,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
   try {
     // 1) Fetch bill items for the given batch number
     const { data: items, error: itemsError } = await supabase
-      .from('pharmacy_bill_items')
+      .from('billing_item')
       .select('id, bill_id, medicine_id, quantity, unit_price, total_amount, batch_number, created_at')
       .eq('batch_number', batchNumber)
       .order('id', { ascending: false });
@@ -851,10 +987,10 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
       return [];
     }
 
-    // 2) Bulk fetch bills (align with current schema 'pharmacy_bills')
+    // 2) Bulk fetch bills (align with current schema 'billing')
     const billIds = Array.from(new Set(items.map(i => i.bill_id))).filter(Boolean);
     const { data: bills, error: billsError } = await supabase
-      .from('pharmacy_bills')
+      .from('billing')
       .select('id, bill_number, patient_id, customer_name, bill_date, created_at, payment_status')
       .in('id', billIds);
 
@@ -876,7 +1012,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
     // 4) Bulk fetch medicines
     const medicationIds = Array.from(new Set(items.map(i => i.medicine_id))).filter(Boolean);
     const { data: meds, error: medsError } = await supabase
-      .from('medicines')
+      .from('medications')
       .select('id, name')
       .in('id', medicationIds);
 

@@ -21,7 +21,8 @@ import {
   FileText,
   DollarSign
 } from 'lucide-react';
-import ModernAppointmentBooking from '../../components/ModernAppointmentBooking';
+import NewAppointmentBookingForm from '../../components/NewAppointmentBookingForm';
+import AppointmentSuccessPage from '../../components/AppointmentSuccessPage';
 import ClinicalEntryForm from '../../components/ClinicalEntryForm';
 import AppointmentDetailsModal from '../../components/AppointmentDetailsModal';
 import { getAppointments, updateAppointmentStatus, getAppointmentStats, type Appointment } from '../../src/lib/appointmentService';
@@ -38,6 +39,12 @@ interface AppointmentStats {
 
 export default function AppointmentsPage() {
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isSuccessPageOpen, setIsSuccessPageOpen] = useState(false);
+  const [appointmentResult, setAppointmentResult] = useState<{
+    appointmentId: string;
+    patientName: string;
+    uhid: string;
+  } | null>(null);
   const [isClinicalFormOpen, setIsClinicalFormOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -58,10 +65,19 @@ export default function AppointmentsPage() {
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [completingAppointment, setCompletingAppointment] = useState<string | null>(null);
 
-  const handleAppointmentSuccess = (appointment: Appointment) => {
-    console.log('Appointment created:', appointment);
-    fetchAppointments();
+  const handleAppointmentSuccess = (result: { appointmentId: string; patientName: string; uhid: string }) => {
+    console.log('Appointment created:', result);
+    setAppointmentResult(result);
     setIsBookingModalOpen(false);
+    setIsSuccessPageOpen(true);
+    fetchAppointments();
+    fetchStats();
+  };
+
+  const handleBackToBooking = () => {
+    setIsSuccessPageOpen(false);
+    setAppointmentResult(null);
+    setIsBookingModalOpen(true);
   };
 
   const fetchAppointments = async () => {
@@ -485,14 +501,27 @@ export default function AppointmentsPage() {
         </button>
       </div>
 
-      {/* Modern Appointment Booking */}
+      {/* New Appointment Booking Form */}
       {isBookingModalOpen && (
-        <div className="fixed inset-0 z-50 bg-white">
-          <ModernAppointmentBooking
-             isOpen={true}
-             onClose={() => setIsBookingModalOpen(false)}
-             onSuccess={handleAppointmentSuccess}
-           />
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
+          <div className="min-h-screen py-8 px-4">
+            <NewAppointmentBookingForm
+              onComplete={handleAppointmentSuccess}
+              onCancel={() => setIsBookingModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Appointment Success Page */}
+      {isSuccessPageOpen && appointmentResult && (
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
+          <AppointmentSuccessPage
+            appointmentId={appointmentResult.appointmentId}
+            patientName={appointmentResult.patientName}
+            uhid={appointmentResult.uhid}
+            onBack={handleBackToBooking}
+          />
         </div>
       )}
 

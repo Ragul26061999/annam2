@@ -196,13 +196,13 @@ export default function Dashboard() {
             <div>
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Bed Occupancy</p>
               <p className="text-2xl font-bold text-gray-900 mt-1">
-                {dashboardData?.stats?.bedOccupancyRate || '0%'}
+                {dashboardData?.stats?.occupiedBeds || 0}
               </p>
               <div className="flex items-center mt-2">
                 <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full" 
-                    style={{ width: dashboardData?.stats?.bedOccupancyRate || '0%' }}
+                    style={{ width: `${dashboardData?.stats?.bedOccupancyRate || 0}%` }}
                   ></div>
                 </div>
                 <span className="text-xs text-gray-500 ml-2">

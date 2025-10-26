@@ -771,8 +771,24 @@ export async function getAllPatients(
       throw new Error(`Failed to fetch patients: ${error.message}`);
     }
 
+    // Get active bed allocations to determine admission status
+    const { data: activeBedAllocations } = await supabase
+      .from('bed_allocations')
+      .select('patient_id')
+      .eq('status', 'active')
+      .is('discharge_date', null);
+
+    const admittedPatientIds = new Set((activeBedAllocations || []).map(a => a.patient_id));
+
+    // Enhance patients with admission status
+    const enhancedPatients = (patients || []).map(patient => ({
+      ...patient,
+      is_admitted: admittedPatientIds.has(patient.id),
+      bed_allocations: undefined // Remove the join data
+    }));
+
     return {
-      patients: patients || [],
+      patients: enhancedPatients,
       total: count || 0,
       page,
       limit
