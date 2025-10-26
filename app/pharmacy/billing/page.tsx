@@ -54,7 +54,7 @@ export default function PharmacyBillingPage() {
     try {
       setLoading(true)
       
-      // Fetch billing data with patient UHID (join patients)
+      // Fetch billing data first (no join to avoid FK/join errors)
       const { data: billsData, error: billsError } = await supabase
         .from('billing')
         .select(`
@@ -69,19 +69,40 @@ export default function PharmacyBillingPage() {
           total,
           payment_method,
           payment_status,
-          created_at,
-          patients ( patient_id )
+          created_at
         `)
         .order('created_at', { ascending: false })
 
       if (billsError) throw billsError
 
-      // Map bills data with proper formatting
+      // Resolve patient UHIDs in a separate safe query
+      const patientIds = Array.from(new Set((billsData || [])
+        .map((b: any) => b.patient_id)
+        .filter((id: string | null) => !!id)))
+
+      let patientsMap: Record<string, { patient_id: string }> = {}
+      if (patientIds.length > 0) {
+        const { data: patientsData, error: patientsError } = await supabase
+          .from('patients')
+          .select('id, patient_id')
+          .in('id', patientIds as string[])
+
+        if (!patientsError && patientsData) {
+          patientsMap = patientsData.reduce((acc: any, p: any) => {
+            acc[p.id] = { patient_id: p.patient_id }
+            return acc
+          }, {})
+        } else {
+          console.warn('Patients lookup skipped due to error:', patientsError)
+        }
+      }
+
+      // Map bills data with proper formatting and resolved UHIDs
       const mappedBills = (billsData || []).map((bill: any) => ({
         id: bill.id,
         bill_number: bill.bill_number || `#${bill.id.slice(-8)}`,
         customer_name: bill.customer_name || 'Unknown',
-        patient_uhid: bill.patients?.patient_id || 'Walk-in',
+        patient_uhid: patientsMap[bill.patient_id]?.patient_id || (bill.customer_type === 'patient' ? 'Unknown' : 'Walk-in'),
         customer_type: bill.customer_type || 'patient',
         total_amount: bill.total || 0,
         payment_method: bill.payment_method || 'cash',
