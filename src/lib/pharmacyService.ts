@@ -235,6 +235,7 @@ export async function addStock(
   performedBy?: string
 ): Promise<StockTransaction> {
   try {
+    // First create the stock transaction
     const { data, error } = await supabase
       .from('stock_transactions')
       .insert({
@@ -256,6 +257,21 @@ export async function addStock(
     if (error) {
       console.error('Error adding stock:', error);
       throw error;
+    }
+
+    // Update the medication's available stock
+    const { data: currentMed } = await supabase
+      .from('medications')
+      .select('available_stock')
+      .eq('id', medicationId)
+      .single();
+
+    if (currentMed) {
+      const newStock = (currentMed.available_stock || 0) + quantity;
+      await supabase
+        .from('medications')
+        .update({ available_stock: newStock })
+        .eq('id', medicationId);
     }
 
     return data;
@@ -852,6 +868,7 @@ export async function adjustStock(
   userId: string
 ): Promise<StockTransaction> {
   try {
+    // Create the stock transaction
     const { data: transaction, error: transactionError } = await supabase
       .from('stock_transactions')
       .insert({
@@ -871,10 +888,339 @@ export async function adjustStock(
       throw new Error('Failed to create stock transaction');
     }
 
+    // Update the medication's available stock
+    const { data: currentMed } = await supabase
+      .from('medications')
+      .select('available_stock')
+      .eq('id', medicationId)
+      .single();
+
+    if (currentMed) {
+      const newStock = Math.max(0, (currentMed.available_stock || 0) + adjustmentQuantity);
+      await supabase
+        .from('medications')
+        .update({ available_stock: newStock })
+        .eq('id', medicationId);
+    }
+
     return transaction;
   } catch (error) {
     console.error('Error in adjustStock:', error);
     throw error;
+  }
+}
+
+export async function editStockTransaction(
+  transactionId: string,
+  updates: {
+    quantity?: number;
+    unit_price?: number;
+    batch_number?: string;
+    expiry_date?: string;
+    notes?: string;
+  },
+  userId: string
+): Promise<StockTransaction> {
+  try {
+    // Get the original transaction
+    const { data: originalTx, error: fetchError } = await supabase
+      .from('stock_transactions')
+      .select('*')
+      .eq('id', transactionId)
+      .single();
+
+    if (fetchError || !originalTx) {
+      throw new Error('Stock transaction not found');
+    }
+
+    // Only allow editing purchase transactions
+    if (originalTx.transaction_type !== 'purchase') {
+      throw new Error('Only purchase transactions can be edited');
+    }
+
+    // Calculate the difference in quantity if quantity is being updated
+    let quantityDiff = 0;
+    if (updates.quantity !== undefined && updates.quantity !== originalTx.quantity) {
+      quantityDiff = updates.quantity - originalTx.quantity;
+    }
+
+    // Update the transaction
+    const { data: updatedTx, error: updateError } = await supabase
+      .from('stock_transactions')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', transactionId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new Error('Failed to update stock transaction');
+    }
+
+    // If quantity changed, update the medication stock
+    if (quantityDiff !== 0) {
+      const { data: currentMed } = await supabase
+        .from('medications')
+        .select('available_stock')
+        .eq('id', originalTx.medication_id)
+        .single();
+
+      if (currentMed) {
+        const newStock = Math.max(0, (currentMed.available_stock || 0) + quantityDiff);
+        await supabase
+          .from('medications')
+          .update({ available_stock: newStock })
+          .eq('id', originalTx.medication_id);
+      }
+    }
+
+    return updatedTx;
+  } catch (error) {
+    console.error('Error in editStockTransaction:', error);
+    throw error;
+  }
+}
+
+export async function adjustExpiredStock(
+  medicationId: string,
+  batchNumber: string,
+  adjustmentType: 'delete' | 'adjust',
+  userId: string,
+  adjustmentQuantity?: number,
+  notes?: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (adjustmentType === 'delete') {
+      // Delete the entire batch from stock_transactions
+      const { data: batchTransactions, error: fetchError } = await supabase
+        .from('stock_transactions')
+        .select('*')
+        .eq('medication_id', medicationId)
+        .eq('batch_number', batchNumber)
+        .eq('transaction_type', 'purchase');
+
+      if (fetchError) throw fetchError;
+
+      if (batchTransactions && batchTransactions.length > 0) {
+        // Calculate total quantity to remove from stock
+        const totalQuantity = batchTransactions.reduce((sum, tx) => sum + tx.quantity, 0);
+
+        // Delete the transactions
+        const { error: deleteError } = await supabase
+          .from('stock_transactions')
+          .delete()
+          .eq('medication_id', medicationId)
+          .eq('batch_number', batchNumber)
+          .eq('transaction_type', 'purchase');
+
+        if (deleteError) throw deleteError;
+
+        // Update medication stock
+        const { data: currentMed } = await supabase
+          .from('medications')
+          .select('available_stock')
+          .eq('id', medicationId)
+          .single();
+
+        if (currentMed) {
+          const newStock = Math.max(0, (currentMed.available_stock || 0) - totalQuantity);
+          await supabase
+            .from('medications')
+            .update({ available_stock: newStock })
+            .eq('id', medicationId);
+        }
+
+        // Create an adjustment transaction record
+        await supabase
+          .from('stock_transactions')
+          .insert({
+            medication_id: medicationId,
+            transaction_type: 'expired',
+            quantity: -totalQuantity,
+            unit_price: 0,
+            batch_number: batchNumber,
+            notes: `Expired batch deleted: ${notes || 'No notes provided'}`,
+            performed_by: userId,
+            transaction_date: new Date().toISOString()
+          });
+      }
+
+      return { success: true, message: 'Expired batch deleted successfully' };
+    } else if (adjustmentType === 'adjust' && adjustmentQuantity !== undefined) {
+      // Adjust the quantity of expired stock
+      const { data: batchTransactions, error: fetchError } = await supabase
+        .from('stock_transactions')
+        .select('*')
+        .eq('medication_id', medicationId)
+        .eq('batch_number', batchNumber)
+        .eq('transaction_type', 'purchase');
+
+      if (fetchError) throw fetchError;
+
+      if (batchTransactions && batchTransactions.length > 0) {
+        // Find the most recent purchase transaction for this batch
+        const latestTransaction = batchTransactions[0];
+
+        // Update the transaction quantity
+        const quantityDiff = adjustmentQuantity - latestTransaction.quantity;
+        const { error: updateError } = await supabase
+          .from('stock_transactions')
+          .update({
+            quantity: adjustmentQuantity,
+            notes: `${latestTransaction.notes || ''} | Adjusted for expiry: ${notes || 'No notes provided'}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', latestTransaction.id);
+
+        if (updateError) throw updateError;
+
+        // Update medication stock
+        const { data: currentMed } = await supabase
+          .from('medications')
+          .select('available_stock')
+          .eq('id', medicationId)
+          .single();
+
+        if (currentMed) {
+          const newStock = Math.max(0, (currentMed.available_stock || 0) + quantityDiff);
+          await supabase
+            .from('medications')
+            .update({ available_stock: newStock })
+            .eq('id', medicationId);
+        }
+
+        // Create an adjustment transaction record
+        await supabase
+          .from('stock_transactions')
+          .insert({
+            medication_id: medicationId,
+            transaction_type: 'expired',
+            quantity: quantityDiff,
+            unit_price: 0,
+            batch_number: batchNumber,
+            notes: `Expired stock adjusted: ${notes || 'No notes provided'}`,
+            performed_by: userId,
+            transaction_date: new Date().toISOString()
+          });
+      }
+
+      return { success: true, message: 'Expired stock adjusted successfully' };
+    }
+
+    throw new Error('Invalid adjustment parameters');
+  } catch (error) {
+    console.error('Error in adjustExpiredStock:', error);
+    return { success: false, message: (error as Error).message };
+  }
+}
+
+export async function addStockWithAutoSplit(
+  medicationId: string,
+  totalQuantity: number,
+  unitPrice: number,
+  maxBatchSize: number = 1000,
+  supplierName?: string,
+  baseBatchNumber?: string,
+  expiryDate?: string,
+  notes?: string,
+  performedBy?: string
+): Promise<{ success: boolean; transactions: StockTransaction[]; message: string }> {
+  try {
+    const transactions: StockTransaction[] = [];
+    const remainingQuantity = totalQuantity;
+    let batchCounter = 1;
+
+    // Calculate how many batches we need
+    const numBatches = Math.ceil(totalQuantity / maxBatchSize);
+    
+    for (let i = 0; i < numBatches; i++) {
+      const batchQuantity = Math.min(maxBatchSize, remainingQuantity - (i * maxBatchSize));
+      const batchNumber = baseBatchNumber 
+        ? `${baseBatchNumber}-${String(batchCounter).padStart(2, '0')}`
+        : `AUTO-${Date.now()}-${String(batchCounter).padStart(2, '0')}`;
+
+      const transaction = await addStock(
+        medicationId,
+        batchQuantity,
+        unitPrice,
+        supplierName,
+        batchNumber,
+        expiryDate,
+        notes ? `${notes} (Batch ${batchCounter} of ${numBatches})` : `Auto-split batch ${batchCounter} of ${numBatches}`,
+        performedBy
+      );
+
+      transactions.push(transaction);
+      batchCounter++;
+    }
+
+    return {
+      success: true,
+      transactions,
+      message: `Successfully created ${numBatches} batch(es) for total quantity ${totalQuantity}`
+    };
+  } catch (error) {
+    console.error('Error in addStockWithAutoSplit:', error);
+    return {
+      success: false,
+      transactions: [],
+      message: (error as Error).message
+    };
+  }
+}
+
+export async function calculateOptimalBatchSize(
+  medicationId: string,
+  monthlyUsage: number = 0,
+  shelfLifeMonths: number = 12
+): Promise<{ recommendedBatchSize: number; reasoning: string }> {
+  try {
+    // Get medication details
+    const { data: medication, error: medError } = await supabase
+      .from('medications')
+      .select('name, minimum_stock_level, available_stock')
+      .eq('id', medicationId)
+      .single();
+
+    if (medError || !medication) {
+      throw new Error('Medication not found');
+    }
+
+    let recommendedBatchSize = 1000; // Default
+    let reasoning = 'Using default batch size of 1000 units';
+
+    if (monthlyUsage > 0) {
+      // Calculate based on monthly usage
+      const threeMonthsSupply = monthlyUsage * 3;
+      const minRecommended = Math.max(threeMonthsSupply, medication.minimum_stock_level * 2);
+      
+      // Consider shelf life - don't recommend more than 75% of shelf life to avoid expiry
+      const maxBasedOnShelfLife = monthlyUsage * (shelfLifeMonths * 0.75);
+      
+      recommendedBatchSize = Math.min(minRecommended, maxBasedOnShelfLife, 2000);
+      recommendedBatchSize = Math.max(recommendedBatchSize, 100); // Minimum 100 units
+      
+      reasoning = `Based on monthly usage of ${monthlyUsage} units and ${shelfLifeMonths} months shelf life. Recommended ${recommendedBatchSize} units to cover 3 months supply while minimizing expiry risk.`;
+    } else {
+      // Use minimum stock level as baseline
+      recommendedBatchSize = Math.max(medication.minimum_stock_level * 3, 500);
+      recommendedBatchSize = Math.min(recommendedBatchSize, 1500);
+      
+      reasoning = `Based on minimum stock level of ${medication.minimum_stock_level} units. Recommended ${recommendedBatchSize} units to maintain adequate buffer.`;
+    }
+
+    return {
+      recommendedBatchSize,
+      reasoning
+    };
+  } catch (error) {
+    console.error('Error in calculateOptimalBatchSize:', error);
+    return {
+      recommendedBatchSize: 1000,
+      reasoning: 'Error calculating optimal size. Using default of 1000 units.'
+    };
   }
 }
 
@@ -971,28 +1317,73 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
 
 export async function getBatchPurchaseHistory(batchNumber: string): Promise<BatchPurchaseHistoryEntry[]> {
   try {
-    // 1) Fetch bill items for the given batch number
-    const { data: items, error: itemsError } = await supabase
-      .from('billing_item')
-      .select('id, bill_id, medicine_id, quantity, unit_price, total_amount, batch_number, created_at')
-      .eq('batch_number', batchNumber)
-      .order('id', { ascending: false });
-
-    if (itemsError) {
-      console.error('Error fetching bill items by batch_number:', itemsError);
-      return [];
+    // 1) Fetch bill items for the given batch number (support legacy/new table names)
+    let items: any[] = [];
+    
+    try {
+      const res = await supabase
+        .from('billing_item')
+        .select('id, bill_id, medicine_id, quantity, unit_price, total_amount, batch_number, created_at')
+        .eq('batch_number', batchNumber)
+        .order('id', { ascending: false });
+      
+      if (res.error) {
+        console.warn('Failed to fetch from billing_item:', res.error?.message || 'Unknown error');
+      } else if (res.data && res.data.length > 0) {
+        items = res.data;
+      }
+    } catch (e) {
+      console.warn('Exception querying billing_item:', e);
     }
 
-    if (!items || items.length === 0) {
+    // If first query returned no items, try fallback table
+    if (items.length === 0) {
+      try {
+        const res2 = await supabase
+          .from('pharmacy_bill_items')
+          .select('id, bill_id, medication_id, quantity, unit_price, total_amount, batch_number, created_at')
+          .eq('batch_number', batchNumber)
+          .order('id', { ascending: false });
+        
+        if (res2.error) {
+          console.warn('Failed to fetch from pharmacy_bill_items:', res2.error?.message || 'Unknown error');
+        } else if (res2.data && res2.data.length > 0) {
+          items = res2.data.map((r: any) => ({
+            ...r,
+            medicine_id: r.mediation_id ?? r.medication_id ?? r.medicine_id,
+          }));
+        }
+      } catch (fallbackError) {
+        console.warn('Exception querying pharmacy_bill_items:', fallbackError);
+      }
+    }
+    
+    // If no items found in either table, return empty
+    if (items.length === 0) {
       return [];
     }
 
     // 2) Bulk fetch bills (align with current schema 'billing')
     const billIds = Array.from(new Set(items.map(i => i.bill_id))).filter(Boolean);
-    const { data: bills, error: billsError } = await supabase
-      .from('billing')
-      .select('id, bill_number, patient_id, customer_name, bill_date, created_at, payment_status')
-      .in('id', billIds);
+    // Try billing, then pharmacy_bills
+    let bills: any[] | null = null; let billsError: any = null;
+    try {
+      const r = await supabase
+        .from('billing')
+        .select('id, bill_number, patient_id, customer_name, bill_date, created_at, payment_status')
+        .in('id', billIds);
+      bills = r.data; billsError = r.error;
+    } catch (e) { billsError = e; }
+    if (billsError || !bills) {
+      const r2 = await supabase
+        .from('pharmacy_bills')
+        .select('id, bill_number, patient_id, customer_name, bill_date, created_at, payment_status')
+        .in('id', billIds);
+      bills = r2.data || [];
+      if (r2.error) {
+        console.error('Error fetching bills for batch history (both tables failed):', r2.error);
+      }
+    }
 
     if (billsError) {
       console.error('Error fetching bills for batch history:', billsError);
@@ -1010,7 +1401,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
     }
 
     // 4) Bulk fetch medicines
-    const medicationIds = Array.from(new Set(items.map(i => i.medicine_id))).filter(Boolean);
+    const medicationIds = Array.from(new Set(items.map(i => i.medicine_id ?? i.medication_id))).filter(Boolean);
     const { data: meds, error: medsError } = await supabase
       .from('medications')
       .select('id, name')
@@ -1024,7 +1415,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
     const result: BatchPurchaseHistoryEntry[] = items.map(i => {
       const bill = (bills || []).find(b => b.id === i.bill_id);
       const patient = bill ? (patients || []).find(p => p.id === bill.patient_id) : undefined;
-      const med = (meds || []).find(m => m.id === i.medicine_id);
+      const med = (meds || []).find(m => m.id === (i.medicine_id ?? i.medication_id));
 
       return {
         bill_id: bill?.id || i.bill_id,
@@ -1038,7 +1429,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
           ? (patient?.name || 'Unknown')
           : (bill?.customer_name || 'Walk-in Customer'),
         patient_uhid: bill?.patient_id ? (patient?.patient_id || undefined) : undefined,
-        medication_id: i.medicine_id,
+        medication_id: i.medicine_id ?? i.medication_id,
         medication_name: med?.name || 'Unknown',
         quantity: i.quantity,
         unit_price: i.unit_price,
@@ -1066,6 +1457,200 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
 // =====================================================
 // PER-BATCH STOCK STATS (Remaining, Sold this month, Purchased this month)
 // =====================================================
+
+// =====================================================
+// DEFINITIVE STOCK TRUTH SYSTEM (Single Source of Truth)
+// =====================================================
+
+export interface StockTruthRecord {
+  record_type: 'BATCH';
+  medication_id: string;
+  medication_code: string;
+  medication_name: string;
+  generic_name: string;
+  manufacturer: string;
+  category: string;
+  dosage_form: string;
+  strength: string;
+  unit_price: number;
+  batch_id: string;
+  batch_number: string;
+  manufacturing_date: string;
+  expiry_date: string;
+  initial_quantity: number;
+  table_quantity: number;
+  current_quantity: number; // TRUTH: Never negative
+  raw_ledger_balance: number;
+  total_purchased: number;
+  total_sold: number;
+  last_transaction_date: string;
+  purchase_price: number;
+  selling_price: number;
+  supplier_name: string;
+  batch_barcode: string;
+  batch_status: string;
+  cost_value: number;
+  retail_value: number;
+  reconciliation_status: 'RECONCILED' | 'MINOR_DISCREPANCY' | 'MAJOR_DISCREPANCY' | 'NO_TRANSACTIONS' | 'NO_BATCH_RECORD';
+  discrepancy_amount: number;
+  expiry_status: 'GOOD' | 'EXPIRING_SOON' | 'EXPIRED';
+  days_to_expiry: number;
+  stock_level_status: 'OPTIMAL' | 'LOW' | 'CRITICAL_LOW' | 'OVERSTOCKED';
+  alert_level: 'NORMAL' | 'WARNING' | 'CRITICAL' | 'INFO';
+}
+
+export interface MedicineStockSummary {
+  medication_id: string;
+  medication_code: string;
+  medication_name: string;
+  total_batches: number;
+  total_quantity: number;
+  total_cost_value: number;
+  total_retail_value: number;
+  critical_low_batches: number;
+  expired_batches: number;
+  expiring_soon_batches: number;
+  needs_reconciliation: boolean;
+  overall_alert_level: 'NORMAL' | 'WARNING' | 'CRITICAL' | 'INFO';
+}
+
+export interface StockReconciliationResult {
+  success: boolean;
+  message: string;
+  old_ledger_balance: number;
+  new_ledger_balance: number;
+  adjustment_needed: number;
+}
+
+export async function getStockTruth(medicationId?: string, batchNumber?: string): Promise<StockTruthRecord[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_stock_truth', {
+      medication_id: medicationId || null,
+      batch_number: batchNumber || null
+    });
+
+    if (error) {
+      console.error('Error fetching stock truth:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getStockTruth:', error);
+    return [];
+  }
+}
+
+export async function getMedicineStockSummary(medicationId: string): Promise<MedicineStockSummary | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_medicine_stock_summary', {
+      medication_id: medicationId
+    });
+
+    if (error) {
+      console.error('Error fetching medicine stock summary:', error);
+      return null;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in getMedicineStockSummary:', error);
+    return null;
+  }
+}
+
+export async function reconcileStock(batchNumber: string, newQuantity: number, userId: string): Promise<StockReconciliationResult> {
+  try {
+    const { data, error } = await supabase.rpc('reconcile_stock', {
+      batch_number: batchNumber,
+      new_quantity: newQuantity,
+      user_id: userId
+    });
+
+    if (error) {
+      console.error('Error reconciling stock:', error);
+      return {
+        success: false,
+        message: `Error: ${error.message}`,
+        old_ledger_balance: 0,
+        new_ledger_balance: 0,
+        adjustment_needed: 0
+      };
+    }
+
+    return data && data.length > 0 ? data[0] : {
+      success: false,
+      message: 'No response from server',
+      old_ledger_balance: 0,
+      new_ledger_balance: 0,
+      adjustment_needed: 0
+    };
+  } catch (error) {
+    console.error('Error in reconcileStock:', error);
+    return {
+      success: false,
+      message: `Error: ${error}`,
+      old_ledger_balance: 0,
+      new_ledger_balance: 0,
+      adjustment_needed: 0
+    };
+  }
+}
+
+// =====================================================
+// ROBUST STOCK FUNCTIONS (using server-side views/RPCs)
+// =====================================================
+
+export interface BatchStockData {
+  medication_id: string;
+  batch_number: string;
+  current_stock: number;
+  purchased_this_month: number;
+  sold_this_month: number;
+}
+
+export interface MedicationStockData {
+  medication_id: string;
+  current_stock: number;
+  expired_units: number;
+  total_batches: number;
+}
+
+export async function getBatchStockRobust(batchNumber: string): Promise<BatchStockData | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_batch_stock', {
+      batch_num: batchNumber
+    });
+
+    if (error) {
+      console.error('Error fetching batch stock:', error);
+      return null;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in getBatchStockRobust:', error);
+    return null;
+  }
+}
+
+export async function getMedicationStockRobust(medicationId: string): Promise<MedicationStockData | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_medication_stock', {
+      med_id: medicationId
+    });
+
+    if (error) {
+      console.error('Error fetching medication stock:', error);
+      return null;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in getMedicationStockRobust:', error);
+    return null;
+  }
+}
 
 export async function getBatchStockStats(batchNumber: string): Promise<{
   remainingUnits: number;
@@ -1173,16 +1758,16 @@ export async function dispensePrescription(
 
     // Update medication stock
     const { data: medication } = await supabase
-      .from('medicines')
-      .select('stock_quantity')
+      .from('medications')
+      .select('available_stock')
       .eq('id', medicationId)
       .single();
 
     if (medication) {
-      const newStock = Math.max(0, medication.stock_quantity - quantityDispensed);
+      const newStock = Math.max(0, medication.available_stock - quantityDispensed);
       await supabase
-        .from('medicines')
-        .update({ stock_quantity: newStock })
+        .from('medications')
+        .update({ available_stock: newStock })
         .eq('id', medicationId);
 
       // Create stock transaction

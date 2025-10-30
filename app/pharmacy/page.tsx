@@ -140,7 +140,9 @@ export default function PharmacyPage() {
   const categories = Array.from(new Set(medicines.map(m => m.category)))
 
   const getStockStatus = (medicine: Medicine) => {
-    if (medicine.stock_quantity <= medicine.minimum_stock_level) {
+    if (medicine.stock_quantity <= 0) {
+      return { status: 'Out of Stock', variant: 'destructive' as const }
+    } else if (medicine.stock_quantity <= medicine.minimum_stock_level) {
       return { status: 'Low Stock', variant: 'destructive' as const }
     } else if (medicine.stock_quantity <= medicine.minimum_stock_level * 2) {
       return { status: 'Medium Stock', variant: 'secondary' as const }

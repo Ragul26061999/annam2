@@ -16,7 +16,8 @@ import {
   AlertCircle,
   CheckCircle,
   Package,
-  IndianRupee
+  IndianRupee,
+  RefreshCw
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -92,6 +93,7 @@ export default function PharmacyBillingForm({
   const [searchTerm, setSearchTerm] = useState('');
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [prescription, setPrescription] = useState<Prescription | null>(null);
+  const [lastPrescriptionUpdate, setLastPrescriptionUpdate] = useState<string>('');
   
   // Customer details for custom billing
   const [customerName, setCustomerName] = useState('');
@@ -109,6 +111,17 @@ export default function PharmacyBillingForm({
       fetchPrescriptionDetails();
     }
   }, [billingType, prescriptionId]);
+
+  // Periodic check for prescription updates
+  useEffect(() => {
+    if (billingType === 'prescription' && prescriptionId) {
+      const interval = setInterval(() => {
+        fetchPrescriptionDetails();
+      }, 30000); // Check every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [billingType, prescriptionId, lastPrescriptionUpdate]);
 
   const fetchMedications = async () => {
     try {
@@ -153,24 +166,52 @@ export default function PharmacyBillingForm({
         prescription_items: itemsData || []
       };
 
+      // Check if prescription has been updated
+      const currentUpdate = prescriptionData.updated_at;
+      if (currentUpdate !== lastPrescriptionUpdate && lastPrescriptionUpdate !== '') {
+        // Prescription was updated, refresh billing items
+        const updatedItems: BillingItem[] = itemsData.map((item: PrescriptionItem) => ({
+          id: item.id,
+          medication_id: item.medication_id,
+          medication_name: item.medication_name,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          discount_percentage: 0,
+          total_price: item.total_price,
+          stock_available: 0 // Will be updated when we fetch medication details
+        }));
+        
+        setBillingItems(updatedItems);
+        
+        // Show notification to user about prescription update
+        alert('Prescription has been updated by the doctor. Billing items have been refreshed.');
+      }
+
       setPrescription(prescriptionWithItems);
+      setLastPrescriptionUpdate(currentUpdate);
       
-      // Pre-populate billing items from prescription
-      const items: BillingItem[] = itemsData.map((item: PrescriptionItem) => ({
-        id: item.id,
-        medication_id: item.medication_id,
-        medication_name: item.medication_name,
-        unit_price: item.unit_price,
-        quantity: item.quantity,
-        discount_percentage: 0,
-        total_price: item.total_price,
-        stock_available: 0 // Will be updated when we fetch medication details
-      }));
-      
-      setBillingItems(items);
+      // Only set billing items if this is the initial load
+      if (lastPrescriptionUpdate === '') {
+        const items: BillingItem[] = itemsData.map((item: PrescriptionItem) => ({
+          id: item.id,
+          medication_id: item.medication_id,
+          medication_name: item.medication_name,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          discount_percentage: 0,
+          total_price: item.total_price,
+          stock_available: 0 // Will be updated when we fetch medication details
+        }));
+        
+        setBillingItems(items);
+      }
     } catch (error) {
       console.error('Error fetching prescription details:', error);
     }
+  };
+
+  const refreshPrescription = async () => {
+    await fetchPrescriptionDetails();
   };
 
   const filteredMedications = medications.filter(med =>
@@ -475,11 +516,21 @@ export default function PharmacyBillingForm({
 
               {/* Prescription Details */}
               {billingType === 'prescription' && prescription && (
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Prescription Details
-                  </h3>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-semibold text-blue-900 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Prescription Details
+                    </h3>
+                    <button
+                      onClick={refreshPrescription}
+                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                      title="Refresh prescription data"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Patient:</span>

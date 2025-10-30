@@ -1,11 +1,11 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Search, Plus, Edit, Trash2, Package, Calendar, AlertTriangle, Filter, History, Layers, Clock, Eye, Printer, Info } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Package, Calendar, AlertTriangle, Filter, History, Layers, Clock, Eye, Printer, Info, RefreshCw, X } from 'lucide-react'
 import StatCard from '@/components/StatCard'
-import { getBatchPurchaseHistory, getBatchStockStats } from '@/src/lib/pharmacyService'
+import { getBatchPurchaseHistory, getBatchStockStats, editStockTransaction, adjustExpiredStock, getBatchStockRobust, getMedicationStockRobust, getStockTruth, getMedicineStockSummary, reconcileStock } from '@/src/lib/pharmacyService'
 import { supabase } from '@/src/lib/supabase'
-import type { BatchPurchaseHistoryEntry } from '@/src/lib/pharmacyService'
+import type { BatchPurchaseHistoryEntry, StockTransaction, StockTruthRecord, MedicineStockSummary } from '@/src/lib/pharmacyService'
 import MedicineEntryForm from '@/src/components/MedicineEntryForm'
 
 interface MedicineBatch {
@@ -33,6 +33,10 @@ interface Medicine {
   total_stock: number
   min_stock_level: number
   batches: MedicineBatch[]
+  medication_code?: string
+  strength?: string
+  dosage_form?: string
+  generic_name?: string
 }
 
 interface NewMedicine {
@@ -67,8 +71,12 @@ export default function InventoryPage() {
   const [historyBatchNumber, setHistoryBatchNumber] = useState<string>('')
   const [historyEntries, setHistoryEntries] = useState<BatchPurchaseHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'this_month' | 'last_3_months'>('all')
   const [showMedicineDetail, setShowMedicineDetail] = useState(false)
   const [selectedMedicineDetail, setSelectedMedicineDetail] = useState<Medicine | null>(null)
+  const [medicineStockSummary, setMedicineStockSummary] = useState<MedicineStockSummary | null>(null)
+  const [batchStockTruth, setBatchStockTruth] = useState<StockTruthRecord[]>([])
+  const [loadingMedicineDetail, setLoadingMedicineDetail] = useState(false)
   const [showEditBatch, setShowEditBatch] = useState(false)
   const [editingBatch, setEditingBatch] = useState<MedicineBatch | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -77,6 +85,15 @@ export default function InventoryPage() {
   const [medicineToDelete, setMedicineToDelete] = useState<Medicine | null>(null)
   const [showEditMedicine, setShowEditMedicine] = useState(false)
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null)
+  const [showEditPurchase, setShowEditPurchase] = useState(false)
+  const [editingPurchase, setEditingPurchase] = useState<StockTransaction | null>(null)
+  const [purchaseHistory, setPurchaseHistory] = useState<StockTransaction[]>([])
+  const [loadingPurchases, setLoadingPurchases] = useState(false)
+  const [showExpiredStockModal, setShowExpiredStockModal] = useState(false)
+  const [expiredBatch, setExpiredBatch] = useState<{medicineId: string; batchNumber: string; medicineName: string} | null>(null)
+  const [expiredAdjustmentType, setExpiredAdjustmentType] = useState<'delete' | 'adjust'>('delete')
+  const [expiredAdjustmentQuantity, setExpiredAdjustmentQuantity] = useState(0)
+  const [expiredNotes, setExpiredNotes] = useState('')
   const [newMedicine, setNewMedicine] = useState<NewMedicine>({
     name: '',
     category: '',
@@ -179,6 +196,8 @@ export default function InventoryPage() {
           status: (b.status as any) || 'active',
           received_date: b.received_date || b.manufacturing_date || ''
         }))
+        // Calculate total stock from batches to ensure consistency with modal
+        const calculatedTotalStock = batchesMapped.reduce((sum, batch) => sum + batch.quantity, 0)
         return {
           id: m.id,
           name: m.name,
@@ -186,7 +205,7 @@ export default function InventoryPage() {
           description: '',
           manufacturer: m.manufacturer,
           unit: m.dosage_form || 'units',
-          total_stock: Number(m.available_stock ?? 0),
+          total_stock: calculatedTotalStock,
           min_stock_level: Number(m.minimum_stock_level ?? 0),
           batches: batchesMapped
         }
@@ -264,10 +283,11 @@ export default function InventoryPage() {
     
     const matchesCategory = !categoryFilter || medicine.category === categoryFilter
     
-    const matchesStatus = !statusFilter || 
-                         (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level) ||
+    const matchesStatus = statusFilter === '' || 
+                         (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
                          (statusFilter === 'expired' && medicine.batches.some(batch => new Date(batch.expiry_date) < new Date())) ||
-                         (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level)
+                         (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level) ||
+                         (statusFilter === 'out_of_stock' && medicine.total_stock <= 0)
     
     return matchesSearch && matchesCategory && matchesStatus
   })
@@ -275,6 +295,7 @@ export default function InventoryPage() {
   const getStockStatus = (medicine: Medicine) => {
     const hasExpiredBatches = medicine.batches.some(batch => new Date(batch.expiry_date) < new Date())
     if (hasExpiredBatches) return 'expired'
+    if (medicine.total_stock <= 0) return 'out_of_stock'
     if (medicine.total_stock <= medicine.min_stock_level) return 'low_stock'
     return 'active'
   }
@@ -282,7 +303,9 @@ export default function InventoryPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'expired': return 'bg-red-100 text-red-800'
+      case 'out_of_stock': return 'bg-red-100 text-red-800'
       case 'low_stock': return 'bg-yellow-100 text-yellow-800'
+      case 'expiring_soon': return 'bg-yellow-100 text-yellow-800'
       case 'active': return 'bg-green-100 text-green-800'
       default: return 'bg-gray-100 text-gray-800'
     }
@@ -370,6 +393,18 @@ export default function InventoryPage() {
     return expiry <= threeMonthsFromNow && expiry > today
   }
 
+  // Derive per-batch status dynamically instead of relying on stored status
+  const getBatchStatus = (batch: MedicineBatch, remainingUnits: number, medicineMinStock: number) => {
+    const expired = new Date(batch.expiry_date) < new Date()
+    if (expired) return 'expired'
+    if (remainingUnits <= 0) return 'out_of_stock'
+    if (isExpiringSoon(batch.expiry_date)) return 'expiring_soon'
+    const batchesCount = selectedMedicineDetail?.batches?.length || 1
+    const perBatchThreshold = Math.max(1, Math.ceil((medicineMinStock || 0) / batchesCount))
+    if (medicineMinStock > 0 && remainingUnits <= perBatchThreshold) return 'low_stock'
+    return 'active'
+  }
+
   const dashboardStats = () => {
     const totalMedicines = medicines.length
     const totalBatches = medicines.reduce((sum, m) => sum + m.batches.length, 0)
@@ -390,24 +425,178 @@ export default function InventoryPage() {
 
   const safeText = (value?: string) => (value && value !== 'Unknown' && value !== 'N/A') ? value : '—'
 
+  const loadBatchStats = async (batchNumber: string) => {
+    try {
+      // Use definitive stock truth system
+      const stockTruth = await getStockTruth(undefined, batchNumber)
+      
+      if (stockTruth && stockTruth.length > 0) {
+        const batch = stockTruth[0]
+        setBatchStatsMap(prev => ({
+          ...prev,
+          [batchNumber]: {
+            remainingUnits: batch.current_quantity,
+            soldUnitsThisMonth: batch.total_sold || 0,
+            purchasedUnitsThisMonth: batch.total_purchased || 0
+          }
+        }))
+      } else {
+        // Fallback to legacy function if no truth data
+        const legacyStats = await getBatchStockStats(batchNumber)
+        setBatchStatsMap(prev => ({
+          ...prev,
+          [batchNumber]: legacyStats
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading batch stats:', error)
+      setBatchStatsMap(prev => ({
+        ...prev,
+        [batchNumber]: { remainingUnits: 0, soldUnitsThisMonth: 0, purchasedUnitsThisMonth: 0 }
+      }))
+    }
+  }
+
+  const loadPurchaseHistory = async (medicineId: string) => {
+    try {
+      setLoadingPurchases(true)
+      const { data, error } = await supabase
+        .from('stock_transactions')
+        .select('*')
+        .eq('medication_id', medicineId)
+        .eq('transaction_type', 'purchase')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setPurchaseHistory(data || [])
+    } catch (error) {
+      console.error('Failed to load purchase history:', error)
+      setPurchaseHistory([])
+    } finally {
+      setLoadingPurchases(false)
+    }
+  }
+
+  const handleEditPurchase = (purchase: StockTransaction) => {
+    setEditingPurchase(purchase)
+    setShowEditPurchase(true)
+  }
+
+  const handleUpdatePurchase = async (updates: {
+    quantity?: number;
+    unit_price?: number;
+    batch_number?: string;
+    expiry_date?: string;
+    notes?: string;
+  }) => {
+    if (!editingPurchase) return
+
+    try {
+      setLoading(true)
+      await editStockTransaction(editingPurchase.id, updates, 'current-user') // TODO: Get actual user ID
+      await loadMedicines() // Reload medicines to update stock
+      setShowEditPurchase(false)
+      setEditingPurchase(null)
+      alert('Purchase entry updated successfully!')
+    } catch (error: any) {
+      setError('Failed to update purchase: ' + (error?.message || 'Unknown error'))
+      console.error('Error updating purchase:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleExpiredStockAdjustment = (medicineId: string, batchNumber: string, medicineName: string) => {
+    setExpiredBatch({ medicineId, batchNumber, medicineName })
+    setExpiredAdjustmentType('delete')
+    setExpiredAdjustmentQuantity(0)
+    setExpiredNotes('')
+    setShowExpiredStockModal(true)
+  }
+
+  const handleProcessExpiredStock = async () => {
+    if (!expiredBatch) return
+
+    try {
+      setLoading(true)
+      const result = await adjustExpiredStock(
+        expiredBatch.medicineId,
+        expiredBatch.batchNumber,
+        expiredAdjustmentType,
+        'current-user', // TODO: Get actual user ID
+        expiredAdjustmentType === 'adjust' ? expiredAdjustmentQuantity : undefined,
+        expiredNotes
+      )
+
+      if (result.success) {
+        await loadMedicines() // Reload medicines to update stock
+        setShowExpiredStockModal(false)
+        setExpiredBatch(null)
+        alert(result.message)
+      } else {
+        setError('Failed to process expired stock: ' + result.message)
+      }
+    } catch (error: any) {
+      setError('Failed to process expired stock: ' + (error?.message || 'Unknown error'))
+      console.error('Error processing expired stock:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openMedicineDetail = async (medicine: Medicine) => {
+    try {
+      setLoadingMedicineDetail(true)
+      setSelectedMedicineDetail(medicine)
+      setShowMedicineDetail(true)
+      
+      // Load definitive stock data
+      const [stockSummary, stockTruth] = await Promise.all([
+        getMedicineStockSummary(medicine.id),
+        getStockTruth(medicine.id),
+        loadPurchaseHistory(medicine.id)
+      ])
+      
+      setMedicineStockSummary(stockSummary)
+      setBatchStockTruth(stockTruth)
+    } catch (error) {
+      console.error('Error loading medicine detail:', error)
+    } finally {
+      setLoadingMedicineDetail(false)
+    }
+  }
+
   const openBatchHistory = async (batchNumber: string) => {
     try {
-      setShowHistoryModal(true)
-      setHistoryBatchNumber(batchNumber)
       setHistoryLoading(true)
-      const entries = await getBatchPurchaseHistory(batchNumber)
-      setHistoryEntries(entries)
-    } catch (e) {
-      console.error('Failed to load batch history', e)
+      setHistoryBatchNumber(batchNumber)
+      const history = await getBatchPurchaseHistory(batchNumber)
+      setHistoryEntries(history)
+      setShowHistoryModal(true)
+    } catch (error) {
+      console.error('Error loading batch history:', error)
       setHistoryEntries([])
     } finally {
       setHistoryLoading(false)
     }
   }
 
-  const openMedicineDetail = (medicine: Medicine) => {
-    setSelectedMedicineDetail(medicine)
-    setShowMedicineDetail(true)
+  const getFilteredHistoryEntries = () => {
+    if (historyFilter === 'all') return historyEntries
+
+    const now = new Date()
+    let cutoffDate: Date
+
+    if (historyFilter === 'this_month') {
+      cutoffDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else { // last_3_months
+      cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+    }
+
+    return historyEntries.filter(entry => {
+      const entryDate = new Date(entry.purchased_at)
+      return entryDate >= cutoffDate
+    })
   }
 
   const handleEditBatch = (batch: MedicineBatch) => {
@@ -477,6 +666,9 @@ export default function InventoryPage() {
         .single()
       
       const barcode = batchData?.batch_barcode || 'N/A'
+      // Use definitive stock truth for accurate quantity on label
+      const stockTruth = await getStockTruth(undefined, batch.batch_number)
+      const quantity = stockTruth && stockTruth.length > 0 ? stockTruth[0].current_quantity : batch.quantity
       
       const printWindow = window.open('', '_blank')
       if (!printWindow) return
@@ -600,7 +792,7 @@ export default function InventoryPage() {
                 <div class="medicine-name">${medicineName}</div>
                 <div class="batch-details">
                   <span><strong>Batch:</strong> ${batch.batch_number}</span>
-                  <span><strong>Qty:</strong> ${batch.quantity}</span>
+                  <span><strong>Qty:</strong> ${quantity}</span>
                 </div>
               </div>
               
@@ -631,6 +823,170 @@ export default function InventoryPage() {
       }, 500)
     } catch (error) {
       console.error('Error printing batch label:', error)
+      alert('Failed to print label. Please try again.')
+    }
+  }
+
+  const printStandardLabel = async (batch: MedicineBatch, medicineName: string) => {
+    try {
+      // Fetch the actual batch barcode from database
+      const { data: batchData, error } = await supabase
+        .from('medicine_batches')
+        .select('batch_barcode')
+        .eq('id', batch.id)
+        .single()
+      
+      const barcode = batchData?.batch_barcode || batch.batch_number
+      
+      // Get definitive stock data from the stock truth system
+      const stockTruth = await getStockTruth(undefined, batch.batch_number)
+      const quantity = stockTruth && stockTruth.length > 0 ? stockTruth[0].current_quantity : batch.quantity
+      
+      // Format dates outside template literal to avoid parsing issues
+      const expiryDate = new Date(batch.expiry_date).toLocaleDateString('en-GB')
+      const printDate = new Date().toLocaleDateString('en-GB')
+      const printTime = new Date().toLocaleTimeString('en-GB', {hour12: false, hour: '2-digit', minute: '2-digit'})
+      
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) return
+      
+      const labelContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Standard Medicine Label</title>
+            <style>
+              @page { 
+                size: 50mm 25mm; 
+                margin: 1mm; 
+              }
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
+              body { 
+                font-family: 'Arial', sans-serif;
+                width: 48mm;
+                height: 23mm;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                padding: 1mm;
+                font-size: 8px;
+                line-height: 1.1;
+                background: white;
+              }
+              .header {
+                text-align: center;
+                font-size: 10px;
+                font-weight: bold;
+                color: #000;
+                margin-bottom: 1mm;
+              }
+              .medicine-name {
+                text-align: center;
+                font-size: 10px;
+                font-weight: bold;
+                color: #000;
+                margin-bottom: 1mm;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+              .batch-info {
+                display: flex;
+                justify-content: space-between;
+                font-size: 6px; /* reduced per request */
+                color: #000;
+                margin-bottom: 0.8mm;
+              }
+              .barcode-section {
+                text-align: center;
+                margin: 1mm 0;
+                height: 10mm; /* fixed height per spec */
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                border: 0.5px solid #ddd;
+                background: #f9f9f9;
+              }
+              #barcode {
+                width: 30mm;   /* exact width per spec */
+                height: 10mm;  /* exact height per spec */
+                display: block;
+              }
+              .footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 6px;
+                color: #000; /* black per request */
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">ANNAM HOSPITAL</div>
+            
+            <div class="medicine-name">${medicineName.length > 20 ? medicineName.substring(0, 20) + '...' : medicineName}</div>
+            
+            <div class="batch-info">
+              <span>Batch: ${batch.batch_number}</span>
+              <span>Qty: ${quantity}</span>
+            </div>
+            
+            <div class="barcode-section">
+              <svg id="barcode"></svg>
+            </div>
+            
+            <div class="footer">
+              <span>Exp: ${expiryDate}</span>
+              <span>Printed: ${printDate} ${printTime}</span>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+            <script>
+              (function() {
+                function render() {
+                  try {
+                    var value = ${JSON.stringify(barcode)};
+                    // Use CODE128 for alphanumeric; EAN-13 if numeric length 13
+                    var isNumeric = /^\d+$/.test(value);
+                    var fmt = (isNumeric && value.length === 13) ? 'EAN13' : 'CODE128';
+                    JsBarcode('#barcode', value, {
+                      format: fmt,
+                      displayValue: true,
+                      fontSize: 8,
+                      textMargin: 1,
+                      margin: 2,      // quiet zone
+                      lineColor: '#000',
+                      background: '#f9f9f9'
+                    });
+                    // Wait a tick for layout, then print
+                    setTimeout(function(){ window.print(); window.close(); }, 200);
+                  } catch (e) {
+                    console.error('Barcode render error', e);
+                    setTimeout(function(){ window.print(); window.close(); }, 200);
+                  }
+                }
+                if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                  render();
+                } else {
+                  window.addEventListener('load', render);
+                }
+              })();
+            </script>
+          </body>
+        </html>
+      `
+      
+      printWindow.document.write(labelContent)
+      printWindow.document.close()
+      printWindow.focus()
+      // Printing is triggered inside the popup after the barcode renders
+    } catch (error) {
+      console.error('Error printing standard label:', error)
       alert('Failed to print label. Please try again.')
     }
   }
@@ -812,6 +1168,7 @@ export default function InventoryPage() {
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="low_stock">Low Stock</option>
+            <option value="out_of_stock">Out of Stock</option>
             <option value="expired">Expired</option>
           </select>
           
@@ -1091,15 +1448,54 @@ export default function InventoryPage() {
       {/* Batch Purchase History Modal */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Batch Purchase History - {historyBatchNumber}</h2>
               <button onClick={() => { setShowHistoryModal(false); setHistoryEntries([]); setHistoryBatchNumber(''); }} className="btn-secondary">Close</button>
             </div>
+            
+            {/* Time Filters */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setHistoryFilter('all')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  historyFilter === 'all' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                All Time
+              </button>
+              <button
+                onClick={() => setHistoryFilter('this_month')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  historyFilter === 'this_month' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setHistoryFilter('last_3_months')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  historyFilter === 'last_3_months' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Last 3 Months
+              </button>
+            </div>
+
             {historyLoading ? (
               <div className="text-center py-8">Loading history...</div>
-            ) : historyEntries.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No purchases found for this batch.</div>
+            ) : getFilteredHistoryEntries().length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg mb-2">No purchases found</p>
+                <p className="text-sm">No purchase history for this batch in the selected time period.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm table-auto">
@@ -1115,7 +1511,7 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {historyEntries.map((entry) => (
+                    {getFilteredHistoryEntries().map((entry) => (
                       <tr key={`${entry.bill_id}-${entry.medication_id}`} className="border-b hover:bg-gray-50">
                         <td className="py-3 px-2">{safeFormatDateTime(entry.purchased_at)}</td>
                         <td className="py-3 px-2">{safeText(entry.bill_number)}</td>
@@ -1148,52 +1544,107 @@ export default function InventoryPage() {
       {/* Medicine Detail Modal */}
       {showMedicineDetail && selectedMedicineDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-lg max-w-7xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 shadow-lg">
               <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-2xl font-bold mb-2">{selectedMedicineDetail.name}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm text-blue-100">
-                    <div>Category: {selectedMedicineDetail.category}</div>
-                    <div>Manufacturer: {selectedMedicineDetail.manufacturer}</div>
-                    <div>Total Stock: {selectedMedicineDetail.total_stock}</div>
-                    <div>Expired Stock: {selectedMedicineDetail.batches.reduce((sum, b) => sum + (new Date(b.expiry_date) < new Date() ? b.quantity : 0), 0)}</div>
-                    <div>Min Level: {selectedMedicineDetail.min_stock_level}</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-4">
+                    <h2 className="text-3xl font-bold text-white tracking-tight">{selectedMedicineDetail.name}</h2>
+                    {medicineStockSummary?.overall_alert_level && (
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
+                        medicineStockSummary.overall_alert_level === 'CRITICAL' ? 'bg-red-600 text-white' :
+                        medicineStockSummary.overall_alert_level === 'WARNING' ? 'bg-amber-500 text-white' :
+                        medicineStockSummary.overall_alert_level === 'INFO' ? 'bg-blue-600 text-white' :
+                        'bg-emerald-500 text-white'
+                      }`}>
+                        {medicineStockSummary.overall_alert_level}
+                      </span>
+                    )}
                   </div>
+                  
+                  {/* Medicine Info Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm mb-4">
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Code</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.medication_code || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Category</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.category}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Manufacturer</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.manufacturer}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Strength</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.strength || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Form</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.dosage_form || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Generic</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.generic_name || 'N/A'}</div>
+                    </div>
+                  </div>
+                  
+                  {/* Stock Summary Cards */}
+                  {medicineStockSummary && (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                        <div className="text-slate-300 text-xs font-medium mb-2">Total Stock</div>
+                        <div className="text-2xl font-bold text-white">{medicineStockSummary.total_quantity}</div>
+                        <div className="text-slate-300 text-xs mt-1">{medicineStockSummary.total_batches} batches</div>
+                      </div>
+                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                        <div className="text-slate-300 text-xs font-medium mb-2">Cost Value</div>
+                        <div className="text-2xl font-bold text-white">₹{medicineStockSummary.total_cost_value}</div>
+                        <div className="text-slate-300 text-xs mt-1">at purchase price</div>
+                      </div>
+                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                        <div className="text-slate-300 text-xs font-medium mb-2">Retail Value</div>
+                        <div className="text-2xl font-bold text-white">₹{medicineStockSummary.total_retail_value}</div>
+                        <div className="text-slate-300 text-xs mt-1">at selling price</div>
+                      </div>
+                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                        <div className="text-slate-300 text-xs font-medium mb-2">Critical Batches</div>
+                        <div className="text-2xl font-bold text-red-300">{medicineStockSummary.critical_low_batches}</div>
+                        <div className="text-slate-300 text-xs mt-1">low stock</div>
+                      </div>
+                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                        <div className="text-slate-300 text-xs font-medium mb-2">Expiry Issues</div>
+                        <div className="text-2xl font-bold text-amber-300">{medicineStockSummary.expired_batches + medicineStockSummary.expiring_soon_batches}</div>
+                        <div className="text-slate-300 text-xs mt-1">expired/expiring</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+                
                 <button
                   onClick={() => {
                     setShowMedicineDetail(false)
                     setSelectedMedicineDetail(null)
+                    setMedicineStockSummary(null)
+                    setBatchStockTruth([])
                   }}
-                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors ml-4"
                 >
-                  ✕
+                  <X className="w-6 h-6" />
                 </button>
               </div>
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Batches ({selectedMedicineDetail.batches.length})
-                </h3>
-                <button
-                  onClick={() => {
-                    setSelectedMedicine(selectedMedicineDetail)
-                    setShowAddBatch(true)
-                    setShowMedicineDetail(false)
-                  }}
-                  className="btn-primary flex items-center"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add New Batch
-                </button>
-              </div>
-
-              {selectedMedicineDetail.batches.length === 0 ? (
+            <div className="p-6 overflow-y-auto max-h-[calc(95vh-200px)]">
+              {loadingMedicineDetail ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading medicine details...</p>
+                </div>
+              ) : selectedMedicineDetail.batches.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p className="text-lg mb-2">No batches available</p>
@@ -1205,6 +1656,8 @@ export default function InventoryPage() {
                     const isExpired = new Date(batch.expiry_date) < new Date()
                     const expSoon = isExpiringSoon(batch.expiry_date)
                     const batchStats = batchStatsMap[batch.batch_number]
+                    const remaining = batchStats?.remainingUnits ?? batch.quantity
+                    const derivedStatus = getBatchStatus(batch, remaining, selectedMedicineDetail?.min_stock_level || 0)
                     
                     return (
                       <div key={batch.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
@@ -1215,8 +1668,8 @@ export default function InventoryPage() {
                               <h4 className="text-lg font-semibold text-gray-900">{batch.batch_number}</h4>
                               <p className="text-sm text-gray-500">Supplier: {batch.supplier}</p>
                             </div>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(batch.status)}`}>
-                              {batch.status.replace('_', ' ')}
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(derivedStatus)}`}>
+                              {derivedStatus.replace('_', ' ')}
                             </span>
                           </div>
                         </div>
@@ -1227,8 +1680,8 @@ export default function InventoryPage() {
                           <div className="grid grid-cols-2 gap-4">
                             <div className="bg-gray-50 rounded-lg p-3">
                               <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
-                              <div className="text-xl font-bold text-gray-900">{batch.quantity}</div>
-                              <div className="text-xs text-gray-500">Remaining: {batchStats?.remainingUnits ?? '—'}</div>
+                              <div className="text-xl font-bold text-gray-900">{batchStats?.remainingUnits ?? batch.quantity}</div>
+                              <div className="text-xs text-gray-500">Purchased: {batchStats?.purchasedUnitsThisMonth ?? '—'}</div>
                             </div>
                             <div className="bg-gray-50 rounded-lg p-3">
                               <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
@@ -1272,37 +1725,52 @@ export default function InventoryPage() {
 
                           {/* Actions */}
                           <div className="flex gap-2 pt-2 border-t border-gray-100">
+                            {isExpired && (
+                              <button
+                                onClick={() => handleExpiredStockAdjustment(selectedMedicineDetail.id, batch.batch_number, selectedMedicineDetail.name)}
+                                className="flex-1 bg-orange-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-orange-700 transition-colors flex items-center justify-center gap-1"
+                                title="Adjust Expired Stock"
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                Expired
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEditBatch(batch)}
-                              className="flex-1 bg-green-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-1"
+                              className={`${isExpired ? 'flex-1' : 'flex-1'} bg-green-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-1`}
                             >
                               <Edit className="w-3 h-3" />
                               Edit
                             </button>
                             <button
                               onClick={() => handleDeleteBatch(batch.id)}
-                              className="flex-1 bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-1"
+                              className={`${isExpired ? 'flex-1' : 'flex-1'} bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-1`}
                             >
                               <Trash2 className="w-3 h-3" />
                               Delete
                             </button>
-                            <button
-                              onClick={() => printBatchLabel(batch, selectedMedicineDetail.name)}
-                              className="flex-1 bg-blue-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-                            >
-                              <Printer className="w-3 h-3" />
-                              Print
-                            </button>
-                            <button
-                              onClick={() => {
-                                openBatchHistory(batch.batch_number)
-                                setShowMedicineDetail(false)
-                              }}
-                              className="flex-1 bg-gray-100 text-gray-700 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
-                            >
-                              <History className="w-3 h-3" />
-                              History
-                            </button>
+                            {!isExpired && (
+                              <>
+                                <button
+                                  onClick={() => printStandardLabel(batch, selectedMedicineDetail.name)}
+                                  className="flex-1 bg-blue-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                                  title="Print Standard Label"
+                                >
+                                  <Printer className="w-3 h-3" />
+                                  Print Label
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    openBatchHistory(batch.batch_number)
+                                    setShowMedicineDetail(false)
+                                  }}
+                                  className="flex-1 bg-gray-100 text-gray-700 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
+                                >
+                                  <History className="w-3 h-3" />
+                                  History
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1310,6 +1778,73 @@ export default function InventoryPage() {
                   })}
                 </div>
               )}
+
+              {/* Purchase History Section */}
+              <div className="mt-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    Purchase History
+                  </h3>
+                  <button
+                    onClick={() => loadPurchaseHistory(selectedMedicineDetail.id)}
+                    className="btn-secondary"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh
+                  </button>
+                </div>
+                
+                {loadingPurchases ? (
+                  <div className="text-center py-8">Loading purchase history...</div>
+                ) : purchaseHistory.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-lg mb-2">No purchase history found</p>
+                    <p className="text-sm">Purchase entries will appear here</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-3 px-2">Date</th>
+                          <th className="text-left py-3 px-2">Batch</th>
+                          <th className="text-left py-3 px-2">Quantity</th>
+                          <th className="text-left py-3 px-2">Unit Price</th>
+                          <th className="text-left py-3 px-2">Total</th>
+                          <th className="text-left py-3 px-2">Expiry</th>
+                          <th className="text-left py-3 px-2">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {purchaseHistory.map((purchase) => (
+                          <tr key={purchase.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-2">
+                              {new Date(purchase.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-3 px-2">{purchase.batch_number || '—'}</td>
+                            <td className="py-3 px-2">{purchase.quantity}</td>
+                            <td className="py-3 px-2">₹{purchase.unit_price}</td>
+                            <td className="py-3 px-2">₹{(purchase.quantity * purchase.unit_price).toFixed(2)}</td>
+                            <td className="py-3 px-2">
+                              {purchase.expiry_date ? new Date(purchase.expiry_date).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="py-3 px-2">
+                              <button
+                                onClick={() => handleEditPurchase(purchase)}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Edit Purchase"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1510,6 +2045,223 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Purchase Modal */}
+      {showEditPurchase && editingPurchase && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Edit Purchase Entry</h2>
+              <button
+                onClick={() => {
+                  setShowEditPurchase(false)
+                  setEditingPurchase(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Batch Number
+                </label>
+                <input
+                  type="text"
+                  value={editingPurchase.batch_number || ''}
+                  onChange={(e) => setEditingPurchase({...editingPurchase, batch_number: e.target.value})}
+                  className="input"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  value={editingPurchase.quantity}
+                  onChange={(e) => setEditingPurchase({...editingPurchase, quantity: parseInt(e.target.value) || 0})}
+                  className="input"
+                  min="1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Unit Price (₹)
+                </label>
+                <input
+                  type="number"
+                  value={editingPurchase.unit_price}
+                  onChange={(e) => setEditingPurchase({...editingPurchase, unit_price: parseFloat(e.target.value) || 0})}
+                  className="input"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Expiry Date
+                </label>
+                <input
+                  type="date"
+                  value={editingPurchase.expiry_date || ''}
+                  onChange={(e) => setEditingPurchase({...editingPurchase, expiry_date: e.target.value})}
+                  className="input"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={editingPurchase.notes || ''}
+                  onChange={(e) => setEditingPurchase({...editingPurchase, notes: e.target.value})}
+                  className="input"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditPurchase(false)
+                    setEditingPurchase(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleUpdatePurchase({
+                    quantity: editingPurchase.quantity,
+                    unit_price: editingPurchase.unit_price,
+                    batch_number: editingPurchase.batch_number || undefined,
+                    expiry_date: editingPurchase.expiry_date || undefined,
+                    notes: editingPurchase.notes || undefined
+                  })}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={loading}
+                >
+                  {loading ? 'Updating...' : 'Update Purchase'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expired Stock Adjustment Modal */}
+      {showExpiredStockModal && expiredBatch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-orange-600">Adjust Expired Stock</h2>
+              <button
+                onClick={() => {
+                  setShowExpiredStockModal(false)
+                  setExpiredBatch(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                Medicine: <span className="font-medium">{expiredBatch.medicineName}</span>
+              </p>
+              <p className="text-sm text-gray-600 mb-4">
+                Batch: <span className="font-medium">{expiredBatch.batchNumber}</span>
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Adjustment Type
+                  </label>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setExpiredAdjustmentType('delete')}
+                      className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${
+                        expiredAdjustmentType === 'delete'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Delete Entire Batch
+                    </button>
+                    <button
+                      onClick={() => setExpiredAdjustmentType('adjust')}
+                      className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${
+                        expiredAdjustmentType === 'adjust'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Adjust Quantity
+                    </button>
+                  </div>
+                </div>
+
+                {expiredAdjustmentType === 'adjust' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      New Quantity
+                    </label>
+                    <input
+                      type="number"
+                      value={expiredAdjustmentQuantity}
+                      onChange={(e) => setExpiredAdjustmentQuantity(parseInt(e.target.value) || 0)}
+                      className="input"
+                      min="0"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    value={expiredNotes}
+                    onChange={(e) => setExpiredNotes(e.target.value)}
+                    className="input"
+                    rows={3}
+                    placeholder="Reason for expired stock adjustment..."
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowExpiredStockModal(false)
+                  setExpiredBatch(null)
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProcessExpiredStock}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                disabled={loading || (expiredAdjustmentType === 'adjust' && expiredAdjustmentQuantity === 0)}
+              >
+                {loading ? 'Processing...' : 'Process Adjustment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

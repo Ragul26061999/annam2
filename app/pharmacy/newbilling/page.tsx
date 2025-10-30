@@ -415,7 +415,8 @@ export default function NewBillingPage() {
         totals: billTotals,
         customer: customer,
         paymentMethod: paymentMethod,
-        hospitalDetails: hospitalDetails
+        hospitalDetails: hospitalDetails,
+        billDate: new Date().toISOString()
       });
       setShowBillSuccess(true);
       setShowPaymentModal(false);
@@ -949,8 +950,9 @@ export default function NewBillingPage() {
                 <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
                   <div>
                     <p><strong>Bill No:</strong> {generatedBill.bill_number}</p>
-                    <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
-                    <p><strong>Time:</strong> {new Date().toLocaleTimeString()}</p>
+                    <p><strong>Bill Date:</strong> {generatedBill.billDate ? new Date(generatedBill.billDate).toLocaleDateString() : new Date().toLocaleDateString()}</p>
+                    <p><strong>Printed Date:</strong> {new Date().toLocaleDateString()}</p>
+                    <p><strong>Printed Time:</strong> {new Date().toLocaleTimeString()}</p>
                   </div>
                   <div>
                     <p><strong>Customer:</strong> {generatedBill.customer.name}</p>
