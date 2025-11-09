@@ -1388,11 +1388,19 @@ export default function NewBillingPage() {
                   <p><strong>Date:</strong> {formatISTDate(getISTDate())} {formatISTTime(getISTDate())}</p>
                   <p>
                     <strong>Sales Type:</strong>{' '}
-                    {Array.isArray(generatedBill.payments) && generatedBill.payments.length > 1
-                      ? generatedBill.payments.map((p: any) => (p.method || '').toUpperCase()).join(' + ')
-                      : (generatedBill.paymentMethod === 'credit'
-                          ? 'CREDIT'
-                          : (generatedBill.paymentMethod || 'cash').toUpperCase())}
+                    {(() => {
+                      const pays = (Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0)
+                        ? generatedBill.payments
+                        : payments;
+                      if (Array.isArray(pays) && pays.length > 0) {
+                        return pays
+                          .map((p: any) => `${(p.method || '').toUpperCase()} ₹${Number(p.amount || 0).toFixed(2)}`)
+                          .join(' + ');
+                      }
+                      return (generatedBill.paymentMethod === 'credit'
+                        ? 'CREDIT'
+                        : (generatedBill.paymentMethod || 'cash').toUpperCase());
+                    })()}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -1430,27 +1438,30 @@ export default function NewBillingPage() {
               </table>
 
               {/* Payment Details (supports split payments) */}
-              {Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0 && (
-                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Details</h4>
-                  <div className="space-y-1">
-                    {generatedBill.payments.map((payment: any, idx: number) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span className="capitalize">{payment.method}</span>
-                        <span className="font-medium">₹{Number(payment.amount || 0).toFixed(2)}</span>
+              {(() => {
+                const pays = (Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0)
+                  ? generatedBill.payments
+                  : payments;
+                return Array.isArray(pays) && pays.length > 0 ? (
+                  <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Details</h4>
+                    <div className="space-y-1">
+                      {pays.map((payment: any, idx: number) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span className="capitalize">{payment.method}</span>
+                          <span className="font-medium">₹{Number(payment.amount || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                      <div className="border-t pt-1 mt-2 flex justify-between font-semibold">
+                        <span>Total Paid</span>
+                        <span>
+                          ₹{(pays.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0)).toFixed(2)}
+                        </span>
                       </div>
-                    ))}
-                    <div className="border-t pt-1 mt-2 flex justify-between font-semibold">
-                      <span>Total Paid</span>
-                      <span>
-                        ₹{(
-                          (generatedBill.payments || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0)
-                        ).toFixed(2)}
-                      </span>
                     </div>
                   </div>
-                </div>
-              )}
+                ) : null;
+              })()}
 
               {/* Totals */}
               <div className="border-t-2 border-gray-300 pt-3 space-y-1 text-sm totals-section">
