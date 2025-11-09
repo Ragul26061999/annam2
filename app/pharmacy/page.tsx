@@ -3,26 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { 
-  Search, 
-  Plus, 
-  Package, 
-  AlertTriangle, 
-  ShoppingCart, 
-  DollarSign,
-  IndianRupee,
-  Filter,
-  Eye,
-  Edit,
-  Trash2,
-  FileText,
-  Users,
-  Receipt,
-  BarChart3,
-  History,
-  RefreshCw,
-  X
-} from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X } from 'lucide-react'
 import { 
   getPharmacyDashboardStats, 
   getMedications, 

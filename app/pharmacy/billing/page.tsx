@@ -54,10 +54,12 @@ export default function PharmacyBillingPage() {
   const [newPaymentMethod, setNewPaymentMethod] = useState('')
   const [updatingPayment, setUpdatingPayment] = useState(false)
   const embedded = false
-  // View modal state
   const [showViewModal, setShowViewModal] = useState(false)
   const [viewItems, setViewItems] = useState<any[]>([])
   const [viewLoading, setViewLoading] = useState(false)
+  // Payment details for split payments
+  const [paymentDetails, setPaymentDetails] = useState<any[]>([])
+  const [paymentDetailsLoading, setPaymentDetailsLoading] = useState(false)
   // Hospital settings
   const [hospital, setHospital] = useState({
     name: 'ANNAM PHARMACY',
@@ -221,23 +223,65 @@ export default function PharmacyBillingPage() {
     setSelectedBill(bill)
     setShowViewModal(true)
     setViewLoading(true)
+    setPaymentDetailsLoading(true)
+    
     try {
-      const { data, error } = await supabase
+      // Fetch bill items
+      const { data: itemsData, error: itemsError } = await supabase
         .from('billing_item')
         .select('*')
         .eq('billing_id', bill.id)
-      if (error) throw error
-      setViewItems(data || [])
+      if (itemsError) throw itemsError
+      setViewItems(itemsData || [])
+
+      // Fetch payment details for split payments
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('billing_payments')
+        .select('*')
+        .eq('billing_id', bill.id)
+        .order('created_at', { ascending: true })
+
+      if (paymentError) {
+        console.warn('Failed to load payment details:', paymentError)
+        setPaymentDetails([])
+      } else {
+        setPaymentDetails(paymentData || [])
+      }
     } catch (e) {
-      console.error('Failed to load bill items', e)
+      console.error('Failed to load bill data', e)
       setViewItems([])
+      setPaymentDetails([])
     } finally {
       setViewLoading(false)
+      setPaymentDetailsLoading(false)
     }
   }
 
   const printBill = () => {
     if (!selectedBill) return
+    
+    // Generate payment details HTML
+    const paymentDetailsHtml = paymentDetails.length > 0 ? `
+      <div style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 6px;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #111827;">Payment Details</h4>
+        ${paymentDetails.map(payment => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 500;">${payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}</span>
+              ${payment.reference ? `<span style="color: #6b7280;">(${payment.reference})</span>` : ''}
+            </div>
+            <span style="font-weight: 600; color: #059669;">₹${Number(payment.amount || 0).toFixed(2)}</span>
+          </div>
+        `).join('')}
+        ${paymentDetails.length > 1 ? `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; margin-top: 4px; border-top: 1px solid #e5e7eb; font-weight: 600; font-size: 13px;">
+            <span>Total Paid</span>
+            <span style="color: #2563eb;">₹${paymentDetails.reduce((sum, p) => sum + Number(p.amount || 0), 0).toFixed(2)}</span>
+          </div>
+        ` : ''}
+      </div>
+    ` : '';
+
     const itemsHtml = viewItems.map((it: any, idx: number) => `
       <tr style="border-bottom:1px solid #e5e7eb">
         <td style="padding:6px">${idx + 1}</td>
@@ -248,9 +292,11 @@ export default function PharmacyBillingPage() {
         <td class="amount-cell" style="padding:6px;text-align:right;padding-right:4mm">₹${Number(it.total_amount || 0).toFixed(2)}</td>
       </tr>
     `).join('')
+    
     const subtotal = selectedBill.subtotal ?? viewItems.reduce((s: number, it: any) => s + Number(it.total_amount || 0), 0)
     const discount = selectedBill.discount || 0
     const tax = selectedBill.tax ?? Math.max(selectedBill.total_amount - (subtotal - discount), 0)
+    
     const w = window.open('', 'printwin')
     if (!w) return
     w.document.write(`
@@ -288,9 +334,11 @@ export default function PharmacyBillingPage() {
             </tr>
             <tr>
               <td><strong>Date:</strong> ${new Date(selectedBill.created_at).toLocaleString()}</td>
-              <td><strong>Sales Type:</strong> ${(selectedBill.payment_method === 'credit' ? 'CREDIT' : 'CASH')}</td>
+              <td><strong>Status:</strong> ${selectedBill.payment_status}</td>
             </tr>
           </table>
+
+          ${paymentDetailsHtml}
 
           <table style="font-size:14px;margin-bottom:10px">
             <thead>
@@ -394,8 +442,9 @@ export default function PharmacyBillingPage() {
       case 'card':
         return <CreditCard className="w-4 h-4 text-blue-600" />
       case 'upi':
-      case 'gpay':
         return <Receipt className="w-4 h-4 text-purple-600" />
+      case 'split':
+        return <Receipt className="w-4 h-4 text-indigo-600" />
       case 'credit':
         return <DollarSign className="w-4 h-4 text-orange-600" />
       case 'others':
@@ -517,9 +566,9 @@ export default function PharmacyBillingPage() {
           >
             <option value="all">All Payment Methods</option>
             <option value="cash">Cash</option>
-            <option value="gpay">GPay</option>
             <option value="card">Card</option>
             <option value="upi">UPI</option>
+            <option value="split">Split</option>
             <option value="credit">Credit</option>
             <option value="others">Others</option>
           </select>
@@ -567,7 +616,14 @@ export default function PharmacyBillingPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-2">
                       {getPaymentMethodIcon(bill.payment_method)}
-                      <span className="capitalize">{bill.payment_method}</span>
+                      <span className="capitalize">
+                        {bill.payment_method === 'split' ? 'Split Payment' : bill.payment_method}
+                      </span>
+                      {bill.payment_method === 'split' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                          Multiple
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -641,8 +697,35 @@ export default function PharmacyBillingPage() {
                 <div><span className="font-medium">UHID:</span> {selectedBill.patient_uhid}</div>
               )}
               <div><span className="font-medium">Date:</span> {new Date(selectedBill.created_at).toLocaleString()}</div>
-              <div><span className="font-medium">Payment:</span> {selectedBill.payment_method} • {selectedBill.payment_status}</div>
+              <div><span className="font-medium">Payment Status:</span> <span className={getStatusBadge(selectedBill.payment_status)}>{selectedBill.payment_status}</span></div>
             </div>
+
+            {/* Payment Details */}
+            {paymentDetails.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">Payment Details</h4>
+                <div className="space-y-2">
+                  {paymentDetails.map((payment, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-gray-50 rounded p-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        {getPaymentMethodIcon(payment.method)}
+                        <span className="capitalize">{payment.method}</span>
+                        {payment.reference && (
+                          <span className="text-gray-500">({payment.reference})</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-green-600">₹{Number(payment.amount || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {paymentDetails.length > 1 && (
+                    <div className="flex items-center justify-between bg-blue-50 rounded p-2 text-sm font-medium">
+                      <span>Total Paid</span>
+                      <span className="text-blue-600">₹{paymentDetails.reduce((sum, p) => sum + Number(p.amount || 0), 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="border rounded-md overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">

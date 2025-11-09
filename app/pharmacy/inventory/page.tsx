@@ -62,7 +62,7 @@ interface NewBatch {
 export default function InventoryPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  const [dosageFilter, setDosageFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showAddMedicine, setShowAddMedicine] = useState(false)
   const [showAddBatch, setShowAddBatch] = useState(false)
@@ -122,7 +122,7 @@ export default function InventoryPage() {
   const [batchStatsMap, setBatchStatsMap] = useState<Record<string, { remainingUnits: number; soldUnitsThisMonth: number; purchasedUnitsThisMonth: number }>>({})
   const embedded = false
 
-  const categories = ['Analgesic', 'Antibiotic', 'Antacid', 'Vitamin', 'Antiseptic', 'Other']
+  const dosageTypes = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 'Ointment', 'Powder', 'Drops']
   const units = ['tablets', 'capsules', 'ml', 'mg', 'bottles', 'tubes', 'sachets']
 
   useEffect(() => {
@@ -336,10 +336,10 @@ export default function InventoryPage() {
 
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase())
+                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
     
-    const matchesCategory = !categoryFilter || medicine.category === categoryFilter
+    const matchesDosage = !dosageFilter || medicine.unit === dosageFilter
     
     const matchesStatus = statusFilter === '' || 
                          (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
@@ -347,7 +347,7 @@ export default function InventoryPage() {
                          (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level) ||
                          (statusFilter === 'out_of_stock' && medicine.total_stock <= 0)
     
-    return matchesSearch && matchesCategory && matchesStatus
+    return matchesSearch && matchesDosage && matchesStatus
   })
 
   const getStockStatus = (medicine: Medicine) => {
@@ -1206,15 +1206,15 @@ export default function InventoryPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dosage Type</label>
             <select
-              value={editingMedicine.category}
-              onChange={(e) => setEditingMedicine({ ...editingMedicine, category: e.target.value })}
+              value={editingMedicine.unit}
+              onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
               className="input"
             >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              <option value="">Select dosage type</option>
+              {dosageTypes.map((dt) => (
+                <option key={dt} value={dt}>{dt}</option>
               ))}
             </select>
           </div>
@@ -1330,13 +1330,13 @@ export default function InventoryPage() {
           </div>
           
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={dosageFilter}
+            onChange={(e) => setDosageFilter(e.target.value)}
             className="input"
           >
-            <option value="">All Categories</option>
-            {categories.map(category => (
-              <option key={category} value={category}>{category}</option>
+            <option value="">All Dosage Types</option>
+            {dosageTypes.map((dt) => (
+              <option key={dt} value={dt}>{dt}</option>
             ))}
           </select>
           
@@ -1395,7 +1395,7 @@ export default function InventoryPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left py-3 px-4 font-semibold text-gray-900">Medicine Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-900">Category</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-900">Dosage Type</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-900">Manufacturer</th>
                   <th className="text-center py-3 px-4 font-semibold text-gray-900">Stock</th>
                   <th className="text-center py-3 px-4 font-semibold text-gray-900">Batches</th>
@@ -1418,7 +1418,7 @@ export default function InventoryPage() {
                           <span className="font-medium text-gray-900">{medicine.name}</span>
                         </div>
                       </td>
-                      <td className="py-4 px-4 text-gray-600">{medicine.category}</td>
+                      <td className="py-4 px-4 text-gray-600">{medicine.unit}</td>
                       <td className="py-4 px-4 text-gray-600">{medicine.manufacturer}</td>
                       <td className="py-4 px-4 text-center">
                         <div className="text-sm">
@@ -1701,8 +1701,8 @@ export default function InventoryPage() {
                       <div className="text-white font-semibold">{selectedMedicineDetail.medication_code || 'N/A'}</div>
                     </div>
                     <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Category</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.category}</div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Dosage Type</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.unit}</div>
                     </div>
                     <div>
                       <div className="text-slate-300 text-xs font-medium mb-1">Manufacturer</div>
@@ -1895,7 +1895,7 @@ export default function InventoryPage() {
                             </div>
                           </div>
 
-                          {/* Actions */}
+                          {/* Actions (Edit removed by request to avoid conflicts) */}
                           <div className="flex gap-2 pt-2 border-t border-gray-100">
                             {isExpired && (
                               <button
@@ -1907,13 +1907,6 @@ export default function InventoryPage() {
                                 Expired
                               </button>
                             )}
-                            <button
-                              onClick={() => handleEditBatch(batch as any)}
-                              className={`${isExpired ? 'flex-1' : 'flex-1'} bg-green-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-1`}
-                            >
-                              <Edit className="w-3 h-3" />
-                              Edit
-                            </button>
                             <button
                               onClick={() => handleDeleteBatch(batch.id)}
                               className={`${isExpired ? 'flex-1' : 'flex-1'} bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-1`}

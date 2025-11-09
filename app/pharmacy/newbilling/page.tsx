@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Trash2,
-  Printer
+  Printer,
+  X
 } from 'lucide-react';
 
 // Types
@@ -64,6 +65,13 @@ interface BillTotals {
   totalAmount: number;
 }
 
+// Split payment entry
+interface Payment {
+  method: 'cash' | 'card' | 'upi' | 'credit' | 'others';
+  amount: number;
+  reference?: string;
+}
+
 export default function NewBillingPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,11 +86,90 @@ export default function NewBillingPage() {
   const [qrPreviewBatch, setQrPreviewBatch] = useState<MedicineBatch | null>(null);
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'credit'>('cash');
-  // Patient search state
-  const [patientSearch, setPatientSearch] = useState('');
-  const [patientResults, setPatientResults] = useState<Array<{ id: string; patient_id: string; name: string; phone?: string }>>([]);
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([
+    { method: 'cash', amount: 0, reference: '' }
+  ]);
+  // Smooth typing buffer for payment amounts per row
+  const [paymentAmountInputs, setPaymentAmountInputs] = useState<string[]>([]);
+  // Initialize/expand buffer when modal opens
+  useEffect(() => {
+    if (showPaymentModal) {
+      setPaymentAmountInputs(payments.map(p => {
+        const n = Number(p.amount);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+      }));
+    }
+  }, [showPaymentModal]);
+
+  // Normalize method to DB-allowed values
+  const normalizeMethod = (m: string): 'cash' | 'card' | 'upi' | 'credit' => {
+    switch (m) {
+      case 'cash':
+      case 'card':
+      case 'upi':
+      case 'credit':
+        return m;
+      default:
+        return 'cash';
+    }
+  }
+
+  // Helper: Get current Indian time (IST = UTC+5:30)
+  const getISTDate = () => {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const ist = new Date(utc + (5.5 * 60 * 60 * 1000)); // IST is UTC+5:30
+    return ist;
+  };
+
+  // Helper: Format date for receipt display in IST
+  const formatISTDate = (date: Date) => {
+    return date.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const formatISTTime = (date: Date) => {
+    return date.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+  // Keep buffer length in sync when rows are added/removed, without overwriting existing typed values
+  useEffect(() => {
+    setPaymentAmountInputs(prev => {
+      const next = payments.map((p, i) => {
+        if (prev[i] !== undefined) return prev[i];
+        const n = Number(p.amount);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+      });
+      return next;
+    });
+  }, [payments.length]);
+  const paymentsTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+
+  // Payment method icon helper
+  const getPaymentMethodIcon = (method: string) => {
+    switch (method) {
+      case 'cash':
+        return '💵'
+      case 'upi':
+        return '📱'
+      case 'card':
+        return '💳'
+      case 'credit':
+        return '⏳'
+      case 'others':
+        return '🔄'
+      default:
+        return '💰'
+    }
+  }
   const [billTotals, setBillTotals] = useState<BillTotals>({
     subtotal: 0,
     discountType: 'amount',
@@ -94,6 +181,10 @@ export default function NewBillingPage() {
   });
   const [showBillSuccess, setShowBillSuccess] = useState(false);
   const [generatedBill, setGeneratedBill] = useState<any>(null);
+  // Patient search state used in UI below
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientResults, setPatientResults] = useState<any[]>([]);
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   // Hospital details for receipt (persisted)
   const [hospitalDetails, setHospitalDetails] = useState({
     name: 'ANNAM PHARMACY',
@@ -417,20 +508,20 @@ export default function NewBillingPage() {
           discount_type: billTotals.discountType,
           discount_value: billTotals.discountValue,
           tax_percent: billTotals.taxPercent,
-          payment_method: paymentMethod,
-          payment_status: paymentMethod === 'credit' ? 'pending' : 'completed',
+          total: billTotals.totalAmount,
+          payment_method: normalizeMethod(payments[0].method),
           customer_name: customer.name.trim(),
           customer_phone: customer.type === 'patient' ? (customer.phone ?? null) : (customer.phone ?? '').trim(),
           customer_type: customer.type
         })
-        .select()
-        .single();
+        .select('*')
+        .single()
 
       if (billError) throw billError;
 
       // Create bill items
       const billItemsData = billItems.map(item => ({
-        billing_id: billData.id,
+        billing_id: billData!.id,
         line_type_id: '3a0ca26e-7dc1-4ede-9872-d798cf39d248', // Medicine line type from ref_code table
         medicine_id: item.medicine.id,
         batch_id: item.batch.id,
@@ -448,6 +539,20 @@ export default function NewBillingPage() {
 
       if (itemsError) throw itemsError;
 
+      // Insert split payments using RPC so triggers update payment_status/amounts
+      for (const p of payments) {
+        if (!p.amount || p.amount <= 0) continue;
+        const { error: payErr } = await supabase.rpc('add_billing_payment', {
+          p_billing_id: billData!.id,
+          p_amount: p.amount,
+          p_method: p.method,
+          p_reference: p.reference || null,
+          p_notes: null,
+          p_received_by: null
+        });
+        if (payErr) throw payErr;
+      }
+
       // Stock transactions and inventory adjustments are handled automatically by database triggers
 
       // Show success modal with receipt
@@ -456,9 +561,9 @@ export default function NewBillingPage() {
         items: billItems,
         totals: billTotals,
         customer: customer,
-        paymentMethod: paymentMethod,
+        paymentMethod: payments.length > 1 ? 'split' : payments[0].method,
         hospitalDetails: hospitalDetails,
-        billDate: new Date().toISOString()
+        billDate: getISTDate().toISOString()
       });
       setShowBillSuccess(true);
       setShowPaymentModal(false);
@@ -466,7 +571,7 @@ export default function NewBillingPage() {
       // Reset form
       setBillItems([]);
       setCustomer({ type: 'walk_in', name: '', phone: '' });
-      setPaymentMethod('cash');
+      setPayments([{ method: 'cash', amount: 0, reference: '' }]);
       setBillTotals({
         subtotal: 0,
         discountType: 'amount',
@@ -772,10 +877,19 @@ export default function NewBillingPage() {
                             type="number"
                             min={1}
                             max={item.batch.current_quantity}
-                            value={item.quantity}
+                            value={Number.isFinite(item.quantity as any) ? item.quantity : 0}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value || '0', 10);
-                              if (Number.isNaN(val)) return;
+                              const raw = e.target.value;
+                              // Allow empty while typing; keep controlled value as 0
+                              if (raw === '') {
+                                updateBillItemQuantity(index, 0);
+                                return;
+                              }
+                              const val = parseInt(raw, 10);
+                              if (Number.isNaN(val)) {
+                                updateBillItemQuantity(index, 0);
+                                return;
+                              }
                               updateBillItemQuantity(index, val);
                             }}
                             onBlur={(e) => {
@@ -896,52 +1010,304 @@ export default function NewBillingPage() {
             </div>
           </div>
         </div>
-        {/* Payment Method Modal */}
-        {showPaymentModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/40" onClick={() => !loading && setShowPaymentModal(false)}></div>
-            <div className="relative bg-white w-full max-w-md mx-auto rounded-2xl shadow-xl border border-gray-100 p-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Select Payment Method</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'upi' | 'credit')}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="upi">UPI</option>
-                    <option value="credit">Credit (Due)</option>
-                  </select>
-                  {paymentMethod === 'credit' && (
-                    <p className="text-xs text-gray-600 mt-2">This will mark the payment status as Pending. You can settle later.</p>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
+        {/* Enhanced Payment Modal with Split Support */}
+        {showPaymentModal && (() => {
+          const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+          const totalDue = r2(billTotals.totalAmount);
+          const typedPaidRaw = paymentAmountInputs.length
+            ? paymentAmountInputs.reduce((s, v) => {
+                const n = parseFloat((v || '').toString().replace(/,/g, '.'));
+                return s + (Number.isFinite(n) ? n : 0);
+              }, 0)
+            : paymentsTotal;
+          const paid = r2(typedPaidRaw);
+          const remainingAmount = Math.max(r2(totalDue - paid), 0);
+          return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !loading && setShowPaymentModal(false)}></div>
+            <div className="relative bg-white w-full max-w-2xl mx-auto rounded-2xl shadow-2xl border border-gray-200 max-h-[90vh] overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-2xl font-bold">Payment Details</h3>
+                    <p className="text-blue-100 mt-1">Split payments supported</p>
+                  </div>
                   <button
-                    onClick={() => setShowPaymentModal(false)}
-                    disabled={loading}
-                    className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => !loading && setShowPaymentModal(false)}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={async () => { setShowPaymentModal(false); await generateBill(); }}
-                    disabled={loading}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300"
-                  >
-                    Confirm & Generate
+                    <X className="h-6 w-6" />
                   </button>
                 </div>
               </div>
+
+              {/* Body */}
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+                {/* Bill Summary Card */}
+                <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4 mb-6 border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-lg font-semibold text-gray-900">Bill Summary</h4>
+                    <span className="text-2xl font-bold text-green-600">₹{totalDue.toFixed(2)}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="text-center p-3 bg-white rounded-lg border">
+                      <div className="font-medium text-gray-900">Subtotal</div>
+                      <div className="text-gray-600">₹{billTotals.subtotal.toFixed(2)}</div>
+                    </div>
+                    {billTotals.discountAmount > 0 && (
+                      <div className="text-center p-3 bg-white rounded-lg border">
+                        <div className="font-medium text-gray-900">Discount</div>
+                        <div className="text-red-600">-₹{billTotals.discountAmount.toFixed(2)}</div>
+                      </div>
+                    )}
+                    {billTotals.taxAmount > 0 && (
+                      <div className="text-center p-3 bg-white rounded-lg border">
+                        <div className="font-medium text-gray-900">Tax</div>
+                        <div className="text-blue-600">₹{billTotals.taxAmount.toFixed(2)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment Methods */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-gray-900">Payment Methods</h4>
+                    {payments.length < 3 && (
+                      <button
+                        onClick={() => setPayments(prev => [...prev, { method: 'cash', amount: 0, reference: '' }])}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Payment
+                      </button>
+                    )}
+                  </div>
+
+                  {payments.map((p, idx) => (
+                    <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex items-start gap-4">
+                        {/* Payment Method Icon */}
+                        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">
+                          {getPaymentMethodIcon(p.method)}
+                        </div>
+
+                        {/* Payment Details */}
+                        <div className="flex-1 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                              <select
+                                value={p.method}
+                                onChange={(e) => {
+                                  const newMethod = e.target.value as Payment['method'];
+                                  setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: newMethod } : pp));
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              >
+                                <option value="cash">💵 Cash</option>
+                                <option value="upi">📱 UPI</option>
+                                <option value="card">💳 Card</option>
+                                <option value="credit">⏳ Credit (Due)</option>
+                                <option value="others">🔄 Others</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Amount (₹)</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  pattern="[0-9]*[.,]?[0-9]{0,2}"
+                                  enterKeyHint="done"
+                                  value={paymentAmountInputs[idx] ?? ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/,/g, '.');
+                                    if (/^\d*(?:\.\d{0,2})?$/.test(v) || v === '') {
+                                      setPaymentAmountInputs(prev => {
+                                        const next = [...prev];
+                                        next[idx] = v;
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  onFocus={(e) => e.currentTarget.select()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const raw = paymentAmountInputs[idx] ?? '';
+                                      const n = parseFloat(raw);
+                                      const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+                                      setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
+                                      setPaymentAmountInputs(prev => {
+                                        const next = [...prev];
+                                        next[idx] = safe.toFixed(2);
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    const raw = paymentAmountInputs[idx] ?? '';
+                                    const n = parseFloat(raw);
+                                    const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+                                    setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
+                                    setPaymentAmountInputs(prev => {
+                                      const next = [...prev];
+                                      next[idx] = safe.toFixed(2);
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full pr-16 pl-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  placeholder="0.00"
+                                  aria-label="Payment amount"
+                                />
+                                {remainingAmount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const amt = parseFloat(Math.max(0, remainingAmount).toFixed(2));
+                                      setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: amt } : pp));
+                                      setPaymentAmountInputs(prev => {
+                                        const next = [...prev];
+                                        next[idx] = amt.toFixed(2);
+                                        return next;
+                                      });
+                                    }}
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm"
+                                    title={`Fill remaining: ₹${remainingAmount.toFixed(2)}`}
+                                    aria-label={`Fill remaining amount ₹${remainingAmount.toFixed(2)}`}
+                                  >
+                                    Fill ₹{remainingAmount.toFixed(2)}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Reference (Optional)</label>
+                            <input
+                              type="text"
+                              value={p.reference || ''}
+                              onChange={(e) => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Transaction ID, last 4 digits, or note"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Remove Button */}
+                        <div className="flex-shrink-0">
+                          <button
+                            onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))}
+                            disabled={payments.length === 1}
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Remove this payment"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Payment Summary */}
+                <div className="mt-6 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Total Amount</span>
+                      <span className="text-lg font-semibold text-gray-900">₹{totalDue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Paid Amount</span>
+                      <span className="text-lg font-semibold text-green-600">₹{paid.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-gray-300 pt-3 flex justify-between items-center">
+                      <span className="text-gray-900 font-medium">Remaining Balance</span>
+                      <span className={`text-lg font-bold ${remainingAmount === 0 ? 'text-green-600' : remainingAmount < 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                        ₹{remainingAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="mt-4">
+                    <div className="flex justify-between text-sm text-gray-600 mb-1">
+                      <span>Payment Progress</span>
+                      <span>{Math.min(100, Math.round(((totalDue === 0 ? 0 : (paid / totalDue)) * 100)))}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className={`h-3 rounded-full transition-all duration-300 ${remainingAmount === 0 ? 'bg-green-500' : remainingAmount < 0 ? 'bg-red-500' : 'bg-blue-500'}`}
+                        style={{ width: `${Math.min(100, Math.max(0, (totalDue === 0 ? 0 : (paid / totalDue)) * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Validation Messages */}
+                {paid > totalDue && (
+                  <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                    <div>
+                      <p className="text-red-800 font-medium">Payment amount exceeds bill total</p>
+                      <p className="text-red-700 text-sm">Please adjust the payment amounts to not exceed ₹{totalDue.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {paid === 0 && (
+                  <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                    <p className="text-yellow-800">Please add at least one payment method with a valid amount.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  disabled={loading}
+                  className="px-6 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (paid === 0) {
+                      alert('Please add at least one payment method with a valid amount.');
+                      return;
+                    }
+                    if (paid > totalDue) {
+                      alert('Paid amount cannot exceed total bill amount.');
+                      return;
+                    }
+                    setShowPaymentModal(false);
+                    await generateBill();
+                  }}
+                  disabled={loading || paid === 0 || paid > totalDue}
+                  className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Generate Bill
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        )}
-
-        {/* Bill Success Modal with Receipt */}
+        );
+        })()}
         {/* Success Modal - UI Only */}
         {showBillSuccess && generatedBill && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print">
@@ -995,7 +1361,7 @@ export default function NewBillingPage() {
               <div className="grid grid-cols-2 gap-4 mb-4 text-sm bill-info">
                 <div className="space-y-1">
                   <p><strong>Bill No:</strong> {generatedBill.bill_number}</p>
-                  <p><strong>Date:</strong> {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
+                  <p><strong>Date:</strong> {formatISTDate(getISTDate())} {formatISTTime(getISTDate())}</p>
                   <p><strong>Sales Type:</strong> {generatedBill.paymentMethod === 'credit' ? 'CREDIT' : 'CASH'}</p>
                 </div>
                 <div className="space-y-1">
@@ -1032,6 +1398,25 @@ export default function NewBillingPage() {
                 </tbody>
               </table>
 
+              {/* Payment Details for Split Payments */}
+              {generatedBill.paymentMethod === 'split' && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Details</h4>
+                  <div className="space-y-1">
+                    {payments.map((payment, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span className="capitalize">{payment.method}</span>
+                        <span className="font-medium">₹{payment.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="border-t pt-1 mt-2 flex justify-between font-semibold">
+                      <span>Total Paid</span>
+                      <span>₹{paymentsTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Totals */}
               <div className="border-t-2 border-gray-300 pt-3 space-y-1 text-sm totals-section">
                 <div className="flex justify-between">
@@ -1062,8 +1447,8 @@ export default function NewBillingPage() {
               <div className="px-6 invoice-footer text-xs text-gray-600">
                 <div className="flex justify-between items-end">
                   <div>
-                    <p>Printed Date: {new Date().toLocaleDateString()}</p>
-                    <p>Printed Time: {new Date().toLocaleTimeString()}</p>
+                    <p>Printed Date: {formatISTDate(getISTDate())}</p>
+                    <p>Printed Time: {formatISTTime(getISTDate())}</p>
                   </div>
                   <div className="text-right">
                     <div className="h-10"></div>
