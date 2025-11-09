@@ -525,11 +525,13 @@ export default function NewBillingPage() {
           billData = d1;
         } else {
           const msg = (e1.message || '').toLowerCase();
-          // If total_amount column missing (schema cache or legacy), retry with total
-          if (msg.includes("'total_amount'") || msg.includes('total_amount') || msg.includes('column') && msg.includes('not') && msg.includes('found')) {
+          // If total_amount missing OR total is a generated column, retry WITHOUT any total field
+          const looksLikeColumnMissing = msg.includes("'total_amount'") || msg.includes('total_amount') || (msg.includes('column') && msg.includes('not') && msg.includes('found'));
+          const looksLikeGeneratedTotal = msg.includes('generated') && msg.includes('total') || msg.includes('non-default') && msg.includes('total');
+          if (looksLikeColumnMissing || looksLikeGeneratedTotal) {
             const { data: d2, error: e2 } = await supabase
               .from('billing')
-              .insert({ ...base, total: billTotals.totalAmount })
+              .insert({ ...base })
               .select('*')
               .single();
             if (e2) throw e2;
