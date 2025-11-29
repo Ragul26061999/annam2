@@ -1776,86 +1776,180 @@ export default function InventoryPage() {
 
   {/* Edit Medicine Modal */}
   {showEditMedicine && editingMedicine && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-        <h2 className="text-xl font-bold mb-4">Edit Medicine</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input
-              type="text"
-              value={editingMedicine.name}
-              onChange={(e) => setEditingMedicine({ ...editingMedicine, name: e.target.value })}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Combination</label>
-            <input
-              type="text"
-              value={editingMedicine.combination || ''}
-              onChange={(e) => setEditingMedicine({ ...editingMedicine, combination: e.target.value })}
-              className="input"
-              placeholder="e.g., Paracetamol 500mg + Caffeine 65mg"
-            />
-            <p className="text-xs text-gray-500 mt-1">Enter the medicine combination or formulation details</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Dosage Type</label>
-            <select
-              value={editingMedicine.unit}
-              onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
-              className="input"
-            >
-              <option value="">Select dosage type</option>
-              {dosageTypes.map((dt) => (
-                <option key={dt} value={dt}>{dt}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
-            <input
-              type="text"
-              value={editingMedicine.manufacturer}
-              onChange={(e) => setEditingMedicine({ ...editingMedicine, manufacturer: e.target.value })}
-              className="input"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200"
+      >
+        {/* Header with gradient */}
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
+          <div className="flex items-center justify-between">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Min Stock Level</label>
+              <h2 className="text-2xl font-bold tracking-tight">Edit Medicine</h2>
+              <p className="text-blue-100 text-sm mt-1">
+                Update medicine information and formulation details
+              </p>
+            </div>
+            <button 
+              className="p-2 hover:bg-white/20 rounded-full transition-colors" 
+              onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Form Content */}
+        <div className="p-8 space-y-6">
+          {/* Medicine Icon and Name */}
+          <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Package className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs text-blue-600 uppercase tracking-wider font-medium">Medicine Name</div>
+              <div className="text-lg font-bold text-blue-900">{editingMedicine.name}</div>
+            </div>
+          </div>
+
+          {/* Form Fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Name Field */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                Medicine Name
+              </label>
+              <input
+                type="text"
+                value={editingMedicine.name}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, name: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="Enter medicine name"
+              />
+            </div>
+
+            {/* Combination Field */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                Combination / Formulation
+              </label>
+              <input
+                type="text"
+                value={editingMedicine.combination || ''}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, combination: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="e.g., Paracetamol 500mg + Caffeine 65mg"
+              />
+              <p className="text-xs text-gray-500 mt-2 ml-1">
+                💡 Enter the medicine combination, dosage strength, or formulation details
+              </p>
+            </div>
+
+            {/* Manufacturer */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                Manufacturer
+              </label>
+              <input
+                type="text"
+                value={editingMedicine.manufacturer}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, manufacturer: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="Enter manufacturer name"
+              />
+            </div>
+
+            {/* Dosage Form */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                Dosage Form
+              </label>
+              <select
+                value={editingMedicine.unit}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
+              >
+                <option value="">Select dosage form</option>
+                {dosageTypes.map((dt) => (
+                  <option key={dt} value={dt}>{dt}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Minimum Stock Level */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                Minimum Stock Level
+              </label>
               <input
                 type="number"
                 value={editingMedicine.min_stock_level}
                 onChange={(e) => setEditingMedicine({ ...editingMedicine, min_stock_level: parseInt(e.target.value) || 0 })}
-                className="input"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="0"
+                min="0"
               />
+              <p className="text-xs text-gray-500 mt-2 ml-1">
+                ⚠️ Alert when stock falls below this level
+              </p>
             </div>
+
+            {/* Category */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
-              <select
-                value={editingMedicine.unit}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
-                className="input"
-              >
-                {units.map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </select>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                Category
+              </label>
+              <input
+                type="text"
+                value={editingMedicine.category || ''}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, category: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="e.g., Antibiotics, Pain Relief"
+              />
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <button
-            onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
-            className="btn-secondary"
-          >
-            Cancel
-          </button>
-          <button onClick={saveEditedMedicine} className="btn-primary" disabled={loading}>
-            {loading ? 'Saving...' : 'Save Changes'}
-          </button>
+
+        {/* Footer Actions */}
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">💡 Tip:</span> All fields are optional except the medicine name
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
+                className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all duration-200 flex items-center gap-2"
+              >
+                <X className="w-4 h-4" />
+                Cancel
+              </button>
+              <button 
+                onClick={saveEditedMedicine} 
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Edit className="w-4 h-4" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
