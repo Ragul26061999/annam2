@@ -39,6 +39,7 @@ interface MedicineBatch {
   selling_price: number;
   medicine_id: string;
   status: string;
+  batch_barcode?: string;
 }
 
 interface BillItem {
@@ -152,6 +153,14 @@ export default function NewBillingPage() {
     });
   }, [payments.length]);
   const paymentsTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+
+  // Enable payment only when patient details are valid and there is at least one item
+  const canReceivePayment = (
+    billItems.length > 0 && (
+      (customer.type === 'patient' && !!customer.patient_id && !!(customer.name || '').trim()) ||
+      (customer.type === 'walk_in' && !!(customer.name || '').trim())
+    )
+  );
 
   // Payment method icon helper
   const getPaymentMethodIcon = (method: string) => {
@@ -331,19 +340,31 @@ export default function NewBillingPage() {
     run();
   }, [patientSearch, customer.type]);
 
-  // Filter medicines based on search (including batch number)
-  const filteredMedicines = medicines.filter(medicine => {
-    const term = searchTerm.toLowerCase().trim();
-    if (!term) return true;
-    const baseMatch =
-      medicine.name.toLowerCase().includes(term) ||
-      medicine.medicine_code.toLowerCase().includes(term) ||
-      medicine.manufacturer.toLowerCase().includes(term);
-    const batchMatch = medicine.batches?.some(b =>
-      b.batch_number?.toLowerCase().includes(term)
-    );
-    return baseMatch || batchMatch;
-  });
+  // Filter medicines based on search (including batch number and barcode); guard undefined fields
+  // Only show results when there is a search term (hide catalogue by default)
+  const searchTermTrimmed = (searchTerm || '').trim();
+  const filteredMedicines = searchTermTrimmed.length === 0
+    ? []
+    : medicines.filter((medicine) => {
+        const term = searchTermTrimmed.toLowerCase();
+        const name = (medicine.name || '').toLowerCase();
+        const code = (medicine.medicine_code || '').toLowerCase();
+        const manufacturer = (medicine.manufacturer || '').toLowerCase();
+        const category = (medicine.category || '').toLowerCase();
+        const unit = (medicine.unit || '').toLowerCase();
+        const baseMatch =
+          name.includes(term) ||
+          code.includes(term) ||
+          manufacturer.includes(term) ||
+          category.includes(term) ||
+          unit.includes(term);
+        // Also match batch_number and batch_barcode
+        const batchMatch = Array.isArray(medicine.batches) && medicine.batches.some((b) =>
+          (b.batch_number || '').toLowerCase().includes(term) ||
+          (b.batch_barcode || '').toLowerCase().includes(term)
+        );
+        return baseMatch || batchMatch;
+      });
 
   // Add medicine to bill
   const addToBill = (medicine: Medicine, batch: MedicineBatch, quantity: number = 1) => {
@@ -622,13 +643,52 @@ export default function NewBillingPage() {
   };
 
   return (
-    <div className={embedded ? '' : 'min-h-screen bg-gray-50 p-6'}>
-      <div className={embedded ? '' : 'max-w-7xl mx-auto'}>
-        {/* Header (hidden when embedded) */}
+    <div className={embedded ? '' : 'min-h-screen bg-slate-100 px-6 py-4'}>
+      <div className={embedded ? '' : 'max-w-7xl mx-auto flex flex-col gap-4'}>
+        {/* Desktop-style top status bar (hidden when embedded) */}
         {!embedded && (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">New Pharmacy Bill</h1>
-            <p className="text-gray-600">Create a new billing entry for pharmacy sales</p>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-semibold text-slate-900">New Pharmacy Bill</h1>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-100">
+                  Entry Type:
+                  <span className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                    {customer.type === 'patient' ? 'Registered' : 'Walk-in'}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500">Active Bill</span>
+                  <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white shadow-sm">
+                    Tab 1
+                  </span>
+                </div>
+                <div className="h-6 w-px bg-slate-200" />
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-500">Items:</span>
+                  <span className="font-semibold text-slate-900">{billItems.length}</span>
+                  <span className="h-6 w-px bg-slate-200" />
+                  <span className="text-slate-500">Total:</span>
+                  <span className="text-lg font-semibold text-emerald-600">₹{billTotals.totalAmount.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            {/* Hospital Details trigger */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Hospital Details (for Receipt)</h2>
+                <p className="text-xs text-slate-500">Configure header, address, phone and GST for the printed invoice.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHospitalModal(true)}
+                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              >
+                Edit Details
+              </button>
+            </div>
           </div>
         )}
 
@@ -644,259 +704,279 @@ export default function NewBillingPage() {
           </div>
         )}
 
-        {/* Hospital Details trigger */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Hospital Details (for Receipt)</h2>
-            <p className="text-sm text-gray-600">Configure header, address, phone and GST for the printed invoice.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowHospitalModal(true)}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Edit Details
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Medicine Selection */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <Package className="h-6 w-6 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Select Medicines</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
+          {/* Left side: Sales Entry + Medicine */}
+          <div className="lg:col-span-2 flex flex-col gap-4">
+            {/* Sales Entry Information (Customer + Bill Info) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <User className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Sales Entry Information</h2>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-slate-600">
+                  <div className="flex flex-col items-end">
+                    <span className="font-medium text-slate-500">New Bill No</span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {generatedBill?.bill_number || 'AP' + new Date().getFullYear().toString().slice(-2) + '00000'}
+                    </span>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200" />
+                  <div className="flex flex-col items-end">
+                    <span className="font-medium text-slate-500">Date</span>
+                    <span className="text-sm font-semibold text-slate-900">{new Date().toLocaleDateString('en-IN')}</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Search */}
-              <div className="relative mb-6">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <input
-                  type="text"
-                  placeholder="Search by name, code, manufacturer, or batch number..."
-                  value={searchTerm}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+              {/* Customer / Patient Block */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Customer Type</label>
+                  <select
+                    value={customer.type}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                      setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
+                    }
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="walk_in">Walk-in Customer</option>
+                    <option value="patient">Registered Patient</option>
+                  </select>
+                </div>
 
-              {/* Medicine List */}
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {loading ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="text-gray-500 mt-2">Loading medicines...</p>
-                  </div>
-                ) : filteredMedicines.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Package className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">No medicines found</p>
-                  </div>
-                ) : (
-                  filteredMedicines.map((medicine) => (
-                    <div key={medicine.id} className="border border-gray-200 rounded-xl p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{medicine.name}</h3>
-                          <p className="text-sm text-gray-600">Code: {medicine.medicine_code}</p>
-                          <p className="text-sm text-gray-600">Manufacturer: {medicine.manufacturer}</p>
-                        </div>
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                          {medicine.category}
-                        </span>
-                      </div>
-
-                      {/* Batches */}
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-700">Available Batches:</p>
-                        {(searchTerm
-                          ? medicine.batches.filter(b =>
-                              b.batch_number?.toLowerCase().includes(searchTerm.toLowerCase().trim())
-                            )
-                          : medicine.batches
-                        ).map((batch) => (
-                          <div key={batch.id} className="space-y-2">
-                            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-4 text-sm">
-                                  <span className="font-medium">Batch: {batch.batch_number}</span>
-                                  <span className="text-gray-600">Exp: {new Date(batch.expiry_date).toLocaleDateString()}</span>
-                                  <span className="text-gray-600">Stock: {batch.current_quantity}</span>
-                                  <span className="font-semibold text-green-600">₹{batch.selling_price}</span>
+                {customer.type === 'patient' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Search Patient (name / UHID / phone)</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={patientSearch}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setPatientSearch(e.target.value);
+                            setShowPatientDropdown(true);
+                          }}
+                          placeholder="Start typing to search registered patients..."
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        {showPatientDropdown && patientResults.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                            {patientResults.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+                                  setPatientSearch(`${p.name} · ${p.patient_id}`);
+                                  setShowPatientDropdown(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-50"
+                              >
+                                <div className="text-xs">
+                                  <div className="font-medium text-slate-900">{p.name}</div>
+                                  <div className="text-slate-500">UHID: {p.patient_id}{p.phone ? ` • ${p.phone}` : ''}</div>
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => addToBill(medicine, batch)}
-                                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                  Add
-                                </button>
-                              </div>
-                            </div>
+                              </button>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Bill Summary */}
-          <div className="space-y-6">
-          {/* Customer Information */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <User className="h-6 w-6 text-green-600" />
-              <h2 className="text-xl font-semibold text-gray-900">Customer Information</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Type</label>
-                <select
-                  value={customer.type}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => 
-                    setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
-                  }
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="walk_in">Walk-in Customer</option>
-                  <option value="patient">Registered Patient</option>
-                </select>
-              </div>
-              {customer.type === 'patient' ? (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Search Patient (name / UHID / phone)</label>
-                    <input
-                      type="text"
-                      value={patientSearch}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPatientSearch(e.target.value); setShowPatientDropdown(true); }}
-                      placeholder="Start typing to search registered patients..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    {showPatientDropdown && patientResults.length > 0 && (
-                      <div className="absolute z-10 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
-                        {patientResults.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
-                              setPatientSearch(`${p.name} · ${p.patient_id}`);
-                              setShowPatientDropdown(false);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                          >
-                            <div className="text-sm">
-                              <div className="font-medium text-gray-900">{p.name}</div>
-                              <div className="text-gray-600">UHID: {p.patient_id}{p.phone ? ` • ${p.phone}` : ''}</div>
-                            </div>
-                          </button>
-                        ))}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Patient Name</label>
+                        <input
+                          type="text"
+                          value={customer.name}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, name: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
                       </div>
-                    )}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+                        <input
+                          type="text"
+                          value={customer.phone || ''}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, phone: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
                   </div>
+                ) : (
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Patient Name</label>
+                    <div className="col-span-1">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
                       <input
                         type="text"
                         value={customer.name}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomer({ ...customer, name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCustomer({ ...customer, name: e.target.value })
+                        }
+                        placeholder="Enter customer name"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <div className="col-span-1">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
                       <input
                         type="text"
                         value={customer.phone || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomer({ ...customer, phone: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const raw = e.target.value;
+                          const digits = raw.replace(/\D/g, '');
+                          setCustomer({ ...customer, phone: raw });
+                          setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
+                        }}
+                        placeholder="Enter phone number"
+                        className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
                       />
+                      {phoneError && (
+                        <p className="mt-1 text-xs text-red-600">{phoneError}</p>
+                      )}
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* Medicine Search Row inside Sales Entry */}
+              <div className="mt-5 border-t border-dashed border-slate-200 pt-4">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Medicine Search (Barcode / Name)</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, code, manufacturer, or batch number..."
+                    value={searchTerm}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
-                    <input
-                      type="text"
-                      value={customer.name}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                        setCustomer({ ...customer, name: e.target.value })
-                      }
-                      placeholder="Enter customer name"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                    <input
-                      type="text"
-                      value={customer.phone || ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const raw = e.target.value;
-                        const digits = raw.replace(/\D/g, '');
-                        setCustomer({ ...customer, phone: raw });
-                        setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
-                      }}
-                      placeholder="Enter phone number"
-                      className={`w-full px-3 py-2 border ${phoneError ? 'border-red-300' : 'border-gray-200'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-                    />
-                    {phoneError && (
-                      <p className="mt-1 text-sm text-red-600">{phoneError}</p>
-                    )}
-                  </div>
-                </>
-              )}
+              </div>
+            </div>
+
+            {/* Medicine Catalogue below Sales Entry */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Medicine Catalogue</h2>
+                </div>
+                <span className="text-xs text-slate-500">Select batch and add items to bill</span>
+              </div>
+              <div className="border border-slate-100 rounded-xl max-h-[420px] overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto">
+                  {loading ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2" />
+                      Loading medicines...
+                    </div>
+                  ) : searchTermTrimmed.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
+                      <Search className="h-10 w-10 text-slate-200 mb-2" />
+                      Search by name, code, batch number, or barcode
+                    </div>
+                  ) : filteredMedicines.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
+                      <Package className="h-10 w-10 text-slate-200 mb-2" />
+                      No medicines found for "{searchTermTrimmed}"
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {filteredMedicines.map((medicine) => (
+                        <div key={medicine.id} className="px-4 py-3 hover:bg-slate-50 transition-colors">
+                          <div className="flex items-start justify-between gap-4 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-medium text-sm text-slate-900 truncate">{medicine.name}</h3>
+                                <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
+                                  {medicine.category}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                                <span>Code: {medicine.medicine_code}</span>
+                                <span>Manufacturer: {medicine.manufacturer}</span>
+                                <span>Unit: {medicine.unit}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {/* Show all batches for matched medicine - no secondary filtering */}
+                            {medicine.batches.map((batch) => (
+                              <div
+                                key={batch.id}
+                                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-[11px] border border-slate-100"
+                              >
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600">
+                                  <span className="font-medium text-slate-800">Batch: {batch.batch_number}</span>
+                                  <span>Exp: {new Date(batch.expiry_date).toLocaleDateString()}</span>
+                                  <span>Stock: {batch.current_quantity}</span>
+                                  <span className="font-semibold text-emerald-600">₹{batch.selling_price}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => addToBill(medicine, batch)}
+                                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Add Item
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-            {/* Bill Items */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <ShoppingCart className="h-6 w-6 text-purple-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Bill Items</h2>
+          {/* Right side: Bill Items + Billing Summary */}
+          <div className="flex flex-col gap-4">
+            {/* Bill Items in table style */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5 text-purple-600" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Bill Items</h2>
+                </div>
               </div>
 
               {billItems.length === 0 ? (
-                <div className="text-center py-8">
-                  <ShoppingCart className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No items added to bill</p>
+                <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
+                  <ShoppingCart className="h-10 w-10 text-slate-200 mb-2" />
+                  No items added yet
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {billItems.map((item, index) => (
-                    <div key={`${item.medicine.id}-${item.batch.id}`} className="border border-gray-200 rounded-lg p-3">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{item.medicine.name}</h4>
-                          <p className="text-sm text-gray-600">Batch: {item.batch.batch_number}</p>
-                          <p className="text-sm text-gray-600">₹{item.batch.selling_price} each</p>
+                <div className="border border-slate-100 rounded-xl overflow-hidden">
+                  <div className="grid grid-cols-[40px,1.7fr,0.7fr,0.7fr,0.9fr,60px] bg-slate-50 text-[11px] font-medium text-slate-600 px-3 py-2">
+                    <span>Sl.</span>
+                    <span>Drug / Batch</span>
+                    <span className="text-right">Rate</span>
+                    <span className="text-center">Qty</span>
+                    <span className="text-right">Total</span>
+                    <span className="text-center">Action</span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 text-[11px]">
+                    {billItems.map((item, index) => (
+                      <div
+                        key={`${item.medicine.id}-${item.batch.id}`}
+                        className="grid grid-cols-[40px,1.7fr,0.7fr,0.7fr,0.9fr,60px] items-center px-3 py-2 text-slate-700"
+                      >
+                        <span>{index + 1}</span>
+                        <div className="flex flex-col">
+                          <span className="font-medium truncate">{item.medicine.name}</span>
+                          <span className="text-[10px] text-slate-500 truncate">Batch: {item.batch.batch_number}</span>
                         </div>
-                        <button
-                          onClick={() => removeBillItem(index)}
-                          className="text-red-500 hover:text-red-700 p-1"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateBillItemQuantity(index, item.quantity - 1)}
-                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
+                        <span className="text-right font-medium">₹{item.batch.selling_price.toFixed(2)}</span>
+                        <div className="flex items-center justify-center">
                           <input
                             type="number"
                             min={1}
@@ -904,7 +984,6 @@ export default function NewBillingPage() {
                             value={Number.isFinite(item.quantity as any) ? item.quantity : 0}
                             onChange={(e) => {
                               const raw = e.target.value;
-                              // Allow empty while typing; keep controlled value as 0
                               if (raw === '') {
                                 updateBillItemQuantity(index, 0);
                                 return;
@@ -922,42 +1001,55 @@ export default function NewBillingPage() {
                               if (val > item.batch.current_quantity) val = item.batch.current_quantity;
                               updateBillItemQuantity(index, val);
                             }}
-                            className="w-16 text-center border border-gray-200 rounded-md py-1"
+                            className="w-14 rounded border border-slate-200 bg-white text-center text-[11px] py-1"
                           />
+                        </div>
+                        <span className="text-right font-semibold text-emerald-600">₹{item.total.toFixed(2)}</span>
+                        <div className="flex items-center justify-center">
                           <button
-                            onClick={() => updateBillItemQuantity(index, item.quantity + 1)}
-                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                            type="button"
+                            onClick={() => removeBillItem(index)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100"
                           >
-                            <Plus className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
-                        <span className="font-semibold text-green-600">₹{item.total.toFixed(2)}</span>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
+            </div>
 
-              {/* Financial Summary */}
-              {billItems.length > 0 && (
-                <div className="mt-6 pt-4 border-t border-gray-200 space-y-4">
-                  {/* Discount Section */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-3">Discount & Tax</h4>
-                    <div className="grid grid-cols-2 gap-4">
+            {/* Billing Summary */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-amber-500" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Billing Summary</h2>
+                </div>
+              </div>
+
+              {billItems.length === 0 ? (
+                <p className="text-xs text-slate-500">Add items to see billing details.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <h4 className="text-xs font-semibold text-slate-700 mb-3">Discount & Tax</h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Discount Type</label>
                         <select
                           value={billTotals.discountType}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, discountType: e.target.value as 'amount' | 'percent' }))}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="amount">Amount (₹)</option>
                           <option value="percent">Percentage (%)</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
                           Discount {billTotals.discountType === 'percent' ? '(%)' : '(₹)'}
                         </label>
                         <input
@@ -967,12 +1059,12 @@ export default function NewBillingPage() {
                           max={billTotals.discountType === 'percent' ? '100' : undefined}
                           value={billTotals.discountValue}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, discountValue: parseFloat(e.target.value) || 0 }))}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="0"
                         />
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">GST/Tax (%)</label>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">GST / Tax (%)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -980,60 +1072,54 @@ export default function NewBillingPage() {
                           max="100"
                           value={billTotals.taxPercent}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, taxPercent: parseFloat(e.target.value) || 0 }))}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="18"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Bill Summary */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className="font-medium">₹{billTotals.subtotal.toFixed(2)}</span>
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs flex flex-col gap-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Subtotal</span>
+                      <span className="font-medium text-slate-900">₹{billTotals.subtotal.toFixed(2)}</span>
                     </div>
                     {billTotals.discountAmount > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Discount:</span>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Discount</span>
                         <span className="font-medium text-red-600">-₹{billTotals.discountAmount.toFixed(2)}</span>
                       </div>
                     )}
                     {billTotals.taxAmount > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Tax ({billTotals.taxPercent}%):</span>
-                        <span className="font-medium">₹{billTotals.taxAmount.toFixed(2)}</span>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Tax ({billTotals.taxPercent}%)</span>
+                        <span className="font-medium text-slate-900">₹{billTotals.taxAmount.toFixed(2)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between items-center text-lg font-semibold pt-2 border-t">
-                      <span>Total Amount:</span>
-                      <span className="text-green-600">₹{billTotals.totalAmount.toFixed(2)}</span>
+                    <div className="mt-2 flex items-center justify-between border-top border-emerald-200 pt-1">
+                      <span className="text-[13px] font-semibold text-slate-900">Total Amount</span>
+                      <span className="text-lg font-bold text-emerald-700">₹{billTotals.totalAmount.toFixed(2)}</span>
                     </div>
+                  </div>
+
+                  {/* Actions: Receive Payment / Print Receipt */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPaymentModal(true)}
+                      disabled={!canReceivePayment}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Receive Payment
+                    </button>
                   </div>
                 </div>
               )}
-
-              {/* Generate Bill Button */}
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                disabled={loading || billItems.length === 0}
-                className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-xl hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-5 w-5" />
-                    Generate Bill
-                  </>
-                )}
-              </button>
             </div>
           </div>
         </div>
+        
         {/* Enhanced Payment Modal with Split Support */}
         {showPaymentModal && (() => {
           const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -1368,7 +1454,7 @@ export default function NewBillingPage() {
 
         {/* Hidden Printable Receipt - This is what gets printed */}
         {generatedBill && (
-          <div className="printable-area">
+          <div className="printable-area hidden print:block" aria-hidden="true">
             <div id="receipt-content" className="p-6 receipt">
               <style dangerouslySetInnerHTML={{ __html: printCss }} />
               {/* Header */}

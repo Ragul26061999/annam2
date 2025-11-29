@@ -1077,11 +1077,11 @@ export async function adjustExpiredStock(
           .from('stock_transactions')
           .insert({
             medication_id: medicationId,
-            transaction_type: 'expired',
-            quantity: -totalQuantity,
+            transaction_type: 'purchase',
+            quantity: totalQuantity,
             unit_price: 0,
             batch_number: batchNumber,
-            notes: `Expired batch deleted: ${notes || 'No notes provided'}`,
+            notes: `Initial stock for batch: ${notes || 'No notes provided'}`,
             performed_by: userId,
             transaction_date: new Date().toISOString()
           });

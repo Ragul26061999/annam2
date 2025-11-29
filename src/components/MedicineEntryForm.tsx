@@ -89,6 +89,8 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   const [generatedBatchBarcode, setGeneratedBatchBarcode] = useState('');
   const [suggestedBatchNumber, setSuggestedBatchNumber] = useState('');
   const [generatedBarcode, setGeneratedBarcode] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
 
   const [supplierForm, setSupplierForm] = useState({
     name: '',
@@ -127,9 +129,9 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   const [batchForm, setBatchForm] = useState<BatchFormData>({
     medicine_id: '',
     batch_number: '',
-    manufacturing_date: new Date().toISOString().split('T')[0],
+    manufacturing_date: '',
     expiry_date: '',
-    received_date: new Date().toISOString().split('T')[0],
+    received_date: '',
     received_quantity: 0,
     purchase_price: 0,
     selling_price: 0,
@@ -176,6 +178,19 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
     }
   };
 
+  // Utilities: date formatting and default expiry (12 months ahead)
+  const formatDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const defaultExpiryDate = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 12);
+    return formatDate(d);
+  };
+
   const searchMedicines = async (q: string) => {
     try {
       if (!q || q.trim().length < 2) {
@@ -208,9 +223,16 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
           const { data: nextBatch, error: nextErr } = await supabase.rpc('generate_next_batch_number', {
             p_medicine_id: batchForm.medicine_id,
           });
-          if (!nextErr && nextBatch) {
-            setSuggestedBatchNumber(nextBatch);
-            setBatchForm(prev => ({ ...prev, batch_number: nextBatch }));
+          if (!nextErr && nextBatch && typeof nextBatch === 'string') {
+            const cleaned = nextBatch.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+            if (cleaned.length === 6) {
+              setSuggestedBatchNumber(cleaned);
+              setBatchForm(prev => ({ ...prev, batch_number: cleaned }));
+            } else {
+              const local = generateShortBatch();
+              setSuggestedBatchNumber(local);
+              setBatchForm(prev => ({ ...prev, batch_number: local }));
+            }
           }
         }
         const batchNum = batchForm.batch_number || suggestedBatchNumber;
@@ -230,6 +252,47 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchForm.medicine_id, batchForm.batch_number]);
+
+  useEffect(() => {
+    const checkAndLoadBatch = async () => {
+      try {
+        const bn = (batchForm.batch_number || '')
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '')
+          .trim();
+        if (bn && bn.length === 6) {
+          const { data, error } = await supabase
+            .from('medicine_batches')
+            .select('id, medication_id, batch_number, manufacturing_date, expiry_date, received_date, purchase_price, selling_price, supplier_id, supplier_batch_id, notes, current_quantity')
+            .eq('batch_number', bn)
+            .single();
+          if (!error && data) {
+            setEditMode(true);
+            setEditingBatchId(data.id);
+            setBatchForm(prev => ({
+              ...prev,
+              medicine_id: data.medication_id || prev.medicine_id,
+              batch_number: data.batch_number || bn,
+              manufacturing_date: data.manufacturing_date || '',
+              expiry_date: data.expiry_date || '',
+              received_date: data.received_date || '',
+              received_quantity: typeof data.current_quantity === 'number' ? data.current_quantity : prev.received_quantity,
+              purchase_price: typeof data.purchase_price === 'number' ? data.purchase_price : prev.purchase_price,
+              selling_price: typeof data.selling_price === 'number' ? data.selling_price : prev.selling_price,
+              supplier_id: data.supplier_id || '',
+              supplier_batch_id: data.supplier_batch_id || '',
+              notes: data.notes || '',
+            }));
+            return;
+          }
+        }
+      } catch {}
+      setEditMode(false);
+      setEditingBatchId(null);
+    };
+    checkAndLoadBatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchForm.batch_number]);
 
   const loadMedicines = async () => {
     try {
@@ -261,42 +324,56 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   };
 
   const validateMedicineForm = (): boolean => {
-    const newErrors: { field: string; message: string }[] = [];
-
-    // medication_code is optional (auto-generated server-side)
-    if (!medicineForm.name.trim()) {
-      newErrors.push({ field: 'name', message: 'Medicine name is required' });
-    }
-    if (!medicineForm.manufacturer.trim()) {
-      newErrors.push({ field: 'manufacturer', message: 'Manufacturer is required' });
-    }
-    if (medicineForm.unit_price <= 0) {
-      newErrors.push({ field: 'unit_price', message: 'Unit price must be greater than 0' });
-    }
-
-    setErrors(newErrors);
-    return newErrors.length === 0;
+    // All fields optional per request. Keep only basic client-side sanity, no hard requirements.
+    setErrors([]);
+    return true;
   };
 
   const validateBatchForm = (): boolean => {
-    const newErrors: { field: string; message: string }[] = [];
+    // All fields optional per request. Keep only basic client-side sanity, no hard requirements.
+    setErrors([]);
+    return true;
+  };
 
-    if (!batchForm.medicine_id) {
-      newErrors.push({ field: 'medicine_id', message: 'Please select a medicine' });
-    }
-    // batch_number is optional (auto-generated server-side)
-    if (!batchForm.expiry_date) {
-      newErrors.push({ field: 'expiry_date', message: 'Expiry date is required' });
-    }
-    if (batchForm.received_quantity <= 0) {
-      newErrors.push({ field: 'received_quantity', message: 'Quantity must be greater than 0' });
-    }
-    if (!batchForm.supplier_id) {
-      newErrors.push({ field: 'supplier_id', message: 'Please select a supplier' });
-    }
+  // Generate a short simple batch number (fallback) 6-char base36 (fits 5–7 requirement)
+  const generateShortBatch = () => {
+    const base = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // Ensure at least 6 characters; slice will cap length
+    const six = (base + base).slice(0, 6);
+    return six;
+  };
 
-    setErrors(newErrors);
-    return newErrors.length === 0;
+  // Ensure unique batch number: try RPC first, then fallback to short generator with uniqueness check
+  const ensureUniqueBatchNumber = async (medicineId?: string): Promise<string> => {
+    // 1) Try server RPC suggestion if available
+    try {
+      if (medicineId) {
+        const { data: nextBatch, error: nextErr } = await supabase.rpc('generate_next_batch_number', {
+          p_medicine_id: medicineId,
+        });
+        if (!nextErr && nextBatch && typeof nextBatch === 'string') {
+          const cleaned = nextBatch.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+          if (cleaned.length === 6) {
+            return cleaned;
+          }
+        }
+      }
+    } catch {}
+    // 2) Fallback to short generator with simple uniqueness check
+    for (let i = 0; i < 5; i++) {
+      const candidate = generateShortBatch();
+      try {
+        const { data, error } = await supabase
+          .from('medicine_batches')
+          .select('id', { count: 'exact', head: true })
+          .eq('batch_number', candidate);
+        if (!error && (data === null || (Array.isArray(data) && data.length === 0))) {
+          return candidate;
+        }
+      } catch {}
+    }
+    // 3) Last resort
+    return generateShortBatch();
   };
 
   const handleAddMedicine = async (e: React.FormEvent) => {
@@ -305,15 +382,36 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
 
     setLoading(true);
     try {
-      const { error } = await supabase.from('medications').insert([
-        {
-          ...medicineForm,
-          status: 'active',
-          is_active: true,
-        },
-      ]);
+      // Insert and return id + medication_code
+      const { data: inserted, error } = await supabase
+        .from('medications')
+        .insert([
+          {
+            ...medicineForm,
+            // Allow DB defaults/triggers to populate missing values
+            status: 'active',
+            is_active: true,
+          },
+        ])
+        .select('id, medication_code, barcode')
+        .single();
 
       if (error) throw error;
+
+      // Auto-generate barcode if missing and medication_code is available
+      if (inserted && !inserted.barcode && inserted.medication_code) {
+        try {
+          const { data: medBarcode, error: genErr } = await supabase.rpc('generate_medicine_barcode', {
+            med_code: inserted.medication_code,
+          });
+          if (!genErr && medBarcode) {
+            await supabase
+              .from('medications')
+              .update({ barcode: medBarcode })
+              .eq('id', inserted.id);
+          }
+        } catch {}
+      }
 
       setSuccessMessage('✓ Medicine added successfully with barcode!');
       setTimeout(() => {
@@ -332,19 +430,84 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('medicine_batches').insert([
-        {
-          ...batchForm,
-          current_quantity: batchForm.received_quantity,
-          status: 'active',
-          is_active: true,
-        },
-      ]).select('*').single();
+      // Ensure short, simple, unique batch number (exactly 6 chars)
+      let finalBatchNumber = batchForm.batch_number
+        ?.toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .trim();
+      if (!finalBatchNumber || finalBatchNumber.length !== 6) {
+        finalBatchNumber = await ensureUniqueBatchNumber(batchForm.medicine_id || undefined);
+      }
 
-      if (error) throw error;
+      // Sanitize date fields: convert empty strings to null to avoid Postgres date parse errors
+      const sanitizeDate = (val?: string) => (val && val.trim() ? val : null);
 
-      const assigned = data as any;
-      setSuccessMessage(`✓ Batch added successfully! Batch: ${assigned?.batch_number || batchForm.batch_number}  | Barcode: ${assigned?.batch_barcode || ''}`);
+      const insertPayload: any = {
+        ...batchForm,
+        batch_number: finalBatchNumber,
+        manufacturing_date: sanitizeDate(batchForm.manufacturing_date),
+        // If expiry_date is missing, default to 12 months from today to satisfy NOT NULL
+        expiry_date: sanitizeDate(batchForm.expiry_date) ?? defaultExpiryDate(),
+        received_date: sanitizeDate(batchForm.received_date),
+        // Let DB defaults handle quantities if empty/zero is allowed, else null
+        current_quantity: Number.isFinite(batchForm.received_quantity) ? batchForm.received_quantity : null,
+        supplier_id: batchForm.supplier_id?.trim() ? batchForm.supplier_id : null,
+        supplier_batch_id: batchForm.supplier_batch_id?.trim() ? batchForm.supplier_batch_id : null,
+        notes: batchForm.notes?.trim() ? batchForm.notes : null,
+        status: 'active',
+        is_active: true,
+      };
+
+      let assigned: any = null;
+      if (editMode && editingBatchId) {
+        const { data, error } = await supabase
+          .from('medicine_batches')
+          .update(insertPayload)
+          .eq('id', editingBatchId)
+          .select('id, batch_number, batch_barcode, medication_id')
+          .single();
+        if (error) throw error;
+        assigned = data;
+      } else {
+        const { data, error } = await supabase
+          .from('medicine_batches')
+          .insert([insertPayload])
+          .select('id, batch_number, batch_barcode, medication_id')
+          .single();
+        if (error) throw error;
+        assigned = data;
+      }
+
+      // Auto-generate batch barcode if missing and medication_code available
+      if (assigned && !assigned.batch_barcode) {
+        try {
+          // fetch med_code for the medication
+          let medCode: string | undefined;
+          if (assigned.medication_id) {
+            const { data: med, error: medErr } = await supabase
+              .from('medications')
+              .select('medication_code')
+              .eq('id', assigned.medication_id)
+              .single();
+            if (!medErr) medCode = med?.medication_code;
+          }
+          if (medCode) {
+            const { data: bb, error: bbErr } = await supabase.rpc('generate_batch_barcode', {
+              med_code: medCode,
+              batch_num: assigned.batch_number,
+            });
+            if (!bbErr && bb) {
+              await supabase
+                .from('medicine_batches')
+                .update({ batch_barcode: bb })
+                .eq('id', assigned.id);
+              setGeneratedBatchBarcode(bb);
+            }
+          }
+        } catch {}
+      }
+
+      setSuccessMessage(`${editMode ? '✓ Batch updated' : '✓ Batch added'} successfully! Batch: ${assigned?.batch_number || finalBatchNumber}  | Barcode: ${assigned?.batch_barcode || generatedBatchBarcode}`);
       setTimeout(() => {
         onSuccess();
       }, 2000);

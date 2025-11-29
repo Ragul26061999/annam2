@@ -36,30 +36,32 @@ export interface Bill {
 
 /**
  * Generate a unique bill number
- * Format: BILL{Year}{Month}{Day}{Sequential}
- * Example: BILL202510050001
+ * New Format: AP{YY}{Sequential}
+ *   - Prefix "AP" for pharmacy
+ *   - {YY} = last two digits of the year (e.g., 2025 -> 25)
+ *   - {Sequential} = 5‑digit zero-padded running number for that year
+ * Example: AP2500001, AP2500002, ...
  */
 export async function generateBillNumber(): Promise<string> {
   const now = new Date();
-  const year = now.getFullYear().toString();
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  const datePrefix = `${year}${month}${day}`;
-  
+  const fullYear = now.getFullYear().toString();
+  const yearShort = fullYear.slice(-2); // e.g. "2025" -> "25"
+  const prefix = `AP${yearShort}`;
+
   try {
-    // Get count of existing bills for today
+    // Count existing bills for this year to get a simple linear sequence
     const { count, error } = await supabase
       .from('billing')
       .select('id', { count: 'exact', head: true })
-      .like('bill_number', `BILL${datePrefix}%`);
-    
+      .like('bill_number', `${prefix}%`);
+
     if (error) {
-      console.error('Error getting bill count:', error);
+      console.error('Error getting bill count for bill number generation:', error);
       throw new Error('Failed to generate bill number');
     }
-    
-    const sequence = ((count || 0) + 1).toString().padStart(4, '0');
-    return `BILL${datePrefix}${sequence}`;
+
+    const sequence = ((count || 0) + 1).toString().padStart(5, '0');
+    return `${prefix}${sequence}`;
   } catch (error) {
     console.error('Error generating bill number:', error);
     throw error;

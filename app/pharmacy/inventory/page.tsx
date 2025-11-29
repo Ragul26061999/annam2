@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Search, Plus, Edit, Trash2, Package, Calendar, AlertTriangle, Filter, History, Layers, Clock, Eye, Printer, Info, RefreshCw, X } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Package, Calendar, AlertTriangle, Filter, History, Layers, Clock, Eye, Printer, Info, RefreshCw, X, Truck } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { getBatchPurchaseHistory, getBatchStockStats, editStockTransaction, adjustExpiredStock, getBatchStockRobust, getMedicationStockRobust, getStockTruth, getMedicineStockSummary, reconcileStock, getComprehensiveMedicineData, getBatchReceivedTotal } from '@/src/lib/pharmacyService'
 import { supabase } from '@/src/lib/supabase'
@@ -84,6 +84,25 @@ export default function InventoryPage() {
   const [comprehensiveMedicineData, setComprehensiveMedicineData] = useState<ComprehensiveMedicineData | null>(null)
   const [showEditBatch, setShowEditBatch] = useState(false)
   const [editingBatch, setEditingBatch] = useState<MedicineBatch | null>(null)
+  const [editBatchForm, setEditBatchForm] = useState({
+    batch_number: '',
+    purchase_price: 0,
+    selling_price: 0,
+    supplier_id: '',
+    supplier_name: '',
+    manufacturing_date: '',
+    expiry_date: '',
+    received_date: '',
+    current_quantity: 0,
+    received_quantity: 0,
+    status: 'active',
+    notes: '',
+    batch_barcode: ''
+  })
+  const [editBatchError, setEditBatchError] = useState('')
+  const [editBatchSuccess, setEditBatchSuccess] = useState('')
+  const [supplierOptions, setSupplierOptions] = useState<{id: string; name: string}[]>([])
+  const [loadingEditBatch, setLoadingEditBatch] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
   const [showDeleteMedicineConfirm, setShowDeleteMedicineConfirm] = useState(false)
@@ -149,6 +168,218 @@ export default function InventoryPage() {
           setShowAddBatch(false)
           setShowAddMedicine(true)
         }
+
+  // Helpers for date formatting/defaults used in edit modal
+  const fmtDate = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  const defaultExpiry = () => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + 12)
+    return fmtDate(d)
+  }
+  const sanitizeDate = (val?: string) => (val && val.trim() ? val : null)
+
+  // Load batch details and suppliers when opening edit modal
+  useEffect(() => {
+    const loadEditBatchData = async () => {
+      if (!showEditBatch || !editingBatch) return
+      try {
+        setLoadingEditBatch(true)
+        setEditBatchError('')
+        setEditBatchSuccess('')
+        const [{ data: b, error: bErr }, { data: suppliers }] = await Promise.all([
+          supabase
+            .from('medicine_batches')
+            .select('batch_number, purchase_price, selling_price, supplier_id, manufacturing_date, expiry_date, received_date, current_quantity, received_quantity, status, notes, batch_barcode')
+            .eq('id', editingBatch.id)
+            .single(),
+          supabase
+            .from('suppliers')
+            .select('id, name')
+            .eq('status', 'active')
+            .order('name')
+        ])
+        const suppliersArr = (suppliers || []).map((s: any) => ({ id: s.id, name: s.name }))
+        setSupplierOptions(suppliersArr)
+        if (!bErr && b) {
+          console.log('DB fetched batch row:', JSON.stringify(b, null, 2))
+          const supplierName = suppliersArr.find((s: any) => s.id === b.supplier_id)?.name || ''
+          setEditBatchForm({
+            batch_number: b.batch_number || '',
+            purchase_price: Number(b.purchase_price ?? 0),
+            selling_price: Number(b.selling_price ?? 0),
+            supplier_id: b.supplier_id || '',
+            supplier_name: supplierName,
+            manufacturing_date: b.manufacturing_date || '',
+            expiry_date: b.expiry_date || '',
+            received_date: b.received_date || '',
+            current_quantity: Number(b.current_quantity ?? 0),
+            received_quantity: Number(b.received_quantity ?? 0),
+            status: b.status || 'active',
+            notes: b.notes || '',
+            batch_barcode: b.batch_barcode || ''
+          })
+          console.log('Set form after DB fetch:', JSON.stringify({
+            current_quantity: Number(b.current_quantity ?? 0),
+            received_quantity: Number(b.received_quantity ?? 0),
+            status: b.status || 'active'
+          }, null, 2))
+
+          // Fallback: use robust stock sources if quantities look missing/zero
+          const needQtyFallback = !(Number(b.current_quantity) > 0 || Number(b.received_quantity) > 0)
+          if (needQtyFallback && (b.batch_number || editingBatch.batch_number)) {
+            try {
+              const bn = b.batch_number || editingBatch.batch_number
+              // 1) Service fallback (preferred)
+              try {
+                const robustAny: any = await getBatchStockRobust(bn)
+                console.log('getBatchStockRobust:', robustAny)
+                if (robustAny) {
+                  const cq1 = Number(
+                    robustAny.remaining_units ?? robustAny.remainingUnits ?? robustAny.current_quantity ?? robustAny.current_stock ?? 0
+                  )
+                  const rq1 = Number(
+                    robustAny.purchased_units ?? robustAny.purchasedUnits ?? robustAny.received_quantity ?? robustAny.total_received ?? 0
+                  )
+                  if (Number.isFinite(cq1) || Number.isFinite(rq1)) {
+                    setEditBatchForm(f => ({
+                      ...f,
+                      current_quantity: Number.isFinite(cq1) ? cq1 : f.current_quantity,
+                      received_quantity: Number.isFinite(rq1) ? rq1 : f.received_quantity
+                    }))
+                  }
+                }
+              } catch (e) {
+                console.warn('getBatchStockRobust fallback failed', e)
+              }
+              // 2) View fallback
+              try {
+                const { data: sv } = await supabase
+                  .from('batch_stock_v')
+                  .select('*')
+                  .eq('batch_number', bn)
+                  .maybeSingle()
+                console.log('batch_stock_v row:', sv)
+                if (sv) {
+                  const cq = Number(
+                    sv.current_quantity ?? sv.remainingUnits ?? sv.remaining_units ?? sv.current_stock ?? sv.stock_remaining ?? 0
+                  )
+                  const rq = Number(
+                    sv.received_quantity ?? sv.purchasedUnits ?? sv.purchased_units ?? sv.total_received ?? 0
+                  )
+                  setEditBatchForm(f => ({
+                    ...f,
+                    current_quantity: Number.isFinite(cq) ? cq : f.current_quantity,
+                    received_quantity: Number.isFinite(rq) ? rq : f.received_quantity
+                  }))
+                }
+              } catch (e) {
+                console.warn('batch_stock_v fallback failed', e)
+              }
+
+              // 3) Transactions fallback (purchase - sale)
+              try {
+                const { data: txs } = await supabase
+                  .from('stock_transactions')
+                  .select('transaction_type, quantity, transaction_date')
+                  .eq('batch_number', bn)
+                  .order('transaction_date', { ascending: true })
+                console.log('stock_transactions rows:', txs?.length || 0)
+                if (txs && txs.length) {
+                  const firstTx = txs[0] as any
+                  let received = 0
+                  let balance = 0
+                  // Use transaction_date as received_date if it's the first purchase
+                  const receivedDate = firstTx.transaction_type === 'purchase' ? firstTx.transaction_date?.split('T')[0] : ''
+                  for (const t of txs as any[]) {
+                    const q = Number(t.quantity) || 0
+                    if ((t.transaction_type || '').toLowerCase() === 'purchase') {
+                      received += q
+                      balance += q
+                    } else if ((t.transaction_type || '').toLowerCase() === 'sale') {
+                      balance -= q
+                    }
+                  }
+                  if (Number.isFinite(received) || Number.isFinite(balance)) {
+                    setEditBatchForm(f => ({
+                      ...f,
+                      current_quantity: Number.isFinite(balance) ? Math.max(balance, 0) : f.current_quantity,
+                      received_quantity: Number.isFinite(received) ? received : f.received_quantity,
+                      received_date: receivedDate || f.received_date
+                    }))
+                  }
+                }
+              } catch (e) {
+                console.warn('transactions fallback failed', e)
+              }
+            } catch (e) {
+              console.warn('Fallback batch_stock_v query failed', e)
+            }
+          }
+        } else {
+          setEditBatchForm({
+            batch_number: editingBatch.batch_number || '',
+            purchase_price: 0,
+            selling_price: 0,
+            supplier_id: '',
+            supplier_name: '',
+            manufacturing_date: '',
+            expiry_date: '',
+            received_date: '',
+            current_quantity: 0,
+            received_quantity: 0,
+            status: 'active',
+            notes: '',
+            batch_barcode: ''
+          })
+        }
+      } catch (e) {
+        console.error('Failed to load batch/suppliers for edit', e)
+        setEditBatchError('Failed to load batch details')
+      } finally {
+        setLoadingEditBatch(false)
+      }
+    }
+    loadEditBatchData()
+  }, [showEditBatch, editingBatch])
+
+  const saveEditedBatch = React.useCallback(async () => {
+    if (!editingBatch) return
+    try {
+      setLoading(true)
+      const payload: any = {
+        purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
+        selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
+        supplier_id: editBatchForm.supplier_id || null,
+        manufacturing_date: sanitizeDate(editBatchForm.manufacturing_date),
+        expiry_date: sanitizeDate(editBatchForm.expiry_date) ?? defaultExpiry(),
+        received_date: sanitizeDate(editBatchForm.received_date),
+        notes: editBatchForm.notes?.trim() || null
+      }
+      const { error } = await supabase
+        .from('medicine_batches')
+        .update(payload)
+        .eq('id', editingBatch.id)
+      if (error) throw error
+      await loadMedicines()
+      if (selectedMedicineDetail) {
+        const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id)
+        if (updatedMed) setSelectedMedicineDetail(updatedMed)
+      }
+      setShowEditBatch(false)
+      setEditingBatch(null)
+      alert('Batch updated successfully!')
+    } catch (err: any) {
+      console.error('Failed to update batch', err)
+      alert('Failed to update batch: ' + (err?.message || 'Unknown error'))
+    } finally {
+      setLoading(false)
+    }
+  }, [editingBatch, editBatchForm, medicines, selectedMedicineDetail])
 
   // Total units sold for this batch from MCP (stock_transactions sales)
   const loadBatchSoldTotal = async (batchNumber: string) => {
@@ -335,8 +566,8 @@ export default function InventoryPage() {
   // Removed overall stock summary fetch per request
 
   const filteredMedicines = medicines.filter(medicine => {
-    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesDosage = !dosageFilter || medicine.unit === dosageFilter
@@ -780,8 +1011,39 @@ export default function InventoryPage() {
   }
 
   const handleEditBatch = (batch: MedicineBatch) => {
-    console.log('Edit batch clicked:', batch.batch_number)
+    console.log('Edit batch clicked:', batch.batch_number, JSON.stringify(batch, null, 2))
     setEditingBatch(batch)
+    // Prefill form immediately so UI shows existing values without waiting for DB
+    setEditBatchForm(f => {
+      const b: any = batch as any
+      console.log('Prefill raw batch object:', JSON.stringify(b, null, 2))
+      const currentQty = Number.isFinite(Number(b.current_stock))
+        ? Number(b.current_stock)
+        : (Number.isFinite(Number(b.current_quantity)) ? Number(b.current_quantity) : (Number.isFinite(Number(b.quantity)) ? Number(b.quantity) : f.current_quantity))
+      const receivedQty = Number.isFinite(Number(b.original_quantity))
+        ? Number(b.original_quantity)
+        : (Number.isFinite(Number(b.received_quantity)) ? Number(b.received_quantity) : (Number.isFinite(Number(b.received)) ? Number(b.received) : f.received_quantity))
+      const purchase = Number.isFinite(Number(b.purchase_price))
+        ? Number(b.purchase_price)
+        : (Number.isFinite(Number(b.unit_cost)) ? Number(b.unit_cost) : f.purchase_price)
+      const selling = Number.isFinite(Number(b.selling_price)) ? Number(b.selling_price) : f.selling_price
+      console.log('Prefilled values:', JSON.stringify({ currentQty, receivedQty, purchase, selling }, null, 2))
+      return {
+        batch_number: batch.batch_number || f.batch_number,
+        purchase_price: purchase,
+        selling_price: selling,
+        supplier_id: b.supplier_id || '',
+        supplier_name: '',
+        manufacturing_date: batch.manufacturing_date || '',
+        expiry_date: batch.expiry_date || '',
+        received_date: batch.received_date || '',
+        current_quantity: currentQty,
+        received_quantity: receivedQty,
+        status: b.status || f.status || 'active',
+        notes: f.notes || '',
+        batch_barcode: b.batch_barcode || f.batch_barcode || ''
+      }
+    })
     setShowEditBatch(true)
   }
 
@@ -1189,6 +1451,309 @@ export default function InventoryPage() {
           </button>
         </div>
       )}
+
+  {/* Edit Batch Modal - Modern Stunning UI */}
+  {showEditBatch && editingBatch && (
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col"
+      >
+        {/* Header with gradient */}
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Edit Batch Details</h2>
+              <p className="text-blue-100 text-sm mt-1">
+                {selectedMedicineDetail?.name ? (
+                  <><span className="font-semibold">{selectedMedicineDetail.name}</span> — Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
+                ) : (
+                  <>Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
+                )}
+              </p>
+            </div>
+            <button 
+              className="p-2 hover:bg-white/20 rounded-full transition-colors" 
+              onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Loading State */}
+        {loadingEditBatch ? (
+          <div className="p-12 flex flex-col items-center justify-center">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-500">Loading batch details...</p>
+          </div>
+        ) : (
+          <>
+            {/* Batch Info Header Card */}
+            <div className="mx-6 mt-6 p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <Package className="w-7 h-7 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Batch Number</div>
+                    <div className="text-xl font-bold text-slate-800 font-mono">{editBatchForm.batch_number || editingBatch.batch_number || '—'}</div>
+                  </div>
+                </div>
+                <div className="text-right space-y-1">
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Current Stock</div>
+                    <div className="text-2xl font-bold text-emerald-600">{Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : 0}</div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">
+                      Received: {Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs border ${editBatchForm.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                      {editBatchForm.status || 'active'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {editBatchForm.batch_barcode && (
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <div className="text-xs text-slate-500">Barcode: <span className="font-mono text-slate-700">{editBatchForm.batch_barcode}</span></div>
+                </div>
+              )}
+            </div>
+
+            {/* Error/Success Messages */}
+            {editBatchError && (
+              <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-red-700 text-sm">{editBatchError}</p>
+              </div>
+            )}
+            {editBatchSuccess && (
+              <div className="mx-6 mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                <Package className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                <p className="text-emerald-700 text-sm">{editBatchSuccess}</p>
+              </div>
+            )}
+
+            {/* Form Fields */}
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {/* Pricing Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-xs">₹</span>
+                  Pricing Information
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Purchase Price (Cost)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        min="0" 
+                        value={Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : ''}
+                        onChange={e => setEditBatchForm(f => ({ ...f, purchase_price: Number(e.target.value) }))}
+                        className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
+                        placeholder="0.00" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Selling Price (MRP)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        min="0" 
+                        value={Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : ''}
+                        onChange={e => setEditBatchForm(f => ({ ...f, selling_price: Number(e.target.value) }))}
+                        className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
+                        placeholder="0.00" 
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* Quantity */}
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Received Quantity</label>
+                    <input
+                      type="number"
+                      value={Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
+                      readOnly
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Quantity (Units in this batch)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : ''}
+                      onChange={e => setEditBatchForm(f => ({ ...f, current_quantity: Number(e.target.value) }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Supplier Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <span className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                    <Truck className="w-3 h-3 text-purple-600" />
+                  </span>
+                  Supplier
+                </h3>
+                <select 
+                  value={editBatchForm.supplier_id || ''}
+                  onChange={e => {
+                    const selectedSupplier = supplierOptions.find(s => s.id === e.target.value);
+                    setEditBatchForm(f => ({ ...f, supplier_id: e.target.value, supplier_name: selectedSupplier?.name || '' }));
+                  }}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white appearance-none cursor-pointer"
+                >
+                  <option value="">— Select Supplier —</option>
+                  {supplierOptions.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dates Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <span className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center">
+                    <Calendar className="w-3 h-3 text-amber-600" />
+                  </span>
+                  Important Dates
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Manufacturing</label>
+                    <input 
+                      type="date" 
+                      value={editBatchForm.manufacturing_date || ''}
+                      onChange={e => setEditBatchForm(f => ({ ...f, manufacturing_date: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Received</label>
+                    <input 
+                      type="date" 
+                      value={editBatchForm.received_date || ''}
+                      onChange={e => setEditBatchForm(f => ({ ...f, received_date: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Expiry Date <span className="text-red-500">*</span></label>
+                    <input 
+                      type="date" 
+                      value={editBatchForm.expiry_date || ''}
+                      onChange={e => setEditBatchForm(f => ({ ...f, expiry_date: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <span className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
+                    <Info className="w-3 h-3 text-slate-600" />
+                  </span>
+                  Additional Notes
+                </h3>
+                <textarea 
+                  value={editBatchForm.notes || ''}
+                  onChange={e => setEditBatchForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white resize-none" 
+                  rows={3} 
+                  placeholder="Add any additional notes about this batch..." 
+                />
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between rounded-b-3xl">
+              <button 
+                className="px-6 py-3 text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all font-medium" 
+                onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                onClick={async () => {
+                  if (!editingBatch) return;
+                  setEditBatchError('');
+                  setEditBatchSuccess('');
+                  try {
+                    setLoading(true);
+                    // basic validation
+                    if (Number(editBatchForm.current_quantity) < 0) {
+                      setEditBatchError('Quantity cannot be negative');
+                      setLoading(false);
+                      return;
+                    }
+                    const payload: any = {
+                      purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
+                      selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
+                      supplier_id: editBatchForm.supplier_id || null,
+                      manufacturing_date: (editBatchForm.manufacturing_date && editBatchForm.manufacturing_date.trim()) ? editBatchForm.manufacturing_date : null,
+                      expiry_date: (editBatchForm.expiry_date && editBatchForm.expiry_date.trim()) ? editBatchForm.expiry_date : (() => { const d = new Date(); d.setMonth(d.getMonth() + 12); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
+                      received_date: (editBatchForm.received_date && editBatchForm.received_date.trim()) ? editBatchForm.received_date : null,
+                      current_quantity: Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : null,
+                      notes: editBatchForm.notes?.trim() || null,
+                    };
+                    const { error } = await supabase
+                      .from('medicine_batches')
+                      .update(payload)
+                      .eq('id', editingBatch.id);
+                    if (error) throw error;
+                    await loadMedicines();
+                    if (selectedMedicineDetail) {
+                      const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id);
+                      if (updatedMed) setSelectedMedicineDetail(updatedMed);
+                    }
+                    setEditBatchSuccess('Batch updated successfully!');
+                    setTimeout(() => {
+                      setShowEditBatch(false);
+                      setEditingBatch(null);
+                      setEditBatchError('');
+                      setEditBatchSuccess('');
+                    }, 1500);
+                  } catch (err: any) {
+                    console.error('Failed to update batch', err);
+                    setEditBatchError('Failed to update batch: ' + (err?.message || 'Unknown error'));
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : 'Save Changes'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )}
 
   {/* Edit Medicine Modal */}
   {showEditMedicine && editingMedicine && (
@@ -1895,8 +2460,16 @@ export default function InventoryPage() {
                             </div>
                           </div>
 
-                          {/* Actions (Edit removed by request to avoid conflicts) */}
+                          {/* Actions */}
                           <div className="flex gap-2 pt-2 border-t border-gray-100">
+                            <button
+                              onClick={() => handleEditBatch(batch)}
+                              className="flex-1 bg-slate-700 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-1"
+                              title="Edit Batch"
+                            >
+                              <Edit className="w-3 h-3" />
+                              Edit
+                            </button>
                             {isExpired && (
                               <button
                                 onClick={() => handleExpiredStockAdjustment(selectedMedicineDetail.id, batch.batch_number, selectedMedicineDetail.name)}
@@ -2013,156 +2586,6 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Edit Batch Modal */}
-      {showEditBatch && editingBatch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            <h2 className="text-xl font-bold mb-4">Edit Batch - {editingBatch.batch_number}</h2>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Manufacturing Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={editingBatch.manufacturing_date}
-                    onChange={(e) => setEditingBatch({...editingBatch, manufacturing_date: e.target.value})}
-                    className="input"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Expiry Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={editingBatch.expiry_date}
-                    onChange={(e) => setEditingBatch({...editingBatch, expiry_date: e.target.value})}
-                    className="input"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity *
-                  </label>
-                  <input
-                    type="number"
-                    value={editingBatch.quantity}
-                    onChange={(e) => setEditingBatch({...editingBatch, quantity: parseInt(e.target.value)})}
-                    className="input"
-                    min="0"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Unit Cost (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingBatch.unit_cost}
-                    onChange={(e) => setEditingBatch({...editingBatch, unit_cost: parseFloat(e.target.value)})}
-                    className="input"
-                    min="0"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Selling Price (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingBatch.selling_price}
-                    onChange={(e) => setEditingBatch({...editingBatch, selling_price: parseFloat(e.target.value)})}
-                    className="input"
-                    min="0"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Supplier *
-                </label>
-                <input
-                  type="text"
-                  value={editingBatch.supplier}
-                  onChange={(e) => setEditingBatch({...editingBatch, supplier: e.target.value})}
-                  className="input"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                onClick={() => {
-                  setShowEditBatch(false)
-                  setEditingBatch(null)
-                }}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    setLoading(true)
-                    const { error } = await supabase
-                      .from('medicine_batches')
-                      .update({
-                        manufacturing_date: editingBatch.manufacturing_date,
-                        expiry_date: editingBatch.expiry_date,
-                        current_quantity: editingBatch.quantity,
-                        purchase_price: editingBatch.unit_cost,
-                        selling_price: editingBatch.selling_price
-                      })
-                      .eq('id', editingBatch.id)
-                    
-                    if (error) throw error
-                    
-                    await loadMedicines()
-                    setShowEditBatch(false)
-                    setEditingBatch(null)
-                    
-                    // Update selected medicine detail
-                    if (selectedMedicineDetail) {
-                      const updatedMedicine = medicines.find(m => m.id === selectedMedicineDetail.id)
-                      if (updatedMedicine) {
-                        setSelectedMedicineDetail(updatedMedicine)
-                      }
-                    }
-                    
-                    alert('Batch updated successfully!')
-                  } catch (error: any) {
-                    alert('Failed to update batch: ' + error.message)
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                className="btn-primary"
-                disabled={loading}
-              >
-                {loading ? 'Updating...' : 'Update Batch'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

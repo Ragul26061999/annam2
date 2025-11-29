@@ -348,7 +348,7 @@ export default function PharmacyBillingForm({
 
         if (itemError) throw itemError;
 
-        // Ledger-first: record a stock transaction for the sale (negative quantity)
+        // Ledger-first: record a stock transaction for the sale (positive quantity)
         const txnId = `SALE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         const { error: txnError } = await supabase
           .from('stock_transactions')
@@ -356,7 +356,7 @@ export default function PharmacyBillingForm({
             medication_id: item.medication_id,
             transaction_id: txnId,
             transaction_type: 'sale',
-            quantity: -item.quantity,
+            quantity: item.quantity,
             unit_price: item.unit_price,
             // Use per-item total after discount for accurate revenue
             total_amount: item.total_price,
