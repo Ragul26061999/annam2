@@ -1836,6 +1836,236 @@ export async function dispensePrescription(
 }
 
 // =====================================================
+// COMPREHENSIVE INVENTORY ANALYTICS
+// =====================================================
+
+export interface InventoryAnalytics {
+  totalStockValue: {
+    costValue: number;
+    retailValue: number;
+    profitMargin: number;
+  };
+  stockSummary: {
+    totalMedicines: number;
+    totalBatches: number;
+    totalUnits: number;
+    lowStockItems: number;
+    expiredItems: number;
+    expiringSoonItems: number;
+  };
+  categoryBreakdown: Array<{
+    category: string;
+    medicineCount: number;
+    totalUnits: number;
+    totalValue: number;
+    percentage: number;
+  }>;
+  monthlyTrends: Array<{
+    month: string;
+    purchases: number;
+    sales: number;
+    revenue: number;
+  }>;
+  topSellingMedicines: Array<{
+    medicationId: string;
+    medicationName: string;
+    totalSold: number;
+    revenue: number;
+  }>;
+  expiryAnalysis: Array<{
+    period: string;
+    count: number;
+    totalValue: number;
+  }>;
+}
+
+export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
+  try {
+    // Get all medications with their stock
+    const { data: medications, error: medError } = await supabase
+      .from('medications')
+      .select('id, name, category, available_stock, purchase_price, selling_price');
+
+    if (medError) throw medError;
+
+    // Get all stock transactions for trends
+    const today = new Date();
+    const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1).toISOString();
+    
+    const { data: transactions, error: txError } = await supabase
+      .from('stock_transactions')
+      .select('medication_id, transaction_type, quantity, unit_price, total_amount, created_at')
+      .gte('created_at', sixMonthsAgo)
+      .order('created_at', { ascending: true });
+
+    if (txError) throw txError;
+
+    // Get batch information for expiry analysis
+    const { data: batches, error: batchError } = await supabase
+      .from('medicine_batches')
+      .select('medicine_id, expiry_date, current_quantity, selling_price');
+
+    if (batchError) throw batchError;
+
+    // Calculate total stock values
+    const totalCostValue = (medications || []).reduce((sum, med) => 
+      sum + ((med.available_stock || 0) * (med.purchase_price || 0)), 0);
+    const totalRetailValue = (medications || []).reduce((sum, med) => 
+      sum + ((med.available_stock || 0) * (med.selling_price || 0)), 0);
+    const profitMargin = totalCostValue > 0 ? ((totalRetailValue - totalCostValue) / totalCostValue) * 100 : 0;
+
+    // Stock summary
+    const totalUnits = (medications || []).reduce((sum, med) => sum + (med.available_stock || 0), 0);
+    const lowStockItems = (medications || []).filter(med => 
+      med.available_stock <= 10 && med.available_stock > 0).length;
+    
+    const now = new Date();
+    const expiredItems = (batches || []).filter(batch => 
+      new Date(batch.expiry_date) < now && batch.current_quantity > 0).length;
+    
+    const ninetyDaysFromNow = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000));
+    const expiringSoonItems = (batches || []).filter(batch => 
+      new Date(batch.expiry_date) >= now && 
+      new Date(batch.expiry_date) <= ninetyDaysFromNow && 
+      batch.current_quantity > 0).length;
+
+    // Category breakdown
+    const categoryMap = new Map();
+    (medications || []).forEach(med => {
+      const category = med.category || 'Uncategorized';
+      const value = (med.available_stock || 0) * (med.selling_price || 0);
+      if (!categoryMap.has(category)) {
+        categoryMap.set(category, { medicineCount: 0, totalUnits: 0, totalValue: 0 });
+      }
+      const cat = categoryMap.get(category);
+      cat.medicineCount++;
+      cat.totalUnits += med.available_stock || 0;
+      cat.totalValue += value;
+    });
+
+    const categoryBreakdown = Array.from(categoryMap.entries()).map(([category, data]) => ({
+      category,
+      medicineCount: data.medicineCount,
+      totalUnits: data.totalUnits,
+      totalValue: data.totalValue,
+      percentage: totalRetailValue > 0 ? (data.totalValue / totalRetailValue) * 100 : 0
+    })).sort((a, b) => b.totalValue - a.totalValue);
+
+    // Monthly trends
+    const monthlyMap = new Map();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // Initialize last 6 months
+    for (let i = 5; i >= 0; i--) {
+      const month = new Date(currentYear, currentMonth - i, 1);
+      const monthKey = month.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      monthlyMap.set(monthKey, { purchases: 0, sales: 0, revenue: 0 });
+    }
+
+    (transactions || []).forEach(tx => {
+      const month = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (monthlyMap.has(month)) {
+        const data = monthlyMap.get(month);
+        if (tx.transaction_type === 'purchase') {
+          data.purchases += Math.abs(tx.quantity || 0);
+        } else if (tx.transaction_type === 'sale') {
+          data.sales += Math.abs(tx.quantity || 0);
+          data.revenue += tx.total_amount || 0;
+        }
+      }
+    });
+
+    const monthlyTrends = Array.from(monthlyMap.entries()).map(([month, data]) => ({
+      month,
+      purchases: data.purchases,
+      sales: data.sales,
+      revenue: data.revenue
+    }));
+
+    // Top selling medicines
+    const salesMap = new Map();
+    (transactions || [])
+      .filter(tx => tx.transaction_type === 'sale')
+      .forEach(tx => {
+        if (!salesMap.has(tx.medication_id)) {
+          salesMap.set(tx.medication_id, { totalSold: 0, revenue: 0 });
+        }
+        const data = salesMap.get(tx.medication_id);
+        data.totalSold += Math.abs(tx.quantity || 0);
+        data.revenue += tx.total_amount || 0;
+      });
+
+    const topSellingMedicines = Array.from(salesMap.entries())
+      .map(([medicationId, data]) => {
+        const med = medications?.find(m => m.id === medicationId);
+        return {
+          medicationId,
+          medicationName: med?.name || 'Unknown',
+          totalSold: data.totalSold,
+          revenue: data.revenue
+        };
+      })
+      .sort((a, b) => b.totalSold - a.totalSold)
+      .slice(0, 10);
+
+    // Expiry analysis
+    const expiryPeriods = [
+      { period: 'Expired', daysAgo: -Infinity, daysAhead: 0 },
+      { period: 'Expiring in 30 days', daysAgo: 0, daysAhead: 30 },
+      { period: 'Expiring in 31-60 days', daysAgo: 30, daysAhead: 60 },
+      { period: 'Expiring in 61-90 days', daysAgo: 60, daysAhead: 90 },
+      { period: 'Expiring in 90+ days', daysAgo: 90, daysAhead: Infinity }
+    ];
+
+    const expiryAnalysis = expiryPeriods.map(period => {
+      const filtered = (batches || []).filter(batch => {
+        const expiryDate = new Date(batch.expiry_date);
+        const daysDiff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return daysDiff >= period.daysAgo && daysDiff < period.daysAhead && batch.current_quantity > 0;
+      });
+
+      return {
+        period: period.period,
+        count: filtered.length,
+        totalValue: filtered.reduce((sum, batch) => 
+          sum + (batch.current_quantity * (batch.selling_price || 0)), 0)
+      };
+    });
+
+    return {
+      totalStockValue: {
+        costValue: totalCostValue,
+        retailValue: totalRetailValue,
+        profitMargin
+      },
+      stockSummary: {
+        totalMedicines: medications?.length || 0,
+        totalBatches: batches?.length || 0,
+        totalUnits,
+        lowStockItems,
+        expiredItems,
+        expiringSoonItems
+      },
+      categoryBreakdown,
+      monthlyTrends,
+      topSellingMedicines,
+      expiryAnalysis
+    };
+  } catch (error) {
+    console.error('Error in getInventoryAnalytics:', error);
+    return {
+      totalStockValue: { costValue: 0, retailValue: 0, profitMargin: 0 },
+      stockSummary: { totalMedicines: 0, totalBatches: 0, totalUnits: 0, lowStockItems: 0, expiredItems: 0, expiringSoonItems: 0 },
+      categoryBreakdown: [],
+      monthlyTrends: [],
+      topSellingMedicines: [],
+      expiryAnalysis: []
+    };
+  }
+}
+
+// =====================================================
 // COMPREHENSIVE BATCH AND MEDICINE ANALYTICS
 // =====================================================
 

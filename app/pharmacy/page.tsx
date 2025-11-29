@@ -3,7 +3,24 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity } from 'lucide-react'
+import { 
+  BarChart, 
+  Bar, 
+  LineChart, 
+  Line, 
+  PieChart as RePieChart, 
+  Pie, 
+  Cell, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer,
+  Area,
+  AreaChart
+} from 'recharts'
 import { 
   getPharmacyDashboardStats, 
   getMedications, 
@@ -13,10 +30,25 @@ import {
   getBatchPurchaseHistory,
   getMedicationStockRobust,
   getBatchStockRobust,
-  getComprehensiveMedicineData
+  getComprehensiveMedicineData,
+  getInventoryAnalytics
 } from '@/src/lib/pharmacyService'
 import MedicineEntryForm from '@/src/components/MedicineEntryForm'
+import { supabase } from '@/src/lib/supabase'
 // Do not import page modules for embedding; navigate to their routes instead
+
+// Indian Currency Formatter
+const formatIndianCurrency = (amount: number | string): string => {
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return '₹0';
+  
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(num);
+};
 
 interface Medicine {
   id: string
@@ -49,7 +81,6 @@ interface DashboardStats {
 
 export default function PharmacyPage() {
   const router = useRouter()
-  const [medicines, setMedicines] = useState<Medicine[]>([])
   const [bills, setBills] = useState<PharmacyBill[]>([])
   const [stats, setStats] = useState<DashboardStats>({
     totalMedications: 0,
@@ -59,28 +90,388 @@ export default function PharmacyPage() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [showMedicineModal, setShowMedicineModal] = useState(false)
-  const [showViewModal, setShowViewModal] = useState(false)
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailSummary, setDetailSummary] = useState<any | null>(null)
   const [detailHistory, setDetailHistory] = useState<any[]>([])
   const [comprehensiveData, setComprehensiveData] = useState<any | null>(null)
+  const [inventoryAnalytics, setInventoryAnalytics] = useState<any | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  
+  // Interactive modals state
+  const [showExpiryModal, setShowExpiryModal] = useState(false)
+  const [showStockAlertsModal, setShowStockAlertsModal] = useState(false)
+  const [expiryDetails, setExpiryDetails] = useState<any[]>([])
+  const [stockAlertDetails, setStockAlertDetails] = useState<any[]>([])
+  const [detailsLoading, setDetailsLoading] = useState(false)
 
   useEffect(() => {
     loadData()
+    loadAnalytics()
   }, [])
+
+  const loadAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true)
+      const analyticsData = await getInventoryAnalytics()
+      setInventoryAnalytics(analyticsData)
+    } catch (error) {
+      console.error('Error loading analytics:', error)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
+
+  // Fetch detailed expiry information
+  const loadExpiryDetails = async (period: string) => {
+    try {
+      setDetailsLoading(true)
+      console.log('Loading expiry details for period:', period)
+      
+      // First, let's see what the analytics data shows for comparison
+      console.log('Current analytics expiry analysis:', inventoryAnalytics?.expiryAnalysis)
+      
+      // Try without any filters first to see all batches
+      const { data: allBatches, error: allError } = await supabase
+        .from('medicine_batches')
+        .select(`
+          id,
+          batch_number,
+          expiry_date,
+          current_quantity,
+          selling_price,
+          medicine_id
+        `)
+
+      console.log('All batches fetched (simple query):', allBatches?.length || 0, 'Error:', allError)
+
+      if (allError || !allBatches || allBatches.length === 0) {
+        console.log('Trying with inner join...')
+        
+        // Try with inner join as fallback
+        const { data: joinedBatches, error: joinError } = await supabase
+          .from('medicine_batches')
+          .select(`
+            id,
+            batch_number,
+            expiry_date,
+            current_quantity,
+            selling_price,
+            medications!inner (
+              id,
+              name,
+              category,
+              manufacturer
+            )
+          `)
+
+        console.log('Joined batches fetched:', joinedBatches?.length || 0, 'Error:', joinError)
+        
+        if (joinError || !joinedBatches) {
+          console.error('Both queries failed')
+          setExpiryDetails([])
+          setShowExpiryModal(true)
+          return
+        }
+        
+        processBatchData(joinedBatches, period)
+        return
+      }
+
+      processBatchData(allBatches, period)
+    } catch (error) {
+      console.error('Error loading expiry details:', error)
+      setExpiryDetails([])
+      setShowExpiryModal(true)
+    } finally {
+      setDetailsLoading(false)
+    }
+  }
+
+  const processBatchData = async (batches: any[], period: string) => {
+    try {
+      console.log('Sample batch data:', batches.slice(0, 3))
+      
+      // Filter manually for current_quantity > 0
+      const batchesWithStock = batches.filter(batch => batch.current_quantity > 0)
+      console.log('Batches with stock > 0:', batchesWithStock.length)
+
+      // If we don't have medication info, fetch it separately
+      let batchesWithMedInfo = batchesWithStock
+      if (!batchesWithStock[0]?.medications) {
+        console.log('Fetching medication info separately...')
+        const medicineIds = [...new Set(batchesWithStock.map(b => b.medicine_id).filter(id => id))]
+        
+        if (medicineIds.length > 0) {
+          const { data: medicines, error: medError } = await supabase
+            .from('medications')
+            .select('id, name, category, manufacturer')
+            .in('id', medicineIds)
+          
+          if (!medError && medicines) {
+            batchesWithMedInfo = batchesWithStock.map(batch => ({
+              ...batch,
+              medications: medicines.find(med => med.id === batch.medicine_id) || {
+                id: batch.medicine_id,
+                name: 'Unknown Medicine',
+                category: 'Unknown',
+                manufacturer: 'Unknown'
+              }
+            }))
+          }
+        }
+      }
+
+      // Now filter by expiry period
+      const now = new Date()
+      let filtered: any[] = []
+
+      console.log('Filtering for period:', period)
+      console.log('Current date:', now.toISOString())
+
+      if (period === 'Expired') {
+        filtered = batchesWithMedInfo.filter(batch => {
+          const expiry = new Date(batch.expiry_date)
+          return expiry < now
+        })
+      } else if (period === 'Expiring in 30 days') {
+        const thirtyDaysFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000))
+        console.log('30 days from now:', thirtyDaysFromNow.toISOString())
+        filtered = batchesWithMedInfo.filter(batch => {
+          const expiry = new Date(batch.expiry_date)
+          return expiry >= now && expiry <= thirtyDaysFromNow
+        })
+      } else if (period === 'Expiring in 31-60 days') {
+        const thirtyOneDaysFromNow = new Date(now.getTime() + (31 * 24 * 60 * 60 * 1000))
+        const sixtyDaysFromNow = new Date(now.getTime() + (60 * 24 * 60 * 60 * 1000))
+        console.log('31 days from now:', thirtyOneDaysFromNow.toISOString())
+        console.log('60 days from now:', sixtyDaysFromNow.toISOString())
+        filtered = batchesWithMedInfo.filter(batch => {
+          const expiry = new Date(batch.expiry_date)
+          return expiry >= thirtyOneDaysFromNow && expiry <= sixtyDaysFromNow
+        })
+      } else if (period === 'Expiring in 61-90 days') {
+        const sixtyOneDaysFromNow = new Date(now.getTime() + (61 * 24 * 60 * 60 * 1000))
+        const ninetyDaysFromNow = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000))
+        console.log('61 days from now:', sixtyOneDaysFromNow.toISOString())
+        console.log('90 days from now:', ninetyDaysFromNow.toISOString())
+        filtered = batchesWithMedInfo.filter(batch => {
+          const expiry = new Date(batch.expiry_date)
+          return expiry >= sixtyOneDaysFromNow && expiry <= ninetyDaysFromNow
+        })
+      } else if (period === 'Expiring in 90+ days') {
+        const ninetyOneDaysFromNow = new Date(now.getTime() + (91 * 24 * 60 * 60 * 1000))
+        console.log('91 days from now:', ninetyOneDaysFromNow.toISOString())
+        filtered = batchesWithMedInfo.filter(batch => new Date(batch.expiry_date) >= ninetyOneDaysFromNow)
+      }
+
+      console.log('Filtered batches:', filtered.length)
+      
+      // Log filtered batches for debugging
+      if (filtered.length > 0) {
+        console.log('Sample filtered batch:', filtered[0])
+      } else {
+        console.log('No batches found in this period. Checking expiry dates of all batches...')
+        batchesWithMedInfo.forEach((batch, index) => {
+          if (index < 5) { // Show first 5 for debugging
+            const expiry = new Date(batch.expiry_date)
+            const daysToExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            console.log(`Batch ${batch.batch_number}: Expiry ${batch.expiry_date}, Days to expiry: ${daysToExpiry}, Stock: ${batch.current_quantity}`)
+          }
+        })
+      }
+
+      const processedDetails = filtered.map(batch => {
+        const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        const value = batch.current_quantity * (batch.selling_price || 0)
+        
+        return {
+          ...batch,
+          medications: batch.medications,
+          days_to_expiry: daysToExpiry,
+          total_value: value,
+          status: daysToExpiry < 0 ? 'expired' : daysToExpiry <= 30 ? 'critical' : daysToExpiry <= 60 ? 'warning' : 'normal'
+        }
+      }).sort((a, b) => a.days_to_expiry - b.days_to_expiry)
+
+      console.log('Processed details:', processedDetails.length)
+      setExpiryDetails(processedDetails)
+      setShowExpiryModal(true)
+    } catch (error) {
+      console.error('Error processing batch data:', error)
+      setExpiryDetails([])
+      setShowExpiryModal(true)
+    }
+  }
+
+  // Fetch detailed stock alert information
+  const loadStockAlertDetails = async (alertType: string) => {
+    try {
+      setDetailsLoading(true)
+      
+      if (alertType === 'low') {
+        const { data: medications, error: medError } = await supabase
+          .from('medications')
+          .select(`
+            id,
+            name,
+            category,
+            manufacturer,
+            available_stock,
+            minimum_stock_level,
+            unit_price,
+            medicine_code
+          `)
+          .gt('available_stock', 0)
+          .lte('available_stock', 'minimum_stock_level')
+
+        console.log('Low stock medications fetched:', medications?.length || 0, 'Error:', medError)
+
+        if (medError) {
+          console.error('Error fetching low stock medications:', medError)
+          // Try fallback query
+          const { data: allMeds, error: fallbackError } = await supabase
+            .from('medications')
+            .select(`
+              id,
+              name,
+              category,
+              manufacturer,
+              available_stock,
+              minimum_stock_level,
+              unit_price,
+              medicine_code
+            `)
+          
+          if (fallbackError) {
+            console.error('Fallback query failed:', fallbackError)
+            setStockAlertDetails([])
+            setShowStockAlertsModal(true)
+            return
+          }
+          
+          // Filter manually
+          const filteredMeds = allMeds?.filter(med => 
+            med.available_stock > 0 && med.available_stock <= med.minimum_stock_level
+          ) || []
+          
+          const processedDetails = filteredMeds.map(med => ({
+            ...med,
+            alert_type: 'low_stock',
+            shortage_quantity: Math.max(0, med.minimum_stock_level - med.available_stock),
+            reorder_value: med.minimum_stock_level * 2 * (med.unit_price || 0)
+          })).sort((a, b) => (a.available_stock / a.minimum_stock_level) - (b.available_stock / b.minimum_stock_level))
+
+          setStockAlertDetails(processedDetails)
+          setShowStockAlertsModal(true)
+          return
+        }
+
+        if (medications) {
+          const processedDetails = medications.map(med => ({
+            ...med,
+            alert_type: 'low_stock',
+            shortage_quantity: Math.max(0, med.minimum_stock_level - med.available_stock),
+            reorder_value: med.minimum_stock_level * 2 * (med.unit_price || 0)
+          })).sort((a, b) => (a.available_stock / a.minimum_stock_level) - (b.available_stock / b.minimum_stock_level))
+
+          setStockAlertDetails(processedDetails)
+          setShowStockAlertsModal(true)
+        }
+      } else if (alertType === 'expired') {
+        const { data: batches, error: batchError } = await supabase
+          .from('medicine_batches')
+          .select(`
+            id,
+            batch_number,
+            expiry_date,
+            current_quantity,
+            selling_price,
+            medications!inner (
+              id,
+              name,
+              category,
+              manufacturer
+            )
+          `)
+          .gt('current_quantity', 0)
+          .lt('expiry_date', new Date().toISOString())
+
+        console.log('Expired batches fetched:', batches?.length || 0, 'Error:', batchError)
+
+        if (batchError) {
+          console.error('Error fetching expired batches:', batchError)
+          // Try fallback query
+          const { data: allBatches, error: fallbackError } = await supabase
+            .from('medicine_batches')
+            .select(`
+              id,
+              batch_number,
+              expiry_date,
+              current_quantity,
+              selling_price,
+              medications!inner (
+                id,
+                name,
+                category,
+                manufacturer
+              )
+            `)
+          
+          if (fallbackError) {
+            console.error('Fallback query failed:', fallbackError)
+            setStockAlertDetails([])
+            setShowStockAlertsModal(true)
+            return
+          }
+          
+          // Filter manually
+          const now = new Date()
+          const filteredBatches = allBatches?.filter(batch => 
+            batch.current_quantity > 0 && new Date(batch.expiry_date) < now
+          ) || []
+          
+          const processedDetails = filteredBatches.map(batch => ({
+            ...batch,
+            medications: batch.medications,
+            alert_type: 'expired',
+            total_value: batch.current_quantity * (batch.selling_price || 0),
+            days_expired: Math.ceil((now.getTime() - new Date(batch.expiry_date).getTime()) / (1000 * 60 * 60 * 24))
+          })).sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime())
+
+          setStockAlertDetails(processedDetails)
+          setShowStockAlertsModal(true)
+          return
+        }
+
+        if (batches) {
+          const processedDetails = batches.map(batch => ({
+            ...batch,
+            medications: batch.medications,
+            alert_type: 'expired',
+            total_value: batch.current_quantity * (batch.selling_price || 0),
+            days_expired: Math.ceil((new Date().getTime() - new Date(batch.expiry_date).getTime()) / (1000 * 60 * 60 * 24))
+          })).sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime())
+
+          setStockAlertDetails(processedDetails)
+          setShowStockAlertsModal(true)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading stock alert details:', error)
+    } finally {
+      setDetailsLoading(false)
+    }
+  }
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const [dashboardData, medicinesData, billsData] = await Promise.all([
+      const [dashboardData, billsData] = await Promise.all([
         getPharmacyDashboardStats(),
-        getMedications(),
         getPharmacyBills()
       ])
 
@@ -92,21 +483,6 @@ export default function PharmacyPage() {
          pendingOrders: dashboardData.pendingBills || 0
        })
       
-      // Map medicines data
-      const mappedMedicines = medicinesData.map((med: any) => ({
-        id: med.id,
-        medicine_code: med.medicine_code,
-        name: med.name,
-        category: med.category,
-        stock_quantity: med.available_stock ?? med.stock_quantity ?? 0,
-        unit_price: med.unit_price,
-        expiry_date: med.expiry_date,
-        manufacturer: med.manufacturer,
-        batch_number: med.batch_number,
-        minimum_stock_level: med.minimum_stock_level
-      }))
-      setMedicines(mappedMedicines)
-      
       // Map bills data
       const mappedBills = billsData.map((bill: any) => ({
         id: bill.id,
@@ -116,7 +492,6 @@ export default function PharmacyPage() {
         payment_status: bill.payment_status,
         created_at: bill.created_at
       }))
-      // Store all bills; we'll limit to 5 only in the dashboard "Recent Bills" view
       setBills(mappedBills)
     } catch (err) {
       setError('Failed to load pharmacy data')
@@ -126,44 +501,26 @@ export default function PharmacyPage() {
     }
   }
 
-  const filteredMedicines = medicines.filter(medicine => {
-    const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.batch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.medicine_code || '').toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = categoryFilter === 'all' || medicine.category === categoryFilter
-    return matchesSearch && matchesCategory
-  }).slice(0, 6) // Show only first 6 medicines
-
-  const categories = Array.from(new Set(medicines.map(m => m.category)))
-
-  const getStockStatus = (medicine: Medicine) => {
-    if (medicine.stock_quantity <= 0) {
-      return { status: 'Out of Stock', variant: 'destructive' as const }
-    } else if (medicine.stock_quantity <= medicine.minimum_stock_level) {
-      return { status: 'Low Stock', variant: 'destructive' as const }
-    } else if (medicine.stock_quantity <= medicine.minimum_stock_level * 2) {
-      return { status: 'Medium Stock', variant: 'secondary' as const }
-    }
-    return { status: 'In Stock', variant: 'default' as const }
-  }
-
-  const getBadgeClass = (variant: string) => {
-    switch (variant) {
-      case 'destructive':
-        return 'bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium'
-      case 'secondary':
-        return 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium'
-      default:
-        return 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium'
+  // Chart colors
+  const CHART_COLORS = {
+    primary: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'],
+    pie: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'],
+    gradient: {
+      blue: { start: '#3b82f6', end: '#1d4ed8' },
+      green: { start: '#10b981', end: '#059669' },
+      orange: { start: '#f59e0b', end: '#d97706' },
+      red: { start: '#ef4444', end: '#dc2626' },
+      purple: { start: '#8b5cf6', end: '#7c3aed' }
     }
   }
 
-  if (loading) {
+  if (loading || analyticsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Loading pharmacy data...</div>
+        <div className="text-center">
+          <div className="text-lg mb-2">Loading pharmacy data...</div>
+          {analyticsLoading && <div className="text-sm text-gray-500">Preparing analytics and charts...</div>}
+        </div>
       </div>
     )
   }
@@ -176,6 +533,17 @@ export default function PharmacyPage() {
           <p className="text-gray-600 mt-1">Manage medicines, inventory, and billing</p>
         </div>
         <div className="flex gap-2">
+          <button 
+            className="btn-secondary flex items-center"
+            onClick={() => {
+              loadAnalytics()
+              loadData()
+            }}
+            disabled={loading || analyticsLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${(loading || analyticsLoading) ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
           <Link href="/pharmacy/newbilling" className="btn-primary flex items-center">
             <Receipt className="w-4 h-4 mr-2" />
             New Billing
@@ -254,79 +622,257 @@ export default function PharmacyPage() {
       {/* Tab Content */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
-          {/* Stats Cards */}
+          {/* Enhanced Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="card">
+            <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
               <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="text-sm font-medium">Total Medicines</h3>
-                <Package className="h-4 w-4 text-gray-500" />
+                <h3 className="text-sm font-medium text-blue-800">Total Stock Value</h3>
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <IndianRupee className="h-4 w-4 text-white" />
+                </div>
               </div>
               <div>
-                <div className="text-2xl font-bold">{stats.totalMedications}</div>
-                <p className="text-xs text-gray-500">Active inventory items</p>
+                <div className="text-2xl font-bold text-blue-900">
+                  {formatIndianCurrency(inventoryAnalytics?.totalStockValue?.retailValue || 0)}
+                </div>
+                <div className="flex items-center space-x-2 text-xs text-blue-700">
+                  <span>Cost: {formatIndianCurrency(inventoryAnalytics?.totalStockValue?.costValue || 0)}</span>
+                  <span>•</span>
+                  <span>Margin: {inventoryAnalytics?.totalStockValue?.profitMargin?.toFixed(1) || '0'}%</span>
+                </div>
               </div>
             </div>
 
-            <div className="card">
+            <div className="card bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="text-sm font-medium">Low Stock Items</h3>
-                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                <h3 className="text-sm font-medium text-green-800">Total Units</h3>
+                <div className="p-2 bg-green-500 rounded-lg">
+                  <Package className="h-4 w-4 text-white" />
+                </div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-orange-600">{stats.lowStockCount}</div>
-                <p className="text-xs text-gray-500">Need restocking</p>
+                <div className="text-2xl font-bold text-green-900">
+                  {inventoryAnalytics?.stockSummary?.totalUnits?.toLocaleString() || '0'}
+                </div>
+                <p className="text-xs text-green-700">
+                  {inventoryAnalytics?.stockSummary?.totalMedicines || '0'} medicines • {inventoryAnalytics?.stockSummary?.totalBatches || '0'} batches
+                </p>
               </div>
             </div>
 
-            <div className="card">
+            <div className="card bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="text-sm font-medium">Today's Sales</h3>
-                <IndianRupee className="h-4 w-4 text-green-500" />
+                <h3 className="text-sm font-medium text-orange-800">Stock Alerts</h3>
+                <div className="p-2 bg-orange-500 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-white" />
+                </div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-green-600">₹{stats.todaysSales.toLocaleString()}</div>
-                <p className="text-xs text-gray-500">Revenue today</p>
+                <div className="text-2xl font-bold text-orange-900">
+                  {(inventoryAnalytics?.stockSummary?.lowStockItems || 0) + (inventoryAnalytics?.stockSummary?.expiredItems || 0)}
+                </div>
+                <div className="flex items-center space-x-2 text-xs text-orange-700">
+                  <span>Low: {inventoryAnalytics?.stockSummary?.lowStockItems || 0}</span>
+                  <span>•</span>
+                  <span>Expired: {inventoryAnalytics?.stockSummary?.expiredItems || 0}</span>
+                </div>
               </div>
             </div>
 
-            <div className="card">
+            <div className="card bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
               <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="text-sm font-medium">Pending Payments</h3>
-                <ShoppingCart className="h-4 w-4 text-blue-500" />
+                <h3 className="text-sm font-medium text-purple-800">Today's Sales</h3>
+                <div className="p-2 bg-purple-500 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-white" />
+                </div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-blue-600">{stats.pendingOrders}</div>
-                <p className="text-xs text-gray-500">Awaiting payment</p>
+                <div className="text-2xl font-bold text-purple-900">{formatIndianCurrency(stats.todaysSales)}</div>
+                <p className="text-xs text-purple-700">Revenue today</p>
               </div>
             </div>
           </div>
 
-          {/* Search and Filter */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search medicines..."
-                value={searchTerm}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                className="input pl-10"
-              />
+          {/* Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Monthly Trends Chart */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-blue-500" />
+                  Monthly Trends
+                </h3>
+                <div className="flex items-center space-x-4 text-xs">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full mr-1"></div>
+                    <span>Purchases</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-green-500 rounded-full mr-1"></div>
+                    <span>Sales</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-purple-500 rounded-full mr-1"></div>
+                    <span>Revenue</span>
+                  </div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={inventoryAnalytics?.monthlyTrends || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                  <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
+                    labelStyle={{ color: '#f3f4f6' }}
+                    itemStyle={{ color: '#f3f4f6' }}
+                  />
+                  <Line type="monotone" dataKey="purchases" stroke={CHART_COLORS.primary[0]} strokeWidth={2} dot={{ fill: CHART_COLORS.primary[0], r: 4 }} />
+                  <Line type="monotone" dataKey="sales" stroke={CHART_COLORS.primary[1]} strokeWidth={2} dot={{ fill: CHART_COLORS.primary[1], r: 4 }} />
+                  <Line type="monotone" dataKey="revenue" stroke={CHART_COLORS.primary[4]} strokeWidth={2} dot={{ fill: CHART_COLORS.primary[4], r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-            <div className="flex gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategoryFilter(e.target.value)}
-                className="select"
-              >
-                <option value="all">All Categories</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
+
+            {/* Category Breakdown Pie Chart */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <PieChart className="w-5 h-5 mr-2 text-green-500" />
+                  Category Breakdown
+                </h3>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <RePieChart>
+                  <Pie
+                    data={inventoryAnalytics?.categoryBreakdown?.slice(0, 8) || []}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ category, percentage }) => `${category}: ${percentage.toFixed(1)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="totalValue"
+                  >
+                    {(inventoryAnalytics?.categoryBreakdown?.slice(0, 8) || []).map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS.pie[index % CHART_COLORS.pie.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
+                    labelStyle={{ color: '#f3f4f6' }}
+                    itemStyle={{ color: '#f3f4f6' }}
+                    formatter={(value: number) => [formatIndianCurrency(value), 'Value']}
+                  />
+                </RePieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Additional Analytics */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Top Selling Medicines */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2 text-purple-500" />
+                  Top Selling Medicines
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {inventoryAnalytics?.topSellingMedicines?.slice(0, 5).map((med: any, index: number) => (
+                  <div key={med.medicationId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-blue-500'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{med.medicationName}</div>
+                        <div className="text-xs text-gray-500">{med.totalSold} units sold</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-sm">{formatIndianCurrency(med.revenue)}</div>
+                      <div className="text-xs text-gray-500">Revenue</div>
+                    </div>
+                  </div>
                 ))}
-              </select>
-              <button className="btn-icon">
-                <Filter className="w-4 h-4" />
-              </button>
+              </div>
+            </div>
+
+            {/* Expiry Analysis */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Calendar className="w-5 h-5 mr-2 text-red-500" />
+                  Expiry Analysis
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {inventoryAnalytics?.expiryAnalysis?.map((expiry: any, index: number) => (
+                  <div 
+                    key={expiry.period} 
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => loadExpiryDetails(expiry.period)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        expiry.period.includes('Expired') ? 'bg-red-500' :
+                        expiry.period.includes('30 days') ? 'bg-orange-500' :
+                        expiry.period.includes('31-60') ? 'bg-yellow-500' :
+                        expiry.period.includes('61-90') ? 'bg-blue-500' : 'bg-green-500'
+                      }`}></div>
+                      <div>
+                        <div className="font-medium text-sm">{expiry.period}</div>
+                        <div className="text-xs text-gray-500">{expiry.count} batches</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-sm">{formatIndianCurrency(expiry.totalValue)}</div>
+                      <div className="text-xs text-gray-500">Value at risk</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
+                  Quick Stats
+                </h3>
+              </div>
+              <div className="space-y-4">
+                <div 
+                  className="flex justify-between items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
+                  onClick={() => loadStockAlertDetails('expiring')}
+                >
+                  <span className="text-sm font-medium text-blue-800">Expiring Soon</span>
+                  <span className="text-lg font-bold text-blue-900">{inventoryAnalytics?.stockSummary?.expiringSoonItems || 0}</span>
+                </div>
+                <div 
+                  className="flex justify-between items-center p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
+                  onClick={() => loadStockAlertDetails('low')}
+                >
+                  <span className="text-sm font-medium text-green-800">Low Stock Items</span>
+                  <span className="text-lg font-bold text-green-900">{inventoryAnalytics?.stockSummary?.lowStockItems || 0}</span>
+                </div>
+                <div 
+                  className="flex justify-between items-center p-3 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
+                  onClick={() => loadStockAlertDetails('expired')}
+                >
+                  <span className="text-sm font-medium text-red-800">Expired Items</span>
+                  <span className="text-lg font-bold text-red-900">{inventoryAnalytics?.stockSummary?.expiredItems || 0}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                  <span className="text-sm font-medium text-purple-800">Profit Margin</span>
+                  <span className="text-lg font-bold text-purple-900">{inventoryAnalytics?.totalStockValue?.profitMargin?.toFixed(1) || '0'}%</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -335,199 +881,6 @@ export default function PharmacyPage() {
               {error}
             </div>
           )}
-
-          {/* Recent Medicines */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Recent Medicines</h2>
-              <button 
-                onClick={() => setActiveTab('inventory')}
-                className="btn-secondary text-sm"
-              >
-                View All
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredMedicines.map((medicine) => {
-                const stockStatus = getStockStatus(medicine)
-                return (
-                  <div key={medicine.id} className="card hover:shadow-md transition-shadow">
-                    <div className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="text-lg font-semibold flex items-center gap-2">
-                            {medicine.name}
-                            {medicine.medicine_code && (
-                              <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
-                                {medicine.medicine_code}
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-sm text-gray-600">{medicine.category}</p>
-                        </div>
-                        <span className={getBadgeClass(stockStatus.variant)}>
-                          {stockStatus.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Stock:</span>
-                          <span className="font-medium">{medicine.stock_quantity} units</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Price:</span>
-                          <span className="font-medium">₹{medicine.unit_price}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Batch:</span>
-                          <span className="font-medium">{medicine.batch_number}</span>
-                        </div>
-                        {medicine.expiry_date && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Expiry:</span>
-                            <span className="font-medium">
-                              {new Date(medicine.expiry_date).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-2 mt-4">
-                        <button
-                          className="btn-secondary text-sm flex-1 flex items-center justify-center"
-                          onClick={async () => {
-                            setSelectedMedicine(medicine)
-                            setShowDetailModal(true)
-                            setLoadingDetail(true)
-                            try {
-                              // Load comprehensive medicine data using MCP
-                              const comprehensiveData = await getComprehensiveMedicineData(medicine.id)
-                              
-                              if (comprehensiveData) {
-                                setComprehensiveData(comprehensiveData)
-                                
-                                const convertedSummary = {
-                                  medication_id: comprehensiveData.medication_info.id,
-                                  total_quantity: comprehensiveData.stock_summary.total_stock,
-                                  total_batches: comprehensiveData.stock_summary.total_batches,
-                                  total_retail_value: comprehensiveData.stock_summary.total_retail_value,
-                                  total_cost_value: comprehensiveData.stock_summary.total_cost_value,
-                                  expired_quantity: comprehensiveData.stock_summary.expired_stock,
-                                  expiring_soon_quantity: comprehensiveData.stock_summary.expiring_soon_stock,
-                                  low_stock_batches: comprehensiveData.stock_summary.low_stock_batches,
-                                  out_of_stock_batches: comprehensiveData.stock_summary.out_of_stock_batches
-                                }
-                                setDetailSummary(convertedSummary)
-                                
-                                // Set purchase history from comprehensive data
-                                setDetailHistory(comprehensiveData.purchase_history.slice(0, 10))
-                              } else {
-                                // Fallback to robust functions
-                                const [robustSummary, stockTruth] = await Promise.all([
-                                  getMedicationStockRobust(medicine.id),
-                                  getStockTruth(medicine.id)
-                                ])
-                                
-                                if (robustSummary) {
-                                  const convertedSummary = {
-                                    medication_id: robustSummary.medication_id,
-                                    total_quantity: Math.max(0, robustSummary.current_stock || 0),
-                                    total_batches: Math.max(0, robustSummary.total_batches || 0),
-                                    total_retail_value: 0,
-                                    total_cost_value: 0,
-                                    expired_quantity: Math.max(0, robustSummary.expired_units || 0),
-                                    expiring_soon_quantity: 0,
-                                    low_stock_batches: 0,
-                                    out_of_stock_batches: 0
-                                  }
-                                  setDetailSummary(convertedSummary)
-                                }
-                                setDetailHistory([])
-                              }
-                            } catch (e) {
-                              console.error('detail load failed', e)
-                              setDetailSummary(null)
-                              setDetailHistory([])
-                            } finally {
-                              setLoadingDetail(false)
-                            }
-                          }}
-                        >
-                          <Eye className="w-3 h-3 mr-1" />
-                          View
-                        </button>
-                        <button
-                          className="btn-secondary text-sm flex-1 flex items-center justify-center"
-                          onClick={() => {
-                            setSelectedMedicine(medicine)
-                            setShowMedicineModal(true)
-                          }}
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Edit
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Recent Bills */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Recent Bills</h2>
-              <button 
-                onClick={() => setActiveTab('billing')}
-                className="btn-secondary text-sm"
-              >
-                View All
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {bills.slice(0, 5).map((bill) => (
-                <div key={bill.id} className="card hover:shadow-md transition-shadow">
-                  <div className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-lg font-semibold">#{bill.bill_number}</h3>
-                        <p className="text-sm text-gray-600">Patient ID: {bill.patient_id}</p>
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        bill.payment_status === 'paid' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {bill.payment_status}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Amount:</span>
-                        <span className="font-medium text-green-600">₹{bill.total_amount}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Date:</span>
-                        <span className="font-medium">
-                          {new Date(bill.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-4">
-                      <button onClick={() => setActiveTab('billing')} className="btn-secondary text-sm flex-1 flex items-center justify-center">
-                        <Eye className="w-3 h-3 mr-1" />
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -585,49 +938,9 @@ export default function PharmacyPage() {
           onSuccess={async () => {
             setShowMedicineModal(false)
             await loadData()
+            await loadAnalytics()
           }}
         />
-      )}
-
-      {/* Lightweight Medicine View Modal */}
-      {showViewModal && selectedMedicine && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-semibold">{selectedMedicine.name}</h3>
-                <p className="text-slate-300 text-sm">{selectedMedicine.category}</p>
-              </div>
-              <button onClick={() => setShowViewModal(false)} className="hover:bg-white/20 rounded-full p-2">
-                <Eye className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-gray-600">Code</span><span className="font-medium">{selectedMedicine.medicine_code || 'N/A'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Manufacturer</span><span className="font-medium">{selectedMedicine.manufacturer || 'N/A'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Category</span><span className="font-medium">{selectedMedicine.category || 'N/A'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Stock</span><span className="font-medium">{selectedMedicine.stock_quantity} units</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Price</span><span className="font-medium">₹{selectedMedicine.unit_price}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Batch</span><span className="font-medium">{selectedMedicine.batch_number || '—'}</span></div>
-              {selectedMedicine.expiry_date && (
-                <div className="flex justify-between"><span className="text-gray-600">Expiry</span><span className="font-medium">{new Date(selectedMedicine.expiry_date).toLocaleDateString()}</span></div>
-              )}
-            </div>
-            <div className="p-4 border-t flex justify-end gap-2">
-              <button onClick={() => setShowViewModal(false)} className="btn-secondary">Close</button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false)
-                  setSelectedMedicine(selectedMedicine)
-                  setShowMedicineModal(true)
-                }}
-                className="btn-primary"
-              >
-                + Batch
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Detailed Medicine modal similar to inventory */}
@@ -641,7 +954,7 @@ export default function PharmacyPage() {
                   <div><div className="text-slate-300 text-xs">Code</div><div className="font-semibold">{selectedMedicine.medicine_code || 'N/A'}</div></div>
                   <div><div className="text-slate-300 text-xs">Category</div><div className="font-semibold">{selectedMedicine.category}</div></div>
                   <div><div className="text-slate-300 text-xs">Manufacturer</div><div className="font-semibold">{selectedMedicine.manufacturer || 'N/A'}</div></div>
-                  <div><div className="text-slate-300 text-xs">Price</div><div className="font-semibold">₹{selectedMedicine.unit_price}</div></div>
+                  <div><div className="text-slate-300 text-xs">Price</div><div className="font-semibold">{formatIndianCurrency(selectedMedicine.unit_price)}</div></div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -702,12 +1015,12 @@ export default function PharmacyPage() {
                           </div>
                           <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
                             <div className="text-xs text-purple-600 font-medium uppercase tracking-wide">Retail Value</div>
-                            <div className="text-2xl font-bold text-purple-800">₹{(detailSummary.total_retail_value || 0).toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-purple-800">{formatIndianCurrency(detailSummary.total_retail_value || 0)}</div>
                             <div className="text-xs text-purple-500 mt-1">Current inventory value</div>
                           </div>
                           <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
                             <div className="text-xs text-orange-600 font-medium uppercase tracking-wide">Cost Value</div>
-                            <div className="text-2xl font-bold text-orange-800">₹{(detailSummary.total_cost_value || 0).toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-orange-800">{formatIndianCurrency(detailSummary.total_cost_value || 0)}</div>
                             <div className="text-xs text-orange-500 mt-1">Investment value</div>
                           </div>
                           {detailSummary.expired_quantity > 0 && (
@@ -775,8 +1088,8 @@ export default function PharmacyPage() {
                                       </span>
                                     </td>
                                     <td className="py-2 px-3 font-medium">{h.quantity}</td>
-                                    <td className="py-2 px-3">₹{(h.unit_price || 0).toFixed(2)}</td>
-                                    <td className="py-2 px-3 font-medium text-green-600">₹{(h.total_amount || 0).toLocaleString()}</td>
+                                    <td className="py-2 px-3">{formatIndianCurrency(h.unit_price || 0)}</td>
+                                    <td className="py-2 px-3 font-medium text-green-600">{formatIndianCurrency(h.total_amount || 0)}</td>
                                     <td className="py-2 px-3 text-gray-600">{h.supplier_name || 'Unknown'}</td>
                                   </tr>
                                 ))}
@@ -788,6 +1101,239 @@ export default function PharmacyPage() {
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expiry Details Modal */}
+      {showExpiryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 shadow-lg flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold flex items-center">
+                  <Calendar className="w-6 h-6 mr-2" />
+                  Expiry Details
+                </h2>
+                <p className="text-red-100 mt-1">Batch expiry information and value at risk</p>
+              </div>
+              <button onClick={() => setShowExpiryModal(false)} className="text-white hover:bg-white/20 rounded-full p-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(95vh-180px)]">
+              {detailsLoading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading expiry details...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                      <div className="text-sm text-red-600 font-medium">Total Batches</div>
+                      <div className="text-2xl font-bold text-red-800">{expiryDetails.length}</div>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                      <div className="text-sm text-orange-600 font-medium">Total Quantity</div>
+                      <div className="text-2xl font-bold text-orange-800">
+                        {expiryDetails.reduce((sum, item) => sum + item.current_quantity, 0)}
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                      <div className="text-sm text-purple-600 font-medium">Value at Risk</div>
+                      <div className="text-2xl font-bold text-purple-800">
+                        {formatIndianCurrency(expiryDetails.reduce((sum, item) => sum + item.total_value, 0))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {expiryDetails.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Expiring Batches Found</h3>
+                      <p className="text-gray-600">Great! No medicines are expiring in this period.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="text-left p-3 font-semibold text-gray-700">Medicine</th>
+                            <th className="text-left p-3 font-semibold text-gray-700">Batch</th>
+                            <th className="text-left p-3 font-semibold text-gray-700">Expiry Date</th>
+                            <th className="text-left p-3 font-semibold text-gray-700">Days</th>
+                            <th className="text-left p-3 font-semibold text-gray-700">Quantity</th>
+                            <th className="text-right p-3 font-semibold text-gray-700">Value</th>
+                            <th className="text-center p-3 font-semibold text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expiryDetails.map((item, index) => (
+                            <tr key={item.id} className="border-b hover:bg-gray-50">
+                              <td className="p-3">
+                                <div>
+                                  <div className="font-medium">{item.medications.name}</div>
+                                  <div className="text-xs text-gray-500">{item.medications.category}</div>
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                                  {item.batch_number}
+                                </span>
+                              </td>
+                              <td className="p-3">{new Date(item.expiry_date).toLocaleDateString()}</td>
+                              <td className="p-3">
+                                <span className={`font-medium ${
+                                  item.days_to_expiry < 0 ? 'text-red-600' : 
+                                  item.days_to_expiry <= 30 ? 'text-orange-600' : 
+                                  item.days_to_expiry <= 60 ? 'text-yellow-600' : 'text-blue-600'
+                                }`}>
+                                  {item.days_to_expiry < 0 ? `${Math.abs(item.days_to_expiry)} days ago` : `${item.days_to_expiry} days`}
+                                </span>
+                              </td>
+                              <td className="p-3 font-medium">{item.current_quantity}</td>
+                              <td className="p-3 text-right font-medium">{formatIndianCurrency(item.total_value)}</td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  item.status === 'expired' ? 'bg-red-100 text-red-800' :
+                                  item.status === 'critical' ? 'bg-orange-100 text-orange-800' :
+                                  item.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {item.status === 'expired' ? 'Expired' :
+                                   item.status === 'critical' ? 'Critical' :
+                                   item.status === 'warning' ? 'Warning' : 'Normal'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Alerts Modal */}
+      {showStockAlertsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white p-6 shadow-lg flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold flex items-center">
+                  <AlertTriangle className="w-6 h-6 mr-2" />
+                  Stock Alert Details
+                </h2>
+                <p className="text-orange-100 mt-1">Medicines requiring immediate attention</p>
+              </div>
+              <button onClick={() => setShowStockAlertsModal(false)} className="text-white hover:bg-white/20 rounded-full p-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(95vh-180px)]">
+              {detailsLoading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading stock alert details...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                      <div className="text-sm text-orange-600 font-medium">Total Items</div>
+                      <div className="text-2xl font-bold text-orange-800">{stockAlertDetails.length}</div>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                      <div className="text-sm text-red-600 font-medium">Alert Type</div>
+                      <div className="text-lg font-bold text-red-800 capitalize">
+                        {stockAlertDetails[0]?.alert_type?.replace('_', ' ') || 'Unknown'}
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                      <div className="text-sm text-purple-600 font-medium">Total Value</div>
+                      <div className="text-2xl font-bold text-purple-800">
+                        {formatIndianCurrency(stockAlertDetails.reduce((sum, item) => 
+                          sum + (item.total_value || item.reorder_value || 0), 0
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left p-3 font-semibold text-gray-700">Medicine</th>
+                          <th className="text-left p-3 font-semibold text-gray-700">Code</th>
+                          <th className="text-left p-3 font-semibold text-gray-700">Category</th>
+                          <th className="text-left p-3 font-semibold text-gray-700">Current Stock</th>
+                          <th className="text-left p-3 font-semibold text-gray-700">Min Level</th>
+                          <th className="text-right p-3 font-semibold text-gray-700">Value</th>
+                          <th className="text-center p-3 font-semibold text-gray-700">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stockAlertDetails.map((item, index) => (
+                          <tr key={item.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3">
+                              <div>
+                                <div className="font-medium">{item.name}</div>
+                                <div className="text-xs text-gray-500">{item.manufacturer || 'N/A'}</div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-mono">
+                                {item.medicine_code || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="p-3">{item.category || 'N/A'}</td>
+                            <td className="p-3">
+                              <span className={`font-medium ${
+                                item.alert_type === 'expired' ? 'text-red-600' :
+                                item.available_stock === 0 ? 'text-red-600' : 'text-orange-600'
+                              }`}>
+                                {item.alert_type === 'expired' ? item.current_quantity : item.available_stock}
+                              </span>
+                            </td>
+                            <td className="p-3">{item.minimum_stock_level || 'N/A'}</td>
+                            <td className="p-3 text-right font-medium">
+                              {formatIndianCurrency(item.total_value || item.reorder_value || 0)}
+                            </td>
+                            <td className="p-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedMedicine({
+                                    id: item.id,
+                                    name: item.name,
+                                    category: item.category,
+                                    stock_quantity: item.available_stock || item.current_quantity,
+                                    unit_price: item.unit_price,
+                                    expiry_date: item.expiry_date,
+                                    manufacturer: item.manufacturer,
+                                    batch_number: item.batch_number,
+                                    minimum_stock_level: item.minimum_stock_level,
+                                    medicine_code: item.medicine_code
+                                  })
+                                  setShowMedicineModal(true)
+                                }}
+                                className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-700 transition-colors"
+                              >
+                                Manage
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </div>
           </div>
