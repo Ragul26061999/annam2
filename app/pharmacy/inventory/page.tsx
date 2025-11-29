@@ -551,6 +551,7 @@ export default function InventoryPage() {
           name: editingMedicine.name,
           category: editingMedicine.category,
           manufacturer: editingMedicine.manufacturer,
+          combination: editingMedicine.combination || null,
           minimum_stock_level: editingMedicine.min_stock_level,
           dosage_form: editingMedicine.unit
         })
@@ -1787,6 +1788,17 @@ export default function InventoryPage() {
               onChange={(e) => setEditingMedicine({ ...editingMedicine, name: e.target.value })}
               className="input"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Combination</label>
+            <input
+              type="text"
+              value={editingMedicine.combination || ''}
+              onChange={(e) => setEditingMedicine({ ...editingMedicine, combination: e.target.value })}
+              className="input"
+              placeholder="e.g., Paracetamol 500mg + Caffeine 65mg"
+            />
+            <p className="text-xs text-gray-500 mt-1">Enter the medicine combination or formulation details</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Dosage Type</label>
