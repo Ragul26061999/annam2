@@ -207,20 +207,96 @@ export default function NewBillingPage() {
   const embedded = false;
   const [phoneError, setPhoneError] = useState<string>('');
   const printCss = `
-    @page { size: auto; margin: 5mm; }
-    @media print {
-      body * { visibility: hidden; }
-      .printable-area, .printable-area * { visibility: visible; }
-      .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+    /* 7.7 cm thermal roll style */
+    @page {
+      size: 77mm auto;
+      margin: 4mm 3mm 6mm 3mm;
     }
-    .receipt { font-size: 12px; max-width: 540px; margin: 0 auto; }
-    .invoice-header { line-height: 1.3; margin-bottom: 6px; }
-    .bill-info td { word-break: break-all; }
-    .amount-cell { text-align: right; padding-right: 4mm; }
-    .label { font-weight: 400; color: #333; }
-    .value { font-weight: 600; }
-    .totals-section { page-break-inside: avoid; margin-bottom: 5mm; }
-    .invoice-footer { position: relative; margin-top: 10mm; text-align: center; font-size: 10pt; }
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      .printable-area,
+      .printable-area * {
+        visibility: visible;
+      }
+      .printable-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        font-weight: bold; /* user requirement: bold print */
+      }
+    }
+
+    .receipt {
+      font-size: 11px;
+      max-width: 77mm;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    .invoice-header {
+      line-height: 1.3;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .bill-info {
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+      padding: 4px 0;
+    }
+
+    .bill-info td {
+      word-break: break-all;
+    }
+
+    table {
+      border-collapse: collapse;
+    }
+
+    thead tr {
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+    }
+
+    tbody tr:last-child {
+      border-bottom: 1px solid #000;
+    }
+
+    th,
+    td {
+      padding: 2px 0;
+    }
+
+    .amount-cell {
+      text-align: right;
+      padding-right: 2mm;
+    }
+
+    .label {
+      font-weight: 400;
+      color: #000;
+    }
+
+    .value {
+      font-weight: 600;
+    }
+
+    .totals-section {
+      page-break-inside: avoid;
+      margin: 4px 0 6mm 0;
+      border: 1px solid #000;
+      padding: 4px 2mm;
+    }
+
+    .invoice-footer {
+      position: relative;
+      margin-top: 4mm;
+      text-align: center;
+      font-size: 9px;
+    }
   `;
 
   // Utility: get QR image URL for given data

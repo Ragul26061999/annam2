@@ -1288,6 +1288,12 @@ export default function InventoryPage() {
       // Get definitive stock data from the stock truth system
       const stockTruth = await getStockTruth(undefined, batch.batch_number)
       const quantity = stockTruth && stockTruth.length > 0 ? stockTruth[0].current_quantity : batch.quantity
+
+      // Prepare safe medicine name so label always shows something readable
+      const safeMedicineName = (medicineName || '').trim() || 'Unknown Medicine'
+      const shortMedicineName = safeMedicineName.length > 20 
+        ? safeMedicineName.substring(0, 20) + '...'
+        : safeMedicineName
       
       // Format dates outside template literal to avoid parsing issues
       const expiryDate = new Date(batch.expiry_date).toLocaleDateString('en-GB')
@@ -1386,12 +1392,13 @@ export default function InventoryPage() {
           <body>
             <div class="header">ANNAM HOSPITAL</div>
             
-            <div class="medicine-name" title="${medicineName}">
-              ${medicineName.length > 20 ? medicineName.substring(0, 20) + '...' : medicineName}
+            <div class="medicine-name" title="${safeMedicineName}">
+              ${shortMedicineName}
             </div>
-            <div class="medicine-name-full">${medicineName}</div>
+            <div class="medicine-name-full">${safeMedicineName}</div>
             
             <div class="batch-info">
+              <span>Med: ${shortMedicineName}</span>
               <span>Batch: ${batch.batch_number}</span>
               <span>Qty: ${quantity}</span>
             </div>
