@@ -1341,6 +1341,16 @@ export default function InventoryPage() {
                 overflow: hidden;
                 text-overflow: ellipsis;
               }
+              .medicine-name-full {
+                text-align: center;
+                font-size: 7px;
+                color: #333;
+                margin-top: -0.5mm;
+                margin-bottom: 0.5mm;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
               .batch-info {
                 display: flex;
                 justify-content: space-between;
@@ -1376,7 +1386,10 @@ export default function InventoryPage() {
           <body>
             <div class="header">ANNAM HOSPITAL</div>
             
-            <div class="medicine-name">${medicineName.length > 20 ? medicineName.substring(0, 20) + '...' : medicineName}</div>
+            <div class="medicine-name" title="${medicineName}">
+              ${medicineName.length > 20 ? medicineName.substring(0, 20) + '...' : medicineName}
+            </div>
+            <div class="medicine-name-full">${medicineName}</div>
             
             <div class="batch-info">
               <span>Batch: ${batch.batch_number}</span>
