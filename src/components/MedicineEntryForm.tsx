@@ -27,6 +27,7 @@ import {
 interface MedicineFormData {
   medication_code: string;
   name: string;
+  nickname: string;
   generic_name: string;
   manufacturer: string;
   category: string;
@@ -109,6 +110,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   const [medicineForm, setMedicineForm] = useState<MedicineFormData>({
     medication_code: '',
     name: '',
+    nickname: '',
     generic_name: '',
     manufacturer: '',
     category: 'Antibiotic',
@@ -202,8 +204,8 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
       const term = `%${q.trim()}%`;
       const { data, error } = await supabase
         .from('medications')
-        .select('id, name, medication_code')
-        .or(`name.ilike.${term},medication_code.ilike.${term},generic_name.ilike.${term}`)
+        .select('id, name, medication_code, nickname')
+        .or(`name.ilike.${term},medication_code.ilike.${term},generic_name.ilike.${term},nickname.ilike.${term}`)
         .limit(10);
       if (error) throw error;
       setMedicineResults(data || []);
@@ -626,6 +628,12 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                         errorMessage={getErrorMessage('name')}
                       />
                       <FormInput
+                        label="Nickname / Short Name"
+                        value={medicineForm.nickname}
+                        onChange={(e) => setMedicineForm({ ...medicineForm, nickname: e.target.value })}
+                        placeholder="e.g., PCM, Para"
+                      />
+                      <FormInput
                         label="Generic Name"
                         value={medicineForm.generic_name}
                         onChange={(e) => setMedicineForm({ ...medicineForm, generic_name: e.target.value })}
@@ -785,7 +793,8 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                               }}
                               className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
                             >
-                              {m.name} <span className="text-gray-500">({m.medication_code})</span>
+                              <div>{m.name} <span className="text-gray-500">({m.medication_code})</span></div>
+                              {m.nickname && <div className="text-xs text-purple-600 mt-0.5">Nickname: {m.nickname}</div>}
                             </button>
                           ))}
                         </div>

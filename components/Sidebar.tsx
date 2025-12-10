@@ -156,7 +156,7 @@ const Sidebar: React.FC = () => {
               className={`group flex items-center px-4 py-3 rounded-xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm ${
                 isActive 
                   ? 'bg-white/90 shadow-lg border border-gray-200/50' 
-                  : 'text-gray-600 hover:bg-white/60 hover:shadow-md'
+                  : 'text-gray-600 hover:bg-gradient-to-r hover:from-blue-100 hover:via-purple-100 hover:to-pink-100 hover:shadow-md'
               }`}
             >
               {/* Active indicator */}
@@ -206,14 +206,14 @@ const Sidebar: React.FC = () => {
       
       {/* Bottom Actions */}
       <div className="px-2 py-3 border-t border-gray-100 space-y-1">
-        <button className="w-full flex items-center px-3 py-2.5 text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-xl transition-all duration-200">
+        <button className="w-full flex items-center px-3 py-2.5 text-gray-600 hover:bg-gradient-to-r hover:from-blue-100 hover:to-purple-100 hover:text-gray-900 rounded-xl transition-all duration-200">
           <Settings size={18} />
           {!isCollapsed && <span className="ml-3 font-medium text-sm">Settings</span>}
         </button>
         
         <button 
           onClick={handleLogout}
-          className="w-full flex items-center px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+          className="w-full flex items-center px-3 py-2.5 text-red-600 hover:bg-gradient-to-r hover:from-red-100 hover:to-pink-100 rounded-xl transition-all duration-200"
         >
           <LogOut size={18} />
           {!isCollapsed && <span className="ml-3 font-medium text-sm">Logout</span>}

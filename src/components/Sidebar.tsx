@@ -61,57 +61,57 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
         <NavLink to="/dashboard" className={isActive('/dashboard') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-primary-100">
-            <LayoutDashboard className="text-primary-500" size={20} />
+          <div className="neu-icon bg-blue-100">
+            <LayoutDashboard className="text-blue-500" size={20} />
           </div>
           {!isCollapsed && <span>Dashboard</span>}
         </NavLink>
         
         <NavLink to="/patients" className={isActive('/patients') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-success-100">
-            <Users className="text-success-500" size={20} />
+          <div className="neu-icon bg-green-100">
+            <Users className="text-green-500" size={20} />
           </div>
           {!isCollapsed && <span>Patients</span>}
         </NavLink>
         
         <NavLink to="/doctors" className={isActive('/doctors') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-warning-100">
-            <Stethoscope className="text-warning-500" size={20} />
+          <div className="neu-icon bg-orange-100">
+            <Stethoscope className="text-orange-500" size={20} />
           </div>
           {!isCollapsed && <span>Doctors</span>}
         </NavLink>
 
         <NavLink to="/staff" className={isActive('/staff') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-danger-100">
-            <UsersRound className="text-danger-500" size={20} />
+          <div className="neu-icon bg-red-100">
+            <UsersRound className="text-red-500" size={20} />
           </div>
           {!isCollapsed && <span>Staff</span>}
         </NavLink>
         
         <NavLink to="/appointments" className={isActive('/appointments') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-primary-100">
-            <Calendar className="text-primary-500" size={20} />
+          <div className="neu-icon bg-purple-100">
+            <Calendar className="text-purple-500" size={20} />
           </div>
           {!isCollapsed && <span>Appointments</span>}
         </NavLink>
         
         <NavLink to="/workstation" className={isActive('/workstation') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-success-100">
-            <UserCog className="text-success-500" size={20} />
+          <div className="neu-icon bg-teal-100">
+            <UserCog className="text-teal-500" size={20} />
           </div>
           {!isCollapsed && <span>Workstation</span>}
         </NavLink>
         
         <NavLink to="/pharmacy" className={isActive('/pharmacy') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-warning-100">
-            <Pill className="text-warning-500" size={20} />
+          <div className="neu-icon bg-pink-100">
+            <Pill className="text-pink-500" size={20} />
           </div>
           {!isCollapsed && <span>Pharmacy</span>}
         </NavLink>
         
         <NavLink to="/beds" className={isActive('/beds') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-danger-100">
-            <Bed className="text-danger-500" size={20} />
+          <div className="neu-icon bg-yellow-100">
+            <Bed className="text-yellow-500" size={20} />
           </div>
           {!isCollapsed && <span>Bed Management</span>}
         </NavLink>
@@ -120,8 +120,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       {/* Bottom Actions */}
       <div className="mt-auto pt-4 border-t border-gray-200">
         <NavLink to="/settings" className={isActive('/settings') ? 'nav-link active' : 'nav-link'}>
-          <div className="neu-icon bg-gray-100">
-            <Settings className="text-gray-500" size={20} />
+          <div className="neu-icon bg-indigo-100">
+            <Settings className="text-indigo-500" size={20} />
           </div>
           {!isCollapsed && <span>Settings</span>}
         </NavLink>
@@ -129,8 +129,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
           onClick={handleLogout}
           className="nav-link w-full text-left"
         >
-          <div className="neu-icon bg-gray-100">
-            <LogOut className="text-gray-500" size={20} />
+          <div className="neu-icon bg-rose-100">
+            <LogOut className="text-rose-500" size={20} />
           </div>
           {!isCollapsed && <span>Logout</span>}
         </button>

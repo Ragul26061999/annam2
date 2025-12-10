@@ -811,13 +811,24 @@ export default function NewBillingPage() {
                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                       setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        // Move focus to the next input field based on customer type
+                        const nextElement = customer.type === 'patient'
+                          ? document.querySelector('input[placeholder="Start typing to search registered patients..."]')
+                          : document.querySelector('input[placeholder="Enter customer name"]');
+                        if (nextElement) {
+                          (nextElement as HTMLElement).focus();
+                        }
+                      }
+                    }}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="walk_in">Walk-in Customer</option>
-                    <option value="patient">Registered Patient</option>
+                    <option value="walk_in">Out Patient</option>
+                    <option value="patient">In Patient</option>
                   </select>
                 </div>
-
                 {customer.type === 'patient' ? (
                   <div className="space-y-3">
                     <div>
@@ -829,6 +840,16 @@ export default function NewBillingPage() {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             setPatientSearch(e.target.value);
                             setShowPatientDropdown(true);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const container = e.currentTarget.closest('.space-y-3');
+                              const nextElement = container?.querySelectorAll('input')[1];
+                              if (nextElement) {
+                                (nextElement as HTMLElement).focus();
+                              }
+                            }
                           }}
                           placeholder="Start typing to search registered patients..."
                           className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -865,6 +886,16 @@ export default function NewBillingPage() {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setCustomer({ ...customer, name: e.target.value })
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const container = e.currentTarget.closest('.grid');
+                              const nextElement = container?.querySelectorAll('input')[1];
+                              if (nextElement) {
+                                (nextElement as HTMLElement).focus();
+                              }
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
@@ -876,6 +907,15 @@ export default function NewBillingPage() {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setCustomer({ ...customer, phone: e.target.value })
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const searchInput = document.querySelector('input[placeholder="Search by name, code, manufacturer, or batch number..."]');
+                              if (searchInput) {
+                                (searchInput as HTMLElement).focus();
+                              }
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
@@ -891,6 +931,16 @@ export default function NewBillingPage() {
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setCustomer({ ...customer, name: e.target.value })
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const container = e.currentTarget.closest('.grid');
+                            const nextElement = container?.querySelectorAll('input')[1];
+                            if (nextElement) {
+                              (nextElement as HTMLElement).focus();
+                            }
+                          }
+                        }}
                         placeholder="Enter customer name"
                         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
@@ -905,6 +955,15 @@ export default function NewBillingPage() {
                           const digits = raw.replace(/\D/g, '');
                           setCustomer({ ...customer, phone: raw });
                           setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const searchInput = document.querySelector('input[placeholder="Search by name, code, manufacturer, or batch number..."]');
+                            if (searchInput) {
+                              (searchInput as HTMLElement).focus();
+                            }
+                          }
                         }}
                         placeholder="Enter phone number"
                         className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
@@ -927,6 +986,16 @@ export default function NewBillingPage() {
                     placeholder="Search by name, code, manufacturer, or batch number..."
                     value={searchTerm}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        // Focus stays on search or moves to first bill item quantity if exists
+                        const firstQuantityInput = document.querySelector('.max-h-72 input[type="number"]');
+                        if (firstQuantityInput) {
+                          (firstQuantityInput as HTMLElement).focus();
+                        }
+                      }
+                    }}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -1074,6 +1143,22 @@ export default function NewBillingPage() {
                               if (val > item.batch.current_quantity) val = item.batch.current_quantity;
                               updateBillItemQuantity(index, val);
                             }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const allQtyInputs = Array.from(document.querySelectorAll('.max-h-72 input[type="number"]'));
+                                const currentIndex = allQtyInputs.indexOf(e.currentTarget);
+                                if (currentIndex < allQtyInputs.length - 1) {
+                                  (allQtyInputs[currentIndex + 1] as HTMLElement).focus();
+                                } else {
+                                  // Move to discount type select
+                                  const discountSelect = document.querySelector('select[value="amount"], select[value="percent"]');
+                                  if (discountSelect) {
+                                    (discountSelect as HTMLElement).focus();
+                                  }
+                                }
+                              }
+                            }}
                             className="w-14 rounded border border-slate-200 bg-white text-center text-[11px] py-1"
                           />
                         </div>
@@ -1115,6 +1200,16 @@ export default function NewBillingPage() {
                         <select
                           value={billTotals.discountType}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, discountType: e.target.value as 'amount' | 'percent' }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const container = e.currentTarget.closest('.grid');
+                              const nextElement = container?.querySelectorAll('input')[0];
+                              if (nextElement) {
+                                (nextElement as HTMLElement).focus();
+                              }
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="amount">Amount (₹)</option>
@@ -1132,6 +1227,16 @@ export default function NewBillingPage() {
                           max={billTotals.discountType === 'percent' ? '100' : undefined}
                           value={billTotals.discountValue}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, discountValue: parseFloat(e.target.value) || 0 }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const container = e.currentTarget.closest('.grid');
+                              const nextElement = container?.querySelectorAll('input')[1];
+                              if (nextElement) {
+                                (nextElement as HTMLElement).focus();
+                              }
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="0"
                         />
@@ -1145,6 +1250,16 @@ export default function NewBillingPage() {
                           max="100"
                           value={billTotals.taxPercent}
                           onChange={(e) => setBillTotals(prev => ({ ...prev, taxPercent: parseFloat(e.target.value) || 0 }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              // Focus on Receive Payment button
+                              const receivePaymentBtn = document.querySelector('button:has(> .lucide-check-circle)');
+                              if (receivePaymentBtn && !receivePaymentBtn.hasAttribute('disabled')) {
+                                (receivePaymentBtn as HTMLElement).focus();
+                              }
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="18"
                         />

@@ -26,6 +26,7 @@ interface MedicineBatch {
 interface Medicine {
   id: string
   name: string
+  nickname?: string
   category: string
   description?: string
   manufacturer: string
@@ -442,7 +443,7 @@ export default function InventoryPage() {
       // Fetch active medications
       const { data: meds, error: medsError } = await supabase
         .from('medications')
-        .select('id, name, category, manufacturer, available_stock, minimum_stock_level, dosage_form, combination')
+        .select('id, name, nickname, category, manufacturer, available_stock, minimum_stock_level, dosage_form, combination')
         .eq('status', 'active')
         .order('name')
 
@@ -491,6 +492,7 @@ export default function InventoryPage() {
         return {
           id: m.id,
           name: m.name,
+          nickname: m.nickname,
           category: m.category,
           description: '',
           manufacturer: m.manufacturer,
@@ -549,6 +551,7 @@ export default function InventoryPage() {
         .from('medications')
         .update({
           name: editingMedicine.name,
+          nickname: editingMedicine.nickname || null,
           category: editingMedicine.category,
           manufacturer: editingMedicine.manufacturer,
           combination: editingMedicine.combination || null,
@@ -571,6 +574,7 @@ export default function InventoryPage() {
 
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (medicine.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (medicine.combination || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -1868,6 +1872,24 @@ export default function InventoryPage() {
               </p>
             </div>
 
+            {/* Nickname Field */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
+                Nickname / Short Name
+              </label>
+              <input
+                type="text"
+                value={editingMedicine.nickname || ''}
+                onChange={(e) => setEditingMedicine({ ...editingMedicine, nickname: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                placeholder="e.g., PCM, Para"
+              />
+              <p className="text-xs text-gray-500 mt-2 ml-1">
+                🏷️ Short form or alias for quick search
+              </p>
+            </div>
+
             {/* Manufacturer */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -2181,6 +2203,7 @@ export default function InventoryPage() {
               <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <tr>
                   <th className="text-left py-4 px-6 font-semibold text-gray-900">Medicine Name</th>
+                  <th className="text-left py-4 px-6 font-semibold text-gray-900">Combination</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-900">Dosage Type</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-900">Manufacturer</th>
                   <th className="text-center py-4 px-6 font-semibold text-gray-900">Stock</th>
@@ -2205,10 +2228,17 @@ export default function InventoryPage() {
                           </div>
                           <div>
                             <span className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{medicine.name}</span>
-                            {medicine.combination && (
-                              <div className="text-xs text-gray-500 mt-1">{medicine.combination}</div>
+                            {medicine.nickname && (
+                              <div className="text-xs text-pink-600 font-medium mt-0.5">
+                                🏷️ {medicine.nickname}
+                              </div>
                             )}
                           </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm text-gray-700">
+                          {medicine.combination || <span className="text-gray-400 italic">-</span>}
                         </div>
                       </td>
                       <td className="py-4 px-6">
