@@ -105,14 +105,14 @@ export async function getLabTestCatalog(): Promise<LabTestCatalog[]> {
       .order('test_name', { ascending: true });
 
     if (error) {
-      console.error('Error fetching lab test catalog:', error);
-      throw new Error(`Failed to fetch lab test catalog: ${error.message}`);
+      console.warn('Lab test catalog not available:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getLabTestCatalog:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -129,13 +129,14 @@ export async function getLabTestsByCategory(category: string): Promise<LabTestCa
       .order('test_name', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to fetch lab tests: ${error.message}`);
+      console.warn('Lab test catalog not available:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getLabTestsByCategory:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -156,13 +157,14 @@ export async function getRadiologyTestCatalog(): Promise<RadiologyTestCatalog[]>
       .order('test_name', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to fetch radiology test catalog: ${error.message}`);
+      console.warn('Radiology test catalog not available:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getRadiologyTestCatalog:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -179,13 +181,14 @@ export async function getRadiologyTestsByModality(modality: string): Promise<Rad
       .order('test_name', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to fetch radiology tests: ${error.message}`);
+      console.warn('Radiology test catalog not available:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getRadiologyTestsByModality:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -223,6 +226,7 @@ export async function createLabTestOrder(orderData: LabTestOrder): Promise<any> 
       .single();
 
     if (error) {
+      console.error('Failed to create lab test order:', error);
       throw new Error(`Failed to create lab test order: ${error.message}`);
     }
 
@@ -289,7 +293,8 @@ export async function getPatientLabOrders(patientId: string): Promise<any[]> {
       .order('created_at', { ascending: false });
 
     if (error) {
-      throw new Error(`Failed to fetch lab orders: ${error.message}`);
+      console.warn('Lab orders table not available:', error.message);
+      return [];
     }
 
     // Fetch related data separately
@@ -331,7 +336,7 @@ export async function getPatientLabOrders(patientId: string): Promise<any[]> {
     return [];
   } catch (error) {
     console.error('Error in getPatientLabOrders:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -370,7 +375,8 @@ export async function getLabOrders(filters?: {
     const { data: orders, error } = await query;
 
     if (error) {
-      throw new Error(`Failed to fetch lab orders: ${error.message}`);
+      console.warn('Lab orders table not available:', error.message);
+      return [];
     }
 
     // Fetch related data separately
@@ -406,7 +412,7 @@ export async function getLabOrders(filters?: {
     return [];
   } catch (error) {
     console.error('Error in getLabOrders:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -438,6 +444,7 @@ export async function updateLabOrderStatus(
       .single();
 
     if (error) {
+      console.error('Failed to update lab order:', error);
       throw new Error(`Failed to update lab order: ${error.message}`);
     }
 
@@ -491,6 +498,7 @@ export async function addLabTestResults(results: LabTestResult[]): Promise<any> 
       .select();
 
     if (error) {
+      console.error('Failed to add lab results:', error);
       throw new Error(`Failed to add lab results: ${error.message}`);
     }
 
@@ -518,13 +526,14 @@ export async function getLabOrderResults(orderId: string): Promise<LabTestResult
       .order('created_at', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to fetch lab results: ${error.message}`);
+      console.warn('Lab test results table not available:', error.message);
+      return [];
     }
 
     return data || [];
   } catch (error) {
     console.error('Error in getLabOrderResults:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -562,6 +571,7 @@ export async function createRadiologyTestOrder(orderData: RadiologyTestOrder): P
       .single();
 
     if (error) {
+      console.error('Failed to create radiology test order:', error);
       throw new Error(`Failed to create radiology test order: ${error.message}`);
     }
 
@@ -628,7 +638,8 @@ export async function getPatientRadiologyOrders(patientId: string): Promise<any[
       .order('created_at', { ascending: false });
 
     if (error) {
-      throw new Error(`Failed to fetch radiology orders: ${error.message}`);
+      console.warn('Radiology orders table not available:', error.message);
+      return [];
     }
 
     // Fetch related data separately
@@ -665,7 +676,7 @@ export async function getPatientRadiologyOrders(patientId: string): Promise<any[
     return [];
   } catch (error) {
     console.error('Error in getPatientRadiologyOrders:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -708,10 +719,10 @@ export async function getRadiologyOrders(filters?: {
         .eq('modality', filters.modality);
 
       if (catalogError) {
-        throw new Error(`Failed to fetch radiology catalog: ${catalogError.message}`);
+        console.warn('Radiology catalog not available for modality filter:', catalogError.message);
       }
 
-      const catalogIds = catalogTests.map(test => test.id);
+      const catalogIds = catalogTests?.map(test => test.id) || [];
       if (catalogIds.length > 0) {
         query = query.in('test_catalog_id', catalogIds);
       }
@@ -722,7 +733,8 @@ export async function getRadiologyOrders(filters?: {
     const { data: orders, error } = await query;
 
     if (error) {
-      throw new Error(`Failed to fetch radiology orders: ${error.message}`);
+      console.warn('Radiology orders table not available:', error.message);
+      return [];
     }
 
     // Fetch related data separately
@@ -758,7 +770,7 @@ export async function getRadiologyOrders(filters?: {
     return [];
   } catch (error) {
     console.error('Error in getRadiologyOrders:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -781,6 +793,7 @@ export async function updateRadiologyOrder(
       .single();
 
     if (error) {
+      console.error('Failed to update radiology order:', error);
       throw new Error(`Failed to update radiology order: ${error.message}`);
     }
 
@@ -853,7 +866,7 @@ async function createDiagnosticBilling(
       .insert([billingData]);
 
     if (error) {
-      console.error('Error creating diagnostic billing:', error);
+      console.warn('Diagnostic billing items table not available:', error.message);
       // Don't throw - billing error shouldn't block order creation
     }
   } catch (error) {
@@ -874,33 +887,51 @@ export async function getDiagnosticStats(): Promise<{
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    const [labOrders, radiologyOrders] = await Promise.all([
+    // Query lab and radiology orders with error handling for missing tables
+    const [labOrdersResult, radiologyOrdersResult] = await Promise.allSettled([
       supabase.from('lab_test_orders').select('id, status, created_at'),
       supabase.from('radiology_test_orders').select('id, status, created_at')
     ]);
 
-    if (labOrders.error) {
-      throw new Error(`Failed to fetch lab orders for stats: ${labOrders.error.message}`);
+    // Handle lab orders result
+    let labOrdersData: any[] = [];
+    if (labOrdersResult.status === 'fulfilled' && !labOrdersResult.value.error) {
+      labOrdersData = labOrdersResult.value.data || [];
+    } else {
+      // If table doesn't exist, log and continue with empty data
+      console.warn('Lab orders table not available:', labOrdersResult.status === 'rejected' ? labOrdersResult.reason : labOrdersResult.value.error?.message);
     }
-    
-    if (radiologyOrders.error) {
-      throw new Error(`Failed to fetch radiology orders for stats: ${radiologyOrders.error.message}`);
+
+    // Handle radiology orders result
+    let radiologyOrdersData: any[] = [];
+    if (radiologyOrdersResult.status === 'fulfilled' && !radiologyOrdersResult.value.error) {
+      radiologyOrdersData = radiologyOrdersResult.value.data || [];
+    } else {
+      // If table doesn't exist, log and continue with empty data
+      console.warn('Radiology orders table not available:', radiologyOrdersResult.status === 'rejected' ? radiologyOrdersResult.reason : radiologyOrdersResult.value.error?.message);
     }
 
     const stats = {
-      totalLabOrders: labOrders.data?.length || 0,
-      totalRadiologyOrders: radiologyOrders.data?.length || 0,
-      pendingLabOrders: labOrders.data?.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length || 0,
-      pendingRadiologyOrders: radiologyOrders.data?.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length || 0,
+      totalLabOrders: labOrdersData.length,
+      totalRadiologyOrders: radiologyOrdersData.length,
+      pendingLabOrders: labOrdersData.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length,
+      pendingRadiologyOrders: radiologyOrdersData.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length,
       completedToday: [
-        ...(labOrders.data || []),
-        ...(radiologyOrders.data || [])
+        ...labOrdersData,
+        ...radiologyOrdersData
       ].filter(o => o.status === 'completed' && o.created_at?.startsWith(today)).length
     };
 
     return stats;
   } catch (error) {
     console.error('Error in getDiagnosticStats:', error);
-    throw error;
+    // Return default stats in case of unexpected errors
+    return {
+      totalLabOrders: 0,
+      totalRadiologyOrders: 0,
+      pendingLabOrders: 0,
+      pendingRadiologyOrders: 0,
+      completedToday: 0
+    };
   }
 }

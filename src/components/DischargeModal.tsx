@@ -102,14 +102,14 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
         BillingService.getFeeCategories(),
         BillingService.getAllFeeRates()
       ]);
-      
+
       // Convert to local format for compatibility
       setFeeCategories(categories.map(cat => ({
         id: cat.id,
         name: cat.name,
         description: cat.description || ''
       })));
-      
+
       setFeeRates(rates.map(rate => ({
         id: rate.id,
         category_id: rate.category_id,
@@ -133,7 +133,7 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
         patient.bed_allocation.admission_date,
         dischargeDate
       );
-      
+
       setRoomCharges(charges);
 
       // Prepare all billing items for calculation
@@ -178,8 +178,8 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
   };
 
   const updateAdditionalService = (index: number, field: keyof AdditionalService, value: any) => {
-    setAdditionalServices(services => 
-      services.map((service, i) => 
+    setAdditionalServices(services =>
+      services.map((service, i) =>
         i === index ? { ...service, [field]: value } : service
       )
     );
@@ -240,24 +240,24 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
       if (bedError) throw bedError;
 
       // Use BillingService to handle discharge
-       const additionalBillingItems = additionalServices.map(service => ({
-         patient_admission_id: '',
-         service_name: service.service_name,
-         quantity: service.quantity,
-         unit_rate: service.unit_rate,
-         fee_rate_id: service.fee_rate_id,
-         service_date: new Date().toISOString().split('T')[0],
-         notes: service.notes
-       }));
+      const additionalBillingItems = additionalServices.map(service => ({
+        patient_admission_id: '',
+        service_name: service.service_name,
+        quantity: service.quantity,
+        unit_rate: service.unit_rate,
+        fee_rate_id: service.fee_rate_id,
+        service_date: new Date().toISOString().split('T')[0],
+        notes: service.notes
+      }));
 
-       await BillingService.processDischarge(
-         bedAllocation.id,
-         dischargeDateTime.toISOString(),
-         dischargeNotes,
-         additionalBillingItems,
-         taxPercentage,
-         discountPercentage
-       );
+      await BillingService.processDischarge(
+        bedAllocation.id,
+        dischargeDateTime.toISOString(),
+        dischargeNotes,
+        additionalBillingItems,
+        taxPercentage,
+        discountPercentage
+      );
 
       // Update bed status to available
       const { error: bedStatusError } = await supabase
@@ -266,6 +266,16 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
         .eq('id', patient.bed_id);
 
       if (bedStatusError) throw bedStatusError;
+
+      // Update patient admission status in patients table
+      const { error: patientUpdateError } = await supabase
+        .from('patients')
+        .update({ is_admitted: false })
+        .eq('id', patient.id);
+
+      if (patientUpdateError) {
+        console.error('Error updating patient admission flag:', patientUpdateError);
+      }
 
       onDischargeSuccess();
       onClose();

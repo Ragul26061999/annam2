@@ -49,7 +49,7 @@ export async function fetchAvailableBeds() {
         id,
         bed_number,
         bed_type,
-        hourly_rate,
+        daily_rate,
         status,
         features,
         department_id,

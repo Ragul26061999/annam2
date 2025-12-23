@@ -140,11 +140,11 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
       .eq('email', email)
       .single();
 
-    if (existingUser && existingUser.auth_id) {
+    if (existingUser) {
       // User already exists, return existing credentials
       console.log('User already exists, using existing credentials');
       return {
-        authUser: { id: existingUser.auth_id },
+        authUser: { id: existingUser.auth_id || null },
         credentials: { email, password }
       };
     }
@@ -168,7 +168,7 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
       
       // If user already registered in auth, try to get the existing user
       if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
-        console.log('Auth user already exists, fetching existing user');
+        console.log('Auth user already exists, attempting to retrieve');
         
         // Try to sign in to get the user ID
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
@@ -177,7 +177,7 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
         });
         
         if (signInData?.user) {
-          console.log('Retrieved existing auth user:', signInData.user.id);
+          console.log('Retrieved existing auth user via sign-in:', signInData.user.id);
           return {
             authUser: { id: signInData.user.id },
             credentials: { email, password }
@@ -192,14 +192,27 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
           .single();
         
         if (existingAuthUser?.auth_id) {
+          console.log('Retrieved existing auth user via users table:', existingAuthUser.auth_id);
           return {
             authUser: { id: existingAuthUser.auth_id },
             credentials: { email, password }
           };
         }
+        
+        // If we can't retrieve the auth user, return null auth but continue
+        console.warn('Auth user exists but could not be retrieved, continuing without auth_id');
+        return {
+          authUser: { id: null },
+          credentials: { email, password }
+        };
       }
       
-      throw new Error(`Failed to create authentication: ${authError.message}`);
+      // For other auth errors, return null auth to allow registration to continue
+      console.warn('Auth creation failed with non-duplicate error, continuing without auth_id');
+      return {
+        authUser: { id: null },
+        credentials: { email, password }
+      };
     }
 
     if (!authUser?.user?.id) {
@@ -445,6 +458,18 @@ export async function createPartyRecord(
       ? `${firstName} ${lastName}` 
       : firstName || lastName || `Patient ${uhid}`;
 
+    // Check if party already exists with this UHID
+    const { data: existingParty } = await supabase
+      .from('party')
+      .select('id')
+      .eq('party_code', uhid)
+      .single();
+    
+    if (existingParty) {
+      console.log('Party already exists, returning existing party:', existingParty.id);
+      return existingParty.id;
+    }
+
     // First, check if the party table exists by trying a simple query
     try {
       const { error: tableCheckError } = await supabase
@@ -594,6 +619,22 @@ export async function linkAuthUserToPatient(
 
     if (error) {
       console.error('Error creating user record:', error?.message || error?.code || error);
+      
+      // If it's a duplicate key error, try to fetch the existing user
+      if (error.message?.includes('duplicate key') || error.code === '23505') {
+        console.log('Duplicate user detected, fetching existing user');
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .or(`employee_id.eq.${uhid},email.eq.${email}`)
+          .single();
+        
+        if (existingUser) {
+          console.log('Returning existing user:', existingUser.id);
+          return existingUser;
+        }
+      }
+      
       throw new Error(`Failed to create user record: ${error?.message || error?.code || 'Unknown error'}`);
     }
 
@@ -1097,19 +1138,20 @@ export async function getAllPatients(
     }
 
     // Get active bed allocations to determine admission status
-    // Note: 'allocated' status means the patient is currently admitted
+    // Note: 'active' status means the patient is currently admitted
     const { data: activeBedAllocations } = await supabase
       .from('bed_allocations')
-      .select('patient_id')
-      .eq('status', 'allocated')
-      .is('discharged_at', null);
+      .select('patient_id, bed_id')
+      .eq('status', 'active')
+      .is('discharge_date', null);
 
-    const admittedPatientIds = new Set((activeBedAllocations || []).map(a => a.patient_id));
+    const admittedPatientMap = new Map((activeBedAllocations || []).map(a => [a.patient_id, a.bed_id]));
 
     // Enhance patients with admission status
     const enhancedPatients = (patients || []).map(patient => ({
       ...patient,
-      is_admitted: admittedPatientIds.has(patient.id),
+      is_admitted: admittedPatientMap.has(patient.id),
+      bed_id: admittedPatientMap.get(patient.id),
       bed_allocations: undefined // Remove the join data
     }));
 
@@ -1335,9 +1377,10 @@ export async function getPatientsByStatus(
 export async function getAdmittedPatientsCount(): Promise<number> {
   try {
     const { count, error } = await supabase
-      .from('patients')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_admitted', true);
+      .from('bed_allocations')
+      .select('patient_id', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .is('discharge_date', null);
 
     if (error) {
       console.error('Error getting admitted patients count:', error);

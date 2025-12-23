@@ -2,19 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Users, Bed, BedDouble, Activity, AlertTriangle, Search, 
+import {
+  Users, Bed, BedDouble, Activity, AlertTriangle, Search,
   RefreshCw, ArrowLeft, Eye, LogOut, Clock, Calendar,
   Filter, Hash, Stethoscope, Building, ChevronRight,
   Heart, TrendingUp, CheckCircle, XCircle, Loader2,
   UserPlus, AlertCircle, Phone
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
-import { 
-  getBedAllocations, 
-  getBedStats, 
+import {
+  getBedAllocations,
+  getBedStats,
   getAvailableBeds,
-  type BedAllocation, 
+  type BedAllocation,
   type BedStats,
   type Bed as BedType
 } from '../../src/lib/bedAllocationService';
@@ -48,7 +48,7 @@ export default function InpatientPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   // admissionTypeFilter is removed since admission_type column doesn't exist in the database
-    // const [admissionTypeFilter, setAdmissionTypeFilter] = useState('all');
+  // const [admissionTypeFilter, setAdmissionTypeFilter] = useState('all');
   const [showAvailableBeds, setShowAvailableBeds] = useState(false);
 
   useEffect(() => {
@@ -58,29 +58,28 @@ export default function InpatientPage() {
   const loadInpatientData = async () => {
     try {
       setLoading(true);
-      
+
       // Get dashboard stats
       const dashboardStats = await getDashboardStats();
-      
+
       // Get bed stats
       const bedStats = await getBedStats();
-      
+
       // Get active bed allocations
       const allocationResponse = await getBedAllocations({
-        status: statusFilter === 'all' ? 'allocated' : statusFilter,
-        // admissionType: admissionTypeFilter === 'all' ? undefined : admissionTypeFilter, // Removed since column doesn't exist
+        status: statusFilter === 'all' ? 'active' : statusFilter,
         limit: 50
       });
-      
+
       // Get available beds
       const available = await getAvailableBeds();
-      
+
       // Calculate today's admissions
       const today = new Date().toISOString().split('T')[0];
       const todayAdmissions = allocationResponse.allocations.filter(
         a => a.allocated_at?.startsWith(today)
       ).length;
-      
+
       setStats({
         admittedPatients: dashboardStats.admittedPatients || 0,
         criticalPatients: dashboardStats.criticalPatients || 0,
@@ -91,7 +90,7 @@ export default function InpatientPage() {
         todayAdmissions,
         pendingDischarges: 0
       });
-      
+
       setAllocations(allocationResponse.allocations);
       setAvailableBedsList(available);
       setError(null);
@@ -106,6 +105,7 @@ export default function InpatientPage() {
 
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
+      case 'active':
       case 'allocated': return 'bg-green-100 text-green-800';
       case 'discharged': return 'bg-gray-100 text-gray-800';
       case 'transferred': return 'bg-blue-100 text-blue-800';
@@ -134,12 +134,12 @@ export default function InpatientPage() {
 
   const filteredAllocations = allocations.filter(allocation => {
     if (!searchTerm) return true;
-    const patientName = `${allocation.patient?.first_name || ''} ${allocation.patient?.last_name || ''}`.toLowerCase();
+    const patientName = (allocation.patient?.name || '').toLowerCase();
     const patientId = allocation.patient?.uhid?.toLowerCase() || '';
     const bedNumber = allocation.bed?.bed_number?.toLowerCase() || '';
-    return patientName.includes(searchTerm.toLowerCase()) || 
-           patientId.includes(searchTerm.toLowerCase()) ||
-           bedNumber.includes(searchTerm.toLowerCase());
+    return patientName.includes(searchTerm.toLowerCase()) ||
+      patientId.includes(searchTerm.toLowerCase()) ||
+      bedNumber.includes(searchTerm.toLowerCase());
   });
 
   if (loading) {
@@ -166,7 +166,7 @@ export default function InpatientPage() {
           </div>
         </div>
         <div className="flex gap-3">
-          <Link href="/inpatient/display-inpatient">
+          <Link href="/inpatient/create-inpatient">
             <button className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
               <Bed className="h-4 w-4" />
               Register Inpatient
@@ -236,8 +236,8 @@ export default function InpatientPage() {
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Occupancy</p>
               <p className="text-2xl font-bold text-blue-600 mt-1">{stats.occupancyRate}%</p>
               <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
-                <div 
-                  className="bg-blue-600 h-1.5 rounded-full" 
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full"
                   style={{ width: `${Math.min(stats.occupancyRate, 100)}%` }}
                 ></div>
               </div>
@@ -258,11 +258,11 @@ export default function InpatientPage() {
               <ArrowLeft className="h-3 w-3" /> View OP Queue
             </button>
           </Link>
-          <button 
+          <button
             onClick={() => setShowAvailableBeds(!showAvailableBeds)}
             className="text-sm bg-white px-3 py-1.5 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors flex items-center gap-1"
           >
-            <BedDouble className="h-3 w-3" /> 
+            <BedDouble className="h-3 w-3" />
             Available Beds ({stats.availableBeds})
           </button>
         </div>
@@ -321,13 +321,13 @@ export default function InpatientPage() {
                   className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full"
                 />
               </div>
-              <select 
+              <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="all">All Status</option>
-                <option value="allocated">Allocated</option>
+                <option value="active">Active</option>
                 <option value="discharged">Discharged</option>
                 <option value="transferred">Transferred</option>
               </select>
@@ -335,7 +335,7 @@ export default function InpatientPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="divide-y divide-gray-100">
           {filteredAllocations.length === 0 ? (
             <div className="text-center py-12">
@@ -345,13 +345,13 @@ export default function InpatientPage() {
             </div>
           ) : (
             filteredAllocations.map((allocation) => {
-              const patientName = `${allocation.patient?.first_name || ''} ${allocation.patient?.last_name || ''}`.trim() || 'Unknown Patient';
+              const patientName = (allocation.patient?.name && typeof allocation.patient.name === 'string') ? allocation.patient.name.trim() || 'Unknown Patient' : 'Unknown Patient';
               const patientId = allocation.patient?.uhid || 'N/A';
               const bedNumber = allocation.bed?.bed_number || 'N/A';
               const bedType = allocation.bed?.bed_type || 'General';
-              const doctorName = `${allocation.doctor?.first_name || ''} ${allocation.doctor?.last_name || ''}`.trim() || 'Not Assigned';
+              const doctorName = (allocation.doctor?.name && typeof allocation.doctor.name === 'string') ? allocation.doctor.name.trim() || 'Not Assigned' : 'Not Assigned';
               const daysAdmitted = calculateDaysAdmitted(allocation.allocated_at);
-              
+
               return (
                 <div key={allocation.id} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
@@ -361,7 +361,7 @@ export default function InpatientPage() {
                         <BedDouble className="h-5 w-5 text-white" />
                         <span className="text-white text-xs font-bold mt-0.5">{bedNumber}</span>
                       </div>
-                      
+
                       {/* Patient Info */}
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
@@ -396,7 +396,7 @@ export default function InpatientPage() {
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       <Link href={`/patients/${allocation.patient_id}`}>
@@ -404,8 +404,8 @@ export default function InpatientPage() {
                           <Eye size={18} />
                         </button>
                       </Link>
-                      {allocation.status === 'allocated' && (
-                        <button 
+                      {(allocation.status === 'active' || allocation.status === 'allocated') && (
+                        <button
                           className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
                           title="Discharge Patient"
                         >

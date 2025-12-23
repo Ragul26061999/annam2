@@ -26,7 +26,7 @@ DECLARE
     constraint_name TEXT;
 BEGIN
     -- Find the existing check constraint for admission_type
-    SELECT constraint_name 
+    SELECT tc.constraint_name 
     INTO constraint_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name

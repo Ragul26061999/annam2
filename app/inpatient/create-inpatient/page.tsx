@@ -15,13 +15,13 @@ export default function InpatientRegisterPage() {
       ...data,
       admissionType: 'inpatient'
     };
-    
+
     try {
       const result = await registerNewPatient(inpatientData, previewUHID);
-      
+
       if (result.success) {
-        // Redirect to patients list after successful registration
-        router.push('/patients');
+        // Redirect to inpatient list after successful registration
+        router.push('/inpatient');
       } else {
         throw new Error(result.error || 'Registration failed');
       }
@@ -39,15 +39,15 @@ export default function InpatientRegisterPage() {
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
-          <Link 
-            href="/inpatient" 
+          <Link
+            href="/inpatient"
             className="inline-flex items-center gap-2 text-orange-600 hover:text-orange-700 font-medium"
           >
             <ArrowLeft size={16} />
             Back to Patients
           </Link>
         </div>
-        
+
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-100 rounded-lg">
@@ -59,7 +59,7 @@ export default function InpatientRegisterPage() {
             </div>
           </div>
         </div>
-        
+
         <PatientRegistrationForm
           onSubmit={handleRegistrationSubmit}
           onCancel={handleCancel}

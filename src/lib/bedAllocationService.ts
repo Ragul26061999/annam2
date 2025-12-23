@@ -23,15 +23,13 @@ export interface BedAllocation {
   created_at: string;
   updated_at: string;
   patient: {
-    first_name: string;
-    last_name: string;
+    name: string;
     uhid: string;
   };
   bed: Bed;
   doctor: {
     license_number: string;
-    first_name: string;
-    last_name: string;
+    name: string;
   };
 }
 
@@ -126,9 +124,9 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       patient_id: allocationData.patientId,
       bed_id: allocationData.bedId,
       doctor_id: allocationData.doctorId || null,
-      allocated_at: allocationData.admissionDate,
+      admission_date: allocationData.admissionDate,
       reason: allocationData.reason,
-      status: 'allocated'
+      status: 'active'
     };
 
     const { data: allocation, error: allocationError } = await supabase
@@ -136,9 +134,11 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       .insert([allocationRecord])
       .select(`
         *,
-        patient:patients(first_name, last_name, uhid),
+        allocated_at:admission_date,
+        discharged_at:discharge_date,
+        patient:patients(name, uhid:patient_id),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, first_name, last_name)
+        doctor:doctors(license_number, name:users!user_id(name))
       `)
       .single();
 
@@ -187,7 +187,7 @@ export async function dischargeBed(
       .from('bed_allocations')
       .select('*, bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate)')
       .eq('id', allocationId)
-      .eq('status', 'allocated')
+      .eq('status', 'active')
       .single();
 
     if (allocationError || !allocation) {
@@ -198,16 +198,18 @@ export async function dischargeBed(
     const { data: updatedAllocation, error: updateError } = await supabase
       .from('bed_allocations')
       .update({
-        discharged_at: `${dischargeData.dischargeDate}T${dischargeData.dischargeTime}`,
+        discharge_date: `${dischargeData.dischargeDate}T${dischargeData.dischargeTime}`,
         reason: dischargeData.dischargeSummary || allocation.reason,
         status: 'discharged'
       })
       .eq('id', allocationId)
       .select(`
         *,
-        patient:patients(first_name, last_name, uhid),
+        allocated_at:admission_date,
+        discharged_at:discharge_date,
+        patient:patients(name, uhid:patient_id),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, first_name, last_name)
+        doctor:doctors(license_number, name:users!user_id(name))
       `)
       .single();
 
@@ -260,7 +262,7 @@ export async function transferBed(
       .from('bed_allocations')
       .select('*, bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate)')
       .eq('id', allocationId)
-      .eq('status', 'allocated')
+      .eq('status', 'active')
       .single();
 
     if (currentError || !currentAllocation) {
@@ -272,7 +274,7 @@ export async function transferBed(
       .from('bed_allocations')
       .update({
         status: 'transferred',
-        discharged_at: new Date().toISOString(),
+        discharge_date: new Date().toISOString(),
         reason: `Transferred to bed ${newBedId}. Reason: ${reason}`
       })
       .eq('id', allocationId);
@@ -286,9 +288,9 @@ export async function transferBed(
       patient_id: currentAllocation.patient_id,
       bed_id: newBedId,
       doctor_id: currentAllocation.doctor_id,
-      allocated_at: new Date().toISOString(),
+      admission_date: new Date().toISOString(),
       reason: `Transfer from bed ${currentAllocation.bed.id}. Reason: ${reason}`,
-      status: 'allocated',
+      status: 'active',
       allocated_by: currentAllocation.allocated_by
     };
 
@@ -297,9 +299,11 @@ export async function transferBed(
       .insert([newAllocationRecord])
       .select(`
         *,
-        patient:patients(first_name, last_name, uhid),
+        allocated_at:admission_date,
+        discharged_at:discharge_date,
+        patient:patients(name, uhid:patient_id),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, first_name, last_name)
+        doctor:doctors(license_number, name:users!user_id(name))
       `)
       .single();
 
@@ -363,9 +367,11 @@ export async function getBedAllocations(options: {
       .from('bed_allocations')
       .select(`
         *,
-        patient:patients(first_name, last_name, uhid),
+        allocated_at:admission_date,
+        discharged_at:discharge_date,
+        patient:patients(name, uhid:patient_id),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, first_name, last_name)
+        doctor:doctors(license_number, name:users!user_id(name))
       `, { count: 'exact' });
 
     // Apply filters
@@ -376,8 +382,8 @@ export async function getBedAllocations(options: {
     // Note: admission_type column doesn't exist in the schema, so we can't filter by it
     
     if (dateRange) {
-      query = query.gte('allocated_at', dateRange.start)
-                   .lte('allocated_at', dateRange.end);
+      query = query.gte('admission_date', dateRange.start)
+                   .lte('admission_date', dateRange.end);
     }
 
     if (searchTerm) {
@@ -391,10 +397,10 @@ export async function getBedAllocations(options: {
     try {
       result = await query
         .range(offset, offset + limit - 1)
-        .order('allocated_at', { ascending: false });
+        .order('admission_date', { ascending: false });
     } catch (orderError) {
       // If ordering fails, try without ordering
-      console.warn('Ordering by allocated_at failed, trying without ordering:', orderError);
+      console.warn('Ordering by admission_date failed, trying without ordering:', orderError);
       result = await query.range(offset, offset + limit - 1);
     }
     
@@ -458,8 +464,10 @@ export async function getAllBeds(options: {
         id, bed_number, room_number, bed_type, status, department_id, floor_number, daily_rate, features, created_at, updated_at,
         current_allocation:bed_allocations!id(
           *,
-          patient:patients(first_name, last_name, uhid),
-          doctor:doctors(license_number, first_name, last_name)
+          allocated_at:admission_date,
+          discharged_at:discharge_date,
+          patient:patients(name, uhid:patient_id),
+          doctor:doctors(license_number, name:users!user_id(name))
         )
       `, { count: 'exact' });
 
@@ -591,20 +599,24 @@ export async function getPatientBedHistory(patientId: string): Promise<BedAlloca
         .from('bed_allocations')
         .select(`
           *,
+          allocated_at:admission_date,
+          discharged_at:discharge_date,
           bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-          doctor:doctors(license_number, first_name, last_name)
+          doctor:doctors(license_number, name:users!user_id(name))
         `)
         .eq('patient_id', patientId)
-        .order('allocated_at', { ascending: false });
+        .order('admission_date', { ascending: false });
     } catch (orderError) {
       // If ordering fails, try without ordering
-      console.warn('Ordering by allocated_at failed, trying without ordering:', orderError);
+      console.warn('Ordering by admission_date failed, trying without ordering:', orderError);
       result = await supabase
         .from('bed_allocations')
         .select(`
           *,
+          allocated_at:admission_date,
+          discharged_at:discharge_date,
           bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-          doctor:doctors(license_number, first_name, last_name)
+          doctor:doctors(license_number, name:users!user_id(name))
         `)
         .eq('patient_id', patientId);
     }
@@ -660,9 +672,11 @@ export async function getBedAllocationById(allocationId: string): Promise<BedAll
       .from('bed_allocations')
       .select(`
         *,
-        patient:patients(first_name, last_name, uhid),
+        allocated_at:admission_date,
+        discharged_at:discharge_date,
+        patient:patients(name, uhid:patient_id),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, first_name, last_name)
+        doctor:doctors(license_number, name:users!user_id(name))
       `)
       .eq('id', allocationId)
       .single();

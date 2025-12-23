@@ -1,13 +1,13 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { 
-  User, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Calendar, 
-  Heart, 
-  Shield, 
+import {
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  Calendar,
+  Heart,
+  Shield,
   AlertTriangle,
   Save,
   X,
@@ -38,7 +38,7 @@ interface PatientRegistrationData {
   phone: string;
   email?: string;
   address: string;
-  
+
   // Medical & Admission Information 
   bloodGroup: string;
   allergies: string;
@@ -46,7 +46,7 @@ interface PatientRegistrationData {
   currentMedications: string;
   chronicConditions: string;
   previousSurgeries: string;
-  
+
   // Admission Details
   admissionDate?: string;
   admissionTime?: string;
@@ -57,26 +57,26 @@ interface PatientRegistrationData {
   consultingDoctorId?: string;
   departmentWard?: string;
   roomNumber?: string;
-  
+
   // Guardian/Attendant Details (Optional)
   guardianName?: string;
   guardianRelationship?: string;
   guardianPhone?: string;
   guardianAddress?: string;
-  
+
   // Emergency Contact (Optional)
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   emergencyContactRelationship?: string;
-  
+
   // Insurance Information (Optional)
   insuranceProvider?: string;
   insuranceNumber?: string;
-  
+
   // Initial Visit Information
   initialSymptoms?: string;
   referredBy?: string;
-  
+
   // Bed Allocation (New fields for inpatient)
   selectedBedId?: string;
   selectedBedNumber?: string;
@@ -131,18 +131,18 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
     initialSymptoms: '',
     referredBy: ''
   });
-  
+
   // State for available beds
   const [availableBeds, setAvailableBeds] = useState<any[]>([]);
   const [loadingBeds, setLoadingBeds] = useState(false);
-  
+
   // Load available beds when component mounts for inpatient registration
   useEffect(() => {
     if (admissionType === 'inpatient') {
       loadAvailableBeds();
     }
   }, [admissionType]);
-  
+
   const loadAvailableBeds = async () => {
     try {
       setLoadingBeds(true);
@@ -188,7 +188,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // No validation needed - all fields are optional
     // Ensure UHID is generated before submission
     if (!previewUHID) {
@@ -210,9 +210,9 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
           'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
         )
       ) as HTMLElement[];
-      
+
       const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
-      
+
       if (currentIndex < focusableElements.length - 1) {
         focusableElements[currentIndex + 1].focus();
       } else {
@@ -444,7 +444,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                 <Building className="h-4 w-4" />
                 Admission Information
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="admissionDate" className="block text-sm font-medium text-gray-700 mb-1">
@@ -569,7 +569,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                   <Bed className="h-4 w-4" />
                   Bed Selection (Optional)
                 </h4>
-                
+
                 {loadingBeds ? (
                   <p className="text-sm text-gray-600">Loading available beds...</p>
                 ) : availableBeds.length === 0 ? (
@@ -587,7 +587,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                         if (bed) {
                           handleInputChange('selectedBedId', bed.id);
                           handleInputChange('selectedBedNumber', bed.bed_number);
-                          handleInputChange('selectedBedRate', bed.hourly_rate || 0);
+                          handleInputChange('selectedBedRate', bed.daily_rate || 0);
                         }
                       }}
                       className="input-field"
@@ -596,11 +596,11 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                       {availableBeds.map(bed => (
                         <option key={bed.id} value={bed.id}>
                           Bed {bed.bed_number} - {bed.bed_type}
-                          {bed.hourly_rate && ` (₹${bed.hourly_rate}/hour)`}
+                          {bed.daily_rate && ` (₹${bed.daily_rate}/day)`}
                         </option>
                       ))}
                     </select>
-                    
+
                     {formData.selectedBedId && (
                       <div className="mt-3 p-3 bg-blue-100 rounded-lg">
                         <p className="text-sm text-blue-900">
@@ -624,7 +624,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                 <Heart className="h-4 w-4" />
                 Medical History (Short Summary at Admission)
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="bloodGroup" className="block text-sm font-medium text-gray-700 mb-1">
@@ -751,7 +751,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                 <Users className="h-4 w-4" />
                 Guardian / Attendant Information (Optional)
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="guardianName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -836,7 +836,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                 <AlertTriangle className="h-4 w-4" />
                 Emergency Contact Information (Optional)
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="emergencyContactName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -895,7 +895,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                 <Shield className="h-4 w-4" />
                 Insurance Information (Optional)
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="insuranceProvider" className="block text-sm font-medium text-gray-700 mb-1">
@@ -940,7 +940,7 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
             >
               Cancel
             </button>
-            
+
             <button
               type="submit"
               className="btn-primary flex items-center gap-2"

@@ -2,13 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Plus, 
-  Eye, 
-  Edit3, 
+import {
+  Users,
+  Search,
+  Filter,
+  Plus,
+  Eye,
+  Edit3,
   MoreVertical,
   UserPlus,
   Calendar,
@@ -27,7 +27,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus } from '../../src/lib/patientService';
+import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus, getAdmittedPatientsCount, getCriticalPatientsCount } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import AdmissionModal from '../../src/components/AdmissionModal';
 import DischargeModal from '../../src/components/DischargeModal';
@@ -69,18 +69,18 @@ export default function PatientsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [admittedCount, setAdmittedCount] = useState(0);
   const [criticalCount, setCriticalCount] = useState(0);
-  
+
   // Admission modal state
   const [admissionModalOpen, setAdmissionModalOpen] = useState(false);
   const [selectedPatientForAdmission, setSelectedPatientForAdmission] = useState<Patient | null>(null);
-  
+
   // Discharge modal state
   const [dischargeModalOpen, setDischargeModalOpen] = useState(false);
   const [selectedPatientForDischarge, setSelectedPatientForDischarge] = useState<Patient | null>(null);
-  
+
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  
+
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
@@ -115,7 +115,7 @@ export default function PatientsPage() {
         .select('patient_id')
         .is('discharge_date', null)
         .eq('status', 'active');
-      
+
       if (error) {
         console.error('Error fetching admitted count:', error);
         setAdmittedCount(0);
@@ -132,16 +132,16 @@ export default function PatientsPage() {
     try {
       // Get current patient data to preserve is_admitted status
       const currentPatient = patients.find(p => p.patient_id === patientId);
-      
+
       if (!currentPatient) {
         console.error('Patient not found in local state:', patientId);
         alert('Patient not found. Please refresh the page.');
         return;
       }
-      
+
       console.log('Updating critical status for patient:', patientId, 'to:', isCritical);
       console.log('Current patient data:', currentPatient);
-      
+
       // Pass the current is_admitted value (default to false if undefined)
       await updatePatientStatus(patientId, currentPatient.is_admitted ?? false, isCritical);
       await fetchPatients(); // Reload to get fresh data
@@ -156,7 +156,7 @@ export default function PatientsPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Use the patient service to get patients
       const response = await getAllPatients({
         page: currentPage,
@@ -164,17 +164,19 @@ export default function PatientsPage() {
         status: statusFilter === '' ? undefined : statusFilter,
         searchTerm: searchTerm || undefined
       });
-      
+
       setPatients(response.patients);
       setTotalPatients(response.total);
-      
-      // Calculate counts based on new status fields
-      const admitted = response.patients.filter((p: any) => p.is_admitted).length;
-      const critical = response.patients.filter((p: any) => p.is_critical).length;
-      
-      setAdmittedCount(admitted);
-      setCriticalCount(critical);
-      
+
+      // Fetch total counts for stats cards
+      const [allAdmitted, allCritical] = await Promise.all([
+        getAdmittedPatientsCount(),
+        getCriticalPatientsCount()
+      ]);
+
+      setAdmittedCount(allAdmitted);
+      setCriticalCount(allCritical);
+
     } catch (err) {
       console.error('Error:', err);
       setError('Failed to fetch patients');
@@ -225,11 +227,11 @@ export default function PatientsPage() {
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -271,7 +273,7 @@ export default function PatientsPage() {
 
   const handleDeleteConfirm = async () => {
     if (!patientToDelete) return;
-    
+
     setIsDeleting(true);
     try {
       // Permanently delete patient from database
@@ -284,7 +286,7 @@ export default function PatientsPage() {
 
       // Refresh the patient list
       await fetchPatients();
-      
+
       alert(`Patient ${patientToDelete.name} has been permanently deleted from the database.`);
     } catch (error) {
       console.error('Error deleting patient:', error);
@@ -320,12 +322,12 @@ export default function PatientsPage() {
       'from-cyan-500 to-blue-500',
       'from-emerald-500 to-green-500'
     ];
-    
+
     const hash = name.split('').reduce((a, b) => {
       a = ((a << 5) - a) + b.charCodeAt(0);
       return a & a;
     }, 0);
-    
+
     return colors[Math.abs(hash) % colors.length];
   };
 
@@ -342,16 +344,16 @@ export default function PatientsPage() {
 
   // Filter patients based on search and status
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.patient_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.phone?.includes(searchTerm);
-    
-    const matchesStatus = !statusFilter || 
+
+    const matchesStatus = !statusFilter ||
       (statusFilter === 'critical' && isPatientCritical(patient)) ||
       (statusFilter === 'admitted' && isPatientAdmitted(patient)) ||
       (statusFilter === 'active' && patient.status === 'active');
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -528,7 +530,7 @@ export default function PatientsPage() {
                       Critical
                     </span>
                   )}
-                  
+
                   {/* Show Admitted badge only for patients with bed allocation */}
                   {isPatientAdmitted(patient) && (
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 flex items-center gap-1">
@@ -536,16 +538,16 @@ export default function PatientsPage() {
                       Admitted
                     </span>
                   )}
-                  
+
                   {/* Dropdown Menu */}
                   <div className="relative dropdown-container">
-                    <button 
+                    <button
                       onClick={() => toggleDropdown(patient.id)}
                       className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <MoreVertical size={16} className="text-gray-500" />
                     </button>
-                    
+
                     {openDropdownId === patient.id && (
                       <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 dropdown-container">
                         <div className="py-1">
@@ -653,16 +655,15 @@ export default function PatientsPage() {
                       </label>
                     </div>
                   </div>
-                  
+
                   {/* Admission Status Display - Read only based on bed allocation */}
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Admission Status</span>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        isPatientAdmitted(patient) 
-                          ? 'bg-green-100 text-green-800' 
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${isPatientAdmitted(patient)
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
-                      }`}>
+                        }`}>
                         {isPatientAdmitted(patient) ? 'Admitted' : 'Outpatient'}
                       </span>
                       {!isPatientAdmitted(patient) ? (
@@ -694,7 +695,7 @@ export default function PatientsPage() {
                     View
                   </button>
                 </Link>
-                <button 
+                <button
                   onClick={() => router.push(`/patients/${patient.patient_id}/edit`)}
                   className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors"
                 >
