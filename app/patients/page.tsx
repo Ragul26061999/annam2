@@ -395,14 +395,7 @@ export default function PatientsPage() {
               Enhanced Registration
             </button>
           </Link>
-          <Link href="/patients/register">
-            <button className="flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
-              <UserPlus size={16} className="mr-2" />
-              Register New Patient
-            </button>
-          </Link>
-        </div>
-      </div>
+        </div>      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

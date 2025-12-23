@@ -48,10 +48,8 @@ export async function fetchAvailableBeds() {
       .select(`
         id,
         bed_number,
-        room_number,
         bed_type,
-        floor_number,
-        daily_rate,
+        hourly_rate,
         status,
         features,
         department_id,

@@ -41,6 +41,8 @@ export default function EmergencyPatientRegisterPage() {
       firstName: emergencyData.firstName,
       lastName: emergencyData.lastName,
       dateOfBirth: emergencyData.dateOfBirth,
+      age: '', // Will be calculated later if needed
+      diagnosis: '', // Will be added later by medical staff
       gender: emergencyData.gender,
       phone: emergencyData.phone,
       address: emergencyData.address,

@@ -575,122 +575,206 @@ export async function getAppointments(options: {
     const { page = 1, limit = 20, patientId, doctorId, date, status, type, searchTerm } = options;
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from('appointment')
-      .select(`
-        *,
-        encounter:encounter(
-          id,
-          patient_id,
-          clinician_id,
-          start_at
-        )
-      `, { count: 'exact' });
+    // First, try to get appointments from the new appointment table
+    try {
+      let query = supabase
+        .from('appointment')
+        .select(`
+          *,
+          encounter:encounter(
+            id,
+            patient_id,
+            clinician_id,
+            start_at
+          )
+        `, { count: 'exact' });
 
-    // Apply filters
-    if (patientId) {
-      query = query.eq('encounter.patient_id', patientId);
-    }
-
-    if (doctorId) {
-      query = query.eq('encounter.clinician_id', doctorId);
-    }
-
-    if (date) {
-      // Filter by date part of scheduled_at
-      const startOfDay = `${date}T00:00:00Z`;
-      const endOfDay = `${date}T23:59:59Z`;
-      query = query.gte('scheduled_at', startOfDay).lte('scheduled_at', endOfDay);
-    }
-
-    // Apply pagination and ordering
-    const { data: appointments, error, count } = await query
-      .range(offset, offset + limit - 1)
-      .order('scheduled_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching appointments:', error);
-      throw new Error(`Failed to fetch appointments: ${error.message}`);
-    }
-
-    // Transform appointments and fetch related data separately
-    const transformedAppointments = await Promise.all((appointments || []).map(async (apt: any) => {
-      // Fetch patient data separately
-      let patientData = null;
-      if (apt.encounter?.patient_id) {
-        const { data: patient } = await supabase
-          .from('patients')
-          .select('id, patient_id, name, phone, email')
-          .eq('id', apt.encounter.patient_id)
-          .single();
-        patientData = patient;
+      // Apply filters
+      if (patientId) {
+        query = query.eq('encounter.patient_id', patientId);
       }
 
-      // Fetch doctor data separately
-      let doctorData: Appointment['doctor'] = undefined;
-      if (apt.encounter?.clinician_id) {
-        const { data: doctor } = await supabase
-          .from('doctors')
-          .select(`
+      if (doctorId) {
+        query = query.eq('encounter.clinician_id', doctorId);
+      }
+
+      if (date) {
+        // Filter by date part of scheduled_at
+        const startOfDay = `${date}T00:00:00Z`;
+        const endOfDay = `${date}T23:59:59Z`;
+        query = query.gte('scheduled_at', startOfDay).lte('scheduled_at', endOfDay);
+      }
+
+      // Apply pagination and ordering
+      const { data: appointments, error, count } = await query
+        .range(offset, offset + limit - 1)
+        .order('scheduled_at', { ascending: false });
+
+      if (!error && appointments) {
+        // Transform appointments and fetch related data separately
+        const transformedAppointments = await Promise.all((appointments || []).map(async (apt: any) => {
+          // Fetch patient data separately
+          let patientData = null;
+          if (apt.encounter?.patient_id) {
+            const { data: patient } = await supabase
+              .from('patients')
+              .select('id, patient_id, name, phone, email')
+              .eq('id', apt.encounter.patient_id)
+              .single();
+            patientData = patient;
+          }
+
+          // Fetch doctor data separately
+          let doctorData: Appointment['doctor'] = undefined;
+          if (apt.encounter?.clinician_id) {
+            const { data: doctor } = await supabase
+              .from('doctors')
+              .select(`
+                id,
+                specialization,
+                qualification,
+                user:users(name, phone, email)
+              `)
+              .eq('id', apt.encounter.clinician_id)
+              .single();
+            
+            if (doctor && doctor.user) {
+              const userArray = Array.isArray(doctor.user) ? doctor.user : [doctor.user];
+              const firstUser = userArray[0];
+              doctorData = {
+                id: doctor.id,
+                specialization: doctor.specialization,
+                qualification: doctor.qualification,
+                user: {
+                  name: firstUser?.name || '',
+                  phone: firstUser?.phone || '',
+                  email: firstUser?.email || ''
+                }
+              };
+            }
+          }
+
+          return {
+            id: apt.id,
+            appointment_id: `APT-${apt.id.slice(0, 8)}`,
+            patient_id: apt.encounter?.patient_id || '',
+            doctor_id: apt.encounter?.clinician_id || '',
+            appointment_date: apt.scheduled_at ? new Date(apt.scheduled_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            appointment_time: apt.scheduled_at ? new Date(apt.scheduled_at).toTimeString().split(' ')[0] : '00:00:00',
+            duration_minutes: apt.duration_minutes || 30,
+            type: 'Consultation',
+            status: 'scheduled' as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled',
+            symptoms: apt.notes,
+            chief_complaint: apt.notes,
+            diagnosis: undefined,
+            treatment_plan: undefined,
+            prescriptions: [],
+            next_appointment_date: undefined,
+            follow_up_instructions: undefined,
+            notes: apt.notes,
+            created_by: undefined,
+            created_at: apt.created_at,
+            updated_at: apt.updated_at,
+            
+            // Related data
+            patient: patientData,
+            doctor: doctorData,
+            encounter: apt.encounter
+          };
+        }));
+
+        return {
+          appointments: transformedAppointments,
+          total: count || 0,
+          page,
+          limit
+        };
+      }
+    } catch (newTableError) {
+      console.warn('Error fetching from new appointment table:', newTableError);
+    }
+
+    // If new table fails, fall back to legacy appointments table
+    try {
+      let query = supabase
+        .from('appointments')
+        .select(`
+          *,
+          patient:patients(id, patient_id, name, phone, email),
+          doctor:doctors(
             id,
             specialization,
             qualification,
             user:users(name, phone, email)
-          `)
-          .eq('id', apt.encounter.clinician_id)
-          .single();
-        
-        if (doctor && doctor.user) {
-          const userArray = Array.isArray(doctor.user) ? doctor.user : [doctor.user];
-          const firstUser = userArray[0];
-          doctorData = {
-            id: doctor.id,
-            specialization: doctor.specialization,
-            qualification: doctor.qualification,
-            user: {
-              name: firstUser?.name || '',
-              phone: firstUser?.phone || '',
-              email: firstUser?.email || ''
-            }
-          };
-        }
+          )
+        `, { count: 'exact' });
+
+      // Apply filters
+      if (patientId) {
+        query = query.eq('patient_id', patientId);
       }
 
-      return {
+      if (doctorId) {
+        query = query.eq('doctor_id', doctorId);
+      }
+
+      if (date) {
+        query = query.eq('appointment_date', date);
+      }
+
+      if (status && status !== 'all') {
+        query = query.eq('status', status);
+      }
+
+      // Apply pagination and ordering
+      const { data: appointments, error, count } = await query
+        .range(offset, offset + limit - 1)
+        .order('appointment_time', { ascending: true })
+        .order('appointment_date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching appointments from legacy table:', error);
+        throw new Error(`Failed to fetch appointments: ${error.message}`);
+      }
+
+      // Transform legacy appointments to match the expected format
+      const transformedAppointments = (appointments || []).map((apt: any) => ({
         id: apt.id,
-        appointment_id: `APT-${apt.id.slice(0, 8)}`,
-        patient_id: apt.encounter?.patient_id || '',
-        doctor_id: apt.encounter?.clinician_id || '',
-        appointment_date: apt.scheduled_at ? new Date(apt.scheduled_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        appointment_time: apt.scheduled_at ? new Date(apt.scheduled_at).toTimeString().split(' ')[0] : '00:00:00',
+        appointment_id: apt.appointment_id || `APT-${apt.id}`,
+        patient_id: apt.patient_id || (apt.patient ? apt.patient.id : ''),
+        doctor_id: apt.doctor_id || (apt.doctor ? apt.doctor.id : ''),
+        appointment_date: apt.appointment_date || new Date().toISOString().split('T')[0],
+        appointment_time: apt.appointment_time || '00:00:00',
         duration_minutes: apt.duration_minutes || 30,
-        type: 'Consultation',
-        status: 'scheduled' as 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled',
-        symptoms: apt.notes,
-        chief_complaint: apt.notes,
-        diagnosis: undefined,
-        treatment_plan: undefined,
-        prescriptions: [],
-        next_appointment_date: undefined,
-        follow_up_instructions: undefined,
+        type: apt.type || 'Consultation',
+        status: apt.status || 'scheduled',
+        symptoms: apt.symptoms,
+        chief_complaint: apt.chief_complaint || apt.symptoms,
+        diagnosis: apt.diagnosis,
+        treatment_plan: apt.treatment_plan,
+        prescriptions: apt.prescriptions || [],
+        next_appointment_date: apt.next_appointment_date,
+        follow_up_instructions: apt.follow_up_instructions,
         notes: apt.notes,
-        created_by: undefined,
+        created_by: apt.created_by,
         created_at: apt.created_at,
         updated_at: apt.updated_at,
         
         // Related data
-        patient: patientData,
-        doctor: doctorData,
-        encounter: apt.encounter
-      };
-    }));
+        patient: apt.patient,
+        doctor: apt.doctor
+      }));
 
-    return {
-      appointments: transformedAppointments,
-      total: count || 0,
-      page,
-      limit
-    };
+      return {
+        appointments: transformedAppointments,
+        total: count || 0,
+        page,
+        limit
+      };
+    } catch (legacyError) {
+      console.error('Error fetching appointments from legacy table:', legacyError);
+      throw legacyError;
+    }
   } catch (error) {
     console.error('Error fetching appointments:', error);
     throw error;

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export interface DashboardStats {
   totalPatients: number;
+  outpatientPatients: number;
   admittedPatients: number;
   totalAppointments: number;
   todayAppointments: number;
@@ -84,6 +85,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .from('patients')
       .select('*', { count: 'exact', head: true });
 
+    // Get outpatient patients (patients with outpatient admission type)
+    const { count: outpatientPatients } = await supabase
+      .from('patients')
+      .select('*', { count: 'exact', head: true })
+      .eq('admission_type', 'outpatient');
+
     // Get admitted patients (patients with active bed allocations)
     const { count: admittedPatients } = await supabase
       .from('bed_allocations')
@@ -104,20 +111,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       // Try new appointment table
       const { count: newTotal } = await supabase
         .from('appointment')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .eq('encounter.patient.admission_type', 'outpatient');
       totalAppointments = newTotal || 0;
       
       const { count: newToday } = await supabase
         .from('appointment')
         .select('*', { count: 'exact', head: true })
         .gte('scheduled_at', today)
-        .lt('scheduled_at', `${today}T23:59:59`);
+        .lt('scheduled_at', `${today}T23:59:59`)
+        .eq('encounter.patient.admission_type', 'outpatient');
       todayAppointments = newToday || 0;
       
       const { count: newUpcoming } = await supabase
         .from('appointment')
         .select('*', { count: 'exact', head: true })
-        .gt('scheduled_at', `${today}T23:59:59`);
+        .gt('scheduled_at', `${today}T23:59:59`)
+        .eq('encounter.patient.admission_type', 'outpatient');
       upcomingAppointments = newUpcoming || 0;
       
       // For new table, we'll assume all are scheduled for now
@@ -128,20 +138,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       try {
         const { count: legacyTotal } = await supabase
           .from('appointments')
-          .select('*', { count: 'exact', head: true });
+          .select('*', { count: 'exact', head: true })
+          .eq('patient.admission_type', 'outpatient');
         totalAppointments = legacyTotal || 0;
 
         const { count: legacyToday } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('appointment_date', today);
+          .eq('appointment_date', today)
+          .eq('patient.admission_type', 'outpatient');
         todayAppointments = legacyToday || 0;
 
         const { count: legacyUpcoming } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .gt('appointment_date', today)
-          .in('status', ['scheduled', 'confirmed']);
+          .in('status', ['scheduled', 'confirmed'])
+          .eq('patient.admission_type', 'outpatient');
         upcomingAppointments = legacyUpcoming || 0;
 
         const { count: legacyCompleted } = await supabase
@@ -217,6 +230,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
     return {
       totalPatients: totalPatients || 0,
+      outpatientPatients: outpatientPatients || 0,
       admittedPatients: admittedPatients || 0,
       totalAppointments: totalAppointments || 0,
       todayAppointments: todayAppointments || 0,
@@ -239,6 +253,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     // Return default values if there's an error
     return {
       totalPatients: 0,
+      outpatientPatients: 0,
       admittedPatients: 0,
       totalAppointments: 0,
       todayAppointments: 0,
@@ -274,7 +289,7 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
           id,
           scheduled_at,
           encounter:encounter(
-            patient:patients(name),
+            patient:patients(name, admission_type),
             clinician:doctors(
               user:users(name)
             )
@@ -282,6 +297,7 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
         `)
         .gte('scheduled_at', today)
         .lt('scheduled_at', `${today}T23:59:59`)
+        .eq('encounter.patient.admission_type', 'outpatient')
         .order('scheduled_at', { ascending: true })
         .limit(limit);
       
@@ -290,7 +306,12 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
         throw newError;
       }
       
-      return (newAppointments || []).map((apt: any) => ({
+      // Filter for outpatients only
+      const outpatientAppointments = (newAppointments || []).filter((apt: any) => 
+        apt.encounter?.patient?.admission_type === 'outpatient'
+      );
+      
+      return outpatientAppointments.map((apt: any) => ({
         id: apt.id,
         patientName: apt.encounter?.patient?.name || 'Unknown Patient',
         appointmentTime: new Date(apt.scheduled_at).toLocaleTimeString('en-US', { 
@@ -314,12 +335,13 @@ export async function getRecentAppointments(limit: number = 5): Promise<RecentAp
             appointment_date,
             type,
             status,
-            patients!inner(name),
+            patients!inner(name, admission_type),
             doctors!inner(
               users!inner(name)
             )
           `)
           .eq('appointment_date', today)
+          .eq('patients.admission_type', 'outpatient')
           .order('appointment_time', { ascending: true })
           .limit(limit);
 

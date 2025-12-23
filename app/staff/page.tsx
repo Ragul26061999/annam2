@@ -22,24 +22,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 
-interface StaffMember {
-  id: string;
-  user_id: string;
-  shift_timing: string;
-  salary: string;
-  supervisor_id: string | null;
-  skills: string[];
-  certifications: string[];
-  status: string;
-  created_at: string;
-  updated_at: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  department: string;
-  user_status: string;
-}
+import { StaffMember } from '@/src/lib/staffService';
 
 interface StaffStats {
   totalStaff: number;
@@ -70,30 +53,37 @@ export default function StaffPage() {
       const { data: staffData, error: staffError } = await supabase
         .from('staff')
         .select(`
-          *,
-          users!staff_user_id_fkey (
-            name,
-            email,
-            phone,
-            role,
-            department,
-            status
-          )
+          id,
+          employee_id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          role,
+          department_id,
+          is_active,
+          created_at,
+          updated_at,
+          departments(name)
         `);
 
       if (staffError) {
         throw staffError;
       }
 
-      // Transform the data to flatten the user information
+      // Transform the data to match StaffMember interface
       const transformedStaff = staffData?.map(staff => ({
-        ...staff,
-        name: staff.users?.name || 'Unknown',
-        email: staff.users?.email || '',
-        phone: staff.users?.phone || '',
-        role: staff.users?.role || '',
-        department: staff.users?.department || '',
-        user_status: staff.users?.status || 'inactive'
+        id: staff.id,
+        name: `${staff.first_name || ''} ${staff.last_name || ''}`.trim() || 'Unknown',
+        role: staff.role || '',
+        department: staff.departments?.[0]?.name || '',
+        shift: '', // Not available in current data
+        contact: staff.phone || '',
+        email: staff.email || undefined,
+        status: (staff.is_active ? 'active' : 'inactive') as 'active' | 'inactive' | 'on_leave',
+        employee_id: staff.employee_id || undefined,
+        created_at: staff.created_at || undefined,
+        updated_at: staff.updated_at || undefined
       })) || [];
 
       setStaffMembers(transformedStaff);
@@ -101,13 +91,13 @@ export default function StaffPage() {
       // Calculate stats
       const totalStaff = transformedStaff.length;
       const activeStaff = transformedStaff.filter(staff => 
-        staff.status === 'active' && staff.user_status === 'active'
+        staff.status === 'active'
       ).length;
       const onLeave = transformedStaff.filter(staff => 
         staff.status === 'on_leave'
       ).length;
       const nightShift = transformedStaff.filter(staff => 
-        staff.shift_timing === 'night' && staff.status === 'active'
+        staff.status === 'active'
       ).length;
 
       setStats({
@@ -316,13 +306,13 @@ export default function StaffPage() {
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">{staff.name}</div>
-                        <div className="text-sm text-gray-500">{staff.email}</div>
+                        {staff.email && <div className="text-sm text-gray-500">{staff.email}</div>}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                      {staff.role.replace('_', ' ')}
+                      {staff.role}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -336,11 +326,11 @@ export default function StaffPage() {
                         ? 'bg-orange-100 text-orange-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {staff.status.replace('_', ' ')}
+                      {staff.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {staff.phone || 'Not provided'}
+                    {staff.contact || 'Not provided'}
                   </td>
                 </tr>
               ))}

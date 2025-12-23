@@ -17,7 +17,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Activity,
-  DollarSign
+  DollarSign,
+  User,
+  BedDouble
 } from 'lucide-react';
 
 interface NavItem {
@@ -52,11 +54,23 @@ const Sidebar: React.FC = () => {
       color: 'text-purple-600'
     },
     { 
-      href: '/md/appointments', 
-      label: 'Appointments', 
-      icon: <Calendar size={18} />, 
+      href: '/outpatient', 
+      label: 'Outpatient (OP)', 
+      icon: <User size={18} />, 
       color: 'text-orange-600',
       badge: '42'
+    },
+    { 
+      href: '/inpatient', 
+      label: 'Inpatient (IP)', 
+      icon: <BedDouble size={18} />, 
+      color: 'text-purple-600'
+    },
+    { 
+      href: '/appointments', 
+      label: 'All Appointments', 
+      icon: <Calendar size={18} />, 
+      color: 'text-orange-600'
     },
     { 
       href: '/md/workstation', 

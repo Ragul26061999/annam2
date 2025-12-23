@@ -13,6 +13,7 @@ export default function PatientRegisterPage() {
     uhid?: string;
     credentials?: { email: string; password: string };
     error?: string;
+    registrationTime?: string;
   } | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -21,7 +22,14 @@ export default function PatientRegisterPage() {
     
     try {
       const result = await registerNewPatient(data, previewUHID);
-      setRegistrationResult(result);
+      
+      // Get current time for display
+      const currentTime = new Date().toLocaleTimeString();
+      
+      setRegistrationResult({
+        ...result,
+        registrationTime: currentTime
+      });
       
       if (result.success) {
         // Auto-hide success message after 10 seconds and redirect
@@ -33,7 +41,8 @@ export default function PatientRegisterPage() {
       console.error('Registration error:', error);
       setRegistrationResult({
         success: false,
-        error: 'An unexpected error occurred during registration'
+        error: 'An unexpected error occurred during registration',
+        registrationTime: new Date().toLocaleTimeString()
       });
     } finally {
       setIsLoading(false);
@@ -63,6 +72,9 @@ export default function PatientRegisterPage() {
             <div>
               <h2 className="text-xl font-semibold text-green-900">Patient Registration Successful!</h2>
               <p className="text-sm text-green-700">New patient has been registered successfully</p>
+              {registrationResult?.registrationTime && (
+                <p className="text-xs text-green-600 mt-1">Registered at: {registrationResult.registrationTime}</p>
+              )}
             </div>
           </div>
         </div>
@@ -191,6 +203,9 @@ export default function PatientRegisterPage() {
             <div>
               <h2 className="text-xl font-semibold text-red-900">Registration Failed</h2>
               <p className="text-sm text-red-700">There was an error registering the patient</p>
+              {registrationResult?.registrationTime && (
+                <p className="text-xs text-red-600 mt-1">Attempted at: {registrationResult.registrationTime}</p>
+              )}
             </div>
           </div>
         </div>
@@ -228,6 +243,7 @@ export default function PatientRegisterPage() {
           onSubmit={handleRegistrationSubmit}
           onCancel={handleCancel}
           isLoading={isLoading}
+          admissionType="outpatient"
         />
       )}
     </div>

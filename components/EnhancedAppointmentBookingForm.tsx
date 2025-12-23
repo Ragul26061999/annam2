@@ -226,6 +226,8 @@ export default function RestructuredPatientRegistrationForm({
         firstName: formData.firstName,
         lastName: formData.lastName,
         dateOfBirth: formData.dateOfBirth,
+        age: formData.age,
+        diagnosis: '', // Will be added later
         gender: formData.gender,
         maritalStatus: formData.maritalStatus,
         phone: formData.phone,

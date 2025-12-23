@@ -1298,6 +1298,8 @@ const fetchFullDates = async (doctorId: string) => {
                      firstName: data.firstName,
                      lastName: data.lastName,
                      dateOfBirth: data.dateOfBirth,
+                     age: '', // Will be calculated later if needed
+                     diagnosis: '', // Will be added later by medical staff
                      gender: data.gender,
                      phone: data.phone,
                      email: '',

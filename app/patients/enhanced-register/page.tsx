@@ -12,10 +12,14 @@ export default function EnhancedPatientRegisterPage() {
     uhid: string;
     patientName: string;
     qrCode?: string;
+    registrationTime?: string;
   } | null>(null);
 
   const handleRegistrationComplete = (result: { uhid: string; patientName: string; qrCode?: string }) => {
-    setRegistrationResult(result);
+    setRegistrationResult({
+      ...result,
+      registrationTime: new Date().toLocaleTimeString()
+    });
     setRegistrationComplete(true);
   };
 
@@ -35,6 +39,9 @@ export default function EnhancedPatientRegisterPage() {
               <div>
                 <h2 className="text-xl font-semibold text-green-900">Registration & Appointment Complete!</h2>
                 <p className="text-sm text-green-700">Patient registered and appointment scheduled successfully</p>
+                {registrationResult?.registrationTime && (
+                  <p className="text-xs text-green-600 mt-1">Registered at: {registrationResult.registrationTime}</p>
+                )}
               </div>
             </div>
             
@@ -108,6 +115,7 @@ export default function EnhancedPatientRegisterPage() {
       <RestructuredPatientRegistrationForm
         onComplete={handleRegistrationComplete}
         onCancel={handleCancel}
+        admissionType="outpatient"
       />
     </div>
   );

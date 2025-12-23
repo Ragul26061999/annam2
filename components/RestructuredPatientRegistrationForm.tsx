@@ -21,6 +21,7 @@ interface RegistrationFormData {
   phone: string;
   email: string;
   address: string;
+  diagnosis: string;
   
   // Medical Information
   bloodGroup: string;
@@ -56,11 +57,12 @@ interface RegistrationFormData {
 interface RestructuredPatientRegistrationFormProps {
   onComplete: (result: { uhid: string; patientName: string; qrCode?: string }) => void;
   onCancel: () => void;
+  admissionType?: 'outpatient' | 'inpatient' | 'emergency';
 }
-
 export default function RestructuredPatientRegistrationForm({ 
   onComplete, 
-  onCancel 
+  onCancel,
+  admissionType
 }: RestructuredPatientRegistrationFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -85,6 +87,7 @@ export default function RestructuredPatientRegistrationForm({
     phone: '',
     email: '',
     address: '',
+    diagnosis: '',
     bloodGroup: '',
     allergies: '',
     hasDrugAllergy: false,
@@ -198,9 +201,13 @@ export default function RestructuredPatientRegistrationForm({
       // Auto-calculate age when DOB changes
       if (field === 'dateOfBirth' && typeof value === 'string' && value) {
         const calculatedAge = calculateAgeFromDOB(value);
-        if (calculatedAge) {
-          updated.age = calculatedAge;
-        }
+        updated.age = calculatedAge || '';
+      }
+      
+      // Auto-calculate DOB when age changes (and DOB is empty)
+      if (field === 'age' && typeof value === 'string' && value && !prev.dateOfBirth) {
+        const estimatedDOB = calculateDOBFromAge(value);
+        updated.dateOfBirth = estimatedDOB;
       }
       
       // Don't auto-calculate DOB when age changes - user must click button
@@ -226,6 +233,8 @@ export default function RestructuredPatientRegistrationForm({
         firstName: formData.firstName,
         lastName: formData.lastName,
         dateOfBirth: formData.dateOfBirth,
+        age: formData.age,
+        diagnosis: formData.diagnosis,
         gender: formData.gender,
         maritalStatus: formData.maritalStatus,
         phone: formData.phone,
@@ -239,8 +248,8 @@ export default function RestructuredPatientRegistrationForm({
         currentMedications: formData.currentMedications,
         chronicConditions: formData.chronicConditions,
         previousSurgeries: '',
-        primaryComplaint: '',
-        admissionType: '',
+        primaryComplaint: formData.primaryComplaint,
+        admissionType: admissionType || '',
         guardianName: formData.guardianName,
         guardianRelationship: formData.guardianRelationship,
         guardianPhone: formData.guardianPhone,
@@ -254,8 +263,7 @@ export default function RestructuredPatientRegistrationForm({
         referredBy: ''
       };
 
-      const result = await registerNewPatient(patientData, previewUHID);
-      
+      const result = await registerNewPatient(patientData, previewUHID);      
       if (result.success && result.patient) {
         setPatientId(result.patient.id);
         handleNext();
@@ -452,7 +460,7 @@ export default function RestructuredPatientRegistrationForm({
               placeholder="email@example.com"
             />
           </div>
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
             <textarea
               value={formData.address}
@@ -460,6 +468,17 @@ export default function RestructuredPatientRegistrationForm({
               className="input-field"
               rows={2}
               placeholder="Complete address"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Diagnosis</label>
+            <input
+              type="text"
+              value={formData.diagnosis}
+              onChange={(e) => handleInputChange('diagnosis', e.target.value)}
+              className="input-field"
+              placeholder="Enter diagnosis"
             />
           </div>
         </div>
@@ -1037,7 +1056,7 @@ export default function RestructuredPatientRegistrationForm({
             <CheckCircle className="h-5 w-5 text-green-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Step 5: Review & Confirm</h3>
+<h3 className="text-lg font-semibold text-gray-900">Step 4: Review & Confirm</h3>
             <p className="text-sm text-gray-500">Review all details before confirming</p>
           </div>
         </div>

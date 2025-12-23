@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import BedTransferModal from '@/src/components/BedTransferModal';
+import AddBedModal from '@/src/components/AddBedModal';
 
 interface BedData {
   id: string;
@@ -265,7 +266,10 @@ export default function BedsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Bed Management</h1>
           <p className="text-gray-600 mt-1">Monitor and manage hospital bed allocations</p>
         </div>
-        <button className="mt-4 sm:mt-0 bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm hover:bg-orange-700 transition-colors flex items-center">
+        <button 
+          onClick={() => setShowAddBedModal(true)}
+          className="mt-4 sm:mt-0 bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm hover:bg-orange-700 transition-colors flex items-center"
+        >
           <Plus size={16} className="mr-2" />
           Add New Bed
         </button>
@@ -540,6 +544,18 @@ export default function BedsPage() {
           }}
         />
       )}
+
+      {/* Add Bed Modal */}
+      <AddBedModal
+        isOpen={showAddBedModal}
+        onClose={() => {
+          setShowAddBedModal(false);
+        }}
+        onSuccess={() => {
+          fetchBedData();
+          setShowAddBedModal(false);
+        }}
+      />
     </div>
   );
 }

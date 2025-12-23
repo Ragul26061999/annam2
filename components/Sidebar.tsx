@@ -17,7 +17,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Activity,
-  IndianRupee
+  IndianRupee,
+  User,
+  BedDouble
 } from 'lucide-react';
 
 interface NavItem {
@@ -64,15 +66,21 @@ const Sidebar: React.FC = () => {
       color: 'text-orange-600'
     },
     { 
-      href: '/appointments', 
-      label: 'Appointments', 
-      icon: <Calendar size={18} />, 
-      color: 'text-teal-600',
+      href: '/outpatient', 
+      label: 'Outpatient (OP)', 
+      icon: <User size={18} />, 
+      color: 'text-orange-600',
       badge: '42'
     },
     { 
-      href: '/doctor/appointments', 
-      label: 'My Appointments', 
+      href: '/inpatient', 
+      label: 'Inpatient (IP)', 
+      icon: <BedDouble size={18} />, 
+      color: 'text-purple-600'
+    },
+    { 
+      href: '/appointments', 
+      label: 'All Appointments', 
       icon: <Stethoscope size={18} />, 
       color: 'text-blue-600'
     },

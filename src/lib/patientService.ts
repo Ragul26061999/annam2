@@ -1,13 +1,15 @@
 import { supabase } from './supabase';
 import { generateBarcodeId, updatePatientWithBarcode } from './barcodeUtils';
 import { generateQRCode } from './qrCodeService';
-
+import { allocateBed, BedAllocationData } from './bedAllocationService';
+import { createAppointment, generateAppointmentId, AppointmentData } from './appointmentService';
 // Types - Updated to match comprehensive registration form
-export interface PatientRegistrationData {
-  // Personal Information (Mandatory)
+export interface PatientRegistrationData {  // Personal Information (Mandatory)
   firstName: string;
   lastName: string;
   dateOfBirth: string;
+  age: string;
+  diagnosis: string;
   gender: string;
   maritalStatus?: string; // single, married, divorced, widowed, separated
   phone: string;
@@ -53,6 +55,11 @@ export interface PatientRegistrationData {
   // Initial Visit Information
   initialSymptoms?: string;
   referredBy?: string;
+  
+  // Bed Allocation (New fields for inpatient)
+  selectedBedId?: string;
+  selectedBedNumber?: string;
+  selectedBedRate?: number;
 }
 
 export interface PatientResponse {
@@ -253,63 +260,156 @@ export async function insertPatientRecord(
       }
     }
     
-    const patientData = {
-      // Basic Information
-      patient_id: uhid,
-      // barcode_id field removed as it doesn't exist in the database schema
-      name: fullName,
-      date_of_birth: registrationData.dateOfBirth || null,
-      gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
-      marital_status: registrationData.maritalStatus || null,
-      phone: registrationData.phone || null,
-      email: registrationData.email || `${uhid}@annam.com`,
-      address: registrationData.address || null,
+    // First, get the current table schema to understand what columns are available
+    let patientData: any = {};
+    
+    try {
+      // Try to get schema information
+      const { data: sampleData } = await supabase
+        .from('patients')
+        .select('*')
+        .limit(1);
       
-      // Medical Information
-      blood_group: registrationData.bloodGroup || null,
-      allergies: registrationData.allergies || null,
-      medical_history: registrationData.medicalHistory || null,
-      current_medications: registrationData.currentMedications || null,
-      chronic_conditions: registrationData.chronicConditions || null,
-      previous_surgeries: registrationData.previousSurgeries || null,
+      // Build patient data dynamically based on what we know about the schema
+      patientData = {
+        // Basic Information
+        patient_id: uhid,
+        name: fullName,
+        date_of_birth: registrationData.dateOfBirth || null,
+        gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
+        marital_status: registrationData.maritalStatus || null,
+        phone: registrationData.phone || null,
+        email: registrationData.email || `${uhid}@annam.com`,
+        address: registrationData.address || null,
+        
+        // Medical Information
+        blood_group: registrationData.bloodGroup || null,
+        allergies: registrationData.allergies || null,
+        medical_history: registrationData.medicalHistory || null,
+        current_medications: registrationData.currentMedications || null,
+        chronic_conditions: registrationData.chronicConditions || null,
+        previous_surgeries: registrationData.previousSurgeries || null,
+        
+        // New Admission Information
+        admission_date: admissionDateTime,
+        admission_time: registrationData.admissionTime || null,
+        primary_complaint: registrationData.primaryComplaint || null,
+        // Validate admission_type against allowed values
+        admission_type: registrationData.admissionType && ['emergency', 'elective', 'referred', 'transfer', 'inpatient', 'outpatient'].includes(registrationData.admissionType) 
+          ? registrationData.admissionType 
+          : null,
+        referring_doctor_facility: registrationData.referringDoctorFacility || null,
+        department_ward: registrationData.departmentWard || null,
+        room_number: registrationData.roomNumber || null,
+        
+        // Guardian/Attendant Details (Optional)
+        guardian_name: registrationData.guardianName || null,
+        guardian_relationship: registrationData.guardianRelationship || null,
+        guardian_phone: registrationData.guardianPhone || null,
+        guardian_address: registrationData.guardianAddress || null,
+        
+        // Emergency Contact (Optional)
+        emergency_contact_name: registrationData.emergencyContactName || null,
+        emergency_contact_phone: registrationData.emergencyContactPhone || null,
+        emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
+        
+        // Insurance Information
+        insurance_number: registrationData.insuranceNumber || null,
+        insurance_provider: registrationData.insuranceProvider || null,
+        
+        // Additional fields
+        initial_symptoms: registrationData.initialSymptoms || null,
+        referred_by: registrationData.referredBy || null,
+        
+        // QR Code
+        qr_code: qrCodeDataUrl,
+        
+        // Link to users table
+        user_id: userId || null,
+        
+        // System fields
+        status: 'active'
+      };
+
+      // Conditionally add age and diagnosis if they exist in the schema
+      if (sampleData && sampleData.length > 0) {
+        const samplePatient = sampleData[0];
+        // Check if age column exists
+        if ('age' in samplePatient) {
+          patientData.age = registrationData.age ? parseInt(registrationData.age) : null;
+        }
+        
+        // Check if diagnosis column exists
+        if ('diagnosis' in samplePatient) {
+          patientData.diagnosis = registrationData.diagnosis || null;
+        }
+      }
+    } catch (schemaError) {
+      console.warn('Could not fetch schema information, using fallback approach');
       
-      // New Admission Information
-      admission_date: admissionDateTime,
-      admission_time: registrationData.admissionTime || null,
-      primary_complaint: registrationData.primaryComplaint || null,
-      admission_type: registrationData.admissionType || null,
-      referring_doctor_facility: registrationData.referringDoctorFacility || null,
-      department_ward: registrationData.departmentWard || null,
-      room_number: registrationData.roomNumber || null,
+      // Fallback: build basic patient data without age and diagnosis initially
+      patientData = {
+        patient_id: uhid,
+        name: fullName,
+        date_of_birth: registrationData.dateOfBirth || null,
+        gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
+        marital_status: registrationData.maritalStatus || null,
+        phone: registrationData.phone || null,
+        email: registrationData.email || `${uhid}@annam.com`,
+        address: registrationData.address || null,
+        blood_group: registrationData.bloodGroup || null,
+        allergies: registrationData.allergies || null,
+        medical_history: registrationData.medicalHistory || null,
+        current_medications: registrationData.currentMedications || null,
+        chronic_conditions: registrationData.chronicConditions || null,
+        previous_surgeries: registrationData.previousSurgeries || null,
+        admission_date: admissionDateTime,
+        admission_time: registrationData.admissionTime || null,
+        primary_complaint: registrationData.primaryComplaint || null,
+        // Validate admission_type against allowed values
+        admission_type: registrationData.admissionType && ['emergency', 'elective', 'referred', 'transfer', 'inpatient', 'outpatient'].includes(registrationData.admissionType) 
+          ? registrationData.admissionType 
+          : null,
+        referring_doctor_facility: registrationData.referringDoctorFacility || null,
+        department_ward: registrationData.departmentWard || null,
+        room_number: registrationData.roomNumber || null,
+        guardian_name: registrationData.guardianName || null,
+        guardian_relationship: registrationData.guardianRelationship || null,
+        guardian_phone: registrationData.guardianPhone || null,
+        guardian_address: registrationData.guardianAddress || null,
+        emergency_contact_name: registrationData.emergencyContactName || null,
+        emergency_contact_phone: registrationData.emergencyContactPhone || null,
+        emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
+        insurance_number: registrationData.insuranceNumber || null,
+        insurance_provider: registrationData.insuranceProvider || null,
+        initial_symptoms: registrationData.initialSymptoms || null,
+        referred_by: registrationData.referredBy || null,
+        qr_code: qrCodeDataUrl,
+        user_id: userId || null,
+        status: 'active'
+      };
       
-      // Guardian/Attendant Details (Optional)
-      guardian_name: registrationData.guardianName || null,
-      guardian_relationship: registrationData.guardianRelationship || null,
-      guardian_phone: registrationData.guardianPhone || null,
-      guardian_address: registrationData.guardianAddress || null,
-      
-      // Emergency Contact (Optional)
-      emergency_contact_name: registrationData.emergencyContactName || null,
-      emergency_contact_phone: registrationData.emergencyContactPhone || null,
-      emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
-      
-      // Insurance Information
-      insurance_number: registrationData.insuranceNumber || null,
-      insurance_provider: registrationData.insuranceProvider || null,
-      
-      // Additional fields
-      initial_symptoms: registrationData.initialSymptoms || null,
-      referred_by: registrationData.referredBy || null,
-      
-      // QR Code
-      qr_code: qrCodeDataUrl,
-      
-      // Link to users table
-      user_id: userId || null,
-      
-      // System fields
-      status: 'active'
-    };
+      // Try to add age and diagnosis, but handle errors gracefully
+      try {
+        // Check if age column exists in the actual table structure
+        const { data: tableInfo, error: tableError } = await supabase
+          .from('patients')
+          .select('*')
+          .limit(1);
+        
+        if (!tableError && tableInfo && tableInfo.length > 0) {
+          const sampleRow = tableInfo[0];
+          if ('age' in sampleRow) {
+            patientData.age = registrationData.age ? parseInt(registrationData.age) : null;
+          }
+          if ('diagnosis' in sampleRow) {
+            patientData.diagnosis = registrationData.diagnosis || null;
+          }
+        }
+      } catch (columnError) {
+        console.warn('Age/diagnosis columns may not exist in schema, will be skipped in insert');
+      }
+    }
 
     const { data: patient, error } = await supabase
       .from('patients')
@@ -318,8 +418,8 @@ export async function insertPatientRecord(
       .single();
 
     if (error) {
-      console.error('Error inserting patient record:', error);
-      throw new Error(`Failed to create patient record: ${error.message}`);
+      console.error('Error inserting patient record:', error?.message || error?.code || error);
+      throw new Error(`Failed to create patient record: ${error?.message || error?.code || 'Unknown error'}`);
     }
 
     return patient;
@@ -336,7 +436,7 @@ export async function insertPatientRecord(
 export async function createPartyRecord(
   uhid: string,
   registrationData: PatientRegistrationData
-): Promise<string> {
+): Promise<string | undefined> {
   try {
     // Handle optional name fields - use UHID as fallback if no name provided
     const firstName = registrationData.firstName?.trim() || '';
@@ -345,18 +445,49 @@ export async function createPartyRecord(
       ? `${firstName} ${lastName}` 
       : firstName || lastName || `Patient ${uhid}`;
 
-    // First, try to get the actual party table structure
-    const { data: existingParties, error: schemaError } = await supabase
-      .from('party')
-      .select('*')
-      .limit(1);
+    // First, check if the party table exists by trying a simple query
+    try {
+      const { error: tableCheckError } = await supabase
+        .from('party')
+        .select('id')
+        .limit(1);
 
+      // If we get an error indicating the table doesn't exist, skip party creation
+      if (tableCheckError && (tableCheckError.message.includes('does not exist') || tableCheckError.message.includes('relation') || tableCheckError.message.includes('not found'))) {
+        console.warn('Party table does not exist, skipping party creation');
+        return undefined;
+      }
+    } catch (tableCheckException) {
+      // If any exception occurs during table check, skip party creation
+      console.warn('Unable to verify party table existence, skipping party creation');
+      return undefined;
+    }
+
+    // Try to get the actual party table structure
+    let existingParties;
+    let schemaError;
+    try {
+      const result = await supabase
+        .from('party')
+        .select('*')
+        .limit(1);
+      existingParties = result.data;
+      schemaError = result.error;
+    } catch (e) {
+      schemaError = e;
+    }
+
+    // If party table doesn't exist or has issues, skip party creation
     if (schemaError) {
-      console.error('Error checking party schema:', schemaError);
-      // If party table doesn't exist or has issues, skip party creation
-      // and generate a UUID to use as party_id
-      console.warn('Skipping party creation, generating UUID for party_id');
-      return crypto.randomUUID();
+      console.error('Error checking party schema:', (schemaError as any)?.message || (schemaError as any)?.error || schemaError);
+      console.warn('Skipping party creation due to schema error');
+      return undefined;
+    }
+
+    // If no party table exists, skip party creation
+    if (!existingParties) {
+      console.warn('Party table appears to be empty or inaccessible, skipping party creation');
+      return undefined;
     }
 
     // Build party data based on available columns
@@ -371,6 +502,7 @@ export async function createPartyRecord(
       const sampleParty = existingParties[0];
       if ('name' in sampleParty) partyData.name = fullName;
       if ('party_name' in sampleParty) partyData.party_name = fullName;
+      if ('full_name' in sampleParty) partyData.full_name = fullName;  // Handle full_name column specifically
       if ('phone' in sampleParty) partyData.phone = registrationData.phone || null;
       if ('email' in sampleParty) partyData.email = registrationData.email || `${uhid}@annam.com`;
       if ('address' in sampleParty) partyData.address = registrationData.address || null;
@@ -383,14 +515,18 @@ export async function createPartyRecord(
       .single();
 
     if (error) {
-      console.error('Error creating party record:', error);
-      throw new Error(`Failed to create party record: ${error.message}`);
+      console.error('Error creating party record:', error?.message || error?.code || error);
+      // Don't throw error, just return undefined to continue registration
+      console.warn('Failed to create party record, continuing without party_id');
+      return undefined;
     }
 
-    return party.id;
+    return party?.id || undefined;
   } catch (error) {
-    console.error('Error creating party record:', error);
-    throw error;
+    console.error('Error creating party record:', error instanceof Error ? error.message : error);
+    // Don't throw error, just return undefined to continue registration
+    console.warn('Exception in party creation, continuing without party_id');
+    return undefined;
   }
 }
 
@@ -457,8 +593,8 @@ export async function linkAuthUserToPatient(
       .single();
 
     if (error) {
-      console.error('Error creating user record:', error);
-      throw new Error(`Failed to create user record: ${error.message}`);
+      console.error('Error creating user record:', error?.message || error?.code || error);
+      throw new Error(`Failed to create user record: ${error?.message || error?.code || 'Unknown error'}`);
     }
 
     return user;
@@ -536,7 +672,7 @@ export async function registerNewPatient(
       partyId = await createPartyRecord(uhid, registrationData);
       console.log('Created party record:', partyId);
     } catch (partyError) {
-      console.warn('Party creation failed, continuing without party_id:', partyError);
+      console.warn('Party creation failed, continuing without party_id:', partyError instanceof Error ? partyError.message : partyError);
       // Continue without party_id - it's optional
       partyId = undefined; // Explicitly set to undefined
     }
@@ -575,6 +711,157 @@ export async function registerNewPatient(
       }
     }
 
+    // Step 7: For outpatient registrations, create an appointment for today
+    if (registrationData.admissionType === 'outpatient') {
+      try {
+        // Get a default doctor (first available doctor)
+        const { data: doctors } = await supabase
+          .from('doctors')
+          .select('id')
+          .limit(1);
+        
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (doctors && doctors.length > 0) {
+          const doctorId = doctors[0].id;
+          
+          const appointmentData: AppointmentData = {
+            patientId: patient.id,
+            doctorId: doctorId,
+            appointmentDate: today,
+            appointmentTime: '09:00:00',
+            durationMinutes: 30,
+            type: 'consultation',
+            isEmergency: false,
+            chiefComplaint: registrationData.primaryComplaint || 'General consultation'
+          };          
+          const appointment = await createAppointment(appointmentData);
+          console.log('Created outpatient appointment:', appointment.id);
+        } else {
+          // If no doctors exist, create a basic appointment record directly
+          console.log('No doctors found, creating direct appointment record');
+          
+          // Try to create using the new appointment structure first
+          try {
+            // Create encounter first
+            const scheduledAt = `${today}T09:00:00`;
+            
+            const encounterRecord = {
+              patient_id: patient.id,
+              start_at: scheduledAt
+            };
+            
+            const { data: encounter, error: encounterError } = await supabase
+              .from('encounter')
+              .insert([encounterRecord])
+              .select()
+              .single();
+              
+            if (encounterError) {
+              throw new Error(`Failed to create encounter: ${encounterError.message}`);
+            }
+            
+            // Now create appointment with encounter_id
+            const appointmentRecord = {
+              encounter_id: encounter.id,
+              scheduled_at: scheduledAt,
+              duration_minutes: 30
+            };
+            
+            const { data: directAppointment, error: directError } = await supabase
+              .from('appointment')
+              .insert([appointmentRecord])
+              .select()
+              .single();
+              
+            if (directError) {
+              console.error('Error creating direct appointment in new structure:', directError);
+              
+              // Fallback to legacy structure
+              const appointmentId = `APT${Date.now()}`;
+              
+              const legacyAppointmentRecord = {
+                appointment_id: appointmentId,
+                patient_id: patient.id,
+                appointment_date: today,
+                appointment_time: '09:00:00',
+                duration_minutes: 30,
+                type: 'consultation',
+                status: 'scheduled',
+                chief_complaint: registrationData.primaryComplaint || 'General consultation'
+              };
+              
+              const { data: legacyAppointment, error: legacyError } = await supabase
+                .from('appointments')
+                .insert([legacyAppointmentRecord])
+                .select()
+                .single();
+                
+              if (legacyError) {
+                console.error('Error creating direct appointment in legacy structure:', legacyError);
+              } else {
+                console.log('Created direct appointment using legacy structure:', legacyAppointment.id);
+              }
+            } else {
+              console.log('Created direct appointment using new structure:', directAppointment.id);
+            }
+          } catch (structureError) {
+            console.error('Error creating appointment with new structure:', structureError);
+            
+            // Fallback to legacy structure
+            const appointmentId = `APT${Date.now()}`;
+            
+            const legacyAppointmentRecord = {
+              appointment_id: appointmentId,
+              patient_id: patient.id,
+              appointment_date: today,
+              appointment_time: '09:00:00',
+              duration_minutes: 30,
+              type: 'consultation',
+              status: 'scheduled',
+              chief_complaint: registrationData.primaryComplaint || 'General consultation'
+            };
+            
+            const { data: legacyAppointment, error: legacyError } = await supabase
+              .from('appointments')
+              .insert([legacyAppointmentRecord])
+              .select()
+              .single();
+              
+            if (legacyError) {
+              console.error('Error creating direct appointment in legacy structure:', legacyError);
+            } else {
+              console.log('Created direct appointment using legacy structure:', legacyAppointment.id);
+            }
+          }
+        }
+      } catch (appointmentError) {
+        console.error('Error creating outpatient appointment:', appointmentError);
+        // Don't fail the entire registration if appointment creation fails
+      }
+    }
+
+    // Step 8: Allocate bed if this is an inpatient registration and a bed is selected
+    if (registrationData.admissionType === 'inpatient' && registrationData.selectedBedId) {
+      try {
+        const bedAllocationData: BedAllocationData = {
+          patientId: patient.id,
+          bedId: registrationData.selectedBedId,
+          admissionDate: registrationData.admissionDate || new Date().toISOString(),
+          admissionType: 'scheduled', // Default to scheduled for new registrations
+          reason: `Inpatient admission - ${registrationData.primaryComplaint || 'General admission'}`
+        };
+        const bedAllocation = await allocateBed(bedAllocationData);
+        console.log('Created bed allocation:', bedAllocation.id);
+        
+        // Update patient status to admitted
+        await updatePatientAdmissionStatus(uhid, true);
+      } catch (bedError) {
+        console.error('Error allocating bed:', bedError);
+        // Don't fail the entire registration if bed allocation fails
+      }
+    }
+
     return {
       success: true,
       patient,
@@ -584,7 +871,7 @@ export async function registerNewPatient(
     };
 
   } catch (error) {
-    console.error('Error registering new patient:', error);
+    console.error('Error registering new patient:', error instanceof Error ? error.message : error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -620,21 +907,39 @@ export async function validateUHIDUnique(uhid: string): Promise<boolean> {
  */
 export async function getPatientByUHID(uhid: string): Promise<any> {
   try {
+    // Validate UHID format
+    if (!uhid || typeof uhid !== 'string' || uhid.trim() === '') {
+      throw new Error('Invalid UHID provided');
+    }
+    
+    const trimmedUHID = uhid.trim();
+    
     const { data: patient, error } = await supabase
       .from('patients')
       .select('*')
-      .eq('patient_id', uhid)
+      .eq('patient_id', trimmedUHID)
       .single();
 
     if (error) {
       console.error('Error fetching patient by UHID:', error);
-      throw new Error(`Patient not found: ${error.message}`);
+      const errorMessage = error?.message || error?.code || String(error) || 'Unknown database error';
+      // Handle case where patient is not found
+      if (error.code === 'PGRST116') {
+        throw new Error(`Patient with UHID ${trimmedUHID} not found`);
+      }
+      throw new Error(`Database error while fetching patient: ${errorMessage}`);
+    }
+    
+    // Handle case where patient is null but no error was thrown
+    if (!patient) {
+      throw new Error(`Patient with UHID ${trimmedUHID} not found`);
     }
 
     return patient;
   } catch (error) {
     console.error('Error fetching patient by UHID:', error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch patient: ${errorMessage}`);
   }
 }
 
@@ -644,7 +949,26 @@ export async function getPatientByUHID(uhid: string): Promise<any> {
 export async function getPatientWithRelatedData(uhid: string): Promise<any> {
   try {
     // First get the basic patient data
-    const patient = await getPatientByUHID(uhid);
+    let patient;
+    // Check if the ID is a UUID (database ID) or UHID format
+    if (uhid.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      // If it's a UUID, we need to find the patient by database ID
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('id', uhid)
+        .single();
+      
+      if (patientError) {
+        console.error('Error fetching patient by database ID:', patientError);
+        throw new Error(`Patient not found: ${patientError.message || 'Unknown error'}`);
+      }
+      
+      patient = patientData;
+    } else {
+      // It's a UHID format, use the existing function
+      patient = await getPatientByUHID(uhid);
+    }
     
     if (!patient) {
       throw new Error('Patient not found');
@@ -702,7 +1026,8 @@ export async function getPatientWithRelatedData(uhid: string): Promise<any> {
     return patient;
   } catch (error) {
     console.error('Error fetching patient with related data:', error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch patient with related data: ${errorMessage}`);
   }
 }
 
@@ -772,11 +1097,12 @@ export async function getAllPatients(
     }
 
     // Get active bed allocations to determine admission status
+    // Note: 'allocated' status means the patient is currently admitted
     const { data: activeBedAllocations } = await supabase
       .from('bed_allocations')
       .select('patient_id')
-      .eq('status', 'active')
-      .is('discharge_date', null);
+      .eq('status', 'allocated')
+      .is('discharged_at', null);
 
     const admittedPatientIds = new Set((activeBedAllocations || []).map(a => a.patient_id));
 
