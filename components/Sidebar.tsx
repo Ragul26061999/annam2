@@ -19,7 +19,9 @@ import {
   Activity,
   IndianRupee,
   User,
-  BedDouble
+  BedDouble,
+  Microscope,
+  Radiation
 } from 'lucide-react';
 
 interface NavItem {
@@ -95,6 +97,12 @@ const Sidebar: React.FC = () => {
       label: 'Pharmacy', 
       icon: <Pill size={18} />, 
       color: 'text-pink-600'
+    },
+    { 
+      href: '/lab-xray', 
+      label: 'Lab & X-Ray', 
+      icon: <Microscope size={18} />, 
+      color: 'text-teal-600'
     },
     { 
       href: '/beds', 
