@@ -117,6 +117,28 @@ export async function getLabTestCatalog(): Promise<LabTestCatalog[]> {
 }
 
 /**
+ * Create a new lab test in the catalog
+ */
+export async function createLabTestCatalogEntry(testData: Partial<LabTestCatalog>): Promise<LabTestCatalog> {
+  const { data, error } = await supabase
+    .from('lab_test_catalog')
+    .insert([{
+      fasting_required: false, // Default
+      ...testData,
+      test_code: testData.test_code || `LAB-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      is_active: true
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating lab test:', JSON.stringify(error, null, 2));
+    throw new Error(`Failed to create lab test: ${error.message || error.code || 'Unknown error'}`);
+  }
+  return data;
+}
+
+/**
  * Get lab tests by category
  */
 export async function getLabTestsByCategory(category: string): Promise<LabTestCatalog[]> {
@@ -166,6 +188,29 @@ export async function getRadiologyTestCatalog(): Promise<RadiologyTestCatalog[]>
     console.error('Error in getRadiologyTestCatalog:', error);
     return [];
   }
+}
+
+/**
+ * Create a new radiology test in the catalog
+ */
+export async function createRadiologyTestCatalogEntry(testData: Partial<RadiologyTestCatalog>): Promise<RadiologyTestCatalog> {
+  const { data, error } = await supabase
+    .from('radiology_test_catalog')
+    .insert([{
+      contrast_required: false, // Default
+      requires_sedation: false, // Default
+      ...testData,
+      test_code: testData.test_code || `RAD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      is_active: true
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating radiology test:', JSON.stringify(error, null, 2));
+    throw new Error(`Failed to create radiology test: ${error.message || error.code || 'Unknown error'}`);
+  }
+  return data;
 }
 
 /**

@@ -1,0 +1,754 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+    Radiation,
+    ChevronLeft,
+    Search,
+    User,
+    CreditCard,
+    Plus,
+    Trash2,
+    FileText,
+    Upload,
+    Clock,
+    CheckCircle2,
+    AlertCircle,
+    Hash,
+    Stethoscope,
+    ChevronDown,
+    X,
+    Printer,
+    Loader2,
+    Zap,
+    Activity,
+    Monitor,
+    Save
+} from 'lucide-react';
+import { supabase } from '../../../src/lib/supabase';
+import {
+    getRadiologyTestCatalog,
+    createRadiologyTestOrder,
+    createRadiologyTestCatalogEntry,
+    RadiologyTestCatalog
+} from '../../../src/lib/labXrayService';
+import { getAllDoctorsSimple } from '../../../src/lib/doctorService';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface TestSelection {
+    testId: string;
+    testName: string;
+    groupName: string; // Modality for X-ray
+    bodyPart: string;
+    amount: number;
+}
+
+export default function XrayOrderPage() {
+    const router = useRouter();
+    const [loading, setLoading] = useState(true);
+    const [searchingPatient, setSearchingPatient] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [success, setSuccess] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Master Data
+    const [radCatalog, setRadCatalog] = useState<RadiologyTestCatalog[]>([]);
+    const [doctors, setDoctors] = useState<any[]>([]);
+
+    // Search States
+    const [uhidSearch, setUhidSearch] = useState('');
+
+    // New Test State
+    const [showNewTestModal, setShowNewTestModal] = useState(false);
+    const [newTestData, setNewTestData] = useState({
+        testName: '',
+        groupName: '', // Modality
+        amount: 0
+    });
+    const [creatingTest, setCreatingTest] = useState(false);
+
+    // Patient Details
+    const [patientDetails, setPatientDetails] = useState({
+        id: '',
+        uhid: '',
+        name: '',
+        gender: '',
+        age: '',
+        contactNo: '',
+        emailId: ''
+    });
+
+    // Order Details
+    const [selectedTests, setSelectedTests] = useState<TestSelection[]>([
+        { testId: '', testName: '', groupName: '', bodyPart: '', amount: 0 }
+    ]);
+    const [orderingDoctorId, setOrderingDoctorId] = useState('');
+    const [clinicalIndication, setClinicalIndication] = useState('');
+    const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
+    const [totalAmount, setTotalAmount] = useState(0);
+
+    useEffect(() => {
+        loadInitialData();
+    }, []);
+
+    useEffect(() => {
+        const total = selectedTests.reduce((sum, test) => sum + test.amount, 0);
+        setTotalAmount(total);
+    }, [selectedTests]);
+
+    const loadInitialData = async () => {
+        try {
+            setLoading(true);
+            const [catalog, doctorsList] = await Promise.all([
+                getRadiologyTestCatalog(),
+                getAllDoctorsSimple()
+            ]);
+            setRadCatalog(catalog || []);
+            setDoctors(doctorsList || []);
+        } catch (err) {
+            console.error('Error loading data:', err);
+            setError('Failed to load radiology catalog.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUHIDSearch = async () => {
+        if (!uhidSearch.trim()) return;
+
+        setSearchingPatient(true);
+        setError(null);
+        try {
+            const { data, error } = await supabase
+                .from('patients')
+                .select('*')
+                .ilike('patient_id', uhidSearch.trim())
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    setError('Patient not found with this UHID.');
+                } else {
+                    throw error;
+                }
+                return;
+            }
+
+            if (data) {
+                let age = '';
+                if (data.date_of_birth) {
+                    const birthDate = new Date(data.date_of_birth);
+                    const today = new Date();
+                    let years = today.getFullYear() - birthDate.getFullYear();
+                    const m = today.getMonth() - birthDate.getMonth();
+                    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                        years--;
+                    }
+                    age = years.toString();
+                }
+
+                setPatientDetails({
+                    id: data.id,
+                    uhid: data.patient_id,
+                    name: data.name,
+                    gender: data.gender || '',
+                    age: age,
+                    contactNo: data.phone || '',
+                    emailId: data.email || ''
+                });
+            }
+        } catch (err: any) {
+            console.error('Patient search error:', err);
+            setError('An error occurred while searching for the patient.');
+        } finally {
+            setSearchingPatient(false);
+        }
+    };
+
+    const handleCreateNewTest = async () => {
+        if (!newTestData.testName || !newTestData.groupName) {
+            setError('Test name and modality are required.');
+            return;
+        }
+
+        try {
+            setCreatingTest(true);
+            const newEntry = await createRadiologyTestCatalogEntry({
+                test_name: newTestData.testName,
+                modality: newTestData.groupName,
+                test_cost: newTestData.amount
+            });
+
+            // Update master data
+            setRadCatalog(prev => [...prev, newEntry]);
+
+            // Success!
+            setNewTestData({ testName: '', groupName: '', amount: 0 });
+            setShowNewTestModal(false);
+        } catch (err: any) {
+            console.error('Error creating test:', err);
+            setError('Failed to create new radiology catalog entry.');
+        } finally {
+            setCreatingTest(false);
+        }
+    };
+
+    const addTest = () => {
+        setSelectedTests([...selectedTests, { testId: '', testName: '', groupName: '', bodyPart: '', amount: 0 }]);
+    };
+
+    const removeTest = (index: number) => {
+        if (selectedTests.length === 1) return;
+        const newTests = [...selectedTests];
+        newTests.splice(index, 1);
+        setSelectedTests(newTests);
+    };
+
+    const handleTestChange = (index: number, testId: string) => {
+        const test = radCatalog.find(t => t.id === testId);
+        if (!test) return;
+
+        const newTests = [...selectedTests];
+        newTests[index] = {
+            testId: test.id,
+            testName: test.test_name,
+            groupName: test.modality || 'X-Ray',
+            bodyPart: test.body_part || '',
+            amount: test.test_cost || 0
+        };
+        setSelectedTests(newTests);
+    };
+
+    const handleManualAmountChange = (index: number, amount: number) => {
+        const newTests = [...selectedTests];
+        newTests[index].amount = amount;
+        setSelectedTests(newTests);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!patientDetails.id) {
+            setError('Please search and select a patient first.');
+            return;
+        }
+        if (!orderingDoctorId) {
+            setError('Please select an ordering doctor.');
+            return;
+        }
+        if (selectedTests.some(t => !t.testId)) {
+            setError('Please select all radiology scans or remove empty rows.');
+            return;
+        }
+
+        setSubmitting(true);
+        setError(null);
+
+        try {
+            const promises = selectedTests.map(test =>
+                createRadiologyTestOrder({
+                    patient_id: patientDetails.id,
+                    ordering_doctor_id: orderingDoctorId,
+                    test_catalog_id: test.testId,
+                    clinical_indication: clinicalIndication,
+                    urgency: urgency,
+                    status: 'ordered',
+                    body_part: test.bodyPart
+                })
+            );
+
+            await Promise.all(promises);
+            setSuccess(true);
+            setTimeout(() => router.push('/lab-xray'), 2000);
+        } catch (err: any) {
+            console.error('Submission error:', err);
+            setError(err.message || 'Failed to create radiology orders.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
+                <div className="flex flex-col items-center">
+                    <Loader2 className="h-12 w-12 text-cyan-600 animate-spin mb-4" />
+                    <p className="text-slate-500 font-medium">Calibrating Radiology Suite...</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-[#f8fafc] p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <Link href="/lab-xray" className="group flex items-center gap-2 text-slate-500 hover:text-cyan-600 transition-colors">
+                        <div className="p-2 rounded-lg bg-white border border-slate-200 group-hover:border-cyan-200 transition-all">
+                            <ChevronLeft size={20} />
+                        </div>
+                        <span className="font-bold tracking-tight text-sm uppercase">Diagnostics Central</span>
+                    </Link>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-cyan-50 text-cyan-700 rounded-xl border border-cyan-100 shadow-sm">
+                            <Clock size={16} />
+                            <span className="text-xs font-black uppercase tracking-wider">{new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Patient Search (1/3) */}
+                    <div className="lg:col-span-1 space-y-6">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden"
+                        >
+                            <div className="p-7 bg-gradient-to-br from-cyan-600 to-blue-700 text-white relative">
+                                <div className="relative z-10 flex items-center gap-4">
+                                    <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl border border-white/20">
+                                        <User size={24} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black tracking-tight">Radiology Client</h2>
+                                        <p className="text-cyan-100 text-[10px] font-bold uppercase tracking-widest">Image Acquisition Request</p>
+                                    </div>
+                                </div>
+                                <Radiation className="absolute top-0 right-0 h-32 w-32 text-white/5 -mr-8 -mt-8 rotate-12" />
+                            </div>
+
+                            <div className="p-7 space-y-6">
+                                {/* UHID Search */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Universal Health ID</label>
+                                    <div className="relative group">
+                                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-all ${searchingPatient ? 'text-cyan-500 animate-pulse' : 'text-slate-400 group-focus-within:text-cyan-500'}`} size={18} />
+                                        <input
+                                            type="text"
+                                            placeholder="SCAN UHID OR TYPE..."
+                                            value={uhidSearch}
+                                            onChange={(e) => setUhidSearch(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleUHIDSearch()}
+                                            className="w-full pl-12 pr-12 py-4 bg-slate-50 border-2 border-transparent focus:border-cyan-500 focus:bg-white rounded-[1.25rem] transition-all outline-none text-sm font-black text-slate-700 placeholder:text-slate-300 uppercase tracking-tight"
+                                        />
+                                        {uhidSearch && (
+                                            <button
+                                                onClick={() => setUhidSearch('')}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-red-500"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={handleUHIDSearch}
+                                        className="w-full py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {searchingPatient ? <Loader2 className="animate-spin h-4 w-4" /> : 'Validate Patient'}
+                                    </button>
+                                </div>
+
+                                {/* Auto-filled Form Details */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    {[
+                                        { label: 'Name', value: patientDetails.name },
+                                        { label: 'UHID', value: patientDetails.uhid },
+                                        { label: 'Gender / Age', value: patientDetails.gender ? `${patientDetails.gender} / ${patientDetails.age} Yrs` : null },
+                                        { label: 'Contact', value: patientDetails.contactNo },
+                                        { label: 'Email', value: patientDetails.emailId }
+                                    ].map((field, i) => (
+                                        <motion.div
+                                            key={field.label}
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: i * 0.05 }}
+                                            className="flex flex-col gap-1"
+                                        >
+                                            <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">{field.label}</span>
+                                            <div className="text-sm font-bold text-slate-600 px-1 truncate">
+                                                {field.value || '--'}
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+
+                    {/* Radiology Order Form (2/3) */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-full"
+                        >
+                            <div className="p-7 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-white border border-slate-200 rounded-2xl text-cyan-600 shadow-sm">
+                                        <Activity size={20} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black text-slate-900 tracking-tight">Radiological Procedures</h2>
+                                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Select modality and body regions</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={addTest}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-700 transition-all shadow-lg shadow-cyan-100"
+                                    >
+                                        <Plus size={16} />
+                                        Add Procedure
+                                    </button>
+                                    <button
+                                        onClick={() => setShowNewTestModal(true)}
+                                        className="flex items-center gap-2 px-5 py-2.5 border-2 border-cyan-500 text-cyan-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-50 transition-all"
+                                    >
+                                        <Monitor size={16} />
+                                        New Catalog
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-7 flex-1 space-y-6 overflow-y-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-slate-200">
+                                <AnimatePresence>
+                                    {selectedTests.map((test, index) => (
+                                        <motion.div
+                                            key={`rad-test-${index}`}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95 }}
+                                            className="relative grid grid-cols-1 md:grid-cols-12 gap-5 p-6 bg-slate-50 rounded-[1.5rem] border border-slate-100 hover:border-cyan-200 transition-all group shadow-sm"
+                                        >
+                                            <div className="md:col-span-5 space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Procedure Name</label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={test.testId}
+                                                        onChange={(e) => handleTestChange(index, e.target.value)}
+                                                        className="w-full pl-4 pr-10 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-black text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none appearance-none cursor-pointer tracking-tight"
+                                                    >
+                                                        <option value="">CHOOSE SCAN...</option>
+                                                        {radCatalog.map(item => (
+                                                            <option key={item.id} value={item.id}>{item.test_name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={16} />
+                                                </div>
+                                            </div>
+
+                                            <div className="md:col-span-3 space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Modality</label>
+                                                <div className="px-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 uppercase tracking-widest text-center shadow-inner">
+                                                    {test.groupName || 'IMAGE'}
+                                                </div>
+                                            </div>
+
+                                            <div className="md:col-span-4 space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Cost / Amount (₹)</label>
+                                                <div className="relative">
+                                                    <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                                    <input
+                                                        type="number"
+                                                        value={test.amount}
+                                                        onChange={(e) => handleManualAmountChange(index, parseFloat(e.target.value) || 0)}
+                                                        className="w-full pl-10 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-black text-cyan-700 focus:ring-2 focus:ring-cyan-500 outline-none tracking-tighter"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Region Input - Extra field for Xray */}
+                                            <div className="md:col-span-12 space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Specific Region / View Details</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="E.g. AP & LATERAL, OBLIQUE VIEW, CONTRAST REQUIRED"
+                                                    value={test.bodyPart}
+                                                    onChange={(e) => {
+                                                        const newTests = [...selectedTests];
+                                                        newTests[index].bodyPart = e.target.value;
+                                                        setSelectedTests(newTests);
+                                                    }}
+                                                    className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 placeholder:text-slate-300 outline-none focus:border-cyan-300 transition-all"
+                                                />
+                                            </div>
+
+                                            {selectedTests.length > 1 && (
+                                                <button
+                                                    onClick={() => removeTest(index)}
+                                                    className="absolute -top-3 -right-3 p-2 bg-white border border-slate-200 text-slate-300 hover:text-red-500 hover:border-red-100 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all z-10"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+
+                                {/* Secondary Form Details */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+                                    <div className="space-y-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referring Physician</label>
+                                            <select
+                                                value={orderingDoctorId}
+                                                onChange={(e) => setOrderingDoctorId(e.target.value)}
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500"
+                                            >
+                                                <option value="">SELECT INTERNAL DOCTOR...</option>
+                                                {doctors.map(d => (
+                                                    <option key={d.id} value={d.id}>Dr. {d.user?.name || d.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clinical Instruction</label>
+                                            <textarea
+                                                rows={3}
+                                                value={clinicalIndication}
+                                                onChange={(e) => setClinicalIndication(e.target.value)}
+                                                placeholder="INDICATIONS FOR SCAN..."
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none resize-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Radiation Safety / Consents</label>
+                                            <div className="border-2 border-dashed border-slate-200 rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 bg-slate-50 hover:bg-cyan-50 hover:border-cyan-200 transition-all cursor-pointer group">
+                                                <div className="p-4 bg-white rounded-2xl border border-slate-200 text-slate-400 group-hover:text-cyan-500 group-hover:border-cyan-200 shadow-sm transition-all animate-none group-hover:animate-bounce">
+                                                    <Upload size={26} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-xs font-black text-slate-700 uppercase tracking-tighter">Attach Clinical Report</p>
+                                                    <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">PDF, DICOM OR IMG MAX 25MB</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Billing Action Section */}
+                            <div className="p-7 bg-slate-900 border-t border-slate-800 rounded-b-[2rem]">
+                                <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                                    <div className="flex items-center gap-10">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-2">Total Estimated Bill</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-cyan-500 text-xl font-black">₹</span>
+                                                <span className="text-5xl font-black text-white tracking-tighter">{totalAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col border-l border-slate-800 pl-10">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-2">Priority Scan</span>
+                                            <div className="flex gap-2">
+                                                {['routine', 'stat'].map(level => (
+                                                    <button
+                                                        key={level}
+                                                        onClick={() => setUrgency(level as any)}
+                                                        className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${urgency === level ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-900/50' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
+                                                    >
+                                                        {level}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-4 w-full md:w-auto">
+                                        <button
+                                            onClick={() => router.push('/lab-xray')}
+                                            className="flex-1 md:flex-none px-8 py-4 bg-slate-800 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-white transition-all border border-slate-700"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleSubmit}
+                                            disabled={submitting || success}
+                                            className="flex-1 md:flex-none flex items-center justify-center gap-4 px-12 py-5 bg-cyan-500 text-white rounded-[1.5rem] font-black text-lg hover:bg-cyan-400 transition-all shadow-2xl shadow-cyan-900/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                        >
+                                            {submitting ? (
+                                                <>
+                                                    <Loader2 className="animate-spin h-6 w-6" />
+                                                    <span className="uppercase tracking-widest text-sm">Transmitting...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Zap size={24} />
+                                                    <span className="uppercase tracking-widest">Generate Bill</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+
+                {/* Floating Notifications */}
+                <AnimatePresence>
+                    {error && (
+                        <motion.div
+                            key="error-toast"
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="fixed bottom-10 left-1/2 -translate-x-1/2 p-5 bg-white border border-red-100 rounded-[2rem] shadow-2xl flex items-center gap-4 z-[100] max-w-md w-full"
+                        >
+                            <div className="p-3 bg-red-100 rounded-2xl text-red-600 shadow-sm">
+                                <AlertCircle size={20} />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">System Error</p>
+                                <p className="text-xs text-slate-500 font-bold leading-tight">{error}</p>
+                            </div>
+                            <button onClick={() => setError(null)} className="p-2 text-slate-300 hover:text-slate-500">
+                                <X size={20} />
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* Success Modal Overlay */}
+            <AnimatePresence>
+                {success && (
+                    <motion.div
+                        key="success-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[200] p-6"
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            className="bg-white rounded-[3rem] p-12 max-w-md w-full text-center space-y-8 shadow-2xl border border-white/20"
+                        >
+                            <div className="w-28 h-28 bg-cyan-100 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-inner relative overflow-hidden">
+                                <CheckCircle2 size={56} className="text-cyan-600 relative z-10" />
+                                <div className="absolute inset-x-0 bottom-0 h-2 bg-cyan-200"></div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Order Locked!</h3>
+                                <p className="text-slate-500 font-bold text-sm tracking-wide">Procedure request generated and billing initiated for {patientDetails.name}.</p>
+                            </div>
+
+                            <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-4 shadow-inner">
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    <span>BILL ID</span>
+                                    <span className="text-slate-900 text-xs">RAD-{Math.floor(Date.now() / 10000)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Charged</span>
+                                    <span className="text-2xl font-black text-cyan-600 tracking-tighter">₹{totalAmount.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => router.push('/lab-xray')}
+                                    className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-[900] text-sm uppercase tracking-[0.2em] shadow-xl hover:bg-slate-800 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                >
+                                    Confirm & Close
+                                </button>
+                                <div className="flex gap-3">
+                                    <button className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">
+                                        Print Slip
+                                    </button>
+                                    <button className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">
+                                        Send SMS
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* New Test Catalog Modal */}
+            <AnimatePresence>
+                {showNewTestModal && (
+                    <motion.div
+                        key="new-radiology-test-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[210] p-6"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl space-y-8"
+                        >
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">Add New Radiology Catalog</h3>
+                                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Register new procedure type</p>
+                                </div>
+                                <button onClick={() => setShowNewTestModal(false)} className="p-3 hover:bg-slate-100 rounded-2xl transition-all">
+                                    <X size={20} className="text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-5">
+                                <div className="space-y-2 text-left">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Procedure Name</label>
+                                    <input
+                                        type="text"
+                                        value={newTestData.testName}
+                                        onChange={(e) => setNewTestData({ ...newTestData, testName: e.target.value })}
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none"
+                                        placeholder="e.g., Chest X-Ray Lateral"
+                                    />
+                                </div>
+                                <div className="space-y-2 text-left">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Modality (CR, DR, CT, etc.)</label>
+                                    <input
+                                        type="text"
+                                        value={newTestData.groupName}
+                                        onChange={(e) => setNewTestData({ ...newTestData, groupName: e.target.value })}
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none"
+                                        placeholder="e.g., CR"
+                                    />
+                                </div>
+                                <div className="space-y-2 text-left">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Base Scan Cost (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={newTestData.amount}
+                                        onChange={(e) => setNewTestData({ ...newTestData, amount: parseFloat(e.target.value) || 0 })}
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setShowNewTestModal(false)}
+                                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleCreateNewTest}
+                                    disabled={creatingTest}
+                                    className="flex-1 py-4 bg-cyan-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-cyan-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-cyan-100"
+                                >
+                                    {creatingTest ? <Loader2 className="animate-spin h-4 w-4" /> : <Save size={18} />}
+                                    Save Scan
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}

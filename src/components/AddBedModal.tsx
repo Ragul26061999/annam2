@@ -48,7 +48,7 @@ export default function AddBedModal({ isOpen, onClose, onSuccess }: AddBedModalP
         .order('name');
 
       if (error) throw error;
-      
+
       setDepartments(data || []);
       if (data && data.length > 0) {
         setDepartmentId(data[0].id);
@@ -74,21 +74,21 @@ export default function AddBedModal({ isOpen, onClose, onSuccess }: AddBedModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!bedNumber.trim()) {
       setError('Bed number is required');
       return;
     }
-    
+
     if (!roomNumber.trim()) {
       setError('Room number is required');
       return;
     }
-    
+
     try {
       setSubmitting(true);
       setError(null);
-      
+
       // Create new bed
       await createBed({
         bed_number: bedNumber,
@@ -99,7 +99,7 @@ export default function AddBedModal({ isOpen, onClose, onSuccess }: AddBedModalP
         department_id: departmentId,
         features: features.split(',').map(f => f.trim()).filter(f => f)
       });
-      
+
       setSuccess(true);
       setTimeout(() => {
         onSuccess();
@@ -199,10 +199,8 @@ export default function AddBedModal({ isOpen, onClose, onSuccess }: AddBedModalP
                   disabled={submitting}
                 >
                   <option value="general">General</option>
-                  <option value="semi-private">Semi-Private</option>
                   <option value="private">Private</option>
                   <option value="icu">ICU</option>
-                  <option value="nicu">NICU</option>
                   <option value="emergency">Emergency</option>
                 </select>
               </div>

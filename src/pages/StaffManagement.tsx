@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Calendar, Filter, UserPlus, UserCog, AlertCircle } from 'lucide-react';
-import { 
-  getStaffMembers, 
-  getDepartments, 
-  getRoles, 
-  createStaffMember, 
-  updateStaffMember, 
+import {
+  getStaffMembers,
+  getDepartments,
+  getRoles,
+  createStaffMember,
+  updateStaffMember,
   deleteStaffMember,
   bulkDeleteStaff,
-  StaffMember 
+  StaffMember
 } from '../lib/staffService';
 
 const StaffManagement: React.FC = () => {
@@ -18,9 +18,9 @@ const StaffManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
-  const [departments, setDepartments] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<{ id: string, name: string }[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
-  
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -53,9 +53,9 @@ const StaffManagement: React.FC = () => {
       setLoading(true);
       const filters: any = {};
       if (searchTerm) filters.search = searchTerm;
-      if (selectedDepartment) filters.department = selectedDepartment;
+      if (selectedDepartment) filters.department_id = selectedDepartment;
       if (selectedRole) filters.role = selectedRole;
-      
+
       const data = await getStaffMembers(filters);
       setStaffMembers(data);
       setError(null);
@@ -81,7 +81,7 @@ const StaffManagement: React.FC = () => {
 
   const handleBulkDelete = async () => {
     if (selectedRows.length === 0) return;
-    
+
     if (window.confirm(`Are you sure you want to delete ${selectedRows.length} staff members?`)) {
       try {
         await bulkDeleteStaff(selectedRows);
@@ -136,7 +136,7 @@ const StaffManagement: React.FC = () => {
             <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
             <span className="text-red-800">{error}</span>
           </div>
-          <button 
+          <button
             onClick={loadStaffMembers}
             className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
@@ -158,26 +158,26 @@ const StaffManagement: React.FC = () => {
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-4">
           <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Search by name, role, department..." 
+            <input
+              type="text"
+              placeholder="Search by name, role, department..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 bg-gray-100 rounded-xl w-96 focus:outline-none focus:ring-2 focus:ring-primary-200"
             />
             <Search className="absolute left-3 top-2.5 text-gray-500" size={20} />
           </div>
-          <select 
+          <select
             value={selectedDepartment}
             onChange={(e) => setSelectedDepartment(e.target.value)}
             className="px-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200"
           >
             <option value="">All Departments</option>
             {departments.map(dept => (
-              <option key={dept} value={dept}>{dept}</option>
+              <option key={dept.id} value={dept.id}>{dept.name}</option>
             ))}
           </select>
-          <select 
+          <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
             className="px-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200"
@@ -194,14 +194,14 @@ const StaffManagement: React.FC = () => {
         </div>
 
         <div className="flex space-x-3">
-          <button 
+          <button
             className="btn-secondary flex items-center"
             onClick={() => setShowRoleModal(true)}
           >
             <UserCog size={18} className="mr-2" />
             New Role
           </button>
-          <button 
+          <button
             className="btn-primary flex items-center"
             onClick={() => setShowAddModal(true)}
           >
@@ -214,7 +214,7 @@ const StaffManagement: React.FC = () => {
       {/* Role Filter Chips */}
       <div className="flex space-x-2">
         {['All Staff', 'Nurses', 'Lab Technicians', 'Pharmacists', 'Administrative'].map((role) => (
-          <button 
+          <button
             key={role}
             className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-orange-100 hover:text-orange-600"
           >
@@ -230,7 +230,7 @@ const StaffManagement: React.FC = () => {
             <span className="text-sm text-gray-600">{selectedRows.length} selected</span>
             <div className="space-x-2">
               <button className="btn-secondary text-sm">Assign Shift</button>
-              <button 
+              <button
                 onClick={handleBulkDelete}
                 className="btn-secondary text-sm text-red-500 hover:text-red-600"
               >
@@ -245,7 +245,7 @@ const StaffManagement: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="w-12 py-3 px-4">
-                  <input 
+                  <input
                     type="checkbox"
                     checked={selectedRows.length === staffMembers.length}
                     onChange={handleSelectAll}
@@ -262,12 +262,12 @@ const StaffManagement: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {staffMembers.map((staff, index) => (
-                <tr 
-                  key={staff.id} 
+                <tr
+                  key={staff.id}
                   className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-orange-50`}
                 >
                   <td className="py-3 px-4">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={selectedRows.includes(staff.id)}
                       onChange={() => handleRowSelect(staff.id)}
@@ -276,29 +276,25 @@ const StaffManagement: React.FC = () => {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center">
-                      <img 
-                        src={staff.image} 
-                        alt={staff.name} 
-                        className="h-8 w-8 rounded-full object-cover" 
+                      <img
+                        src={staff.image}
+                        alt={staff.name}
+                        className="h-8 w-8 rounded-full object-cover"
                       />
                       <span className="ml-3 font-medium text-gray-900">{staff.name}</span>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-gray-500">{staff.role}</td>
-                  <td className="py-3 px-4 text-gray-500">{staff.department}</td>
+                  <td className="py-3 px-4 text-gray-500">{staff.department_name || 'N/A'}</td>
                   <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                      staff.shift === 'Morning' ? 'bg-green-50 text-green-600' :
-                      staff.shift === 'Evening' ? 'bg-orange-50 text-orange-600' :
-                      'bg-blue-50 text-blue-600'
-                    }`}>
-                      {staff.shift}
+                    <span className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-600">
+                      Standard
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-500">{staff.contact}</td>
+                  <td className="py-3 px-4 text-gray-500">{staff.phone || 'N/A'}</td>
                   <td className="py-3 px-4">
                     <div className="flex justify-end space-x-2">
-                      <button 
+                      <button
                         className="text-gray-400 hover:text-orange-400"
                         onClick={() => {
                           setSelectedStaff(staff);
@@ -310,7 +306,7 @@ const StaffManagement: React.FC = () => {
                       <button className="text-gray-400 hover:text-orange-400">
                         <Edit size={18} />
                       </button>
-                      <button 
+                      <button
                         className="text-gray-400 hover:text-red-400"
                         onClick={() => handleDeleteStaff(staff.id)}
                       >
@@ -337,7 +333,7 @@ const StaffManagement: React.FC = () => {
               <div className="bg-white px-6 pt-5 pb-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-medium text-gray-900">Add New Staff Member</h3>
-                  <button 
+                  <button
                     className="text-gray-400 hover:text-gray-500"
                     onClick={() => setShowAddModal(false)}
                   >
@@ -420,13 +416,13 @@ const StaffManagement: React.FC = () => {
               </div>
 
               <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
-                <button 
+                <button
                   className="btn-secondary"
                   onClick={() => setShowAddModal(false)}
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   className="btn-primary"
                   onClick={() => setShowAddModal(false)}
                 >
@@ -450,17 +446,17 @@ const StaffManagement: React.FC = () => {
               <div className="bg-white px-6 pt-5 pb-6">
                 <div className="flex justify-between items-center mb-4">
                   <div className="flex items-center">
-                    <img 
-                      src={selectedStaff.image} 
-                      alt={selectedStaff.name} 
-                      className="h-10 w-10 rounded-full object-cover" 
+                    <img
+                      src={selectedStaff.image}
+                      alt={selectedStaff.name}
+                      className="h-10 w-10 rounded-full object-cover"
                     />
                     <div className="ml-3">
                       <h3 className="text-lg font-medium text-gray-900">{selectedStaff.name}</h3>
-                      <p className="text-sm text-gray-500">{selectedStaff.role} - {selectedStaff.department}</p>
+                      <p className="text-sm text-gray-500">{selectedStaff.role} - {selectedStaff.department_name}</p>
                     </div>
                   </div>
-                  <button 
+                  <button
                     className="text-gray-400 hover:text-gray-500"
                     onClick={() => setShowScheduleModal(false)}
                   >
@@ -476,13 +472,12 @@ const StaffManagement: React.FC = () => {
                       <div className="font-medium text-gray-900 mb-2">{day}</div>
                       <div className="space-y-2">
                         {['Morning', 'Evening', 'Night'].map((shift) => (
-                          <div 
+                          <div
                             key={shift}
-                            className={`p-2 rounded-lg text-xs cursor-pointer ${
-                              Math.random() > 0.7 ? 'bg-orange-100 text-orange-600' :
+                            className={`p-2 rounded-lg text-xs cursor-pointer ${Math.random() > 0.7 ? 'bg-orange-100 text-orange-600' :
                               Math.random() > 0.5 ? 'bg-gray-100 text-gray-600' :
-                              'bg-white border border-gray-200 hover:border-orange-200'
-                            }`}
+                                'bg-white border border-gray-200 hover:border-orange-200'
+                              }`}
                           >
                             {shift}
                           </div>
@@ -527,7 +522,7 @@ const StaffManagement: React.FC = () => {
               <div className="bg-white px-6 pt-5 pb-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-medium text-gray-900">Create New Role</h3>
-                  <button 
+                  <button
                     className="text-gray-400 hover:text-gray-500"
                     onClick={() => setShowRoleModal(false)}
                   >
@@ -556,8 +551,8 @@ const StaffManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Role Description</label>
-                    <textarea 
-                      className="input-field mt-1" 
+                    <textarea
+                      className="input-field mt-1"
                       rows={3}
                       placeholder="Describe the responsibilities and requirements for this role"
                     ></textarea>
@@ -599,13 +594,13 @@ const StaffManagement: React.FC = () => {
               </div>
 
               <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
-                <button 
+                <button
                   className="btn-secondary"
                   onClick={() => setShowRoleModal(false)}
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   className="btn-primary"
                   onClick={() => setShowRoleModal(false)}
                 >

@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Plus, 
-  Eye, 
-  Clock, 
-  Phone, 
+import {
+  Users,
+  Search,
+  Filter,
+  Plus,
+  Eye,
+  Clock,
+  Phone,
   MapPin,
   UserCheck,
   TrendingUp,
@@ -18,11 +18,18 @@ import {
   Star,
   MoreVertical,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  UserPlus,
+  ArrowUpDown,
+  Mail,
+  Building,
+  Activity,
+  UserMinus,
+  X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
-
-import { StaffMember } from '@/src/lib/staffService';
+import { StaffMember, getStaffMembers } from '@/src/lib/staffService';
+import AddStaffModal from '@/src/components/AddStaffModal';
 
 interface StaffStats {
   totalStaff: number;
@@ -33,6 +40,7 @@ interface StaffStats {
 
 export default function StaffPage() {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>([]);
   const [stats, setStats] = useState<StaffStats>({
     totalStaff: 0,
     activeStaff: 0,
@@ -41,64 +49,31 @@ export default function StaffPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('All');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   useEffect(() => {
     fetchStaffData();
   }, []);
 
+  useEffect(() => {
+    filterStaff();
+  }, [searchQuery, roleFilter, staffMembers]);
+
   const fetchStaffData = async () => {
     try {
       setLoading(true);
-      
-      const { data: staffData, error: staffError } = await supabase
-        .from('staff')
-        .select(`
-          id,
-          employee_id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          role,
-          department_id,
-          is_active,
-          created_at,
-          updated_at,
-          departments(name)
-        `);
+      setError(null);
 
-      if (staffError) {
-        throw staffError;
-      }
-
-      // Transform the data to match StaffMember interface
-      const transformedStaff = staffData?.map(staff => ({
-        id: staff.id,
-        name: `${staff.first_name || ''} ${staff.last_name || ''}`.trim() || 'Unknown',
-        role: staff.role || '',
-        department: staff.departments?.[0]?.name || '',
-        shift: '', // Not available in current data
-        contact: staff.phone || '',
-        email: staff.email || undefined,
-        status: (staff.is_active ? 'active' : 'inactive') as 'active' | 'inactive' | 'on_leave',
-        employee_id: staff.employee_id || undefined,
-        created_at: staff.created_at || undefined,
-        updated_at: staff.updated_at || undefined
-      })) || [];
-
-      setStaffMembers(transformedStaff);
+      const data = await getStaffMembers();
+      setStaffMembers(data);
 
       // Calculate stats
-      const totalStaff = transformedStaff.length;
-      const activeStaff = transformedStaff.filter(staff => 
-        staff.status === 'active'
-      ).length;
-      const onLeave = transformedStaff.filter(staff => 
-        staff.status === 'on_leave'
-      ).length;
-      const nightShift = transformedStaff.filter(staff => 
-        staff.status === 'active'
-      ).length;
+      const totalStaff = data.length;
+      const activeStaff = data.filter(staff => staff.is_active).length;
+      const onLeave = 0; // Placeholder until leave data is available
+      const nightShift = 0; // Placeholder until shift data is available
 
       setStats({
         totalStaff,
@@ -109,235 +84,245 @@ export default function StaffPage() {
 
     } catch (error) {
       console.error('Error fetching staff data:', error);
-      setError('Failed to load staff data');
+      setError('Failed to load staff data. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  const filterStaff = () => {
+    let filtered = [...staffMembers];
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(staff =>
+        staff.name?.toLowerCase().includes(query) ||
+        staff.role.toLowerCase().includes(query) ||
+        staff.email?.toLowerCase().includes(query) ||
+        staff.employee_id?.toLowerCase().includes(query)
+      );
+    }
+
+    if (roleFilter !== 'All') {
+      filtered = filtered.filter(staff => staff.role === roleFilter);
+    }
+
+    setFilteredStaff(filtered);
+  };
+
+  const roles = ['All', ...new Set(staffMembers.map(s => s.role))].sort();
+
+  if (loading && staffMembers.length === 0) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-8 bg-gray-50/50 min-h-screen">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="flex justify-between items-center mb-10">
+            <div>
+              <div className="h-10 bg-gray-200 rounded-xl w-48 mb-3"></div>
+              <div className="h-5 bg-gray-200 rounded-lg w-72"></div>
+            </div>
+            <div className="h-12 bg-gray-200 rounded-2xl w-40"></div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <div className="h-20 bg-gray-200 rounded"></div>
-              </div>
+              <div key={i} className="bg-white rounded-3xl p-6 h-32 shadow-sm border border-gray-100"></div>
             ))}
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  if (error) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Staff</h1>
-            <p className="text-gray-500 mt-1">Manage hospital staff and their schedules</p>
-          </div>
-        </div>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
-            <p className="text-red-700">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (staffMembers.length === 0) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Staff</h1>
-            <p className="text-gray-500 mt-1">Manage hospital staff and their schedules</p>
-          </div>
-          <button className="flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
-            <Plus size={16} className="mr-2" />
-            Add Staff
-          </button>
-        </div>
-        
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
-          <Users className="h-12 w-12 text-blue-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-blue-900 mb-2">No Staff Data Available</h3>
-          <p className="text-blue-700">There are currently no staff members in the system. Add staff members to get started.</p>
+          <div className="bg-white rounded-3xl border border-gray-100 h-96 shadow-sm"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 p-8 bg-gray-50/50 min-h-screen">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff</h1>
-          <p className="text-gray-500 mt-1">Manage hospital staff and their schedules</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Hospital Staff</h1>
+          <p className="text-gray-500 mt-2 flex items-center gap-2">
+            <Users size={16} className="text-orange-500" />
+            Manage team members, roles, and department allocations
+          </p>
         </div>
-        <button className="flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
-          <Plus size={16} className="mr-2" />
-          Add Staff
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm transition-all duration-300 shadow-lg shadow-orange-100 hover:shadow-orange-200 active:scale-95 gap-2 group"
+        >
+          <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+          Add Staff Member
         </button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total Staff</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.totalStaff}</p>
-              <div className="flex items-center mt-2">
-                <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                <span className="text-sm font-medium text-green-600">Active members</span>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { label: 'Total Staff', value: stats.totalStaff, icon: Users, color: 'indigo', subtext: 'Registered members', bg: 'bg-indigo-50', text: 'text-indigo-600' },
+          { label: 'Active Now', value: stats.activeStaff, icon: UserCheck, color: 'green', subtext: `${Math.round((stats.activeStaff / (stats.totalStaff || 1)) * 100)}% of total`, bg: 'bg-green-50', text: 'text-green-600' },
+          { label: 'On Leave', value: stats.onLeave, icon: UserMinus, color: 'orange', subtext: 'Seasonal & Medical', bg: 'bg-orange-50', text: 'text-orange-600' },
+          { label: 'Departments', value: new Set(staffMembers.map(s => s.department_id)).size, icon: Building, color: 'blue', subtext: 'Functional units', bg: 'bg-blue-50', text: 'text-blue-600' }
+        ].map((stat, i) => (
+          <div key={i} className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-300 group">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{stat.label}</p>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <p className="text-3xl font-black text-gray-900">{stat.value}</p>
+                </div>
+                <p className="text-sm font-medium text-gray-500 mt-1">{stat.subtext}</p>
+              </div>
+              <div className={`w-14 h-14 ${stat.bg} ${stat.text} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+                <stat.icon size={28} />
               </div>
             </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center">
-              <Users className="text-white" size={20} />
-            </div>
           </div>
-        </div>
+        ))}
+      </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">On Duty</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.activeStaff}</p>
-              <div className="flex items-center mt-2">
-                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                <span className="text-sm font-medium text-green-600">
-                  {stats.totalStaff > 0 ? Math.round((stats.activeStaff / stats.totalStaff) * 100) : 0}% present
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-              <UserCheck className="text-white" size={20} />
-            </div>
-          </div>
+      {/* Filters & Search */}
+      <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative flex-1 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-orange-500 transition-colors" size={20} />
+          <input
+            type="text"
+            placeholder="Search by name, role, email or employee ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400"
+          />
         </div>
-
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Night Shift</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.nightShift}</p>
-              <div className="flex items-center mt-2">
-                <Clock className="h-3 w-3 text-blue-500 mr-1" />
-                <span className="text-sm font-medium text-blue-600">8 PM - 8 AM</span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-              <Clock className="text-white" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Active Staff</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.activeStaff}</p>
-              <div className="flex items-center mt-2">
-                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                <span className="text-sm font-medium text-green-600">
-                  {stats.totalStaff > 0 ? Math.round((stats.activeStaff / stats.totalStaff) * 100) : 0}% active
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-              <UserCheck className="text-white" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">On Leave</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.onLeave}</p>
-              <div className="flex items-center mt-2">
-                <AlertCircle className="h-3 w-3 text-orange-500 mr-1" />
-                <span className="text-sm font-medium text-orange-600">Medical & Annual</span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-              <Calendar className="text-white" size={20} />
-            </div>
-          </div>
+        <div className="flex items-center gap-3 min-w-[200px]">
+          <Filter className="text-gray-400" size={20} />
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="flex-1 py-3.5 px-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none appearance-none transition-all font-medium text-gray-700"
+          >
+            {roles.map(role => (
+              <option key={role} value={role}>{role}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Staff List */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-        <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Staff Members</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+      {/* Staff Table */}
+      <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-8 py-5 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">Staff Member</th>
+                <th className="px-8 py-5 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">ID & Role</th>
+                <th className="px-8 py-5 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">Department</th>
+                <th className="px-8 py-5 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">Status</th>
+                <th className="px-8 py-5 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {staffMembers.map((staff) => (
-                <tr key={staff.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                          <span className="text-sm font-medium text-white">
-                            {staff.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                          </span>
+            <tbody className="divide-y divide-gray-50">
+              {filteredStaff.length > 0 ? (
+                filteredStaff.map((staff) => (
+                  <tr key={staff.id} className="hover:bg-orange-50/30 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <div className="relative">
+                          <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${staff.is_active ? 'from-orange-400 to-orange-600' : 'from-gray-300 to-gray-400'} flex items-center justify-center text-white font-black text-lg shadow-sm group-hover:scale-105 transition-transform`}>
+                            {staff.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          {staff.is_active && (
+                            <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-green-500 border-2 border-white rounded-full"></div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-base font-bold text-gray-900 leading-tight">{staff.name}</div>
+                          <div className="text-sm text-gray-500 flex items-center gap-1.5 mt-0.5">
+                            <Mail size={12} className="text-gray-400" />
+                            {staff.email || 'No email'}
+                          </div>
                         </div>
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{staff.name}</div>
-                        {staff.email && <div className="text-sm text-gray-500">{staff.email}</div>}
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold mb-1 uppercase tracking-wider">
+                        {staff.role}
                       </div>
+                      <div className="text-sm text-gray-400 font-mono">{staff.employee_id || '---'}</div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-2 text-gray-700 font-medium">
+                        <Building size={16} className="text-gray-400" />
+                        {staff.department_name || 'Unassigned'}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide capitalize ${staff.is_active
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-50 text-red-600'
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full mr-2 ${staff.is_active ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
+                        {staff.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-orange-500 transition-all">
+                          <Eye size={18} />
+                        </button>
+                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-blue-500 transition-all">
+                          <ArrowUpDown size={18} />
+                        </button>
+                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-indigo-500 transition-all">
+                          <MoreVertical size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                        <Users className="text-gray-300" size={40} />
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900">No staff members found</h3>
+                      <p className="text-gray-500 mt-1 max-w-xs mx-auto">Try adjusting your filters or search query to find what you're looking for.</p>
+                      <button
+                        onClick={() => { setSearchQuery(''); setRoleFilter('All'); }}
+                        className="mt-6 text-orange-500 font-bold hover:underline"
+                      >
+                        Clear all filters
+                      </button>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                      {staff.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {staff.department || 'Not assigned'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
-                      staff.status === 'active' 
-                        ? 'bg-green-100 text-green-800' 
-                        : staff.status === 'on_leave'
-                        ? 'bg-orange-100 text-orange-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {staff.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {staff.contact || 'Not provided'}
-                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Add Staff Modal */}
+      <AddStaffModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={fetchStaffData}
+      />
+
+      {/* Error Toast (if any) */}
+      {error && (
+        <div className="fixed bottom-8 right-8 bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-500 z-50">
+          <AlertCircle size={24} />
+          <div>
+            <p className="font-bold">Error</p>
+            <p className="text-sm opacity-90">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="ml-4 p-1 hover:bg-white/20 rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

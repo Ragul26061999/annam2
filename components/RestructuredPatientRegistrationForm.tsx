@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   User, Phone, Mail, MapPin, Calendar, Heart, Shield, AlertTriangle, AlertCircle,
   Save, X, UserPlus, Users, Hash, CheckCircle, Clock, Stethoscope, CalendarCheck, Printer
 } from 'lucide-react';
@@ -22,7 +22,7 @@ interface RegistrationFormData {
   email: string;
   address: string;
   diagnosis: string;
-  
+
   // Medical Information
   bloodGroup: string;
   allergies: string;
@@ -30,19 +30,19 @@ interface RegistrationFormData {
   drugAllergyNames: string;
   currentMedications: string;
   chronicConditions: string;
-  
+
   // Guardian Information
   guardianName: string;
   guardianRelationship: string;
   guardianPhone: string;
-  
+
   // Appointment Information
   selectedDoctorId: string;
   primaryComplaint: string;
   appointmentDate: string;
   appointmentSession: 'morning' | 'afternoon' | 'evening' | '';
   appointmentTime: string;
-  
+
   // Vitals
   temperature: string;
   bloodPressureSystolic: string;
@@ -58,11 +58,13 @@ interface RestructuredPatientRegistrationFormProps {
   onComplete: (result: { uhid: string; patientName: string; qrCode?: string }) => void;
   onCancel: () => void;
   admissionType?: 'outpatient' | 'inpatient' | 'emergency';
+  singlePageMode?: boolean;
 }
-export default function RestructuredPatientRegistrationForm({ 
-  onComplete, 
+export default function RestructuredPatientRegistrationForm({
+  onComplete,
   onCancel,
-  admissionType
+  admissionType,
+  singlePageMode = false
 }: RestructuredPatientRegistrationFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,7 +78,7 @@ export default function RestructuredPatientRegistrationForm({
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [patientId, setPatientId] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  
+
   const [formData, setFormData] = useState<RegistrationFormData>({
     firstName: '',
     lastName: '',
@@ -152,7 +154,7 @@ export default function RestructuredPatientRegistrationForm({
 
   const loadAvailableSlots = async () => {
     if (!formData.selectedDoctorId || !formData.appointmentDate) return;
-    
+
     try {
       const slots = await getDoctorAvailableSlots(
         formData.selectedDoctorId,
@@ -197,22 +199,22 @@ export default function RestructuredPatientRegistrationForm({
   const handleInputChange = (field: keyof RegistrationFormData, value: string | boolean) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
-      
+
       // Auto-calculate age when DOB changes
       if (field === 'dateOfBirth' && typeof value === 'string' && value) {
         const calculatedAge = calculateAgeFromDOB(value);
         updated.age = calculatedAge || '';
       }
-      
+
       // Auto-calculate DOB when age changes (and DOB is empty)
       if (field === 'age' && typeof value === 'string' && value && !prev.dateOfBirth) {
         const estimatedDOB = calculateDOBFromAge(value);
         updated.dateOfBirth = estimatedDOB;
       }
-      
+
       // Don't auto-calculate DOB when age changes - user must click button
       // This prevents issues with partial input
-      
+
       return updated;
     });
   };
@@ -263,7 +265,7 @@ export default function RestructuredPatientRegistrationForm({
         referredBy: ''
       };
 
-      const result = await registerNewPatient(patientData, previewUHID);      
+      const result = await registerNewPatient(patientData, previewUHID);
       if (result.success && result.patient) {
         setPatientId(result.patient.id);
         handleNext();
@@ -297,7 +299,7 @@ export default function RestructuredPatientRegistrationForm({
       };
 
       await createAppointment(appointmentData);
-      
+
       // Get patient data with QR code and name
       const { data: patientData } = await supabase
         .from('patients')
@@ -305,7 +307,7 @@ export default function RestructuredPatientRegistrationForm({
         .eq('id', patientId)
         .single();
 
-      onComplete({ 
+      onComplete({
         uhid: previewUHID,
         patientName: patientData?.name || `${formData.firstName} ${formData.lastName}`.trim(),
         qrCode: patientData?.qr_code
@@ -313,6 +315,86 @@ export default function RestructuredPatientRegistrationForm({
     } catch (error) {
       console.error('Error creating appointment:', error);
       alert('Failed to create appointment');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSinglePageSubmit = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Save Patient
+      const patientData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth,
+        age: formData.age,
+        diagnosis: formData.diagnosis,
+        gender: formData.gender,
+        maritalStatus: formData.maritalStatus,
+        phone: formData.phone,
+        email: formData.email,
+        address: formData.address,
+        bloodGroup: formData.bloodGroup,
+        allergies: formData.allergies,
+        hasDrugAllergy: formData.hasDrugAllergy,
+        drugAllergyNames: formData.drugAllergyNames,
+        medicalHistory: '',
+        currentMedications: formData.currentMedications,
+        chronicConditions: formData.chronicConditions,
+        previousSurgeries: '',
+        primaryComplaint: formData.primaryComplaint,
+        admissionType: admissionType || '',
+        guardianName: formData.guardianName,
+        guardianRelationship: formData.guardianRelationship,
+        guardianPhone: formData.guardianPhone,
+        guardianAddress: '',
+        emergencyContactName: '',
+        emergencyContactPhone: '',
+        emergencyContactRelationship: '',
+        insuranceProvider: '',
+        insuranceNumber: '',
+        initialSymptoms: '',
+        referredBy: ''
+      };
+
+      const result = await registerNewPatient(patientData, previewUHID);
+      if (!result.success || !result.patient) {
+        throw new Error(result.error || 'Failed to register patient');
+      }
+
+      const newPatientId = result.patient.id;
+      setPatientId(newPatientId);
+
+      // 2. Create Appointment (if doctor selected)
+      if (formData.selectedDoctorId) {
+        const appointmentData = {
+          patientId: newPatientId,
+          doctorId: formData.selectedDoctorId,
+          appointmentDate: formData.appointmentDate,
+          appointmentTime: formData.appointmentTime,
+          durationMinutes: 30,
+          type: 'new_patient' as const,
+          chiefComplaint: formData.primaryComplaint,
+          symptoms: formData.primaryComplaint,
+          notes: '',
+          isEmergency: false,
+          sessionType: formData.appointmentSession as 'morning' | 'afternoon' | 'evening'
+        };
+
+        await createAppointment(appointmentData);
+      }
+
+      // 3. Complete
+      onComplete({
+        uhid: previewUHID,
+        patientName: `${formData.firstName} ${formData.lastName}`.trim(),
+        qrCode: result.qrCode // Assuming result contains QR code if generated or we fetch it
+      });
+
+    } catch (error) {
+      console.error('Error in single page registration:', error);
+      alert('Failed to register patient: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
@@ -470,7 +552,7 @@ export default function RestructuredPatientRegistrationForm({
               placeholder="Complete address"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Diagnosis</label>
             <input
@@ -640,16 +722,20 @@ export default function RestructuredPatientRegistrationForm({
       </div>
 
       <div className="flex justify-between pt-4">
-        <button onClick={onCancel} className="btn-secondary">
-          Cancel
-        </button>
-        <button 
-          onClick={handleStep1Complete} 
-          disabled={isLoading}
-          className="btn-primary"
-        >
-          {isLoading ? 'Saving Patient...' : 'Save & Continue to Appointment'}
-        </button>
+        {!singlePageMode && (
+          <div className="flex justify-between w-full">
+            <button onClick={onCancel} className="btn-secondary">
+              Cancel
+            </button>
+            <button
+              onClick={handleStep1Complete}
+              disabled={isLoading}
+              className="btn-primary"
+            >
+              {isLoading ? 'Saving Patient...' : 'Save & Continue to Appointment'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -658,7 +744,7 @@ export default function RestructuredPatientRegistrationForm({
     const selectedDoctor = doctors.find(d => d.id === formData.selectedDoctorId);
     const workingDays = selectedDoctor?.availability_hours?.workingDays || [];
     const availableSessions = selectedDoctor?.availability_hours?.availableSessions || [];
-    
+
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3 mb-6">
@@ -696,7 +782,7 @@ export default function RestructuredPatientRegistrationForm({
               </option>
             ))}
           </select>
-          
+
           {selectedDoctor && (
             <div className="mt-3 p-3 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-900">
@@ -719,15 +805,14 @@ export default function RestructuredPatientRegistrationForm({
               <Calendar className="h-4 w-4" />
               Select Date
             </h4>
-            
+
             <div className="flex justify-center gap-4 mb-4">
               <button
                 onClick={() => setCurrentMonth(new Date())}
-                className={`px-4 py-2 rounded-lg font-medium text-sm ${
-                  currentMonth.getMonth() === new Date().getMonth()
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${currentMonth.getMonth() === new Date().getMonth()
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 This Month
               </button>
@@ -737,11 +822,10 @@ export default function RestructuredPatientRegistrationForm({
                   next.setMonth(next.getMonth() + 1);
                   setCurrentMonth(next);
                 }}
-                className={`px-4 py-2 rounded-lg font-medium text-sm ${
-                  currentMonth.getMonth() !== new Date().getMonth()
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${currentMonth.getMonth() !== new Date().getMonth()
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Next Month
               </button>
@@ -754,7 +838,7 @@ export default function RestructuredPatientRegistrationForm({
                 </h5>
                 <span className="text-xs text-purple-700">Current Month</span>
               </div>
-              
+
               {/* Calendar Grid - Smaller */}
               <div className="grid grid-cols-7 gap-1.5">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
@@ -762,11 +846,11 @@ export default function RestructuredPatientRegistrationForm({
                     {day}
                   </div>
                 ))}
-                
+
                 {Array.from({ length: new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay() }).map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square" />
                 ))}
-                
+
                 {Array.from({ length: new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate() }).map((_, i) => {
                   const day = i + 1;
                   const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -777,7 +861,7 @@ export default function RestructuredPatientRegistrationForm({
                   const isToday = date.toDateString() === new Date().toDateString();
                   const isSelected = formData.appointmentDate === dateStr;
                   const isAvailable = isWorkingDay && !isPast;
-                  
+
                   return (
                     <button
                       key={day}
@@ -790,22 +874,21 @@ export default function RestructuredPatientRegistrationForm({
                         }
                       }}
                       disabled={!isAvailable}
-                      className={`aspect-square rounded-md text-xs font-medium transition-all ${
-                        isSelected
-                          ? 'bg-blue-500 text-white shadow-md'
-                          : isToday
+                      className={`aspect-square rounded-md text-xs font-medium transition-all ${isSelected
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : isToday
                           ? 'bg-orange-100 text-orange-900 border-2 border-orange-400'
                           : isAvailable
-                          ? 'bg-white hover:bg-blue-50 border border-gray-300 text-gray-900'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      }`}
+                            ? 'bg-white hover:bg-blue-50 border border-gray-300 text-gray-900'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        }`}
                     >
                       {day}
                     </button>
                   );
                 })}
               </div>
-              
+
               <div className="flex items-center gap-3 mt-3 text-xs">
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-orange-100 border-2 border-orange-400 rounded"></div>
@@ -831,11 +914,11 @@ export default function RestructuredPatientRegistrationForm({
               <Clock className="h-4 w-4" />
               Select Time Slot
             </h4>
-            
+
             <p className="text-sm text-gray-600 mb-4">
               Selected Date: <strong>{new Date(formData.appointmentDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>
             </p>
-            
+
             {availableSessions.map((session: string) => (
               <div key={session} className="mb-4">
                 <h5 className="text-sm font-medium text-gray-700 mb-2 capitalize">
@@ -850,19 +933,18 @@ export default function RestructuredPatientRegistrationForm({
                         handleInputChange('appointmentTime', time);
                         handleInputChange('appointmentSession', session);
                       }}
-                      className={`p-2 text-sm rounded-lg border transition-all ${
-                        formData.appointmentTime === time
-                          ? 'bg-orange-500 text-white border-orange-600 shadow-md'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50 hover:border-orange-300'
-                      }`}
+                      className={`p-2 text-sm rounded-lg border transition-all ${formData.appointmentTime === time
+                        ? 'bg-orange-500 text-white border-orange-600 shadow-md'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50 hover:border-orange-300'
+                        }`}
                     >
                       {time}
                     </button>
                   )) || (
-                    <p className="col-span-4 text-sm text-gray-500 text-center py-2">
-                      No slots available for this session
-                    </p>
-                  )}
+                      <p className="col-span-4 text-sm text-gray-500 text-center py-2">
+                        No slots available for this session
+                      </p>
+                    )}
                 </div>
               </div>
             ))}
@@ -885,7 +967,7 @@ export default function RestructuredPatientRegistrationForm({
           <button onClick={handlePrevious} className="btn-secondary">
             Previous
           </button>
-          <button 
+          <button
             onClick={handleNext}
             disabled={!formData.selectedDoctorId || !formData.appointmentDate || !formData.appointmentTime || !formData.primaryComplaint}
             className="btn-primary"
@@ -1035,7 +1117,7 @@ export default function RestructuredPatientRegistrationForm({
           <button onClick={handlePrevious} className="btn-secondary">
             Previous
           </button>
-          <button 
+          <button
             onClick={handleNext}
             className="btn-primary"
           >
@@ -1048,7 +1130,7 @@ export default function RestructuredPatientRegistrationForm({
 
   const renderStep4 = () => {
     const selectedDoctor = doctors.find(d => d.id === formData.selectedDoctorId);
-    
+
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3 mb-6">
@@ -1056,7 +1138,7 @@ export default function RestructuredPatientRegistrationForm({
             <CheckCircle className="h-5 w-5 text-green-600" />
           </div>
           <div>
-<h3 className="text-lg font-semibold text-gray-900">Step 4: Review & Confirm</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Step 4: Review & Confirm</h3>
             <p className="text-sm text-gray-500">Review all details before confirming</p>
           </div>
         </div>
@@ -1148,16 +1230,20 @@ export default function RestructuredPatientRegistrationForm({
         </div>
 
         <div className="flex justify-between pt-4">
-          <button onClick={handlePrevious} className="btn-secondary">
-            Previous
-          </button>
-          <button 
-            onClick={handleFinalSubmit}
-            disabled={isLoading}
-            className="btn-primary"
-          >
-            {isLoading ? 'Creating Appointment...' : 'Confirm & Complete Registration'}
-          </button>
+          {!singlePageMode && (
+            <div className="flex justify-between w-full">
+              <button onClick={handlePrevious} className="btn-secondary">
+                Previous
+              </button>
+              <button
+                onClick={handleFinalSubmit}
+                disabled={isLoading}
+                className="btn-primary"
+              >
+                {isLoading ? 'Creating Appointment...' : 'Confirm & Complete Registration'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1168,11 +1254,10 @@ export default function RestructuredPatientRegistrationForm({
       {[1, 2, 3, 4].map((step) => (
         <React.Fragment key={step}>
           <div className={`flex flex-col items-center ${step <= currentStep ? 'opacity-100' : 'opacity-40'}`}>
-            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-              step <= currentStep 
-                ? 'bg-orange-500 border-orange-500 text-white' 
-                : 'border-gray-300 text-gray-400'
-            }`}>
+            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${step <= currentStep
+              ? 'bg-orange-500 border-orange-500 text-white'
+              : 'border-gray-300 text-gray-400'
+              }`}>
               {step}
             </div>
             <p className="text-xs mt-1 text-gray-600">
@@ -1183,9 +1268,8 @@ export default function RestructuredPatientRegistrationForm({
             </p>
           </div>
           {step < 4 && (
-            <div className={`w-16 h-0.5 mx-2 ${
-              step < currentStep ? 'bg-orange-500' : 'bg-gray-300'
-            }`} />
+            <div className={`w-16 h-0.5 mx-2 ${step < currentStep ? 'bg-orange-500' : 'bg-gray-300'
+              }`} />
           )}
         </React.Fragment>
       ))}
@@ -1202,7 +1286,9 @@ export default function RestructuredPatientRegistrationForm({
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">New Patient Registration</h2>
-              <p className="text-sm text-gray-500">Complete registration with appointment scheduling</p>
+              <p className="text-sm text-gray-500">
+                {singlePageMode ? 'Complete inpatient registration' : 'Complete registration with appointment scheduling'}
+              </p>
             </div>
           </div>
           <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -1212,11 +1298,46 @@ export default function RestructuredPatientRegistrationForm({
       </div>
 
       <div className="p-6">
-        {renderStepIndicator()}
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
-        {currentStep === 3 && renderStep3()}
-        {currentStep === 4 && renderStep4()}
+        {!singlePageMode && renderStepIndicator()}
+
+        {singlePageMode ? (
+          <div className="space-y-8">
+            {renderStep1()}
+            {renderStep2()}
+            <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
+              <button onClick={onCancel} className="btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={handleSinglePageSubmit}
+                disabled={isLoading}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Registering...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Register Inpatient
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
+            {currentStep === 4 && renderStep4()}
+          </>
+        )}
       </div>
     </div>
   );

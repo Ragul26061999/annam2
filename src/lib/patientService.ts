@@ -60,6 +60,32 @@ export interface PatientRegistrationData {  // Personal Information (Mandatory)
   selectedBedId?: string;
   selectedBedNumber?: string;
   selectedBedRate?: number;
+
+  // Outpatient Specific Fields
+  alternatePhone?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  
+  // Vitals
+  height?: string;
+  weight?: string;
+  bmi?: string;
+  temperature?: string;
+  tempUnit?: string;
+  bpSystolic?: string;
+  bpDiastolic?: string;
+  pulse?: string;
+  spo2?: string;
+  respiratoryRate?: string;
+  randomBloodSugar?: string;
+  vitalNotes?: string;
+  
+  // Billing
+  opCardAmount?: string;
+  consultationFee?: string;
+  totalAmount?: string;
+  paymentMode?: string;
 }
 
 export interface PatientResponse {
@@ -308,9 +334,14 @@ export async function insertPatientRecord(
         admission_time: registrationData.admissionTime || null,
         primary_complaint: registrationData.primaryComplaint || null,
         // Validate admission_type against allowed values
-        admission_type: registrationData.admissionType && ['emergency', 'elective', 'referred', 'transfer', 'inpatient', 'outpatient'].includes(registrationData.admissionType) 
-          ? registrationData.admissionType 
-          : null,
+        admission_type: (function() {
+          const type = registrationData.admissionType;
+          if (!type) return null;
+          const validTypes = ['emergency', 'elective', 'scheduled', 'referred', 'transfer'];
+          if (validTypes.includes(type)) return type;
+          if (type === 'inpatient') return 'scheduled'; 
+          return 'scheduled';
+        })(),
         referring_doctor_facility: registrationData.referringDoctorFacility || null,
         department_ward: registrationData.departmentWard || null,
         room_number: registrationData.roomNumber || null,
@@ -380,9 +411,14 @@ export async function insertPatientRecord(
         admission_time: registrationData.admissionTime || null,
         primary_complaint: registrationData.primaryComplaint || null,
         // Validate admission_type against allowed values
-        admission_type: registrationData.admissionType && ['emergency', 'elective', 'referred', 'transfer', 'inpatient', 'outpatient'].includes(registrationData.admissionType) 
-          ? registrationData.admissionType 
-          : null,
+        admission_type: (function() {
+          const type = registrationData.admissionType;
+          if (!type) return null;
+          const validTypes = ['emergency', 'elective', 'scheduled', 'referred', 'transfer'];
+          if (validTypes.includes(type)) return type;
+          if (type === 'inpatient') return 'scheduled'; 
+          return 'scheduled';
+        })(),
         referring_doctor_facility: registrationData.referringDoctorFacility || null,
         department_ward: registrationData.departmentWard || null,
         room_number: registrationData.roomNumber || null,
@@ -402,9 +438,9 @@ export async function insertPatientRecord(
         status: 'active'
       };
       
-      // Try to add age and diagnosis, but handle errors gracefully
+      // Try to add additional columns, but handle errors gracefully
       try {
-        // Check if age column exists in the actual table structure
+        // Check if columns exist in the actual table structure
         const { data: tableInfo, error: tableError } = await supabase
           .from('patients')
           .select('*')
@@ -418,9 +454,37 @@ export async function insertPatientRecord(
           if ('diagnosis' in sampleRow) {
             patientData.diagnosis = registrationData.diagnosis || null;
           }
+          if ('alternate_phone' in sampleRow) patientData.alternate_phone = registrationData.alternatePhone || null;
+          if ('city' in sampleRow) patientData.city = registrationData.city || null;
+          if ('state' in sampleRow) patientData.state = registrationData.state || null;
+          if ('pincode' in sampleRow) patientData.pincode = registrationData.pincode || null;
+          
+          // Vitals mapping
+          if ('height' in sampleRow) patientData.height = registrationData.height || null;
+          if ('weight' in sampleRow) patientData.weight = registrationData.weight || null;
+          if ('bmi' in sampleRow) patientData.bmi = registrationData.bmi || null;
+          if ('temperature' in sampleRow) patientData.temperature = registrationData.temperature || null;
+          if ('temp_unit' in sampleRow) patientData.temp_unit = registrationData.tempUnit || null;
+          if ('bp_systolic' in sampleRow) patientData.bp_systolic = registrationData.bpSystolic || null;
+          if ('bp_diastolic' in sampleRow) patientData.bp_diastolic = registrationData.bpDiastolic || null;
+          if ('pulse' in sampleRow) patientData.pulse = registrationData.pulse || null;
+          if ('spo2' in sampleRow) patientData.spo2 = registrationData.spo2 || null;
+          if ('respiratory_rate' in sampleRow) patientData.respiratory_rate = registrationData.respiratoryRate || null;
+          if ('random_blood_sugar' in sampleRow) patientData.random_blood_sugar = registrationData.randomBloodSugar || null;
+          if ('vital_notes' in sampleRow) patientData.vital_notes = registrationData.vitalNotes || null;
+          
+          // Billing mapping
+          if ('op_card_amount' in sampleRow) patientData.op_card_amount = registrationData.opCardAmount || null;
+          if ('consultation_fee' in sampleRow) patientData.consultation_fee = registrationData.consultationFee || null;
+          if ('total_amount' in sampleRow) patientData.total_amount = registrationData.totalAmount || null;
+          if ('payment_mode' in sampleRow) patientData.payment_mode = registrationData.paymentMode || null;
+
+          // Doctor mapping
+          if ('consulting_doctor_id' in sampleRow) patientData.consulting_doctor_id = registrationData.consultingDoctorId || null;
+          if ('consulting_doctor_name' in sampleRow) patientData.consulting_doctor_name = registrationData.consultingDoctorName || null;
         }
       } catch (columnError) {
-        console.warn('Age/diagnosis columns may not exist in schema, will be skipped in insert');
+        console.warn('Additional columns may not exist in schema, will be skipped in insert');
       }
     }
 
@@ -889,7 +953,7 @@ export async function registerNewPatient(
           patientId: patient.id,
           bedId: registrationData.selectedBedId,
           admissionDate: registrationData.admissionDate || new Date().toISOString(),
-          admissionType: 'scheduled', // Default to scheduled for new registrations
+          admissionType: 'inpatient', // Changed from scheduled for new registrations
           reason: `Inpatient admission - ${registrationData.primaryComplaint || 'General admission'}`
         };
         const bedAllocation = await allocateBed(bedAllocationData);
@@ -1175,21 +1239,78 @@ export async function getAllPatients(
  */
 export async function updatePatientAdmissionStatus(
   patientId: string,
-  isAdmitted: boolean
+  isAdmitted: boolean,
+  admissionType: string = 'inpatient',
+  additionalData: any = {}
 ): Promise<any> {
   try {
-    console.log('Updating patient admission status for:', patientId, { isAdmitted });
+    console.log('Updating patient admission status for:', patientId, { isAdmitted, admissionType, additionalData });
     
+    // Fetch a sample record to check available columns
+    const { data: sampleData } = await supabase
+      .from('patients')
+      .select('*')
+      .limit(1);
+    
+    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+    
+    const updateData: any = { 
+      is_admitted: isAdmitted,
+      updated_at: new Date().toISOString()
+    };
+
+    if (isAdmitted) {
+      updateData.admission_type = admissionType;
+      updateData.status = 'active'; 
+    } else {
+      updateData.admission_type = 'outpatient';
+    }
+
+    // Only add additional data if the columns exist
+    if (availableColumns.length > 0) {
+      Object.keys(additionalData).forEach(key => {
+        if (availableColumns.includes(key)) {
+          updateData[key] = additionalData[key];
+        } else {
+          console.warn(`Column '${key}' does not exist in patients table, skipping.`);
+          // Special mapping for common fields that might be named differently
+          if (key === 'diagnosis' && availableColumns.includes('initial_symptoms') && !updateData.initial_symptoms) {
+            updateData.initial_symptoms = additionalData[key];
+          }
+        }
+      });
+    } else {
+      // If table is empty, we can't check columns easily, so we merge carefully
+      // or just merge and let Supabase error if absolutely necessary, 
+      // but here we merge common ones we know should exist
+      Object.assign(updateData, additionalData);
+    }
+
     const { data, error } = await supabase
       .from('patients')
-      .update({ 
-        is_admitted: isAdmitted,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('patient_id', patientId)
       .select();
 
     if (error) {
+      // If we got a column error even after our check (maybe table was empty)
+      if (error.message.includes('column') && error.message.includes('not find')) {
+        console.warn('Column error detected, retrying with minimal data');
+        const minimalUpdate = {
+          is_admitted: isAdmitted,
+          updated_at: new Date().toISOString(),
+          status: isAdmitted ? 'active' : 'inactive'
+        };
+        const { data: retryData, error: retryError } = await supabase
+          .from('patients')
+          .update(minimalUpdate)
+          .eq('patient_id', patientId)
+          .select();
+        
+        if (retryError) throw retryError;
+        return retryData ? retryData[0] : null;
+      }
+      
       console.error('Error updating patient admission status:', error);
       throw new Error(`Failed to update admission status: ${error.message}`);
     }
@@ -1414,5 +1535,48 @@ export async function getCriticalPatientsCount(): Promise<number> {
   } catch (error) {
     console.error('Error getting critical patients count:', error);
     throw error;
+  }
+}
+
+/**
+ * Get daily patient statistics (New Today, Outpatients Today, Inpatients Today)
+ */
+export async function getDailyPatientStats(): Promise<{
+  newToday: number;
+  outpatientToday: number;
+  inpatientToday: number;
+}> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const nextDay = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
+
+    // Fetch all patients created today
+    const { data, error } = await supabase
+      .from('patients')
+      .select('admission_type, created_at')
+      .gte('created_at', `${today}T00:00:00`)
+      .lt('created_at', `${nextDay}T00:00:00`);
+
+    if (error) {
+      console.error('Error fetching daily stats:', error);
+      return { newToday: 0, outpatientToday: 0, inpatientToday: 0 };
+    }
+
+    const patients = data || [];
+    const newToday = patients.length;
+
+    // Based on our logic: Outpatient = NULL, Inpatient = Any non-null value (elective, emergency, etc.)
+    // Note: We are using explicit null check for outpatient as per our insert logic
+    const outpatientToday = patients.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
+    const inpatientToday = patients.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
+
+    return {
+      newToday,
+      outpatientToday,
+      inpatientToday
+    };
+  } catch (error) {
+    console.error('Error in getDailyPatientStats:', error);
+    return { newToday: 0, outpatientToday: 0, inpatientToday: 0 };
   }
 }

@@ -27,7 +27,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus, getAdmittedPatientsCount, getCriticalPatientsCount } from '../../src/lib/patientService';
+import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus, getDailyPatientStats } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import AdmissionModal from '../../src/components/AdmissionModal';
 import DischargeModal from '../../src/components/DischargeModal';
@@ -55,6 +55,25 @@ interface Patient {
   bed_id?: string | null;
   admission_date?: string | null;
   discharge_date?: string | null;
+  // New outpatient fields
+  age?: number;
+  diagnosis?: string;
+  height?: string;
+  weight?: string;
+  bmi?: string;
+  temperature?: string;
+  temp_unit?: string;
+  bp_systolic?: string;
+  bp_diastolic?: string;
+  pulse?: string;
+  spo2?: string;
+  respiratory_rate?: string;
+  random_blood_sugar?: string;
+  op_card_amount?: string;
+  consultation_fee?: string;
+  total_amount?: string;
+  payment_mode?: string;
+  consulting_doctor_name?: string;
 }
 
 export default function PatientsPage() {
@@ -67,8 +86,11 @@ export default function PatientsPage() {
   const [totalPatients, setTotalPatients] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
-  const [admittedCount, setAdmittedCount] = useState(0);
-  const [criticalCount, setCriticalCount] = useState(0);
+  const [dailyStats, setDailyStats] = useState({
+    newToday: 0,
+    outpatientToday: 0,
+    inpatientToday: 0
+  });
 
   // Admission modal state
   const [admissionModalOpen, setAdmissionModalOpen] = useState(false);
@@ -108,25 +130,7 @@ export default function PatientsPage() {
     };
   }, [openDropdownId]);
 
-  const fetchAdmittedCount = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('bed_allocations')
-        .select('patient_id')
-        .is('discharge_date', null)
-        .eq('status', 'active');
 
-      if (error) {
-        console.error('Error fetching admitted count:', error);
-        setAdmittedCount(0);
-      } else {
-        setAdmittedCount(data?.length || 0);
-      }
-    } catch (err) {
-      console.error('Error fetching admitted count:', err);
-      setAdmittedCount(0);
-    }
-  };
 
   const handleStatusUpdate = async (patientId: string, isCritical: boolean) => {
     try {
@@ -169,13 +173,8 @@ export default function PatientsPage() {
       setTotalPatients(response.total);
 
       // Fetch total counts for stats cards
-      const [allAdmitted, allCritical] = await Promise.all([
-        getAdmittedPatientsCount(),
-        getCriticalPatientsCount()
-      ]);
-
-      setAdmittedCount(allAdmitted);
-      setCriticalCount(allCritical);
+      const stats = await getDailyPatientStats();
+      setDailyStats(stats);
 
     } catch (err) {
       console.error('Error:', err);
@@ -334,12 +333,9 @@ export default function PatientsPage() {
   // Calculate stats from real data
   const stats = {
     total: totalPatients,
-    newToday: patients.filter(p => {
-      const today = new Date().toDateString();
-      return new Date(p.created_at).toDateString() === today;
-    }).length,
-    critical: criticalCount,
-    admitted: admittedCount
+    newToday: dailyStats.newToday,
+    outpatient: dailyStats.outpatientToday,
+    inpatient: dailyStats.inpatientToday
   };
 
   // Filter patients based on search and status
@@ -436,15 +432,15 @@ export default function PatientsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Critical</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.critical.toLocaleString()}</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Outpatients</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.outpatient.toLocaleString()}</p>
               <div className="flex items-center mt-2">
-                <AlertCircle className="h-3 w-3 text-red-500 mr-1" />
-                <span className="text-sm font-medium text-red-600">Emergency</span>
+                <Clock className="h-3 w-3 text-orange-500 mr-1" />
+                <span className="text-sm font-medium text-orange-600">New Today</span>
               </div>
             </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center">
-              <Heart className="h-6 w-6 text-white" />
+            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
+              <Users className="h-6 w-6 text-white" />
             </div>
           </div>
         </div>
@@ -452,15 +448,15 @@ export default function PatientsPage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Admitted</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.admitted.toLocaleString()}</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Inpatients</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.inpatient.toLocaleString()}</p>
               <div className="flex items-center mt-2">
-                <CheckCircle className="h-3 w-3 text-orange-500 mr-1" />
-                <span className="text-sm font-medium text-orange-600">In Beds</span>
+                <Bed className="h-3 w-3 text-purple-500 mr-1" />
+                <span className="text-sm font-medium text-purple-600">New Today</span>
               </div>
             </div>
-            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 text-white" />
+            <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
+              <Bed className="h-6 w-6 text-white" />
             </div>
           </div>
         </div>
@@ -588,17 +584,40 @@ export default function PatientsPage() {
 
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">
-                  <Calendar size={14} className="mr-2" />
-                  Age: {calculateAge(patient.date_of_birth)} • {patient.gender?.charAt(0).toUpperCase() + patient.gender?.slice(1)} • {patient.blood_group || 'Unknown'}
+                  <Calendar size={14} className="mr-2 text-blue-500" />
+                  <span className="font-medium">
+                    Age: {patient.age || calculateAge(patient.date_of_birth)} • {patient.gender?.charAt(0).toUpperCase() + patient.gender?.slice(1)} • {patient.blood_group || 'Unknown'}
+                  </span>
                 </div>
                 <div className="flex items-center text-sm text-gray-600">
-                  <Phone size={14} className="mr-2" />
+                  <Phone size={14} className="mr-2 text-green-500" />
                   {patient.phone}
                 </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <MapPin size={14} className="mr-2" />
+                <div className="flex items-start text-sm text-gray-600">
+                  <MapPin size={14} className="mr-2 mt-1 text-red-500" />
                   {getTruncatedText(patient.address, 35)}
                 </div>
+
+                {/* Vitals summary if available */}
+                {(patient.bmi || patient.bp_systolic || patient.pulse) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {patient.bmi && (
+                      <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-bold border border-green-100">
+                        BMI: {patient.bmi}
+                      </span>
+                    )}
+                    {patient.bp_systolic && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold border border-blue-100">
+                        BP: {patient.bp_systolic}/{patient.bp_diastolic}
+                      </span>
+                    )}
+                    {patient.pulse && (
+                      <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold border border-orange-100">
+                        Pulse: {patient.pulse}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {patient.primary_complaint && (
@@ -622,6 +641,14 @@ export default function PatientsPage() {
                     Allergies
                   </p>
                   <p className="text-sm text-red-900">{getTruncatedText(patient.allergies, 40)}</p>
+                </div>
+              )}
+
+              {/* Admission Information */}
+              {patient.admission_type && (
+                <div className="bg-purple-50 rounded-xl p-3 mb-4">
+                  <p className="text-xs font-medium text-purple-700 mb-1">Admission Type</p>
+                  <p className="text-sm text-purple-900 capitalize italic font-medium">{patient.admission_type}</p>
                 </div>
               )}
 
@@ -661,8 +688,8 @@ export default function PatientsPage() {
                     <span className="text-sm text-gray-600">Admission Status</span>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${isPatientAdmitted(patient)
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-600'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-600'
                         }`}>
                         {isPatientAdmitted(patient) ? 'Admitted' : 'Outpatient'}
                       </span>

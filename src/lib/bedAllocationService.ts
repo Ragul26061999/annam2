@@ -6,7 +6,7 @@ export interface BedAllocationData {
   bedId: string;
   doctorId?: string;
   admissionDate: string;
-  admissionType: 'emergency' | 'scheduled' | 'transfer';
+  admissionType: 'emergency' | 'elective' | 'scheduled' | 'referred' | 'transfer' | 'inpatient' | 'outpatient';
   reason: string;
 }
 
@@ -74,15 +74,18 @@ export async function generateAllocationId(): Promise<string> {
       .like('allocation_id', `BA${datePrefix}%`);
     
     if (error) {
-      console.error('Error getting allocation count:', error);
-      throw new Error('Failed to generate allocation ID');
+      console.warn('Error getting allocation count (might be missing allocation_id column):', error);
+      // Fallback: Use timestamp if we can't get count
+      const timestamp = now.getTime().toString().slice(-4);
+      return `BA${datePrefix}${timestamp}`;
     }
     
     const sequence = ((count || 0) + 1).toString().padStart(4, '0');
     return `BA${datePrefix}${sequence}`;
   } catch (error) {
-    console.error('Error generating allocation ID:', error);
-    throw error;
+    console.error('Error in generateAllocationId:', error);
+    // Ultimate fallback
+    return `BA${new Date().getTime()}`;
   }
 }
 
@@ -92,6 +95,7 @@ export async function generateAllocationId(): Promise<string> {
 export async function allocateBed(allocationData: BedAllocationData): Promise<BedAllocation> {
   try {
     // Check if bed is available
+    console.log('Checking bed availability for ID:', allocationData.bedId);
     const { data: bed, error: bedError } = await supabase
       .from('beds')
       .select('*')
@@ -100,7 +104,8 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       .single();
 
     if (bedError || !bed) {
-      throw new Error('Bed is not available for allocation');
+      console.error('Bed check failed:', bedError, bed);
+      throw new Error(`Bed is not available for allocation. (ID: ${allocationData.bedId})`);
     }
 
     // Check if patient already has an active allocation
@@ -119,26 +124,45 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       throw new Error('Patient already has an active bed allocation');
     }
 
+    const allocationId = await generateAllocationId();
+    const now = new Date();
+    const admissionTime = now.toTimeString().split(' ')[0]; // HH:MM:SS format
+
+    // Fetch a sample record to check available columns
+    const { data: sampleData } = await supabase
+      .from('bed_allocations')
+      .select('*')
+      .limit(1);
+    
+    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+
     // Create allocation record with available columns
-    const allocationRecord = {
+    const allocationRecord: any = {
       patient_id: allocationData.patientId,
       bed_id: allocationData.bedId,
       doctor_id: allocationData.doctorId || null,
       admission_date: allocationData.admissionDate,
-      reason: allocationData.reason,
+      admission_type: allocationData.admissionType || 'elective',
       status: 'active'
     };
+
+    // Add optional columns if they exist
+    if (availableColumns.includes('allocation_id')) allocationRecord.allocation_id = allocationId;
+    if (availableColumns.includes('admission_time')) allocationRecord.admission_time = admissionTime;
+    
+    if (availableColumns.includes('reason_for_admission')) {
+      allocationRecord.reason_for_admission = allocationData.reason;
+    } else if (availableColumns.includes('reason')) {
+      allocationRecord.reason = allocationData.reason;
+    }
 
     const { data: allocation, error: allocationError } = await supabase
       .from('bed_allocations')
       .insert([allocationRecord])
       .select(`
         *,
-        allocated_at:admission_date,
-        discharged_at:discharge_date,
-        patient:patients(name, uhid:patient_id),
-        bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, name:users!user_id(name))
+        patient:patients(name, patient_id),
+        bed:beds(id, bed_number, room_number, bed_type, floor_number)
       `)
       .single();
 
@@ -222,7 +246,7 @@ export async function dischargeBed(
     const { error: bedUpdateError } = await supabase
       .from('beds')
       .update({ status: 'available' })
-      .eq('bed_id', allocation.bed.bed_id);
+      .eq('id', allocation.bed_id);
 
     if (bedUpdateError) {
       console.error('Error updating bed status after discharge:', bedUpdateError);
@@ -316,11 +340,11 @@ export async function transferBed(
       supabase
         .from('beds')
         .update({ status: 'available' })
-        .eq('bed_id', currentAllocation.bed.bed_id),
+        .eq('id', currentAllocation.bed_id),
       supabase
         .from('beds')
         .update({ status: 'occupied' })
-        .eq('bed_id', newBedId)
+        .eq('id', newBedId)
     ]);
 
     return newAllocation;

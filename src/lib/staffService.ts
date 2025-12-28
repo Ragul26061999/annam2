@@ -2,19 +2,22 @@ import { supabase } from './supabase';
 
 export interface StaffMember {
   id: string;
-  name: string;
-  role: string;
-  department: string;
-  shift: string;
-  contact: string;
-  email?: string;
-  status: 'active' | 'inactive' | 'on_leave';
-  hire_date?: string;
   employee_id?: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  role: string;
+  department_id?: string;
+  is_active: boolean;
+  hire_date?: string;
   specialization?: string;
   image?: string;
   created_at?: string;
   updated_at?: string;
+  // UI helper fields
+  name?: string; 
+  department_name?: string;
 }
 
 export interface StaffRole {
@@ -50,9 +53,9 @@ export interface StaffStats {
  */
 export async function getStaffMembers(
   filters?: {
-    department?: string;
+    department_id?: string;
     role?: string;
-    status?: string;
+    is_active?: boolean;
     search?: string;
   }
 ): Promise<StaffMember[]> {
@@ -60,45 +63,38 @@ export async function getStaffMembers(
     let query = supabase
       .from('staff')
       .select(`
-        id,
-        employee_id,
-        name,
-        role,
-        department,
-        shift,
-        contact,
-        email,
-        status,
-        hire_date,
-        specialization,
-        created_at,
-        updated_at
+        *,
+        departments(name)
       `);
 
-    if (filters?.department) {
-      query = query.eq('department', filters.department);
+    if (filters?.department_id) {
+      query = query.eq('department_id', filters.department_id);
     }
 
     if (filters?.role) {
       query = query.eq('role', filters.role);
     }
 
-    if (filters?.status) {
-      query = query.eq('status', filters.status);
+    if (filters?.is_active !== undefined) {
+      query = query.eq('is_active', filters.is_active);
     }
 
     if (filters?.search) {
-      query = query.or(`name.ilike.%${filters.search}%,role.ilike.%${filters.search}%,department.ilike.%${filters.search}%`);
+      query = query.or(`first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,role.ilike.%${filters.search}%`);
     }
 
-    const { data: staff, error } = await query.order('name', { ascending: true });
+    const { data: staff, error } = await query.order('first_name', { ascending: true });
 
     if (error) {
       console.error('Error fetching staff members:', error);
       throw error;
     }
 
-    return staff || [];
+    return (staff || []).map(s => ({
+      ...s,
+      name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+      department_name: s.departments?.name
+    }));
   } catch (error) {
     console.error('Error in getStaffMembers:', error);
     throw error;
@@ -112,7 +108,7 @@ export async function getStaffMemberById(id: string): Promise<StaffMember | null
   try {
     const { data: staff, error } = await supabase
       .from('staff')
-      .select('*')
+      .select('*, departments(name)')
       .eq('id', id)
       .single();
 
@@ -121,7 +117,11 @@ export async function getStaffMemberById(id: string): Promise<StaffMember | null
       throw error;
     }
 
-    return staff;
+    return {
+      ...staff,
+      name: `${staff.first_name || ''} ${staff.last_name || ''}`.trim(),
+      department_name: staff.departments?.name
+    };
   } catch (error) {
     console.error('Error in getStaffMemberById:', error);
     throw error;
@@ -131,7 +131,7 @@ export async function getStaffMemberById(id: string): Promise<StaffMember | null
 /**
  * Create a new staff member
  */
-export async function createStaffMember(staffData: Omit<StaffMember, 'id' | 'created_at' | 'updated_at'>): Promise<StaffMember> {
+export async function createStaffMember(staffData: Omit<StaffMember, 'id' | 'created_at' | 'updated_at' | 'name' | 'department_name'>): Promise<StaffMember> {
   try {
     const { data: staff, error } = await supabase
       .from('staff')
@@ -202,7 +202,7 @@ export async function getStaffStats(): Promise<StaffStats> {
   try {
     const { data: staff, error } = await supabase
       .from('staff')
-      .select('department, role, status');
+      .select('department_id, role, is_active, departments(name)');
 
     if (error) {
       console.error('Error fetching staff stats:', error);
@@ -210,16 +210,16 @@ export async function getStaffStats(): Promise<StaffStats> {
     }
 
     const totalStaff = staff?.length || 0;
-    const activeStaff = staff?.filter(s => s.status === 'active').length || 0;
-    const onLeaveStaff = staff?.filter(s => s.status === 'on_leave').length || 0;
+    const activeStaff = staff?.filter(s => s.is_active).length || 0;
+    const onLeaveStaff = 0; // Placeholder
 
     const departmentCounts: { [department: string]: number } = {};
     const roleCounts: { [role: string]: number } = {};
 
     staff?.forEach(member => {
-      if (member.department) {
-        departmentCounts[member.department] = (departmentCounts[member.department] || 0) + 1;
-      }
+      const deptName = (member.departments as any)?.name || 'Unassigned';
+      departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
+      
       if (member.role) {
         roleCounts[member.role] = (roleCounts[member.role] || 0) + 1;
       }
@@ -302,7 +302,7 @@ export async function getStaffSchedule(
         shift_type,
         status,
         notes,
-        staff:staff(name, role, department)
+        staff:staff(first_name, last_name, role)
       `);
 
     if (staffId) {
@@ -322,7 +322,10 @@ export async function getStaffSchedule(
       throw error;
     }
 
-    return schedules || [];
+    return (schedules || []).map(s => ({
+      ...s,
+      staff_name: s.staff ? `${(s.staff as any).first_name} ${(s.staff as any).last_name}` : 'Unknown'
+    }));
   } catch (error) {
     console.error('Error in getStaffSchedule:', error);
     throw error;
@@ -379,20 +382,20 @@ export async function updateStaffSchedule(id: string, updates: Partial<StaffSche
 /**
  * Get departments list
  */
-export async function getDepartments(): Promise<string[]> {
+export async function getDepartments(): Promise<{id: string, name: string}[]> {
   try {
-    const { data: staff, error } = await supabase
-      .from('staff')
-      .select('department')
-      .not('department', 'is', null);
+    const { data, error } = await supabase
+      .from('departments')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
 
     if (error) {
       console.error('Error fetching departments:', error);
       throw error;
     }
 
-    const departments = [...new Set(staff?.map(s => s.department).filter(Boolean))] as string[];
-    return departments.sort();
+    return data || [];
   } catch (error) {
     console.error('Error in getDepartments:', error);
     throw error;

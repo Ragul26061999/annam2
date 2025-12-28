@@ -3,9 +3,9 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { 
-  Users, Calendar, Clock, Stethoscope, Filter, Search, 
-  UserPlus, RefreshCw, Eye, CheckCircle, XCircle, 
+import {
+  Users, Calendar, Clock, Stethoscope, Filter, Search,
+  UserPlus, RefreshCw, Eye, CheckCircle, XCircle,
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
   MoreVertical, Edit3, Trash2
@@ -48,6 +48,25 @@ interface Patient {
   bed_id?: string | null;
   admission_date?: string | null;
   discharge_date?: string | null;
+  // New outpatient fields
+  age?: number;
+  diagnosis?: string;
+  height?: string;
+  weight?: string;
+  bmi?: string;
+  temperature?: string;
+  temp_unit?: string;
+  bp_systolic?: string;
+  bp_diastolic?: string;
+  pulse?: string;
+  spo2?: string;
+  respiratory_rate?: string;
+  random_blood_sugar?: string;
+  op_card_amount?: string;
+  consultation_fee?: string;
+  total_amount?: string;
+  payment_mode?: string;
+  consulting_doctor_name?: string;
 }
 
 function OutpatientPageContent() {
@@ -93,60 +112,54 @@ function OutpatientPageContent() {
     loadOutpatientData();
   }, [selectedDate, statusFilter]);
 
-  const fetchAdmittedCount = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('bed_allocations')
-        .select('patient_id')
-        .is('discharge_date', null)
-        .eq('status', 'active');
-      
-      if (error) {
-        console.error('Error fetching admitted count:', error);
-        return 0;
-      } else {
-        return data?.length || 0;
-      }
-    } catch (err) {
-      console.error('Error fetching admitted count:', err);
-      return 0;
-    }
-  };
 
   const loadOutpatientData = async () => {
     try {
       setLoading(true);
-      
+
       // Get general dashboard stats
       const dashboardStats = await getDashboardStats();
-      
-      // Get outpatient patients
+
+      // Get patients - fetch a larger batch to filter
       const response = await getAllPatients({
         page: 1,
-        limit: 50,
+        limit: 100,
         status: statusFilter === '' ? undefined : statusFilter,
         searchTerm: searchTerm || undefined
       });
-      
-      // Filter for outpatient patients only
-      const outpatientPatients = response.patients.filter((p: any) => !p.is_admitted);
-      
-      // Calculate admitted count
-      const admittedCount = await fetchAdmittedCount();
-      
-      // Calculate critical count
-      const criticalCount = response.patients.filter((p: any) => p.is_critical).length;
-      
+
+      // GET TODAY'S APPOINTMENTS FOR THE QUEUE
+      const appointmentsResponse = await getAppointments({
+        date: selectedDate,
+        status: statusFilter === 'all' || statusFilter === '' ? undefined : statusFilter,
+        limit: 100
+      });
+
+      // Filter for outpatient patients only 
+      // A patient is an outpatient if they are NOT admitted AND (admission_type is 'outpatient' OR null)
+      const outpatientPatients = response.patients.filter((p: any) =>
+        !p.is_admitted && (!p.admission_type || p.admission_type === 'outpatient')
+      );
+
+      // Filter appointments to only show those for outpatients
+      const outpatientAppointments = appointmentsResponse.appointments.filter((apt: any) => {
+        const patientIsAdmitted = apt.patient?.is_admitted;
+        const patientAdmissionType = apt.patient?.admission_type;
+        return !patientIsAdmitted && (!patientAdmissionType || patientAdmissionType === 'outpatient');
+      });
+
+      setAppointments(outpatientAppointments);
+
       setStats({
         totalPatients: dashboardStats.totalPatients,
         outpatientPatients: outpatientPatients.length,
-        todayAppointments: dashboardStats.todayAppointments,
+        todayAppointments: outpatientAppointments.length,
         upcomingAppointments: dashboardStats.upcomingAppointments,
-        completedAppointments: dashboardStats.completedAppointments,
-        waitingPatients: response.patients.filter((p: any) => p.status === 'scheduled').length,
-        inConsultation: response.patients.filter((p: any) => p.status === 'in_progress').length
+        completedAppointments: outpatientAppointments.filter(a => a.status === 'completed').length,
+        waitingPatients: outpatientAppointments.filter(a => a.status === 'scheduled').length,
+        inConsultation: outpatientAppointments.filter(a => a.status === 'in_progress').length
       });
-      
+
       setPatients(outpatientPatients);
       setError(null);
     } catch (err) {
@@ -157,7 +170,7 @@ function OutpatientPageContent() {
     }
   };
 
-  
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -185,11 +198,11 @@ function OutpatientPageContent() {
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -199,13 +212,23 @@ function OutpatientPageContent() {
       setPatientSearchError(null);
       return;
     }
-    
+
     setPatientSearchLoading(true);
     setPatientSearchError(null);
-    
+
     try {
       const patientData = await getPatientByUHID(patientId);
-      setSearchedPatient(patientData);
+
+      // Check if patient is an inpatient
+      const isAdmitted = patientData.is_admitted;
+      const isAdminType = patientData.admission_type && patientData.admission_type !== 'outpatient';
+
+      if (isAdmitted || isAdminType) {
+        setPatientSearchError('Patient found but is currently an Inpatient. Please check the Inpatient department.');
+        setSearchedPatient(null);
+      } else {
+        setSearchedPatient(patientData);
+      }
     } catch (err) {
       console.error('Error searching patient:', err);
       setPatientSearchError('Patient not found. Please check the Patient ID.');
@@ -233,8 +256,8 @@ function OutpatientPageContent() {
     if (!searchTerm) return true;
     const patientName = apt.patient?.name?.toLowerCase() || '';
     const doctorName = apt.doctor?.user?.name?.toLowerCase() || '';
-    return patientName.includes(searchTerm.toLowerCase()) || 
-           doctorName.includes(searchTerm.toLowerCase());
+    return patientName.includes(searchTerm.toLowerCase()) ||
+      doctorName.includes(searchTerm.toLowerCase());
   });
 
   if (loading) {
@@ -369,7 +392,7 @@ function OutpatientPageContent() {
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-100">
         <div className="flex flex-wrap items-center gap-4">
           <span className="text-sm font-medium text-gray-700">Quick Actions:</span>
-          
+
           <Link href="/appointments">
             <button className="text-sm bg-white px-3 py-1.5 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors">
               Book Appointment
@@ -397,7 +420,7 @@ function OutpatientPageContent() {
           </div>
         </div>
       )}
-      
+
       {patientSearchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
@@ -409,7 +432,7 @@ function OutpatientPageContent() {
           </div>
         </div>
       )}
-      
+
       {searchedPatient && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -421,7 +444,7 @@ function OutpatientPageContent() {
               </button>
             </Link>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
@@ -432,7 +455,7 @@ function OutpatientPageContent() {
                 <p className="text-sm text-gray-600">{searchedPatient.patient_id}</p>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center text-sm text-gray-600">
                 <Phone size={14} className="mr-2" />
@@ -443,7 +466,7 @@ function OutpatientPageContent() {
                 <span className="capitalize">{searchedPatient.gender || 'Not specified'}</span>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center text-sm text-gray-600">
                 <Hash size={14} className="mr-2" />
@@ -457,7 +480,7 @@ function OutpatientPageContent() {
               )}
             </div>
           </div>
-          
+
           {searchedPatient.primary_complaint && (
             <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
               <p className="text-sm text-orange-800">
@@ -467,7 +490,7 @@ function OutpatientPageContent() {
           )}
         </div>
       )}
-      
+
       {/* Outpatient Display Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
@@ -482,12 +505,12 @@ function OutpatientPageContent() {
             </button>
           </Link>
         </div>
-        
+
         {patients.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {patients.slice(0, 3).map((patient) => (
-              <div 
-                key={patient.id} 
+              <div
+                key={patient.id}
                 className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
               >
                 <div className="flex justify-between items-start mb-3">
@@ -499,39 +522,69 @@ function OutpatientPageContent() {
                     Outpatient
                   </span>
                 </div>
-                
-                <div className="space-y-2 text-sm text-gray-600">
+
+                <div className="space-y-3 text-sm text-gray-600">
                   <div className="flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    <span>Age: {calculateAge(patient.date_of_birth)} | {patient.gender}</span>
+                    <User className="h-4 w-4 text-blue-500" />
+                    <span className="font-medium">
+                      Age: {patient.age || calculateAge(patient.date_of_birth)} | {patient.gender}
+                    </span>
                   </div>
-                  
-                  {patient.primary_complaint && (
-                    <div className="flex items-start gap-2">
-                      <Stethoscope className="h-4 w-4 mt-0.5" />
-                      <span className="truncate" title={patient.primary_complaint}>
-                        {patient.primary_complaint.length > 30 
-                          ? `${patient.primary_complaint.substring(0, 30)}...` 
-                          : patient.primary_complaint}
+
+                  {patient.consulting_doctor_name && (
+                    <div className="flex items-center gap-2">
+                      <Stethoscope className="h-4 w-4 text-purple-500" />
+                      <span className="text-purple-700 font-medium">Dr. {patient.consulting_doctor_name}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {patient.bmi && (
+                      <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-100 text-[10px] font-bold">
+                        BMI: {patient.bmi}
+                      </span>
+                    )}
+                    {patient.bp_systolic && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 text-[10px] font-bold">
+                        BP: {patient.bp_systolic}/{patient.bp_diastolic}
+                      </span>
+                    )}
+                    {patient.temperature && (
+                      <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded border border-orange-100 text-[10px] font-bold">
+                        Temp: {patient.temperature}°{patient.temp_unit === 'celsius' ? 'C' : 'F'}
+                      </span>
+                    )}
+                  </div>
+
+                  {patient.diagnosis && (
+                    <div className="flex items-start gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                      <AlertCircle className="h-4 w-4 mt-0.5 text-orange-500" />
+                      <span className="text-xs line-clamp-2" title={patient.diagnosis}>
+                        {patient.diagnosis}
                       </span>
                     </div>
                   )}
-                  
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>{patient.admission_date ? new Date(patient.admission_date).toLocaleDateString() : 'N/A'}</span>
+
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                    <div className="flex items-center gap-1 text-gray-400">
+                      <Calendar className="h-4 w-4" />
+                      <span className="text-[11px]">{patient.admission_date ? new Date(patient.admission_date).toLocaleDateString() : 'N/A'}</span>
+                    </div>
+                    {patient.total_amount && (
+                      <div className="text-green-600 font-bold">
+                        ₹{patient.total_amount}
+                      </div>
+                    )}
                   </div>
                 </div>
-                
+
                 <div className="mt-3 pt-3 border-t border-gray-100">
-                  <Link 
-                    href={`/patients/${patient.patient_id}`} 
-                    className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1"
+                  <Link
+                    href={`/patients/${patient.id}`}
+                    className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center gap-1 w-full py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
                   >
-                    View Details
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
+                    View Patient Case File
+                    <ArrowRight size={12} />
                   </Link>
                 </div>
               </div>
@@ -544,7 +597,7 @@ function OutpatientPageContent() {
           </div>
         )}
       </div>
-      
+
       {/* Appointments Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-5 border-b border-gray-100">
@@ -575,7 +628,7 @@ function OutpatientPageContent() {
                   className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
                 />
               </div>
-              <select 
+              <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -589,7 +642,7 @@ function OutpatientPageContent() {
             </div>
           </div>
         </div>
-        
+
         <div className="divide-y divide-gray-100">
           {filteredAppointments.length === 0 ? (
             <div className="text-center py-12">
@@ -607,7 +660,7 @@ function OutpatientPageContent() {
               const patientName = appointment.patient?.name || 'Unknown Patient';
               const doctorName = appointment.doctor?.user?.name || 'Unknown Doctor';
               const patientInitials = patientName.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase();
-              
+
               return (
                 <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
@@ -616,7 +669,7 @@ function OutpatientPageContent() {
                       <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-orange-500 rounded-lg flex items-center justify-center">
                         <span className="text-white font-bold text-sm">{index + 1}</span>
                       </div>
-                      
+
                       {/* Patient Info */}
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
@@ -643,7 +696,7 @@ function OutpatientPageContent() {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       <Link href={`/patients/${appointment.patient_id}`}>
@@ -684,8 +737,8 @@ function OutpatientPageContent() {
           </div>
         </div>
       )}
-      
-      
+
+
     </div>
   );
 }

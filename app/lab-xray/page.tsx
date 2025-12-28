@@ -2,15 +2,15 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { 
-  Microscope, 
-  Radiation, 
-  Plus, 
-  Search, 
-  Filter, 
-  FileText, 
-  Clock, 
-  CheckCircle, 
+import {
+  Microscope,
+  Radiation,
+  Plus,
+  Search,
+  Filter,
+  FileText,
+  Clock,
+  CheckCircle,
   AlertCircle,
   TrendingUp,
   Calendar,
@@ -29,18 +29,18 @@ import {
   ChevronRight,
   ArrowRight
 } from 'lucide-react';
-import { 
-  getLabOrders, 
+import {
+  getLabOrders,
   getRadiologyOrders,
-  getDiagnosticStats 
+  getDiagnosticStats
 } from '../../src/lib/labXrayService';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -87,7 +87,7 @@ export default function LabXRayPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
+
       // Get stats
       const statsData = await getDiagnosticStats();
       setStats(statsData);
@@ -97,10 +97,10 @@ export default function LabXRayPage() {
         getLabOrders(),
         getRadiologyOrders()
       ]);
-      
+
       setLabOrders(lab || []);
       setRadiologyOrders(radiology || []);
-      
+
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -115,7 +115,7 @@ export default function LabXRayPage() {
       case 'sample_collected': return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'in_progress': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'completed': return 'bg-green-100 text-green-800 border-green-200';
-      case 'cancelled': 
+      case 'cancelled':
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
       case 'scheduled': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
       case 'patient_arrived': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
@@ -141,15 +141,15 @@ export default function LabXRayPage() {
       // Apply status and urgency filters
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
       if (urgencyFilter !== 'all' && order.urgency !== urgencyFilter) return false;
-      
+
       // Apply search term
       if (!searchTerm) return true;
       const patientName = order.patient?.name?.toLowerCase() || '';
       const orderNumber = order.order_number?.toLowerCase() || '';
       const testName = order.test_catalog?.test_name?.toLowerCase() || '';
-      return patientName.includes(searchTerm.toLowerCase()) || 
-             orderNumber.includes(searchTerm.toLowerCase()) ||
-             testName.includes(searchTerm.toLowerCase());
+      return patientName.includes(searchTerm.toLowerCase()) ||
+        orderNumber.includes(searchTerm.toLowerCase()) ||
+        testName.includes(searchTerm.toLowerCase());
     });
   }, [activeSubTab, labOrders, radiologyOrders, searchTerm, statusFilter, urgencyFilter]);
 
@@ -181,10 +181,10 @@ export default function LabXRayPage() {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayLabs = labOrders.filter(o => o.created_at?.startsWith(dateStr)).length;
       const dayRads = radiologyOrders.filter(o => o.created_at?.startsWith(dateStr)).length;
-      
+
       dailyData.push({
         date: date.toLocaleDateString('en-US', { weekday: 'short' }),
         lab: dayLabs,
@@ -206,12 +206,11 @@ export default function LabXRayPage() {
       <div className="flex items-center gap-1 w-full max-w-sm mt-2">
         {steps.map((step, idx) => (
           <React.Fragment key={step}>
-            <div 
-              className={`h-2 rounded-full flex-1 transition-all duration-500 ${
-                idx <= currentIndex 
-                  ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]') 
+            <div
+              className={`h-2 rounded-full flex-1 transition-all duration-500 ${idx <= currentIndex
+                  ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]')
                   : 'bg-gray-200'
-              }`}
+                }`}
               title={step.replace(/_/g, ' ')}
             />
             {idx < steps.length - 1 && (
@@ -257,36 +256,42 @@ export default function LabXRayPage() {
           </h1>
           <p className="text-gray-500 mt-2 text-lg">Real-time tracking and clinical analytics for all diagnostic services.</p>
         </div>
-        
+
         <div className="flex flex-wrap gap-3">
           <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-            <button 
+            <button
               onClick={() => setActiveTab('management')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                activeTab === 'management' 
-                  ? 'bg-teal-600 text-white shadow-md' 
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'management'
+                  ? 'bg-teal-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               Management
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                activeTab === 'analytics' 
-                  ? 'bg-cyan-600 text-white shadow-md' 
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'analytics'
+                  ? 'bg-cyan-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               Analytics
             </button>
           </div>
-          <Link href="/lab-xray/order">
-            <button className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg hover:bg-gray-800 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
-              <Plus size={18} />
-              <span className="font-semibold">New Order</span>
-            </button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/lab-xray/lab">
+              <button className="flex items-center gap-2 px-6 py-2.5 bg-teal-600 text-white rounded-xl shadow-lg hover:bg-teal-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                <Microscope size={18} />
+                <span className="font-semibold">Lab</span>
+              </button>
+            </Link>
+            <Link href="/lab-xray/xray">
+              <button className="flex items-center gap-2 px-6 py-2.5 bg-cyan-600 text-white rounded-xl shadow-lg hover:bg-cyan-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                <Radiation size={18} />
+                <span className="font-semibold">X-ray</span>
+              </button>
+            </Link>
+          </div>
           <button
             onClick={loadData}
             className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-600 transition-colors shadow-sm"
@@ -305,11 +310,11 @@ export default function LabXRayPage() {
           { label: 'Active Radiology', value: stats.pendingRadiologyOrders, icon: Zap, color: 'purple', trend: 'In Queue' },
           { label: 'Release Today', value: stats.completedToday, icon: FileCheck, color: 'emerald', trend: 'Reports' },
         ].map((item, i) => (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            key={item.label} 
+            key={item.label}
             className="group relative overflow-hidden bg-white border border-gray-100 p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300"
           >
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -329,7 +334,7 @@ export default function LabXRayPage() {
 
       <AnimatePresence mode="wait">
         {activeTab === 'analytics' ? (
-          <motion.div 
+          <motion.div
             key="analytics"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -354,18 +359,18 @@ export default function LabXRayPage() {
                     <AreaChart data={analyticsData.dailyData}>
                       <defs>
                         <linearGradient id="colorLab" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="colorRad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} />
-                      <Tooltip 
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                      <Tooltip
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                       />
                       <Area type="monotone" dataKey="lab" stroke="#14b8a6" fillOpacity={1} fill="url(#colorLab)" strokeWidth={3} />
@@ -398,7 +403,7 @@ export default function LabXRayPage() {
                         ))}
                       </Pie>
                       <Tooltip />
-                      <Legend verticalAlign="bottom" height={36}/>
+                      <Legend verticalAlign="bottom" height={36} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -406,38 +411,38 @@ export default function LabXRayPage() {
             </div>
 
             <div className="bg-gradient-to-br from-gray-900 to-indigo-900 text-white p-8 rounded-3xl relative overflow-hidden">
-               <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                  <div className="max-w-md">
-                    <h2 className="text-2xl font-bold mb-2">Diagnostic Performance Report</h2>
-                    <p className="text-indigo-200 text-sm leading-relaxed">
-                      All diagnostic efficiency metrics are within optimal range. Average turnaround time for STAT orders is currently 42 minutes.
-                    </p>
-                    <div className="mt-6 flex gap-4">
-                       <button className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm font-semibold transition-all backdrop-blur-sm border border-white/10">
-                         <Download size={16} />
-                         Monthly Export
-                       </button>
-                    </div>
+              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="max-w-md">
+                  <h2 className="text-2xl font-bold mb-2">Diagnostic Performance Report</h2>
+                  <p className="text-indigo-200 text-sm leading-relaxed">
+                    All diagnostic efficiency metrics are within optimal range. Average turnaround time for STAT orders is currently 42 minutes.
+                  </p>
+                  <div className="mt-6 flex gap-4">
+                    <button className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm font-semibold transition-all backdrop-blur-sm border border-white/10">
+                      <Download size={16} />
+                      Monthly Export
+                    </button>
                   </div>
-                  <div className="flex gap-12 text-center">
-                    <div>
-                      <p className="text-gray-400 text-xs font-bold uppercase mb-1">Efficiency</p>
-                      <p className="text-3xl font-black">94.8%</p>
-                      <span className="text-emerald-400 text-[10px] font-bold">+2.4% vs last mo</span>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 text-xs font-bold uppercase mb-1">Avg TAT</p>
-                      <p className="text-3xl font-black">2.4h</p>
-                      <span className="text-emerald-400 text-[10px] font-bold">Optimal</span>
-                    </div>
+                </div>
+                <div className="flex gap-12 text-center">
+                  <div>
+                    <p className="text-gray-400 text-xs font-bold uppercase mb-1">Efficiency</p>
+                    <p className="text-3xl font-black">94.8%</p>
+                    <span className="text-emerald-400 text-[10px] font-bold">+2.4% vs last mo</span>
                   </div>
-               </div>
-               <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 blur-[100px] pointer-events-none"></div>
-               <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 blur-[100px] pointer-events-none"></div>
+                  <div>
+                    <p className="text-gray-400 text-xs font-bold uppercase mb-1">Avg TAT</p>
+                    <p className="text-3xl font-black">2.4h</p>
+                    <span className="text-emerald-400 text-[10px] font-bold">Optimal</span>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 blur-[100px] pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 blur-[100px] pointer-events-none"></div>
             </div>
           </motion.div>
         ) : (
-          <motion.div 
+          <motion.div
             key="management"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -448,11 +453,10 @@ export default function LabXRayPage() {
             <div className="flex border-b border-gray-200">
               <button
                 onClick={() => setActiveSubTab('lab')}
-                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${
-                  activeSubTab === 'lab'
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'lab'
                     ? 'border-teal-600 text-teal-600 bg-teal-50/50'
                     : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Beaker size={18} />
@@ -465,11 +469,10 @@ export default function LabXRayPage() {
               </button>
               <button
                 onClick={() => setActiveSubTab('radiology')}
-                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${
-                  activeSubTab === 'radiology'
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'radiology'
                     ? 'border-cyan-600 text-cyan-600 bg-cyan-50/50'
                     : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Radiation size={18} />
@@ -530,15 +533,15 @@ export default function LabXRayPage() {
                 </div>
               ) : (
                 filteredOrders.map((order, index) => (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    key={order.id} 
+                    key={order.id}
                     className="group bg-white rounded-2xl border border-gray-200 p-5 hover:border-teal-500/50 hover:shadow-lg transition-all duration-300 relative overflow-hidden"
                   >
                     <div className="absolute top-0 left-0 w-1.5 h-full transition-colors group-hover:scale-y-110" style={{ backgroundColor: order.urgency === 'stat' ? '#ef4444' : (activeSubTab === 'lab' ? '#14b8a6' : '#06b6d4') }} />
-                    
+
                     <div className="flex flex-col lg:flex-row gap-6">
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -556,7 +559,7 @@ export default function LabXRayPage() {
                             {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        
+
                         <div className="flex items-start justify-between">
                           <div>
                             <h3 className="text-xl font-bold text-gray-900 group-hover:text-teal-600 transition-colors">
@@ -570,7 +573,7 @@ export default function LabXRayPage() {
                               <span>{order.patient?.phone}</span>
                             </div>
                           </div>
-                          
+
                           <div className="text-right hidden sm:block">
                             <p className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name}</p>
                             <p className="text-xs text-gray-500">Ordered by Dr. {order.ordering_doctor?.name}</p>
@@ -580,8 +583,8 @@ export default function LabXRayPage() {
                         {/* Workflow Visualization */}
                         <div className="mt-6 border-t border-gray-100 pt-5">
                           <div className="flex items-center justify-between mb-2">
-                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Process Flow</p>
-                             <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">Step: {order.status?.replace(/_/g, ' ').toUpperCase()}</p>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Process Flow</p>
+                            <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">Step: {order.status?.replace(/_/g, ' ').toUpperCase()}</p>
                           </div>
                           <WorkflowVisualizer status={order.status} type={activeSubTab} />
                         </div>
@@ -613,7 +616,7 @@ export default function LabXRayPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Footer Info */}
       <div className="pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between text-xs text-gray-400 gap-4">
         <p>© 2025 Annam Hospital • Diagnostic Management System V2.4</p>

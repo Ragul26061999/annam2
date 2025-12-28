@@ -53,7 +53,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
   const [formData, setFormData] = useState({
     bedId: '',
     doctorId: '',
-    admissionType: 'scheduled' as 'emergency' | 'scheduled' | 'transfer',
+    admissionType: 'inpatient' as 'emergency' | 'elective' | 'scheduled' | 'referred' | 'transfer' | 'inpatient' | 'outpatient',
     reason: '',
     admissionDate: new Date().toISOString().split('T')[0],
   });
@@ -83,21 +83,21 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
         .order('bed_number');
 
       if (error) throw error;
-      
+
       const bedsWithDepartment = beds?.map(bed => ({
         ...bed,
         department: Array.isArray(bed.department) ? bed.department[0] : bed.department
       })) || [];
-      
+
       setAvailableBeds(bedsWithDepartment);
-      
+
       // Extract unique ward names
       const uniqueWards = [...new Set(bedsWithDepartment
         .map(bed => bed.department?.name)
         .filter(Boolean)
       )] as string[];
       setWards(uniqueWards);
-      
+
       // Initially show all beds
       setFilteredBeds(bedsWithDepartment);
     } catch (err) {
@@ -122,13 +122,13 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
         .order('specialization');
 
       if (error) throw error;
-      
+
       // Transform the data to match our interface
       const transformedDoctors = doctors?.map(doctor => ({
         ...doctor,
         user: Array.isArray(doctor.user) ? doctor.user[0] : doctor.user
       })) || [];
-      
+
       setDoctors(transformedDoctors);
     } catch (err) {
       console.error('Error fetching doctors:', err);
@@ -161,7 +161,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.bedId) {
       setError('Please select a bed');
       return;
@@ -176,12 +176,12 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
         bedId: formData.bedId,
         doctorId: formData.doctorId || undefined,
         admissionDate: formData.admissionDate,
-        admissionType: formData.admissionType || 'general',
+        admissionType: formData.admissionType || 'scheduled',
         reason: formData.reason || '',
       };
 
       await allocateBed(allocationData);
-      
+
       setSuccess(true);
       setTimeout(() => {
         onSuccess();
@@ -201,7 +201,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
     setFormData({
       bedId: '',
       doctorId: '',
-      admissionType: 'scheduled' as 'emergency' | 'scheduled' | 'transfer',
+      admissionType: 'inpatient' as 'emergency' | 'elective' | 'scheduled' | 'referred' | 'transfer' | 'inpatient' | 'outpatient',
       reason: '',
       admissionDate: new Date().toISOString().split('T')[0],
     });
@@ -319,7 +319,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                 <div className="grid grid-cols-4 gap-2">
                   {[
                     { value: 'emergency', label: 'Emergency', color: 'red' },
-                    { value: 'scheduled', label: 'Scheduled', color: 'blue' },
+                    { value: 'inpatient', label: 'Inpatient', color: 'blue' },
                     { value: 'transfer', label: 'Transfer', color: 'yellow' }
                   ].map((type) => (
                     <label key={type.value} className="flex items-center cursor-pointer">
@@ -331,11 +331,10 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                         onChange={(e) => setFormData(prev => ({ ...prev, admissionType: e.target.value as any }))}
                         className="sr-only"
                       />
-                      <div className={`w-full p-3 rounded-lg border-2 text-center text-sm font-medium transition-all ${
-                        formData.admissionType === type.value
-                          ? `border-${type.color}-500 bg-${type.color}-50 text-${type.color}-700`
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                      }`}>
+                      <div className={`w-full p-3 rounded-lg border-2 text-center text-sm font-medium transition-all ${formData.admissionType === type.value
+                        ? `border-${type.color}-500 bg-${type.color}-50 text-${type.color}-700`
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                        }`}>
                         {type.label}
                       </div>
                     </label>
@@ -362,11 +361,10 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                           onChange={() => handleDoctorSelect(doctor)}
                           className="sr-only"
                         />
-                        <div className={`w-full p-3 rounded-lg border text-sm transition-all ${
-                          formData.doctorId === doctor.license_number
-                            ? 'border-orange-500 bg-orange-50 text-orange-700'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                        }`}>
+                        <div className={`w-full p-3 rounded-lg border text-sm transition-all ${formData.doctorId === doctor.license_number
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          }`}>
                           <div className="font-medium">{doctor.user.name}</div>
                           <div className="text-xs text-gray-500">{doctor.specialization}</div>
                         </div>
@@ -381,18 +379,17 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select Bed *
                 </label>
-                
+
                 {/* Ward Filter */}
                 <div className="mb-3">
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => handleWardFilter('all')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        selectedWard === 'all' || selectedWard === ''
-                          ? 'bg-orange-500 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedWard === 'all' || selectedWard === ''
+                        ? 'bg-orange-500 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                     >
                       All Wards ({availableBeds.length})
                     </button>
@@ -403,11 +400,10 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                           key={ward}
                           type="button"
                           onClick={() => handleWardFilter(ward)}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            selectedWard === ward
-                              ? 'bg-orange-500 text-white shadow-sm'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedWard === ward
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
                         >
                           {ward} ({wardBedCount})
                         </button>
@@ -450,11 +446,10 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
                                   onChange={() => handleBedSelect(bed)}
                                   className="sr-only"
                                 />
-                                <div className={`w-full p-2 rounded-lg border-2 text-center text-sm transition-all group-hover:shadow-sm ${
-                                  formData.bedId === bed.id
-                                    ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
-                                    : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-25'
-                                }`}>
+                                <div className={`w-full p-2 rounded-lg border-2 text-center text-sm transition-all group-hover:shadow-sm ${formData.bedId === bed.id
+                                  ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
+                                  : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-25'
+                                  }`}>
                                   <div className="font-medium text-xs">Bed {bed.bed_number}</div>
                                   {bed.department?.name && (
                                     <div className="text-xs text-gray-400 mt-1 truncate">
