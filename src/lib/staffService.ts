@@ -62,10 +62,7 @@ export async function getStaffMembers(
   try {
     let query = supabase
       .from('staff')
-      .select(`
-        *,
-        departments(name)
-      `);
+      .select('*');
 
     if (filters?.department_id) {
       query = query.eq('department_id', filters.department_id);
@@ -86,17 +83,24 @@ export async function getStaffMembers(
     const { data: staff, error } = await query.order('first_name', { ascending: true });
 
     if (error) {
-      console.error('Error fetching staff members:', error);
+      console.error('Error fetching staff members:', error.message, error.details);
       throw error;
     }
+
+    // Fetch departments separately to map names (since no FK relationship exists)
+    const { data: depts, error: deptsError } = await supabase.from('departments').select('id, name');
+    if (deptsError) {
+      console.warn('Could not fetch departments for staff mapping:', deptsError.message);
+    }
+    const deptMap = Object.fromEntries(depts?.map(d => [d.id, d.name]) || []);
 
     return (staff || []).map(s => ({
       ...s,
       name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
-      department_name: s.departments?.name
+      department_name: s.department_id ? deptMap[s.department_id] : undefined
     }));
   } catch (error) {
-    console.error('Error in getStaffMembers:', error);
+    console.error('Error in getStaffMembers:', error instanceof Error ? error.message : error);
     throw error;
   }
 }
@@ -108,22 +112,38 @@ export async function getStaffMemberById(id: string): Promise<StaffMember | null
   try {
     const { data: staff, error } = await supabase
       .from('staff')
-      .select('*, departments(name)')
+      .select('*')
       .eq('id', id)
       .single();
 
     if (error) {
-      console.error('Error fetching staff member:', error);
+      console.error('Error fetching staff member:', error.message, error.details);
       throw error;
+    }
+
+    // Fetch department name manually
+    let departmentName = undefined;
+    if (staff.department_id) {
+      const { data: dept, error: deptError } = await supabase
+        .from('departments')
+        .select('name')
+        .eq('id', staff.department_id)
+        .single();
+      
+      if (deptError) {
+        console.warn(`Could not fetch department name for staff ${id}:`, deptError.message);
+      } else {
+        departmentName = dept?.name;
+      }
     }
 
     return {
       ...staff,
       name: `${staff.first_name || ''} ${staff.last_name || ''}`.trim(),
-      department_name: staff.departments?.name
+      department_name: departmentName
     };
   } catch (error) {
-    console.error('Error in getStaffMemberById:', error);
+    console.error('Error in getStaffMemberById:', error instanceof Error ? error.message : error);
     throw error;
   }
 }
@@ -140,13 +160,13 @@ export async function createStaffMember(staffData: Omit<StaffMember, 'id' | 'cre
       .single();
 
     if (error) {
-      console.error('Error creating staff member:', error);
+      console.error('Error creating staff member:', error.message, error.details);
       throw error;
     }
 
     return staff;
   } catch (error) {
-    console.error('Error in createStaffMember:', error);
+    console.error('Error in createStaffMember:', error instanceof Error ? error.message : error);
     throw error;
   }
 }
@@ -156,21 +176,24 @@ export async function createStaffMember(staffData: Omit<StaffMember, 'id' | 'cre
  */
 export async function updateStaffMember(id: string, updates: Partial<StaffMember>): Promise<StaffMember> {
   try {
+    // Strip UI-only fields before sending to Supabase
+    const { name, department_name, created_at, updated_at, ...dbUpdates } = updates as any;
+    
     const { data: staff, error } = await supabase
       .from('staff')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({ ...dbUpdates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating staff member:', error);
+      console.error('Error updating staff member:', error.message, error.details);
       throw error;
     }
 
     return staff;
   } catch (error) {
-    console.error('Error in updateStaffMember:', error);
+    console.error('Error in updateStaffMember:', error instanceof Error ? error.message : error);
     throw error;
   }
 }
@@ -202,12 +225,19 @@ export async function getStaffStats(): Promise<StaffStats> {
   try {
     const { data: staff, error } = await supabase
       .from('staff')
-      .select('department_id, role, is_active, departments(name)');
+      .select('department_id, role, is_active');
 
     if (error) {
-      console.error('Error fetching staff stats:', error);
+      console.error('Error fetching staff stats:', error.message, error.details);
       throw error;
     }
+
+    // Fetch departments for mapping
+    const { data: depts, error: deptsError } = await supabase.from('departments').select('id, name');
+    if (deptsError) {
+      console.warn('Could not fetch departments for staff stats:', deptsError.message);
+    }
+    const deptMap = Object.fromEntries(depts?.map(d => [d.id, d.name]) || []);
 
     const totalStaff = staff?.length || 0;
     const activeStaff = staff?.filter(s => s.is_active).length || 0;
@@ -217,7 +247,7 @@ export async function getStaffStats(): Promise<StaffStats> {
     const roleCounts: { [role: string]: number } = {};
 
     staff?.forEach(member => {
-      const deptName = (member.departments as any)?.name || 'Unassigned';
+      const deptName = member.department_id ? deptMap[member.department_id] : 'Unassigned';
       departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
       
       if (member.role) {
@@ -293,17 +323,7 @@ export async function getStaffSchedule(
   try {
     let query = supabase
       .from('staff_schedules')
-      .select(`
-        id,
-        staff_id,
-        date,
-        shift_start,
-        shift_end,
-        shift_type,
-        status,
-        notes,
-        staff:staff(first_name, last_name, role)
-      `);
+      .select('*');
 
     if (staffId) {
       query = query.eq('staff_id', staffId);
@@ -318,14 +338,21 @@ export async function getStaffSchedule(
     const { data: schedules, error } = await query.order('date', { ascending: true });
 
     if (error) {
-      console.error('Error fetching staff schedule:', error);
+      console.error('Error fetching staff schedule:', error.message, error.details);
       throw error;
     }
 
-    return (schedules || []).map(s => ({
-      ...s,
-      staff_name: s.staff ? `${(s.staff as any).first_name} ${(s.staff as any).last_name}` : 'Unknown'
-    }));
+    // Fetch staff info separately to map names
+    const { data: staffMembers } = await supabase.from('staff').select('id, first_name, last_name, role');
+    const staffMap = Object.fromEntries(staffMembers?.map(s => [s.id, s]) || []);
+
+    return (schedules || []).map(s => {
+      const staffInfo = staffMap[s.staff_id];
+      return {
+        ...s,
+        staff_name: staffInfo ? `${staffInfo.first_name} ${staffInfo.last_name}` : 'Unknown'
+      };
+    });
   } catch (error) {
     console.error('Error in getStaffSchedule:', error);
     throw error;
@@ -387,7 +414,7 @@ export async function getDepartments(): Promise<{id: string, name: string}[]> {
     const { data, error } = await supabase
       .from('departments')
       .select('id, name')
-      .eq('is_active', true)
+      .eq('status', 'active')
       .order('name');
 
     if (error) {
@@ -430,9 +457,12 @@ export async function getRoles(): Promise<string[]> {
  */
 export async function bulkUpdateStaff(ids: string[], updates: Partial<StaffMember>): Promise<void> {
   try {
+    // Strip UI-only fields
+    const { name, department_name, created_at, updated_at, ...dbUpdates } = updates as any;
+
     const { error } = await supabase
       .from('staff')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({ ...dbUpdates, updated_at: new Date().toISOString() })
       .in('id', ids);
 
     if (error) {

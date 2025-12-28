@@ -50,7 +50,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             const { data, error } = await supabase
                 .from('departments')
                 .select('id, name')
-                .eq('is_active', true)
+                .eq('status', 'active')
                 .order('name');
 
             if (error) throw error;
@@ -132,7 +132,11 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             }, 1500);
         } catch (err: any) {
             console.error('Error creating staff member:', err);
-            setError(err.message || 'Failed to create staff member. Please try again.');
+            if (err.code === '42P01' || err.message?.includes('does not exist')) {
+                setError('The "staff" table does not exist. Please run the SQL migration script to create it.');
+            } else {
+                setError(err.message || 'Failed to create staff member. Please try again.');
+            }
         } finally {
             setSubmitting(false);
         }
@@ -250,7 +254,6 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     disabled={submitting}
                                     required
                                 >
-                                    <option value="Doctor">Doctor</option>
                                     <option value="Nurse">Nurse</option>
                                     <option value="Receptionist">Receptionist</option>
                                     <option value="Pharmacist">Pharmacist</option>

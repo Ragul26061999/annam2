@@ -66,7 +66,7 @@ export default function StaffPage() {
       setLoading(true);
       setError(null);
 
-      const data = await getStaffMembers();
+      const data = (await getStaffMembers()).filter(s => s.role !== 'Doctor');
       setStaffMembers(data);
 
       // Calculate stats
@@ -82,9 +82,10 @@ export default function StaffPage() {
         nightShift
       });
 
-    } catch (error) {
-      console.error('Error fetching staff data:', error);
-      setError('Failed to load staff data. Please try again later.');
+    } catch (err: any) {
+      console.error('Error fetching staff data:', err);
+      const errorMessage = err.message || 'Failed to load staff data.';
+      setError(`${errorMessage}. Please ensure the "staff" table exists in your database.`);
     } finally {
       setLoading(false);
     }
@@ -96,10 +97,10 @@ export default function StaffPage() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(staff =>
-        staff.name?.toLowerCase().includes(query) ||
-        staff.role.toLowerCase().includes(query) ||
-        staff.email?.toLowerCase().includes(query) ||
-        staff.employee_id?.toLowerCase().includes(query)
+        (staff.name || '').toLowerCase().includes(query) ||
+        (staff.role || '').toLowerCase().includes(query) ||
+        (staff.email || '').toLowerCase().includes(query) ||
+        (staff.employee_id || '').toLowerCase().includes(query)
       );
     }
 
@@ -110,7 +111,7 @@ export default function StaffPage() {
     setFilteredStaff(filtered);
   };
 
-  const roles = ['All', ...new Set(staffMembers.map(s => s.role))].sort();
+  const roles = ['All', ...new Set(staffMembers.map(s => s.role))].filter(role => role !== 'Doctor').sort();
 
   if (loading && staffMembers.length === 0) {
     return (
