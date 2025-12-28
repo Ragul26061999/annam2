@@ -20,12 +20,17 @@ import {
     ClipboardList,
     Printer,
     CheckCircle,
-    Barcode
+    Barcode,
+    FileText,
+    Upload
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../src/lib/patientService';
 import { getAllDoctorsSimple, Doctor } from '../src/lib/doctorService';
 import PatientRegistrationLabel from './PatientRegistrationLabel';
 import BarcodeDisplay from './BarcodeDisplay';
+import StaffSelect from '../src/components/StaffSelect';
+import DocumentUpload from '../src/components/DocumentUpload';
+import DocumentList from '../src/components/DocumentList';
 
 interface OutpatientRegistrationFormProps {
     onComplete: (result: any) => void;
@@ -94,7 +99,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         consultationFee: '0',
         opCardAmount: '0',
         totalAmount: '0',
-        paymentMode: 'Cash'
+        paymentMode: 'Cash',
+        staffId: ''
     });
 
     useEffect(() => {
@@ -221,7 +227,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                 chronicConditions: '',
                 previousSurgeries: '',
                 admissionDate: formData.registrationDate,
-                admissionTime: formData.registrationTime
+                admissionTime: formData.registrationTime,
+                staffId: formData.staffId
             };
 
             const result = await registerNewPatient(registrationData, formData.uhid);
@@ -308,6 +315,44 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                         >
                             Back to Dashboard
                         </button>
+                    </div>
+
+                    {/* Document Upload Section */}
+                    <div className="mt-8 pt-8 border-t border-gray-200">
+                        <div className="flex items-center gap-3 mb-6">
+                            <FileText className="h-6 w-6 text-blue-600" />
+                            <h3 className="text-lg font-semibold text-gray-900">Patient Documents</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Upload Section */}
+                            <div className="bg-blue-50 rounded-xl p-6">
+                                <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Upload className="h-5 w-5 text-blue-600" />
+                                    Upload Documents
+                                </h4>
+                                <DocumentUpload
+                                    patientId={registrationResult.patientId}
+                                    uhid={registrationResult.uhid}
+                                    staffId={formData.staffId}
+                                    category="general"
+                                    onUploadComplete={(doc) => {
+                                        console.log('Document uploaded:', doc);
+                                    }}
+                                    onUploadError={(error) => {
+                                        console.error('Upload error:', error);
+                                    }}
+                                />
+                            </div>
+
+                            {/* Documents List */}
+                            <div className="bg-gray-50 rounded-xl p-6">
+                                <DocumentList
+                                    patientId={registrationResult.patientId}
+                                    showDelete={true}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -772,6 +817,14 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             ))
                                         }
                                     </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <StaffSelect
+                                        value={formData.staffId}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, staffId: val }))}
+                                        label="Registered By (Staff)"
+                                        required
+                                    />
                                 </div>
                             </div>
 

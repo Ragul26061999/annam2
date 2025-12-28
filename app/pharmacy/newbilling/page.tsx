@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/src/lib/supabase';
-import { 
-  Search, 
-  Plus, 
-  Minus, 
-  ShoppingCart, 
-  User, 
-  Phone, 
+import {
+  Search,
+  Plus,
+  Minus,
+  ShoppingCart,
+  User,
+  Phone,
   Calendar,
   Package,
   AlertTriangle,
@@ -17,6 +17,7 @@ import {
   Printer,
   X
 } from 'lucide-react';
+import StaffSelect from '@/src/components/StaffSelect';
 
 // Types
 interface Medicine {
@@ -91,6 +92,7 @@ export default function NewBillingPage() {
   const [payments, setPayments] = useState<Payment[]>([
     { method: 'cash', amount: 0, reference: '' }
   ]);
+  const [staffId, setStaffId] = useState('');
   // Smooth typing buffer for payment amounts per row
   const [paymentAmountInputs, setPaymentAmountInputs] = useState<string[]>([]);
   // Initialize/expand buffer when modal opens
@@ -311,19 +313,19 @@ export default function NewBillingPage() {
     try {
       setLoading(true);
       const { data: medicinesData, error: medicinesError } = await supabase
-         .from('medications')
-         .select('id, name, medication_code, manufacturer, category, dosage_form, combination')
-         .eq('status', 'active')
-         .order('name');
+        .from('medications')
+        .select('id, name, medication_code, manufacturer, category, dosage_form, combination')
+        .eq('status', 'active')
+        .order('name');
 
       if (medicinesError) throw medicinesError;
 
       const { data: batchesData, error: batchesError } = await supabase
-         .from('medicine_batches')
-         .select('*')
-         .gt('current_quantity', 0)
-         .eq('status', 'active')
-         .gte('expiry_date', new Date().toISOString().split('T')[0]);
+        .from('medicine_batches')
+        .select('*')
+        .gt('current_quantity', 0)
+        .eq('status', 'active')
+        .gte('expiry_date', new Date().toISOString().split('T')[0]);
 
       if (batchesError) throw batchesError;
 
@@ -381,18 +383,18 @@ export default function NewBillingPage() {
           });
           return;
         }
-      } catch {}
+      } catch { }
       // fallback local
       try {
         const saved = localStorage.getItem('hospital_details');
         if (saved) setHospitalDetails(JSON.parse(saved));
-      } catch {}
+      } catch { }
     })();
   }, []);
 
   // Persist locally on change (UX convenience)
   useEffect(() => {
-    try { localStorage.setItem('hospital_details', JSON.stringify(hospitalDetails)); } catch {}
+    try { localStorage.setItem('hospital_details', JSON.stringify(hospitalDetails)); } catch { }
   }, [hospitalDetails]);
 
   // Search registered patients by name, UHID, or phone
@@ -424,27 +426,27 @@ export default function NewBillingPage() {
   const filteredMedicines = searchTermTrimmed.length === 0
     ? []
     : medicines.filter((medicine) => {
-        const term = searchTermTrimmed.toLowerCase();
-        const name = (medicine.name || '').toLowerCase();
-        const combination = (medicine.combination || '').toLowerCase();
-        const code = (medicine.medicine_code || '').toLowerCase();
-        const manufacturer = (medicine.manufacturer || '').toLowerCase();
-        const category = (medicine.category || '').toLowerCase();
-        const unit = (medicine.unit || '').toLowerCase();
-        const baseMatch =
-          name.includes(term) ||
-          combination.includes(term) ||
-          code.includes(term) ||
-          manufacturer.includes(term) ||
-          category.includes(term) ||
-          unit.includes(term);
-        // Also match batch_number and batch_barcode
-        const batchMatch = Array.isArray(medicine.batches) && medicine.batches.some((b) =>
-          (b.batch_number || '').toLowerCase().includes(term) ||
-          (b.batch_barcode || '').toLowerCase().includes(term)
-        );
-        return baseMatch || batchMatch;
-      });
+      const term = searchTermTrimmed.toLowerCase();
+      const name = (medicine.name || '').toLowerCase();
+      const combination = (medicine.combination || '').toLowerCase();
+      const code = (medicine.medicine_code || '').toLowerCase();
+      const manufacturer = (medicine.manufacturer || '').toLowerCase();
+      const category = (medicine.category || '').toLowerCase();
+      const unit = (medicine.unit || '').toLowerCase();
+      const baseMatch =
+        name.includes(term) ||
+        combination.includes(term) ||
+        code.includes(term) ||
+        manufacturer.includes(term) ||
+        category.includes(term) ||
+        unit.includes(term);
+      // Also match batch_number and batch_barcode
+      const batchMatch = Array.isArray(medicine.batches) && medicine.batches.some((b) =>
+        (b.batch_number || '').toLowerCase().includes(term) ||
+        (b.batch_barcode || '').toLowerCase().includes(term)
+      );
+      return baseMatch || batchMatch;
+    });
 
   // Add medicine to bill
   const addToBill = (medicine: Medicine, batch: MedicineBatch, quantity: number = 1) => {
@@ -497,7 +499,7 @@ export default function NewBillingPage() {
     }
 
     const item = billItems[index];
-    
+
     // Validate new quantity
     if (newQuantity > item.batch.current_quantity) {
       alert(`Insufficient stock available. Only ${item.batch.current_quantity} units in stock.`);
@@ -529,24 +531,24 @@ export default function NewBillingPage() {
   // Calculate totals with discount and tax
   const calculateTotals = () => {
     const subtotal = Math.round(billItems.reduce((sum, item) => sum + item.total, 0));
-    
+
     let discountAmount = 0;
     if (billTotals.discountType === 'percent') {
       discountAmount = Math.round((subtotal * billTotals.discountValue) / 100);
     } else {
       discountAmount = Math.round(billTotals.discountValue);
     }
-    
+
     const afterDiscount = subtotal - discountAmount;
     const taxAmount = Math.round((afterDiscount * billTotals.taxPercent) / 100);
     const totalAmount = afterDiscount + taxAmount;
-    
+
     // Custom rounding: .5 and below stays same, .51 and above goes to next
     const customRound = (num: number) => {
       const decimal = num - Math.floor(num);
       return decimal <= 0.5 ? Math.floor(num) : Math.ceil(num);
     };
-    
+
     return {
       subtotal: customRound(subtotal),
       discountAmount: customRound(discountAmount),
@@ -604,7 +606,7 @@ export default function NewBillingPage() {
 
     try {
       setLoading(true);
-      
+
       // Create pharmacy bill (handle prod schema differences: total_amount vs total)
       let billData: any = null;
       {
@@ -618,7 +620,8 @@ export default function NewBillingPage() {
           payment_method: normalizeMethod(payments[0].method),
           customer_name: customer.name.trim(),
           customer_phone: customer.type === 'patient' ? (customer.phone ?? null) : (customer.phone ?? '').trim(),
-          customer_type: customer.type
+          customer_type: customer.type,
+          staff_id: staffId || null
         } as any;
 
         // Attempt 1: insert with total_amount
@@ -698,7 +701,7 @@ export default function NewBillingPage() {
       });
       setShowBillSuccess(true);
       setShowPaymentModal(false);
-      
+
       // Reset form
       setBillItems([]);
       setCustomer({ type: 'walk_in', name: '', phone: '' });
@@ -712,10 +715,10 @@ export default function NewBillingPage() {
         taxAmount: 0,
         totalAmount: 0
       });
-      
+
       // Reload medicines to update stock
       loadMedicines();
-      
+
     } catch (err: any) {
       console.error('Full error object:', err);
       console.error('Error message:', err?.message);
@@ -794,7 +797,13 @@ export default function NewBillingPage() {
           {/* Left side: Sales Entry + Medicine */}
           <div className="flex flex-col gap-4">
             {/* Sales Entry Information (Customer + Bill Info) */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
+              <StaffSelect
+                value={staffId}
+                onChange={setStaffId}
+                label="Billed By (Staff)"
+                required
+              />
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <User className="h-5 w-5 text-blue-600" />
@@ -1307,132 +1316,144 @@ export default function NewBillingPage() {
             </div>
           </div>
         </div>
-        
+
         {/* Enhanced Payment Modal with Split Support */}
         {showPaymentModal && (() => {
           const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
           const totalDue = r2(billTotals.totalAmount);
           const typedPaidRaw = paymentAmountInputs.length
             ? paymentAmountInputs.reduce((s, v) => {
-                const n = parseFloat((v || '').toString().replace(/,/g, '.'));
-                return s + (Number.isFinite(n) ? n : 0);
-              }, 0)
+              const n = parseFloat((v || '').toString().replace(/,/g, '.'));
+              return s + (Number.isFinite(n) ? n : 0);
+            }, 0)
             : paymentsTotal;
           const paid = r2(typedPaidRaw);
           const remainingAmount = Math.max(r2(totalDue - paid), 0);
           return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !loading && setShowPaymentModal(false)}></div>
-            <div className="relative bg-white w-full max-w-2xl mx-auto rounded-2xl shadow-2xl border border-gray-200 max-h-[90vh] overflow-hidden">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-2xl font-bold">Payment Details</h3>
-                    <p className="text-blue-100 mt-1">Split payments supported</p>
-                  </div>
-                  <button
-                    onClick={() => !loading && setShowPaymentModal(false)}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                  >
-                    <X className="h-6 w-6" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-                {/* Bill Summary Card */}
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4 mb-6 border border-gray-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-lg font-semibold text-gray-900">Bill Summary</h4>
-                    <span className="text-2xl font-bold text-green-600">₹{Math.round(totalDue)}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div className="text-center p-3 bg-white rounded-lg border">
-                      <div className="font-medium text-gray-900">Subtotal</div>
-                      <div className="text-gray-600">₹{Math.round(billTotals.subtotal)}</div>
-                    </div>
-                    {billTotals.discountAmount > 0 && (
-                      <div className="text-center p-3 bg-white rounded-lg border">
-                        <div className="font-medium text-gray-900">Discount</div>
-                        <div className="text-red-600">-₹{Math.round(billTotals.discountAmount)}</div>
-                      </div>
-                    )}
-                    {billTotals.taxAmount > 0 && (
-                      <div className="text-center p-3 bg-white rounded-lg border">
-                        <div className="font-medium text-gray-900">Tax</div>
-                        <div className="text-blue-600">₹{Math.round(billTotals.taxAmount)}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Payment Methods */}
-                <div className="space-y-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !loading && setShowPaymentModal(false)}></div>
+              <div className="relative bg-white w-full max-w-2xl mx-auto rounded-2xl shadow-2xl border border-gray-200 max-h-[90vh] overflow-hidden">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-gray-900">Payment Methods</h4>
-                    {payments.length < 3 && (
-                      <button
-                        onClick={() => setPayments(prev => [...prev, { method: 'cash', amount: 0, reference: '' }])}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Payment
-                      </button>
-                    )}
+                    <div>
+                      <h3 className="text-2xl font-bold">Payment Details</h3>
+                      <p className="text-blue-100 mt-1">Split payments supported</p>
+                    </div>
+                    <button
+                      onClick={() => !loading && setShowPaymentModal(false)}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+                  {/* Bill Summary Card */}
+                  <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4 mb-6 border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-lg font-semibold text-gray-900">Bill Summary</h4>
+                      <span className="text-2xl font-bold text-green-600">₹{Math.round(totalDue)}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="text-center p-3 bg-white rounded-lg border">
+                        <div className="font-medium text-gray-900">Subtotal</div>
+                        <div className="text-gray-600">₹{Math.round(billTotals.subtotal)}</div>
+                      </div>
+                      {billTotals.discountAmount > 0 && (
+                        <div className="text-center p-3 bg-white rounded-lg border">
+                          <div className="font-medium text-gray-900">Discount</div>
+                          <div className="text-red-600">-₹{Math.round(billTotals.discountAmount)}</div>
+                        </div>
+                      )}
+                      {billTotals.taxAmount > 0 && (
+                        <div className="text-center p-3 bg-white rounded-lg border">
+                          <div className="font-medium text-gray-900">Tax</div>
+                          <div className="text-blue-600">₹{Math.round(billTotals.taxAmount)}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {payments.map((p, idx) => (
-                    <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-start gap-4">
-                        {/* Payment Method Icon */}
-                        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">
-                          {getPaymentMethodIcon(p.method)}
-                        </div>
+                  {/* Payment Methods */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-semibold text-gray-900">Payment Methods</h4>
+                      {payments.length < 3 && (
+                        <button
+                          onClick={() => setPayments(prev => [...prev, { method: 'cash', amount: 0, reference: '' }])}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Payment
+                        </button>
+                      )}
+                    </div>
 
-                        {/* Payment Details */}
-                        <div className="flex-1 space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                              <select
-                                value={p.method}
-                                onChange={(e) => {
-                                  const newMethod = e.target.value as Payment['method'];
-                                  setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: newMethod } : pp));
-                                }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              >
-                                <option value="cash">💵 Cash</option>
-                                <option value="upi">📱 UPI</option>
-                                <option value="card">💳 Card</option>
-                                <option value="credit">⏳ Credit (Due)</option>
-                                <option value="others">🔄 Others</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Amount (₹)</label>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  pattern="[0-9]*[.,]?[0-9]{0,2}"
-                                  enterKeyHint="done"
-                                  value={paymentAmountInputs[idx] ?? ''}
+                    {payments.map((p, idx) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-4">
+                          {/* Payment Method Icon */}
+                          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">
+                            {getPaymentMethodIcon(p.method)}
+                          </div>
+
+                          {/* Payment Details */}
+                          <div className="flex-1 space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                                <select
+                                  value={p.method}
                                   onChange={(e) => {
-                                    const v = e.target.value.replace(/,/g, '.');
-                                    if (/^\d*(?:\.\d{0,2})?$/.test(v) || v === '') {
-                                      setPaymentAmountInputs(prev => {
-                                        const next = [...prev];
-                                        next[idx] = v;
-                                        return next;
-                                      });
-                                    }
+                                    const newMethod = e.target.value as Payment['method'];
+                                    setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: newMethod } : pp));
                                   }}
-                                  onFocus={(e) => e.currentTarget.select()}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                  <option value="cash">💵 Cash</option>
+                                  <option value="upi">📱 UPI</option>
+                                  <option value="card">💳 Card</option>
+                                  <option value="credit">⏳ Credit (Due)</option>
+                                  <option value="others">🔄 Others</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Amount (₹)</label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    pattern="[0-9]*[.,]?[0-9]{0,2}"
+                                    enterKeyHint="done"
+                                    value={paymentAmountInputs[idx] ?? ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value.replace(/,/g, '.');
+                                      if (/^\d*(?:\.\d{0,2})?$/.test(v) || v === '') {
+                                        setPaymentAmountInputs(prev => {
+                                          const next = [...prev];
+                                          next[idx] = v;
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const raw = paymentAmountInputs[idx] ?? '';
+                                        const n = parseFloat(raw);
+                                        const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+                                        setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
+                                        setPaymentAmountInputs(prev => {
+                                          const next = [...prev];
+                                          next[idx] = safe.toFixed(2);
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    onBlur={() => {
                                       const raw = paymentAmountInputs[idx] ?? '';
                                       const n = parseFloat(raw);
                                       const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
@@ -1442,169 +1463,157 @@ export default function NewBillingPage() {
                                         next[idx] = safe.toFixed(2);
                                         return next;
                                       });
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    const raw = paymentAmountInputs[idx] ?? '';
-                                    const n = parseFloat(raw);
-                                    const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
-                                    setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
-                                    setPaymentAmountInputs(prev => {
-                                      const next = [...prev];
-                                      next[idx] = safe.toFixed(2);
-                                      return next;
-                                    });
-                                  }}
-                                  className="w-full pr-16 pl-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  placeholder="0.00"
-                                  aria-label="Payment amount"
-                                />
-                                {remainingAmount > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const amt = parseFloat(Math.max(0, remainingAmount).toFixed(2));
-                                      setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: amt } : pp));
-                                      setPaymentAmountInputs(prev => {
-                                        const next = [...prev];
-                                        next[idx] = amt.toFixed(2);
-                                        return next;
-                                      });
                                     }}
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm"
-                                    title={`Fill remaining: ₹${remainingAmount.toFixed(2)}`}
-                                    aria-label={`Fill remaining amount ₹${remainingAmount.toFixed(2)}`}
-                                  >
-                                    Fill ₹{remainingAmount.toFixed(2)}
-                                  </button>
-                                )}
+                                    className="w-full pr-16 pl-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="0.00"
+                                    aria-label="Payment amount"
+                                  />
+                                  {remainingAmount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const amt = parseFloat(Math.max(0, remainingAmount).toFixed(2));
+                                        setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: amt } : pp));
+                                        setPaymentAmountInputs(prev => {
+                                          const next = [...prev];
+                                          next[idx] = amt.toFixed(2);
+                                          return next;
+                                        });
+                                      }}
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm"
+                                      title={`Fill remaining: ₹${remainingAmount.toFixed(2)}`}
+                                      aria-label={`Fill remaining amount ₹${remainingAmount.toFixed(2)}`}
+                                    >
+                                      Fill ₹{remainingAmount.toFixed(2)}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Reference (Optional)</label>
+                              <input
+                                type="text"
+                                value={p.reference || ''}
+                                onChange={(e) => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Transaction ID, last 4 digits, or note"
+                              />
                             </div>
                           </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Reference (Optional)</label>
-                            <input
-                              type="text"
-                              value={p.reference || ''}
-                              onChange={(e) => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Transaction ID, last 4 digits, or note"
-                            />
+                          {/* Remove Button */}
+                          <div className="flex-shrink-0">
+                            <button
+                              onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))}
+                              disabled={payments.length === 1}
+                              className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Remove this payment"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </button>
                           </div>
                         </div>
+                      </div>
+                    ))}
+                  </div>
 
-                        {/* Remove Button */}
-                        <div className="flex-shrink-0">
-                          <button
-                            onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))}
-                            disabled={payments.length === 1}
-                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Remove this payment"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </div>
+                  {/* Payment Summary */}
+                  <div className="mt-6 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Total Amount</span>
+                        <span className="text-lg font-semibold text-gray-900">₹{Math.round(totalDue)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Paid Amount</span>
+                        <span className="text-lg font-semibold text-green-600">₹{Math.round(paid)}</span>
+                      </div>
+                      <div className="border-t border-gray-300 pt-3 flex justify-between items-center">
+                        <span className="text-gray-900 font-medium">Remaining Balance</span>
+                        <span className={`text-lg font-bold ${remainingAmount === 0 ? 'text-green-600' : remainingAmount < 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                          ₹{Math.round(remainingAmount)}
+                        </span>
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {/* Payment Summary */}
-                <div className="mt-6 bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Total Amount</span>
-                      <span className="text-lg font-semibold text-gray-900">₹{Math.round(totalDue)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Paid Amount</span>
-                      <span className="text-lg font-semibold text-green-600">₹{Math.round(paid)}</span>
-                    </div>
-                    <div className="border-t border-gray-300 pt-3 flex justify-between items-center">
-                      <span className="text-gray-900 font-medium">Remaining Balance</span>
-                      <span className={`text-lg font-bold ${remainingAmount === 0 ? 'text-green-600' : remainingAmount < 0 ? 'text-red-600' : 'text-orange-600'}`}>
-                        ₹{Math.round(remainingAmount)}
-                      </span>
+                    {/* Progress Bar */}
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm text-gray-600 mb-1">
+                        <span>Payment Progress</span>
+                        <span>{Math.min(100, Math.round(((totalDue === 0 ? 0 : (paid / totalDue)) * 100)))}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div
+                          className={`h-3 rounded-full transition-all duration-300 ${remainingAmount === 0 ? 'bg-green-500' : remainingAmount < 0 ? 'bg-red-500' : 'bg-blue-500'}`}
+                          style={{ width: `${Math.min(100, Math.max(0, (totalDue === 0 ? 0 : (paid / totalDue)) * 100))}%` }}
+                        ></div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="mt-4">
-                    <div className="flex justify-between text-sm text-gray-600 mb-1">
-                      <span>Payment Progress</span>
-                      <span>{Math.min(100, Math.round(((totalDue === 0 ? 0 : (paid / totalDue)) * 100)))}%</span>
+                  {/* Validation Messages */}
+                  {paid > totalDue && (
+                    <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+                      <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-red-800 font-medium">Payment amount exceeds bill total</p>
+                        <p className="text-red-700 text-sm">Please adjust the payment amounts to not exceed ₹{Math.round(totalDue)}</p>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div
-                        className={`h-3 rounded-full transition-all duration-300 ${remainingAmount === 0 ? 'bg-green-500' : remainingAmount < 0 ? 'bg-red-500' : 'bg-blue-500'}`}
-                        style={{ width: `${Math.min(100, Math.max(0, (totalDue === 0 ? 0 : (paid / totalDue)) * 100))}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Validation Messages */}
-                {paid > totalDue && (
-                  <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
-                    <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                    <div>
-                      <p className="text-red-800 font-medium">Payment amount exceeds bill total</p>
-                      <p className="text-red-700 text-sm">Please adjust the payment amounts to not exceed ₹{Math.round(totalDue)}</p>
-                    </div>
-                  </div>
-                )}
-
-                {paid === 0 && (
-                  <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                    <p className="text-yellow-800">Please add at least one payment method with a valid amount.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  disabled={loading}
-                  className="px-6 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (paid === 0) {
-                      alert('Please add at least one payment method with a valid amount.');
-                      return;
-                    }
-                    if (paid > totalDue) {
-                      alert('Paid amount cannot exceed total bill amount.');
-                      return;
-                    }
-                    setShowPaymentModal(false);
-                    await generateBill();
-                  }}
-                  disabled={loading || paid === 0 || paid > totalDue}
-                  className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4" />
-                      Generate Bill
-                    </>
                   )}
-                </button>
+
+                  {paid === 0 && (
+                    <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
+                      <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                      <p className="text-yellow-800">Please add at least one payment method with a valid amount.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                  <button
+                    onClick={() => setShowPaymentModal(false)}
+                    disabled={loading}
+                    className="px-6 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (paid === 0) {
+                        alert('Please add at least one payment method with a valid amount.');
+                        return;
+                      }
+                      if (paid > totalDue) {
+                        alert('Paid amount cannot exceed total bill amount.');
+                        return;
+                      }
+                      setShowPaymentModal(false);
+                      await generateBill();
+                    }}
+                    disabled={loading || paid === 0 || paid > totalDue}
+                    className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4" />
+                        Generate Bill
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        );
+          );
         })()}
         {/* Success Modal - UI Only */}
         {showBillSuccess && generatedBill && (

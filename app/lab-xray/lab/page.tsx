@@ -35,6 +35,7 @@ import {
     createLabTestCatalogEntry,
     LabTestCatalog
 } from '../../../src/lib/labXrayService';
+import StaffSelect from '../../../src/components/StaffSelect';
 import { getAllDoctorsSimple } from '../../../src/lib/doctorService';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -88,6 +89,7 @@ export default function LabOrderPage() {
     const [clinicalIndication, setClinicalIndication] = useState('');
     const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
     const [totalAmount, setTotalAmount] = useState(0);
+    const [staffId, setStaffId] = useState('');
 
     useEffect(() => {
         loadInitialData();
@@ -253,7 +255,8 @@ export default function LabOrderPage() {
                     test_catalog_id: test.testId,
                     clinical_indication: clinicalIndication,
                     urgency: urgency,
-                    status: 'ordered'
+                    status: 'ordered',
+                    staff_id: staffId
                 })
             );
 
@@ -503,6 +506,14 @@ export default function LabOrderPage() {
                                                     <option key={d.id} value={d.id}>Dr. {d.user?.name || d.name}</option>
                                                 ))}
                                             </select>
+                                        </div>
+                                        <div>
+                                            <StaffSelect
+                                                value={staffId}
+                                                onChange={setStaffId}
+                                                label="Ordered By (Staff)"
+                                                required
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Clinical Indication</label>

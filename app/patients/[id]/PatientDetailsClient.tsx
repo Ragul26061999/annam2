@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  Calendar, 
-  File, 
-  Pill, 
-  Activity, 
+import {
+  ArrowLeft,
+  Calendar,
+  File,
+  Pill,
+  Activity,
   MessageSquare,
   Edit,
   Phone,
@@ -31,7 +31,9 @@ import {
   X,
   Bed,
   LogIn,
-  LogOut
+  LogOut,
+  Upload,
+  FolderOpen
 } from 'lucide-react';
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
@@ -43,6 +45,8 @@ import { getCurrentUser, getCurrentUserProfile } from '../../../src/lib/supabase
 import PrescriptionForm from '../../../src/components/PrescriptionForm';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import DocumentUpload from '../../../src/components/DocumentUpload';
+import DocumentList from '../../../src/components/DocumentList';
 
 interface Patient {
   id: string;
@@ -107,7 +111,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       const userProfile = await getCurrentUserProfile();
       console.log('User profile fetched:', userProfile);
       setCurrentUser(userProfile);
-      
+
       // If no user profile, try to get auth user for debugging
       if (!userProfile) {
         const authUser = await getCurrentUser();
@@ -130,15 +134,15 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const fetchPatientData = async () => {
     try {
       setLoading(true);
-      
+
       // Validate the patient ID
       if (!params.id || params.id.trim() === '') {
         throw new Error('Invalid patient ID provided');
       }
-      
+
       const patientData = await getPatientWithRelatedData(params.id.trim());
       setPatient(patientData);
-      
+
       // Fetch vitals data using the database ID
       setVitalsLoading(true);
       try {
@@ -173,11 +177,11 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -284,14 +288,14 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
             </div>
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => router.push(`/patients/${patient.patient_id}/edit`)}
                 className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
               >
                 <Edit className="h-4 w-4" />
                 Edit Patient
               </button>
-              <button 
+              <button
                 onClick={() => setShowPrescriptionForm(true)}
                 className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
               >
@@ -318,32 +322,32 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
               <h3 className="font-semibold text-gray-900">Personal Information</h3>
             </div>
-            
+
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <Calendar className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Age:</span>
                 <span className="ml-2 font-medium">{calculateAge(patient.date_of_birth)} years</span>
               </div>
-              
+
               <div className="flex items-center text-sm">
                 <User className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Gender:</span>
                 <span className="ml-2 font-medium capitalize">{patient.gender}</span>
               </div>
-              
+
               <div className="flex items-center text-sm">
                 <Phone className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Phone:</span>
                 <span className="ml-2 font-medium">{patient.phone}</span>
               </div>
-              
+
               <div className="flex items-center text-sm">
                 <Mail className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Email:</span>
                 <span className="ml-2 font-medium">{patient.email}</span>
               </div>
-              
+
               <div className="flex items-start text-sm">
                 <MapPin className="h-4 w-4 text-gray-400 mr-3 mt-0.5" />
                 <div>
@@ -362,14 +366,14 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
               <h3 className="font-semibold text-gray-900">Medical Information</h3>
             </div>
-            
+
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <Heart className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Blood Group:</span>
                 <span className="ml-2 font-medium">{patient.blood_group || 'Not specified'}</span>
               </div>
-              
+
               {patient.allergies && (
                 <div className="bg-red-50 p-3 rounded-lg border border-red-200">
                   <div className="flex items-center text-red-700 text-sm font-medium mb-1">
@@ -379,7 +383,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <p className="text-red-600 text-sm">{patient.allergies}</p>
                 </div>
               )}
-              
+
               {patient.initial_symptoms && (
                 <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
                   <div className="flex items-center text-yellow-700 text-sm font-medium mb-1">
@@ -400,7 +404,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
               <h3 className="font-semibold text-gray-900">Admission Information</h3>
             </div>
-            
+
             <div className="space-y-3">
               {patient.admission_date && (
                 <div className="flex items-center text-sm">
@@ -409,7 +413,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <span className="ml-2 font-medium">{formatDateTime(patient.admission_date)}</span>
                 </div>
               )}
-              
+
               {patient.admission_type && (
                 <div className="flex items-center text-sm">
                   <FileText className="h-4 w-4 text-gray-400 mr-3" />
@@ -417,7 +421,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <span className="ml-2 font-medium capitalize">{patient.admission_type}</span>
                 </div>
               )}
-              
+
               {patient.department_ward && (
                 <div className="flex items-center text-sm">
                   <Building className="h-4 w-4 text-gray-400 mr-3" />
@@ -425,7 +429,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <span className="ml-2 font-medium">{patient.department_ward}</span>
                 </div>
               )}
-              
+
               {patient.room_number && (
                 <div className="flex items-center text-sm">
                   <MapPin className="h-4 w-4 text-gray-400 mr-3" />
@@ -446,17 +450,17 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 { id: 'vitals', name: 'Vitals', icon: Activity },
                 { id: 'medical-history', name: 'Medical History', icon: Heart },
                 { id: 'medications', name: 'Medications', icon: Pill },
+                { id: 'documents', name: 'Documents', icon: FolderOpen },
                 { id: 'appointments', name: 'Appointments & Admissions', icon: Calendar },
                 { id: 'billing', name: 'Billing', icon: FileText }
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                    activeTab === tab.id
+                  className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === tab.id
                       ? 'border-orange-500 text-orange-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <tab.icon className="h-4 w-4" />
                   {tab.name}
@@ -569,7 +573,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             </div>
                           </div>
                         )}
-                        
+
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <h4 className="font-medium text-gray-900">
@@ -608,7 +612,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             </button>
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           {vital.blood_pressure_systolic && vital.blood_pressure_diastolic && (
                             <div className="bg-red-50 p-3 rounded-lg">
@@ -619,7 +623,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               <p className="text-xs text-red-600">mmHg</p>
                             </div>
                           )}
-                          
+
                           {vital.heart_rate && (
                             <div className="bg-blue-50 p-3 rounded-lg">
                               <p className="text-xs text-blue-600 font-medium">Heart Rate</p>
@@ -628,7 +632,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.temperature && (
                             <div className="bg-yellow-50 p-3 rounded-lg">
                               <p className="text-xs text-yellow-600 font-medium">Temperature</p>
@@ -637,7 +641,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.oxygen_saturation && (
                             <div className="bg-green-50 p-3 rounded-lg">
                               <p className="text-xs text-green-600 font-medium">Oxygen Saturation</p>
@@ -646,7 +650,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.respiratory_rate && (
                             <div className="bg-cyan-50 p-3 rounded-lg">
                               <p className="text-xs text-cyan-600 font-medium">Respiratory Rate</p>
@@ -655,7 +659,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.weight && (
                             <div className="bg-purple-50 p-3 rounded-lg">
                               <p className="text-xs text-purple-600 font-medium">Weight</p>
@@ -664,7 +668,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.height && (
                             <div className="bg-indigo-50 p-3 rounded-lg">
                               <p className="text-xs text-indigo-600 font-medium">Height</p>
@@ -673,14 +677,14 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.bmi && (
                             <div className="bg-teal-50 p-3 rounded-lg">
                               <p className="text-xs text-teal-600 font-medium">BMI</p>
                               <p className="text-lg font-semibold text-teal-800">{vital.bmi}</p>
                             </div>
                           )}
-                          
+
                           {vital.blood_glucose && (
                             <div className="bg-pink-50 p-3 rounded-lg">
                               <p className="text-xs text-pink-600 font-medium">Blood Glucose</p>
@@ -689,7 +693,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                           {vital.pain_scale !== undefined && vital.pain_scale !== null && (
                             <div className="bg-orange-50 p-3 rounded-lg">
                               <p className="text-xs text-orange-600 font-medium">Pain Scale</p>
@@ -698,9 +702,9 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               </p>
                             </div>
                           )}
-                          
+
                         </div>
-                        
+
                         {vital.notes && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-sm text-gray-600">
@@ -708,7 +712,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             </p>
                           </div>
                         )}
-                        
+
                         {/* Metadata footer */}
                         <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
                           <div className="flex items-center gap-4">
@@ -738,8 +742,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                       Add Medical Event
                     </button>
                     {patient?.id && (
-                      <AddDummyMedicalHistory 
-                        patientId={patient.id} 
+                      <AddDummyMedicalHistory
+                        patientId={patient.id}
                         onSuccess={async () => {
                           setHistoryLoading(true);
                           try {
@@ -750,12 +754,12 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                           } finally {
                             setHistoryLoading(false);
                           }
-                        }} 
+                        }}
                       />
                     )}
                   </div>
                 </div>
-                
+
                 {historyLoading ? (
                   <div className="flex justify-center items-center py-12">
                     <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
@@ -791,7 +795,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     ))}
                   </div>
                 )}
-                
+
                 {/* Medical History Form Modal */}
                 {showMedicalHistoryForm && patient?.id && (
                   <MedicalHistoryForm
@@ -826,22 +830,20 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <nav className="flex space-x-8">
                     <button
                       onClick={() => setActiveSubTab('appointments')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                        activeSubTab === 'appointments'
+                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'appointments'
                           ? 'border-orange-500 text-orange-600'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <Calendar className="h-4 w-4" />
                       Appointments
                     </button>
                     <button
                       onClick={() => setActiveSubTab('admissions')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                        activeSubTab === 'admissions'
+                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'admissions'
                           ? 'border-orange-500 text-orange-600'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <Bed className="h-4 w-4" />
                       Admission History
@@ -879,11 +881,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                   <p className="text-sm text-gray-500 mt-1">Symptoms: {appointment.symptoms}</p>
                                 )}
                               </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }`}>
                                 {appointment.status}
                               </span>
                             </div>
@@ -912,20 +913,17 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                           <div key={index} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${
-                                  allocation.status === 'active' ? 'bg-green-100' : 
-                                  allocation.status === 'discharged' ? 'bg-blue-100' : 'bg-gray-100'
-                                }`}>
+                                <div className={`p-2 rounded-lg ${allocation.status === 'active' ? 'bg-green-100' :
+                                    allocation.status === 'discharged' ? 'bg-blue-100' : 'bg-gray-100'
+                                  }`}>
                                   {allocation.status === 'active' ? (
-                                    <LogIn className={`h-4 w-4 ${
-                                      allocation.status === 'active' ? 'text-green-600' : 
-                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
-                                    }`} />
+                                    <LogIn className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
+                                        allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
+                                      }`} />
                                   ) : (
-                                    <LogOut className={`h-4 w-4 ${
-                                      allocation.status === 'active' ? 'text-green-600' : 
-                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
-                                    }`} />
+                                    <LogOut className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
+                                        allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
+                                      }`} />
                                   )}
                                 </div>
                                 <div>
@@ -937,11 +935,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                   </p>
                                 </div>
                               </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                allocation.status === 'active' ? 'bg-green-100 text-green-800' :
-                                allocation.status === 'discharged' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${allocation.status === 'active' ? 'bg-green-100 text-green-800' :
+                                  allocation.status === 'discharged' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }`}>
                                 {allocation.status}
                               </span>
                             </div>
@@ -1013,6 +1010,48 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 </div>
               </div>
             )}
+
+            {/* Documents Tab */}
+            {activeTab === 'documents' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium text-gray-900">Patient Documents</h3>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Upload Section */}
+                  <div className="bg-blue-50 rounded-xl p-6">
+                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Upload className="h-5 w-5 text-blue-600" />
+                      Upload New Documents
+                    </h4>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload medical reports, lab results, prescriptions, or any other relevant documents.
+                    </p>
+                    <DocumentUpload
+                      patientId={patient.id}
+                      uhid={patient.patient_id}
+                      category="medical-report"
+                      onUploadComplete={(doc) => {
+                        console.log('Document uploaded:', doc);
+                        // Force refresh of document list
+                      }}
+                      onUploadError={(error) => {
+                        console.error('Upload error:', error);
+                      }}
+                    />
+                  </div>
+
+                  {/* Documents List */}
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <DocumentList
+                      patientId={patient.id}
+                      showDelete={true}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1031,7 +1070,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           currentUser={currentUser}
         />
       )}
-      
+
       {showPrescriptionForm && patient && (
         <PrescriptionForm
           patientId={patient.patient_id}
@@ -1049,16 +1088,16 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 }
 
 // Vitals Form Component
-function VitalsForm({ 
-  patientId, 
-  onClose, 
-  onVitalsRecorded, 
-  editingVital, 
-  currentUser 
-}: { 
-  patientId: string; 
-  onClose: () => void; 
-  onVitalsRecorded: () => void; 
+function VitalsForm({
+  patientId,
+  onClose,
+  onVitalsRecorded,
+  editingVital,
+  currentUser
+}: {
+  patientId: string;
+  onClose: () => void;
+  onVitalsRecorded: () => void;
   editingVital: any | null;
   currentUser: any | null;
 }) {

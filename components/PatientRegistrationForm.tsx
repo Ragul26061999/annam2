@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { generateUHID } from '../src/lib/patientService';
 import { fetchAvailableBeds } from '../src/lib/registrationService';
+import StaffSelect from '../src/components/StaffSelect';
 
 interface PatientRegistrationData {
   // Personal Information
@@ -81,6 +82,9 @@ interface PatientRegistrationData {
   selectedBedId?: string;
   selectedBedNumber?: string;
   selectedBedRate?: number;
+
+  // Staff
+  staffId?: string;
 }
 
 interface PatientRegistrationFormProps {
@@ -129,7 +133,8 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
     insuranceProvider: '',
     insuranceNumber: '',
     initialSymptoms: '',
-    referredBy: ''
+    referredBy: '',
+    staffId: ''
   });
 
   // State for available beds
@@ -384,6 +389,16 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
                   placeholder="Enter diagnosis"
                 />
               </div>
+
+              <div>
+                <StaffSelect
+                  value={formData.staffId || ''}
+                  onChange={(val) => handleInputChange('staffId', val)}
+                  label="Registered By (Staff)"
+                  required
+                />
+              </div>
+
 
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">

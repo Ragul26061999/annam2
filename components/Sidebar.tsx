@@ -21,7 +21,8 @@ import {
   User,
   BedDouble,
   Microscope,
-  Radiation
+  Radiation,
+  RefreshCw
 } from 'lucide-react';
 
 interface NavItem {
@@ -79,6 +80,12 @@ const Sidebar: React.FC = () => {
       label: 'Inpatient (IP)',
       icon: <BedDouble size={18} />,
       color: 'text-purple-600'
+    },
+    {
+      href: '/revisit',
+      label: 'Revisit',
+      icon: <RefreshCw size={18} />,
+      color: 'text-cyan-600'
     },
     {
       href: '/appointments',

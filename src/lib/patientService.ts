@@ -61,6 +61,9 @@ export interface PatientRegistrationData {  // Personal Information (Mandatory)
   selectedBedNumber?: string;
   selectedBedRate?: number;
 
+  // Staff Tracking
+  staffId?: string;
+
   // Outpatient Specific Fields
   alternatePhone?: string;
   city?: string;
@@ -375,6 +378,10 @@ export async function insertPatientRecord(
         status: 'active'
       };
 
+      if (registrationData.staffId) {
+        patientData.staff_id = registrationData.staffId;
+      }
+
       // Conditionally add age and diagnosis if they exist in the schema
       if (sampleData && sampleData.length > 0) {
         const samplePatient = sampleData[0];
@@ -437,6 +444,10 @@ export async function insertPatientRecord(
         user_id: userId || null,
         status: 'active'
       };
+
+      if (registrationData.staffId) {
+        patientData.staff_id = registrationData.staffId;
+      }
       
       // Try to add additional columns, but handle errors gracefully
       try {

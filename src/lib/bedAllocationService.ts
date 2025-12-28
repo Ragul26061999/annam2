@@ -8,6 +8,7 @@ export interface BedAllocationData {
   admissionDate: string;
   admissionType: 'emergency' | 'elective' | 'scheduled' | 'referred' | 'transfer' | 'inpatient' | 'outpatient';
   reason: string;
+  staffId?: string;
 }
 
 export interface BedAllocation {
@@ -145,6 +146,10 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       admission_type: allocationData.admissionType || 'elective',
       status: 'active'
     };
+
+    if (allocationData.staffId) {
+      allocationRecord.staff_id = allocationData.staffId;
+    }
 
     // Add optional columns if they exist
     if (availableColumns.includes('allocation_id')) allocationRecord.allocation_id = allocationId;

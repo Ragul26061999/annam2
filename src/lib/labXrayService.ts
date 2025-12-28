@@ -52,6 +52,7 @@ export interface LabTestOrder {
   preferred_collection_date?: string;
   preferred_collection_time?: string;
   status?: string;
+  staff_id?: string;
 }
 
 export interface RadiologyTestOrder {
@@ -74,6 +75,7 @@ export interface RadiologyTestOrder {
   preferred_scan_date?: string;
   preferred_scan_time?: string;
   status?: string;
+  staff_id?: string;
 }
 
 export interface LabTestResult {
@@ -265,7 +267,8 @@ export async function createLabTestOrder(orderData: LabTestOrder): Promise<any> 
       .insert([{
         ...orderData,
         order_number: orderNumber,
-        status: 'ordered'
+        status: 'ordered',
+        staff_id: orderData.staff_id
       }])
       .select('*')
       .single();
@@ -610,7 +613,8 @@ export async function createRadiologyTestOrder(orderData: RadiologyTestOrder): P
       .insert([{
         ...orderData,
         order_number: orderNumber,
-        status: 'ordered'
+        status: 'ordered',
+        staff_id: orderData.staff_id
       }])
       .select('*')
       .single();

@@ -4,12 +4,15 @@ import React, { useState, useEffect } from 'react';
 import {
     Search, User, Building, Stethoscope,
     CreditCard, FileText, Bed, CheckCircle,
-    Loader2, AlertCircle, X, Hash, Phone
+    Loader2, AlertCircle, X, Hash, Phone, Upload
 } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { getAllDoctorsSimple, type Doctor } from '../src/lib/doctorService';
 import { getAvailableBeds, allocateBed, type Bed as BedType } from '../src/lib/bedAllocationService';
 import { updatePatientAdmissionStatus } from '../src/lib/patientService';
+import StaffSelect from '../src/components/StaffSelect';
+import DocumentUpload from '../src/components/DocumentUpload';
+import DocumentList from '../src/components/DocumentList';
 
 interface InpatientAdmissionFormProps {
     onComplete: (result: { uhid: string; patientName: string; qrCode?: string }) => void;
@@ -34,7 +37,8 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
         reasonForAdmission: '',
         diagnosisAtAdmission: '',
         selectedBedId: '',
-        admissionDate: new Date().toISOString().split('T')[0]
+        admissionDate: new Date().toISOString().split('T')[0],
+        staffId: ''
     });
 
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -117,7 +121,8 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                     doctorId: formData.attendingDoctorId,
                     admissionDate: formData.admissionDate,
                     admissionType: 'inpatient',
-                    reason: formData.reasonForAdmission || formData.diagnosisAtAdmission
+                    reason: formData.reasonForAdmission || formData.diagnosisAtAdmission,
+                    staffId: formData.staffId
                 });
             }
 
@@ -342,6 +347,17 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                     ></textarea>
                 </div>
 
+                {/* Staff Selection */}
+                <div>
+                    <StaffSelect
+                        value={formData.staffId}
+                        onChange={(val) => setFormData(prev => ({ ...prev, staffId: val }))}
+                        label="Admitted By (Staff)"
+                        required
+                    />
+                </div>
+
+
                 {/* Bed Allocation (Optional) */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
@@ -379,6 +395,46 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                         }`}>
                         {message.type === 'success' ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
                         <span className="text-sm font-medium">{message.text}</span>
+                    </div>
+                )}
+
+                {/* Document Upload Section */}
+                {selectedPatient && (
+                    <div className="border-t border-gray-200 pt-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                            <h3 className="text-lg font-semibold text-gray-900">Patient Documents</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Upload Section */}
+                            <div className="bg-blue-50 rounded-lg p-4">
+                                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                    <Upload className="h-4 w-4 text-blue-600" />
+                                    Upload Documents
+                                </h4>
+                                <DocumentUpload
+                                    patientId={selectedPatient.id}
+                                    uhid={selectedPatient.patient_id}
+                                    staffId={formData.staffId}
+                                    category="general"
+                                    onUploadComplete={(doc) => {
+                                        console.log('Document uploaded:', doc);
+                                    }}
+                                    onUploadError={(error) => {
+                                        console.error('Upload error:', error);
+                                    }}
+                                />
+                            </div>
+
+                            {/* Documents List */}
+                            <div className="bg-gray-50 rounded-lg p-4">
+                                <DocumentList
+                                    patientId={selectedPatient.id}
+                                    showDelete={true}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 
