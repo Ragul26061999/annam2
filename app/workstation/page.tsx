@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Search, 
-  Filter, 
-  Plus, 
-  Eye, 
-  Monitor, 
-  FileText, 
+import {
+  Activity,
+  Search,
+  Filter,
+  Plus,
+  Eye,
+  Monitor,
+  FileText,
   AlertCircle,
   CheckCircle,
   Clock,
@@ -96,11 +96,11 @@ export default function WorkstationPage() {
       setLabReports(reportsData || []);
 
       // Calculate stats
-      const activeTests = (testsData || []).filter(test => 
+      const activeTests = (testsData || []).filter(test =>
         test.status === 'in_progress' || test.status === 'pending'
       ).length;
 
-      const pendingReports = (reportsData || []).filter(report => 
+      const pendingReports = (reportsData || []).filter(report =>
         report.status === 'pending' || report.reviewed_by === null
       ).length;
 
@@ -127,6 +127,13 @@ export default function WorkstationPage() {
 
   useEffect(() => {
     fetchWorkstationData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchWorkstationData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -299,7 +306,7 @@ export default function WorkstationPage() {
         {/* Lab Tests */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Lab Tests</h2>
-          
+
           {labTests.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
               <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -365,7 +372,7 @@ export default function WorkstationPage() {
         {/* Equipment Status */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Equipment Status</h2>
-          
+
           {/* Mock Equipment Data - Since no equipment table exists */}
           <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
             <Monitor className="h-12 w-12 text-gray-400 mx-auto mb-4" />

@@ -4,26 +4,26 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity } from 'lucide-react'
-import { 
-  BarChart, 
-  Bar, 
-  LineChart, 
-  Line, 
-  PieChart as RePieChart, 
-  Pie, 
-  Cell, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart as RePieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
   ResponsiveContainer,
   Area,
   AreaChart
 } from 'recharts'
-import { 
-  getPharmacyDashboardStats, 
-  getMedications, 
+import {
+  getPharmacyDashboardStats,
+  getMedications,
   getPharmacyBills,
   getMedicineStockSummary,
   getStockTruth,
@@ -41,7 +41,7 @@ import { supabase } from '@/src/lib/supabase'
 const formatIndianCurrency = (amount: number | string): string => {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (isNaN(num)) return '₹0';
-  
+
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -100,7 +100,7 @@ export default function PharmacyPage() {
   const [comprehensiveData, setComprehensiveData] = useState<any | null>(null)
   const [inventoryAnalytics, setInventoryAnalytics] = useState<any | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
-  
+
   // Interactive modals state
   const [showExpiryModal, setShowExpiryModal] = useState(false)
   const [showStockAlertsModal, setShowStockAlertsModal] = useState(false)
@@ -111,6 +111,14 @@ export default function PharmacyPage() {
   useEffect(() => {
     loadData()
     loadAnalytics()
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadData()
+      loadAnalytics()
+    }, 30000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const loadAnalytics = async () => {
@@ -130,10 +138,10 @@ export default function PharmacyPage() {
     try {
       setDetailsLoading(true)
       console.log('Loading expiry details for period:', period)
-      
+
       // First, let's see what the analytics data shows for comparison
       console.log('Current analytics expiry analysis:', inventoryAnalytics?.expiryAnalysis)
-      
+
       // Try without any filters first to see all batches
       const { data: allBatches, error: allError } = await supabase
         .from('medicine_batches')
@@ -150,7 +158,7 @@ export default function PharmacyPage() {
 
       if (allError || !allBatches || allBatches.length === 0) {
         console.log('Trying with inner join...')
-        
+
         // Try with inner join as fallback
         const { data: joinedBatches, error: joinError } = await supabase
           .from('medicine_batches')
@@ -169,14 +177,14 @@ export default function PharmacyPage() {
           `)
 
         console.log('Joined batches fetched:', joinedBatches?.length || 0, 'Error:', joinError)
-        
+
         if (joinError || !joinedBatches) {
           console.error('Both queries failed')
           setExpiryDetails([])
           setShowExpiryModal(true)
           return
         }
-        
+
         processBatchData(joinedBatches, period)
         return
       }
@@ -194,7 +202,7 @@ export default function PharmacyPage() {
   const processBatchData = async (batches: any[], period: string) => {
     try {
       console.log('Sample batch data:', batches.slice(0, 3))
-      
+
       // Filter manually for current_quantity > 0
       const batchesWithStock = batches.filter(batch => batch.current_quantity > 0)
       console.log('Batches with stock > 0:', batchesWithStock.length)
@@ -204,13 +212,13 @@ export default function PharmacyPage() {
       if (!batchesWithStock[0]?.medications) {
         console.log('Fetching medication info separately...')
         const medicineIds = [...new Set(batchesWithStock.map(b => b.medicine_id).filter(id => id))]
-        
+
         if (medicineIds.length > 0) {
           const { data: medicines, error: medError } = await supabase
             .from('medications')
             .select('id, name, category, manufacturer')
             .in('id', medicineIds)
-          
+
           if (!medError && medicines) {
             batchesWithMedInfo = batchesWithStock.map(batch => ({
               ...batch,
@@ -269,7 +277,7 @@ export default function PharmacyPage() {
       }
 
       console.log('Filtered batches:', filtered.length)
-      
+
       // Log filtered batches for debugging
       if (filtered.length > 0) {
         console.log('Sample filtered batch:', filtered[0])
@@ -287,7 +295,7 @@ export default function PharmacyPage() {
       const processedDetails = filtered.map(batch => {
         const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
         const value = batch.current_quantity * (batch.selling_price || 0)
-        
+
         return {
           ...batch,
           medications: batch.medications,
@@ -311,7 +319,7 @@ export default function PharmacyPage() {
   const loadStockAlertDetails = async (alertType: string) => {
     try {
       setDetailsLoading(true)
-      
+
       if (alertType === 'low') {
         // Try simple query first
         const { data: medications, error: medError } = await supabase
@@ -337,7 +345,7 @@ export default function PharmacyPage() {
         }
 
         // Filter manually for low stock items
-        const lowStockMeds = medications?.filter(med => 
+        const lowStockMeds = medications?.filter(med =>
           med.available_stock > 0 && med.available_stock <= med.minimum_stock_level
         ) || []
 
@@ -381,7 +389,7 @@ export default function PharmacyPage() {
 
         // Filter manually for expired batches with stock
         const now = new Date()
-        const expiredBatches = batches?.filter(batch => 
+        const expiredBatches = batches?.filter(batch =>
           batch.current_quantity > 0 && new Date(batch.expiry_date) < now
         ) || []
 
@@ -391,7 +399,7 @@ export default function PharmacyPage() {
           // Fetch medication info separately
           const medicineIds = [...new Set(expiredBatches.map(b => b.medicine_id).filter(id => id))]
           let medicines: any[] = []
-          
+
           if (medicineIds.length > 0) {
             const { data: medData } = await supabase
               .from('medications')
@@ -444,9 +452,9 @@ export default function PharmacyPage() {
         // Filter manually for expiring batches (next 30 days)
         const now = new Date()
         const thirtyDaysFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000))
-        const expiringBatches = batches?.filter(batch => 
-          batch.current_quantity > 0 && 
-          new Date(batch.expiry_date) >= now && 
+        const expiringBatches = batches?.filter(batch =>
+          batch.current_quantity > 0 &&
+          new Date(batch.expiry_date) >= now &&
           new Date(batch.expiry_date) <= thirtyDaysFromNow
         ) || []
 
@@ -456,7 +464,7 @@ export default function PharmacyPage() {
           // Fetch medication info separately
           const medicineIds = [...new Set(expiringBatches.map(b => b.medicine_id).filter(id => id))]
           let medicines: any[] = []
-          
+
           if (medicineIds.length > 0) {
             const { data: medData } = await supabase
               .from('medications')
@@ -503,13 +511,13 @@ export default function PharmacyPage() {
       ])
 
       // Map dashboard data to match our interface
-       setStats({
-         totalMedications: dashboardData.totalMedications || 0,
-         lowStockCount: dashboardData.lowStockCount || 0,
-         todaysSales: dashboardData.todaySales || 0,
-         pendingOrders: dashboardData.pendingBills || 0
-       })
-      
+      setStats({
+        totalMedications: dashboardData.totalMedications || 0,
+        lowStockCount: dashboardData.lowStockCount || 0,
+        todaysSales: dashboardData.todaySales || 0,
+        pendingOrders: dashboardData.pendingBills || 0
+      })
+
       // Map bills data
       const mappedBills = billsData.map((bill: any) => ({
         id: bill.id,
@@ -560,22 +568,11 @@ export default function PharmacyPage() {
           <p className="text-gray-600 mt-1">Manage medicines, inventory, and billing</p>
         </div>
         <div className="flex gap-2">
-          <button 
-            className="btn-secondary flex items-center"
-            onClick={() => {
-              loadAnalytics()
-              loadData()
-            }}
-            disabled={loading || analyticsLoading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${(loading || analyticsLoading) ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
           <Link href="/pharmacy/newbilling" className="btn-primary flex items-center">
             <Receipt className="w-4 h-4 mr-2" />
             New Billing
           </Link>
-          <button 
+          <button
             className="btn-primary flex items-center"
             onClick={() => setShowMedicineModal(true)}
           >
@@ -590,55 +587,50 @@ export default function PharmacyPage() {
         <nav className="-mb-px flex space-x-8">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'dashboard'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <BarChart3 className="w-4 h-4 inline mr-2" />
             Dashboard
           </button>
           <button
             onClick={() => setActiveTab('prescribed')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'prescribed'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'prescribed'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
             Prescribed List
           </button>
           <button
             onClick={() => setActiveTab('newbilling')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'newbilling'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'newbilling'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <Receipt className="w-4 h-4 inline mr-2" />
             New Billing
           </button>
           <button
             onClick={() => setActiveTab('inventory')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'inventory'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'inventory'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <Package className="w-4 h-4 inline mr-2" />
             Inventory
           </button>
           <button
             onClick={() => setActiveTab('billing')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'billing'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'billing'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <IndianRupee className="w-4 h-4 inline mr-2" />
             Billing History
@@ -749,7 +741,7 @@ export default function PharmacyPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
                   <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
                     labelStyle={{ color: '#f3f4f6' }}
                     itemStyle={{ color: '#f3f4f6' }}
@@ -785,7 +777,7 @@ export default function PharmacyPage() {
                       <Cell key={`cell-${index}`} fill={CHART_COLORS.pie[index % CHART_COLORS.pie.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
                     labelStyle={{ color: '#f3f4f6' }}
                     itemStyle={{ color: '#f3f4f6' }}
@@ -810,9 +802,8 @@ export default function PharmacyPage() {
                 {inventoryAnalytics?.topSellingMedicines?.slice(0, 5).map((med: any, index: number) => (
                   <div key={med.medicationId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-blue-500'
-                      }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-blue-500'
+                        }`}>
                         {index + 1}
                       </div>
                       <div>
@@ -839,18 +830,17 @@ export default function PharmacyPage() {
               </div>
               <div className="space-y-3">
                 {inventoryAnalytics?.expiryAnalysis?.map((expiry: any, index: number) => (
-                  <div 
-                    key={expiry.period} 
+                  <div
+                    key={expiry.period}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => loadExpiryDetails(expiry.period)}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        expiry.period.includes('Expired') ? 'bg-red-500' :
+                      <div className={`w-3 h-3 rounded-full ${expiry.period.includes('Expired') ? 'bg-red-500' :
                         expiry.period.includes('30 days') ? 'bg-orange-500' :
-                        expiry.period.includes('31-60') ? 'bg-yellow-500' :
-                        expiry.period.includes('61-90') ? 'bg-blue-500' : 'bg-green-500'
-                      }`}></div>
+                          expiry.period.includes('31-60') ? 'bg-yellow-500' :
+                            expiry.period.includes('61-90') ? 'bg-blue-500' : 'bg-green-500'
+                        }`}></div>
                       <div>
                         <div className="font-medium text-sm">{expiry.period}</div>
                         <div className="text-xs text-gray-500">{expiry.count} batches</div>
@@ -874,21 +864,21 @@ export default function PharmacyPage() {
                 </h3>
               </div>
               <div className="space-y-4">
-                <div 
+                <div
                   className="flex justify-between items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
                   onClick={() => loadStockAlertDetails('expiring')}
                 >
                   <span className="text-sm font-medium text-blue-800">Expiring Soon</span>
                   <span className="text-lg font-bold text-blue-900">{inventoryAnalytics?.stockSummary?.expiringSoonItems || 0}</span>
                 </div>
-                <div 
+                <div
                   className="flex justify-between items-center p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
                   onClick={() => loadStockAlertDetails('low')}
                 >
                   <span className="text-sm font-medium text-green-800">Low Stock Items</span>
                   <span className="text-lg font-bold text-green-900">{inventoryAnalytics?.stockSummary?.lowStockItems || 0}</span>
                 </div>
-                <div 
+                <div
                   className="flex justify-between items-center p-3 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
                   onClick={() => loadStockAlertDetails('expired')}
                 >
@@ -1176,7 +1166,7 @@ export default function PharmacyPage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {expiryDetails.length === 0 ? (
                     <div className="text-center py-12">
                       <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-400" />
@@ -1213,26 +1203,24 @@ export default function PharmacyPage() {
                               </td>
                               <td className="p-3">{new Date(item.expiry_date).toLocaleDateString()}</td>
                               <td className="p-3">
-                                <span className={`font-medium ${
-                                  item.days_to_expiry < 0 ? 'text-red-600' : 
-                                  item.days_to_expiry <= 30 ? 'text-orange-600' : 
-                                  item.days_to_expiry <= 60 ? 'text-yellow-600' : 'text-blue-600'
-                                }`}>
+                                <span className={`font-medium ${item.days_to_expiry < 0 ? 'text-red-600' :
+                                  item.days_to_expiry <= 30 ? 'text-orange-600' :
+                                    item.days_to_expiry <= 60 ? 'text-yellow-600' : 'text-blue-600'
+                                  }`}>
                                   {item.days_to_expiry < 0 ? `${Math.abs(item.days_to_expiry)} days ago` : `${item.days_to_expiry} days`}
                                 </span>
                               </td>
                               <td className="p-3 font-medium">{item.current_quantity}</td>
                               <td className="p-3 text-right font-medium">{formatIndianCurrency(item.total_value)}</td>
                               <td className="p-3 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  item.status === 'expired' ? 'bg-red-100 text-red-800' :
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'expired' ? 'bg-red-100 text-red-800' :
                                   item.status === 'critical' ? 'bg-orange-100 text-orange-800' :
-                                  item.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-blue-100 text-blue-800'
-                                }`}>
+                                    item.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-blue-100 text-blue-800'
+                                  }`}>
                                   {item.status === 'expired' ? 'Expired' :
-                                   item.status === 'critical' ? 'Critical' :
-                                   item.status === 'warning' ? 'Warning' : 'Normal'}
+                                    item.status === 'critical' ? 'Critical' :
+                                      item.status === 'warning' ? 'Warning' : 'Normal'}
                                 </span>
                               </td>
                             </tr>
@@ -1286,13 +1274,13 @@ export default function PharmacyPage() {
                     <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                       <div className="text-sm text-purple-600 font-medium">Total Value</div>
                       <div className="text-2xl font-bold text-purple-800">
-                        {formatIndianCurrency(stockAlertDetails.reduce((sum, item) => 
+                        {formatIndianCurrency(stockAlertDetails.reduce((sum, item) =>
                           sum + (item.total_value || item.reorder_value || 0), 0
                         ))}
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                       <thead>
@@ -1322,10 +1310,9 @@ export default function PharmacyPage() {
                             </td>
                             <td className="p-3">{item.category || 'N/A'}</td>
                             <td className="p-3">
-                              <span className={`font-medium ${
-                                item.alert_type === 'expired' ? 'text-red-600' :
+                              <span className={`font-medium ${item.alert_type === 'expired' ? 'text-red-600' :
                                 item.available_stock === 0 ? 'text-red-600' : 'text-orange-600'
-                              }`}>
+                                }`}>
                                 {item.alert_type === 'expired' ? item.current_quantity : item.available_stock}
                               </span>
                             </td>

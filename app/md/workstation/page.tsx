@@ -1,12 +1,12 @@
 import React from 'react';
-import { 
-  Activity, 
-  Search, 
-  Filter, 
-  Plus, 
-  Eye, 
-  Monitor, 
-  FileText, 
+import {
+  Activity,
+  Search,
+  Filter,
+  Plus,
+  Eye,
+  Monitor,
+  FileText,
   AlertCircle,
   CheckCircle,
   Clock,
@@ -151,7 +151,7 @@ export default function WorkstationPage() {
         {/* Lab Tests */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Active Lab Tests</h2>
-          
+
           {/* Test Card 1 */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-start justify-between mb-4">
@@ -272,7 +272,7 @@ export default function WorkstationPage() {
         {/* Equipment Status */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Equipment Status</h2>
-          
+
           {/* Equipment Card 1 */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-start justify-between mb-4">
@@ -322,10 +322,6 @@ export default function WorkstationPage() {
               <button className="flex-1 flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
                 <Eye size={14} className="mr-1" />
                 Monitor
-              </button>
-              <button className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors">
-                <RefreshCw size={14} className="mr-1" />
-                Refresh
               </button>
             </div>
           </div>

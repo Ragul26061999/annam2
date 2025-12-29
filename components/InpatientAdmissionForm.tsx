@@ -358,6 +358,44 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                     />
                 </div>
 
+                {/* Document Upload Section (Moved) */}
+                {selectedPatient && (
+                    <div className="bg-blue-50/30 p-6 rounded-xl border border-blue-100/50">
+                        <div className="flex items-center gap-3 mb-4">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                            <h3 className="text-sm font-bold text-gray-900">Patient Documents (Optional)</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Upload Section */}
+                            <div className="bg-white rounded-lg p-4 border border-blue-100">
+                                <h4 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <Upload className="h-4 w-4 text-blue-600" />
+                                    Upload Documents
+                                </h4>
+                                <DocumentUpload
+                                    patientId={selectedPatient.id}
+                                    uhid={selectedPatient.patient_id}
+                                    staffId={formData.staffId}
+                                    category="general"
+                                    onUploadComplete={(doc) => {
+                                        setDocumentRefreshTrigger(prev => prev + 1);
+                                    }}
+                                />
+                            </div>
+
+                            {/* Documents List */}
+                            <div className="bg-white rounded-lg p-4 border border-gray-100">
+                                <DocumentList
+                                    patientId={selectedPatient.id}
+                                    showDelete={true}
+                                    refreshTrigger={documentRefreshTrigger}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Bed Allocation (Optional) */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
@@ -399,47 +437,6 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                     </div>
                 )}
 
-                {/* Document Upload Section */}
-                {selectedPatient && (
-                    <div className="border-t border-gray-200 pt-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <FileText className="h-5 w-5 text-blue-600" />
-                            <h3 className="text-lg font-semibold text-gray-900">Patient Documents</h3>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {/* Upload Section */}
-                            <div className="bg-blue-50 rounded-lg p-4">
-                                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                    <Upload className="h-4 w-4 text-blue-600" />
-                                    Upload Documents
-                                </h4>
-                                <DocumentUpload
-                                    patientId={selectedPatient.id}
-                                    uhid={selectedPatient.patient_id}
-                                    staffId={formData.staffId}
-                                    category="general"
-                                    onUploadComplete={(doc) => {
-                                        console.log('Document uploaded:', doc);
-                                        setDocumentRefreshTrigger(prev => prev + 1);
-                                    }}
-                                    onUploadError={(error) => {
-                                        console.error('Upload error:', error);
-                                    }}
-                                />
-                            </div>
-
-                            {/* Documents List */}
-                            <div className="bg-gray-50 rounded-lg p-4">
-                                <DocumentList
-                                    patientId={selectedPatient.id}
-                                    showDelete={true}
-                                    refreshTrigger={documentRefreshTrigger}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Action Buttons */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">

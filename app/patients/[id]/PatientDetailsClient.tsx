@@ -80,8 +80,37 @@ interface Patient {
   referred_by: string;
   status: string;
   created_at: string;
+  // New outpatient fields
+  age?: number;
+  diagnosis?: string;
+  height?: string;
+  weight?: string;
+  bmi?: string;
+  temperature?: string;
+  temp_unit?: string;
+  bp_systolic?: string;
+  bp_diastolic?: string;
+  pulse?: string;
+  spo2?: string;
+  respiratory_rate?: string;
+  random_blood_sugar?: string;
+  vital_notes?: string;
+  op_card_amount?: string;
+  consultation_fee?: string;
+  total_amount?: string;
+  payment_mode?: string;
+  consulting_doctor_name?: string;
+  alternate_phone?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
   appointments: any[];
   bed_allocations: any[];
+  staff?: {
+    first_name: string;
+    last_name: string;
+    employee_id: string;
+  };
 }
 
 interface PatientDetailsClientProps {
@@ -108,22 +137,13 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
   useEffect(() => {
     const fetchUser = async () => {
-      console.log('Fetching user profile...');
       const userProfile = await getCurrentUserProfile();
-      console.log('User profile fetched:', userProfile);
       setCurrentUser(userProfile);
-
-      // If no user profile, try to get auth user for debugging
-      if (!userProfile) {
-        const authUser = await getCurrentUser();
-        console.log('Auth user (for debugging):', authUser);
-      }
     };
     fetchUser();
   }, []);
 
   useEffect(() => {
-    // Only fetch data if we have a valid patient ID
     if (params.id && params.id.trim() !== '') {
       fetchPatientData();
     } else {
@@ -135,16 +155,9 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const fetchPatientData = async () => {
     try {
       setLoading(true);
-
-      // Validate the patient ID
-      if (!params.id || params.id.trim() === '') {
-        throw new Error('Invalid patient ID provided');
-      }
-
       const patientData = await getPatientWithRelatedData(params.id.trim());
       setPatient(patientData);
 
-      // Fetch vitals data using the database ID
       setVitalsLoading(true);
       try {
         const vitalsData = await getPatientVitals(patientData.id);
@@ -155,7 +168,6 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
         setVitalsLoading(false);
       }
 
-      // Fetch medical history data using the database ID
       setHistoryLoading(true);
       try {
         const historyData = await getMedicalHistory(patientData.id);
@@ -173,31 +185,26 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
     }
   };
 
-  const calculateAge = (dateOfBirth: string) => {
+  const calculateAge = (dateOfBirth: string, directAge?: number) => {
+    if (directAge) return directAge;
+    if (!dateOfBirth) return 'N/A';
     const birth = new Date(dateOfBirth);
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-
     return age;
   };
 
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
-      case 'critical':
-        return 'text-red-500 bg-red-50 border-red-200';
-      case 'stable':
-        return 'text-green-500 bg-green-50 border-green-200';
-      case 'recovering':
-        return 'text-orange-500 bg-orange-50 border-orange-200';
-      case 'active':
-        return 'text-blue-500 bg-blue-50 border-blue-200';
-      default:
-        return 'text-gray-500 bg-gray-50 border-gray-200';
+      case 'critical': return 'text-red-500 bg-red-50 border-red-200';
+      case 'stable': return 'text-green-500 bg-green-50 border-green-200';
+      case 'recovering': return 'text-orange-500 bg-orange-50 border-orange-200';
+      case 'active': return 'text-blue-500 bg-blue-50 border-blue-200';
+      default: return 'text-gray-500 bg-gray-50 border-gray-200';
     }
   };
 
@@ -232,30 +239,12 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
     );
   }
 
-  if (error) {
+  if (error || !patient) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Patient</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Link href="/patients">
-            <button className="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 transition-colors">
-              Back to Patients
-            </button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!patient) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Patient Not Found</h2>
-          <p className="text-gray-600 mb-4">The requested patient could not be found.</p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">{error || 'Patient Not Found'}</h2>
           <Link href="/patients">
             <button className="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 transition-colors">
               Back to Patients
@@ -285,6 +274,12 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(patient.status)}`}>
                     {patient.status?.charAt(0).toUpperCase() + patient.status?.slice(1) || 'Active'}
                   </span>
+                  {patient.staff && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                      <Users size={12} />
+                      <span>Registered By: {patient.staff.first_name} {patient.staff.last_name}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -314,137 +309,131 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* Patient Overview Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Personal Information Card */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          {/* Personal Information */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-blue-100 rounded-lg">
                 <User className="h-5 w-5 text-blue-600" />
               </div>
-              <h3 className="font-semibold text-gray-900">Personal Information</h3>
+              <h3 className="font-semibold text-gray-900">Personal Info</h3>
             </div>
-
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <Calendar className="h-4 w-4 text-gray-400 mr-3" />
-                <span className="text-gray-600">Age:</span>
-                <span className="ml-2 font-medium">{calculateAge(patient.date_of_birth)} years</span>
+                <span className="text-gray-600">DOB:</span>
+                <span className="ml-2 font-medium">{formatDate(patient.date_of_birth)} ({patient.age || calculateAge(patient.date_of_birth)})</span>
               </div>
-
-              <div className="flex items-center text-sm">
-                <User className="h-4 w-4 text-gray-400 mr-3" />
-                <span className="text-gray-600">Gender:</span>
-                <span className="ml-2 font-medium capitalize">{patient.gender}</span>
-              </div>
-
               <div className="flex items-center text-sm">
                 <Phone className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Phone:</span>
                 <span className="ml-2 font-medium">{patient.phone}</span>
               </div>
-
-              <div className="flex items-center text-sm">
-                <Mail className="h-4 w-4 text-gray-400 mr-3" />
-                <span className="text-gray-600">Email:</span>
-                <span className="ml-2 font-medium">{patient.email}</span>
-              </div>
-
+              {patient.alternate_phone && (
+                <div className="flex items-center text-sm ml-7">
+                  <span className="text-gray-500 italic">Alt: {patient.alternate_phone}</span>
+                </div>
+              )}
               <div className="flex items-start text-sm">
                 <MapPin className="h-4 w-4 text-gray-400 mr-3 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <span className="text-gray-600">Address:</span>
-                  <p className="ml-2 font-medium">{patient.address}</p>
+                  <p className="ml-2 font-medium text-gray-900 break-words">
+                    {patient.address}<br />
+                    {[patient.city, patient.state, patient.pincode].filter(Boolean).join(', ')}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Medical Information Card */}
+          {/* Emergency & Guardian */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <Shield className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900">Emergency & Guardian</h3>
+            </div>
+            <div className="space-y-4">
+              <div className="p-3 bg-red-50/50 rounded-lg border border-red-100">
+                <h4 className="text-xs font-bold text-red-800 uppercase mb-2">Emergency Contact</h4>
+                <div className="space-y-1 text-sm">
+                  <p><span className="text-gray-500">Name:</span> <span className="font-medium">{patient.emergency_contact_name || 'N/A'}</span></p>
+                  <p><span className="text-gray-500">Phone:</span> <span className="font-medium">{patient.emergency_contact_phone || 'N/A'}</span></p>
+                </div>
+              </div>
+              {(patient.guardian_name || patient.guardian_phone) && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                  <h4 className="text-xs font-bold text-blue-800 uppercase mb-2">Guardian</h4>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-gray-500">Name:</span> <span className="font-medium">{patient.guardian_name || 'N/A'}</span></p>
+                    <p><span className="text-gray-500">Phone:</span> <span className="font-medium">{patient.guardian_phone || 'N/A'}</span></p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Medical Info */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-green-100 rounded-lg">
                 <Heart className="h-5 w-5 text-green-600" />
               </div>
-              <h3 className="font-semibold text-gray-900">Medical Information</h3>
+              <h3 className="font-semibold text-gray-900">Medical Info</h3>
             </div>
-
             <div className="space-y-3">
-              <div className="flex items-center text-sm">
-                <Heart className="h-4 w-4 text-gray-400 mr-3" />
-                <span className="text-gray-600">Blood Group:</span>
-                <span className="ml-2 font-medium">{patient.blood_group || 'Not specified'}</span>
+              <div className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded">
+                <span className="text-gray-500">Blood Group</span>
+                <span className="font-bold text-red-600">{patient.blood_group || 'N/A'}</span>
               </div>
-
-              {patient.allergies && (
-                <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-                  <div className="flex items-center text-red-700 text-sm font-medium mb-1">
-                    <AlertTriangle className="h-4 w-4 mr-2" />
-                    Allergies
-                  </div>
-                  <p className="text-red-600 text-sm">{patient.allergies}</p>
+              {patient.diagnosis && (
+                <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                  <p className="text-xs font-bold text-blue-700 uppercase mb-1">Diagnosis</p>
+                  <p className="text-sm font-medium text-blue-900">{patient.diagnosis}</p>
                 </div>
               )}
-
-              {patient.initial_symptoms && (
-                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                  <div className="flex items-center text-yellow-700 text-sm font-medium mb-1">
-                    <Stethoscope className="h-4 w-4 mr-2" />
-                    Initial Symptoms
-                  </div>
-                  <p className="text-yellow-600 text-sm">{patient.initial_symptoms}</p>
+              {patient.allergies && (
+                <div className="bg-red-50 p-2 rounded border border-red-100">
+                  <p className="text-xs font-bold text-red-700 uppercase mb-1">Allergies</p>
+                  <p className="text-sm text-red-900">{patient.allergies}</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Admission Information Card */}
+          {/* Admission Info */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-purple-100 rounded-lg">
                 <Building className="h-5 w-5 text-purple-600" />
               </div>
-              <h3 className="font-semibold text-gray-900">Admission Information</h3>
+              <h3 className="font-semibold text-gray-900">Admission Info</h3>
             </div>
-
             <div className="space-y-3">
-              {patient.admission_date && (
-                <div className="flex items-center text-sm">
-                  <Clock className="h-4 w-4 text-gray-400 mr-3" />
-                  <span className="text-gray-600">Admitted:</span>
-                  <span className="ml-2 font-medium">{formatDateTime(patient.admission_date)}</span>
-                </div>
-              )}
-
-              {patient.admission_type && (
-                <div className="flex items-center text-sm">
-                  <FileText className="h-4 w-4 text-gray-400 mr-3" />
-                  <span className="text-gray-600">Type:</span>
-                  <span className="ml-2 font-medium capitalize">{patient.admission_type}</span>
-                </div>
-              )}
-
-              {patient.department_ward && (
-                <div className="flex items-center text-sm">
-                  <Building className="h-4 w-4 text-gray-400 mr-3" />
-                  <span className="text-gray-600">Department:</span>
-                  <span className="ml-2 font-medium">{patient.department_ward}</span>
-                </div>
-              )}
-
-              {patient.room_number && (
-                <div className="flex items-center text-sm">
-                  <MapPin className="h-4 w-4 text-gray-400 mr-3" />
-                  <span className="text-gray-600">Room:</span>
-                  <span className="ml-2 font-medium">{patient.room_number}</span>
-                </div>
-              )}
+              <div className="flex items-center text-sm">
+                <Clock className="h-4 w-4 text-gray-400 mr-3" />
+                <span className="text-gray-600">Admitted:</span>
+                <span className="ml-2 font-medium">{formatDateTime(patient.admission_date)}</span>
+              </div>
+              <div className="flex items-center text-sm">
+                <FileText className="h-4 w-4 text-gray-400 mr-3" />
+                <span className="text-gray-600">Type:</span>
+                <span className="ml-2 font-medium capitalize">{patient.admission_type || 'OP'}</span>
+              </div>
+              <div className="flex items-center text-sm">
+                <MapPin className="h-4 w-4 text-gray-400 mr-3" />
+                <span className="text-gray-600">Ward/Room:</span>
+                <span className="ml-2 font-medium">{patient.department_ward || 'N/A'} / {patient.room_number || 'N/A'}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs Navigation */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-          <div className="border-b border-gray-200">
+        {/* Tabs Content */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 overflow-hidden">
+          <div className="border-b border-gray-200 bg-white">
             <nav className="flex space-x-8 px-6">
               {[
                 { id: 'overview', name: 'Overview', icon: Eye },
@@ -452,7 +441,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 { id: 'medical-history', name: 'Medical History', icon: Heart },
                 { id: 'medications', name: 'Medications', icon: Pill },
                 { id: 'documents', name: 'Documents', icon: FolderOpen },
-                { id: 'appointments', name: 'Appointments & Admissions', icon: Calendar },
+                { id: 'appointments', name: 'Appointments', icon: Calendar },
                 { id: 'billing', name: 'Billing', icon: FileText }
               ].map((tab) => (
                 <button
@@ -476,46 +465,49 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               <div className="space-y-6">
                 {patient.primary_complaint && (
                   <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                    <h4 className="font-medium text-orange-900 mb-2 flex items-center gap-2">
+                    <h4 className="font-bold text-orange-900 mb-2 flex items-center gap-2 text-sm uppercase">
                       <ClipboardList className="h-4 w-4" />
                       Primary Complaint / Reason for Visit
                     </h4>
-                    <p className="text-orange-800">{patient.primary_complaint}</p>
+                    <p className="text-orange-900 font-medium">{patient.primary_complaint}</p>
                   </div>
                 )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {patient.referring_doctor_facility && (
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                      <h4 className="font-medium text-blue-900 mb-2">Referring Doctor/Facility</h4>
-                      <p className="text-blue-800">{patient.referring_doctor_facility}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {patient.consulting_doctor_name && (
+                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                      <h4 className="font-bold text-purple-900 mb-2 text-xs uppercase">Consulting Doctor</h4>
+                      <p className="text-purple-900 font-bold">{patient.consulting_doctor_name}</p>
+                      <p className="text-purple-600 text-sm">{patient.department_ward}</p>
                     </div>
                   )}
-
+                  {patient.referring_doctor_facility && (
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <h4 className="font-bold text-blue-900 mb-2 text-xs uppercase">Referring Doc/Facility</h4>
+                      <p className="text-blue-900 font-medium">{patient.referring_doctor_facility}</p>
+                    </div>
+                  )}
                   {patient.referred_by && (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                      <h4 className="font-medium text-green-900 mb-2">Referred By</h4>
-                      <p className="text-green-800">{patient.referred_by}</p>
+                      <h4 className="font-bold text-green-900 mb-2 text-xs uppercase">Referred By</h4>
+                      <p className="text-green-900 font-medium">{patient.referred_by}</p>
                     </div>
                   )}
                 </div>
-
-                {/* Recent Activity */}
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-4">Recent Activity</h4>
+                  <h4 className="font-bold text-gray-900 mb-4 text-sm uppercase">Activity History</h4>
                   <div className="space-y-3">
-                    <div className="flex items-center p-3 bg-gray-50 rounded-lg">
-                      <div className="w-2 h-2 bg-green-400 rounded-full mr-3"></div>
+                    <div className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
                       <div className="flex-1">
-                        <p className="text-sm text-gray-900">Patient registered</p>
+                        <p className="text-sm font-medium text-gray-900">Patient Registered</p>
                         <p className="text-xs text-gray-500">{formatDateTime(patient.created_at)}</p>
                       </div>
                     </div>
                     {patient.admission_date && (
-                      <div className="flex items-center p-3 bg-gray-50 rounded-lg">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full mr-3"></div>
+                      <div className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-900">Patient admitted</p>
+                          <p className="text-sm font-medium text-gray-900">Patient Admitted</p>
                           <p className="text-xs text-gray-500">{formatDateTime(patient.admission_date)}</p>
                         </div>
                       </div>
@@ -527,14 +519,11 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
             {/* Vitals Tab */}
             {activeTab === 'vitals' && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Patient Vitals</h3>
+                  <h3 className="text-lg font-bold text-gray-900">Vital Signs Tracking</h3>
                   <button
-                    onClick={() => {
-                      setEditingVital(null);
-                      setShowVitalsForm(true);
-                    }}
+                    onClick={() => { setEditingVital(null); setShowVitalsForm(true); }}
                     className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
                   >
                     <Plus className="h-4 w-4" />
@@ -542,190 +531,81 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   </button>
                 </div>
 
-                {vitalsLoading ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
-                  </div>
-                ) : vitals.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-                    <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">No vitals recorded</h4>
-                    <p className="text-gray-500 mb-4">Get started by recording new vitals for this patient.</p>
-                    <button
-                      onClick={() => {
-                        setEditingVital(null);
-                        setShowVitalsForm(true);
-                      }}
-                      className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
-                    >
-                      Record First Vitals
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {vitals.map((vital) => (
-                      <div key={vital.id} className="bg-white rounded-lg border border-gray-200 p-4 relative">
-                        {/* Alert indicator */}
-                        {vital.alerts && vital.alerts.length > 0 && (
-                          <div className="absolute top-2 right-2">
-                            <div className="flex items-center gap-1 bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
-                              <AlertTriangle className="h-3 w-3" />
-                              {vital.alerts.length} Alert{vital.alerts.length > 1 ? 's' : ''}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="font-medium text-gray-900">
-                              Recorded on {new Date(vital.recorded_at).toLocaleString()}
-                            </h4>
-                            <div className="flex items-center gap-4 text-sm text-gray-500">
-                              <span>Recorded by: {vital.recorded_by_user?.name || 'Unknown'}</span>
-                              {vital.recording_location && (
-                                <span>Location: {vital.recording_location}</span>
-                              )}
-                              {vital.recording_device && (
-                                <span>Device: {vital.recording_device}</span>
-                              )}
-                              {vital.version > 1 && (
-                                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
-                                  v{vital.version}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {vital.is_validated && (
-                              <div className="flex items-center gap-1 bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
-                                <CheckCircle className="h-3 w-3" />
-                                Validated
-                              </div>
-                            )}
-                            <button
-                              onClick={() => {
-                                setEditingVital(vital);
-                                setShowVitalsForm(true);
-                              }}
-                              className="text-orange-500 hover:text-orange-700 text-sm font-medium"
-                            >
-                              Edit
-                            </button>
-                          </div>
+                {/* Registration Vitals (Baseline) */}
+                {(patient.height || patient.weight || patient.temperature || patient.bp_systolic || patient.pulse) && (
+                  <div className="bg-orange-50/50 rounded-xl border border-orange-100 p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                      <h4 className="text-sm font-bold text-orange-800 uppercase flex items-center gap-2">
+                        <Activity size={18} />
+                        Registration Baseline Vitals
+                      </h4>
+                      <span className="text-xs text-orange-600 bg-orange-100 px-3 py-1 rounded-full font-bold">INITIAL</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {patient.bp_systolic && (
+                        <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
+                          <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Blood Pressure</p>
+                          <p className="text-xl font-black text-gray-900">{patient.bp_systolic}/{patient.bp_diastolic}</p>
+                          <p className="text-[10px] text-gray-400">mmHg</p>
                         </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {vital.blood_pressure_systolic && vital.blood_pressure_diastolic && (
-                            <div className="bg-red-50 p-3 rounded-lg">
-                              <p className="text-xs text-red-600 font-medium">Blood Pressure</p>
-                              <p className="text-lg font-semibold text-red-800">
-                                {vital.blood_pressure_systolic}/{vital.blood_pressure_diastolic}
-                              </p>
-                              <p className="text-xs text-red-600">mmHg</p>
-                            </div>
-                          )}
-
-                          {vital.heart_rate && (
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                              <p className="text-xs text-blue-600 font-medium">Heart Rate</p>
-                              <p className="text-lg font-semibold text-blue-800">
-                                {vital.heart_rate} <span className="text-sm">bpm</span>
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.temperature && (
-                            <div className="bg-yellow-50 p-3 rounded-lg">
-                              <p className="text-xs text-yellow-600 font-medium">Temperature</p>
-                              <p className="text-lg font-semibold text-yellow-800">
-                                {vital.temperature}°F
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.oxygen_saturation && (
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <p className="text-xs text-green-600 font-medium">Oxygen Saturation</p>
-                              <p className="text-lg font-semibold text-green-800">
-                                {vital.oxygen_saturation}%
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.respiratory_rate && (
-                            <div className="bg-cyan-50 p-3 rounded-lg">
-                              <p className="text-xs text-cyan-600 font-medium">Respiratory Rate</p>
-                              <p className="text-lg font-semibold text-cyan-800">
-                                {vital.respiratory_rate} <span className="text-sm">bpm</span>
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.weight && (
-                            <div className="bg-purple-50 p-3 rounded-lg">
-                              <p className="text-xs text-purple-600 font-medium">Weight</p>
-                              <p className="text-lg font-semibold text-purple-800">
-                                {vital.weight} <span className="text-sm">kg</span>
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.height && (
-                            <div className="bg-indigo-50 p-3 rounded-lg">
-                              <p className="text-xs text-indigo-600 font-medium">Height</p>
-                              <p className="text-lg font-semibold text-indigo-800">
-                                {vital.height} <span className="text-sm">cm</span>
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.bmi && (
-                            <div className="bg-teal-50 p-3 rounded-lg">
-                              <p className="text-xs text-teal-600 font-medium">BMI</p>
-                              <p className="text-lg font-semibold text-teal-800">{vital.bmi}</p>
-                            </div>
-                          )}
-
-                          {vital.blood_glucose && (
-                            <div className="bg-pink-50 p-3 rounded-lg">
-                              <p className="text-xs text-pink-600 font-medium">Blood Glucose</p>
-                              <p className="text-lg font-semibold text-pink-800">
-                                {vital.blood_glucose} <span className="text-sm">mg/dL</span>
-                              </p>
-                            </div>
-                          )}
-
-                          {vital.pain_scale !== undefined && vital.pain_scale !== null && (
-                            <div className="bg-orange-50 p-3 rounded-lg">
-                              <p className="text-xs text-orange-600 font-medium">Pain Scale</p>
-                              <p className="text-lg font-semibold text-orange-800">
-                                {vital.pain_scale}/10
-                              </p>
-                            </div>
-                          )}
-
+                      )}
+                      {patient.pulse && (
+                        <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
+                          <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Pulse Rate</p>
+                          <p className="text-xl font-black text-gray-900">{patient.pulse} <span className="text-xs font-normal">bpm</span></p>
                         </div>
-
-                        {vital.notes && (
-                          <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-sm text-gray-600">
-                              <span className="font-medium">Notes:</span> {vital.notes}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Metadata footer */}
-                        <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
-                          <div className="flex items-center gap-4">
-                            {vital.updated_at !== vital.created_at && (
-                              <span>Last updated: {new Date(vital.updated_at).toLocaleString()}</span>
-                            )}
-                          </div>
+                      )}
+                      {patient.temperature && (
+                        <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
+                          <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Temp</p>
+                          <p className="text-xl font-black text-gray-900">{patient.temperature}°{patient.temp_unit || 'F'}</p>
                         </div>
-                      </div>
-                    ))}
+                      )}
+                      {patient.spo2 && (
+                        <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
+                          <p className="text-[10px] text-gray-500 uppercase font-black mb-1">SpO2</p>
+                          <p className="text-xl font-black text-gray-900">{patient.spo2}%</p>
+                        </div>
+                      )}
+                      {patient.weight && (
+                        <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
+                          <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Weight</p>
+                          <p className="text-xl font-black text-gray-900">{patient.weight} <span className="text-xs font-normal">kg</span></p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* History */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Recorded History</h4>
+                  {vitalsLoading ? (
+                    <div className="py-12 flex justify-center"><div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div></div>
+                  ) : vitals.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                      <p className="text-gray-500">No vital history recorded yet.</p>
+                    </div>
+                  ) : (
+                    vitals.map((vital) => (
+                      <div key={vital.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:border-orange-200 transition-colors">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <p className="font-bold text-gray-900">{formatDateTime(vital.recorded_at)}</p>
+                            <p className="text-xs text-gray-500">Recorded by {vital.recorded_by_user?.name || 'Staff'}</p>
+                          </div>
+                          <button onClick={() => { setEditingVital(vital); setShowVitalsForm(true); }} className="text-orange-600 font-bold text-xs hover:underline">EDIT</button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          {vital.blood_pressure_systolic && <div className="text-sm"><p className="text-gray-400 text-[10px] uppercase font-bold">BP</p><p className="font-bold">{vital.blood_pressure_systolic}/{vital.blood_pressure_diastolic}</p></div>}
+                          {vital.heart_rate && <div className="text-sm"><p className="text-gray-400 text-[10px] uppercase font-bold">Pulse</p><p className="font-bold">{vital.heart_rate} bpm</p></div>}
+                          {vital.temperature && <div className="text-sm"><p className="text-gray-400 text-[10px] uppercase font-bold">Temp</p><p className="font-bold">{vital.temperature}°F</p></div>}
+                          {vital.oxygen_saturation && <div className="text-sm"><p className="text-gray-400 text-[10px] uppercase font-bold">SpO2</p><p className="font-bold">{vital.oxygen_saturation}%</p></div>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
@@ -733,269 +613,97 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
             {activeTab === 'medical-history' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Medical History Timeline</h3>
+                  <h3 className="text-lg font-bold text-gray-900">Medical History Timeline</h3>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowMedicalHistoryForm(true)}
-                      className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Medical Event
-                    </button>
-                    {patient?.id && (
-                      <AddDummyMedicalHistory
-                        patientId={patient.id}
-                        onSuccess={async () => {
-                          setHistoryLoading(true);
-                          try {
-                            const historyData = await getMedicalHistory(patient.id);
-                            setMedicalHistory(historyData);
-                          } catch (error) {
-                            console.error('Error fetching medical history:', error);
-                          } finally {
-                            setHistoryLoading(false);
-                          }
-                        }}
-                      />
-                    )}
+                    <button onClick={() => setShowMedicalHistoryForm(true)} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><Plus size={16} /> Add Event</button>
+                    <AddDummyMedicalHistory patientId={patient.id} onSuccess={fetchPatientData} />
                   </div>
                 </div>
-
-                {historyLoading ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
-                  </div>
-                ) : medicalHistory.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-                    <Heart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">No medical history found</h4>
-                    <p className="text-gray-500 mb-4">No medical events have been recorded for this patient.</p>
-                    <button
-                      onClick={() => setShowMedicalHistoryForm(true)}
-                      className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
-                    >
-                      Record First Medical Event
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {medicalHistory.map((event) => (
-                      <div key={event.id} className="flex gap-4">
-                        <div className="flex flex-col items-center">
-                          <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
-                          <div className="w-px h-full bg-gray-300"></div>
+                <div className="relative pl-8 border-l-2 border-orange-100 ml-4 space-y-8 py-4">
+                  {medicalHistory.map((event) => (
+                    <div key={event.id} className="relative">
+                      <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-orange-500 border-4 border-white shadow-sm"></div>
+                      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-bold text-gray-900">{event.event_name}</h4>
+                          <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded">{formatDate(event.event_date)}</span>
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-gray-700">{event.event_name}</p>
-                          <p className="text-sm text-gray-500">{new Date(event.event_date).toLocaleDateString()} - {event.event_type}</p>
-                          <p className="text-sm text-gray-600 mt-1">{event.details}</p>
-                          {event.doctor_name && <p className="text-sm text-blue-600 mt-1">Doctor: {event.doctor_name}</p>}
-                          {event.facility_name && <p className="text-sm text-purple-600 mt-1">Facility: {event.facility_name}</p>}
+                        <p className="text-sm text-gray-600">{event.details}</p>
+                        <div className="flex items-center gap-4 mt-3 text-xs">
+                          {event.doctor_name && <span className="text-blue-600 font-medium">Dr. {event.doctor_name}</span>}
+                          {event.facility_name && <span className="text-purple-600 font-medium">{event.facility_name}</span>}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Medical History Form Modal */}
-                {showMedicalHistoryForm && patient?.id && (
-                  <MedicalHistoryForm
-                    patientId={patient.id}
-                    onClose={() => setShowMedicalHistoryForm(false)}
-                    onSuccess={async () => {
-                      setHistoryLoading(true);
-                      try {
-                        const historyData = await getMedicalHistory(patient.id);
-                        setMedicalHistory(historyData);
-                      } catch (error) {
-                        console.error('Error fetching medical history:', error);
-                      } finally {
-                        setHistoryLoading(false);
-                      }
-                    }}
-                  />
-                )}
+                    </div>
+                  ))}
+                  {medicalHistory.length === 0 && <p className="text-center text-gray-500 py-12">No medical history entries found.</p>}
+                </div>
               </div>
             )}
 
             {/* Medications Tab */}
-            {activeTab === 'medications' && (
-              <MedicationHistory patientId={patient.id} />
+            {activeTab === 'medications' && <MedicationHistory patientId={patient.id} />}
+
+            {/* Documents Tab */}
+            {activeTab === 'documents' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
+                  <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <Upload className="text-blue-600" size={20} /> Upload Documents
+                  </h4>
+                  <DocumentUpload
+                    patientId={patient.id}
+                    uhid={patient.patient_id}
+                    category="medical-report"
+                    onUploadComplete={() => setDocumentRefreshTrigger(prev => prev + 1)}
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-4 px-2">Recent Files</h4>
+                  <DocumentList patientId={patient.id} showDelete={true} refreshTrigger={documentRefreshTrigger} />
+                </div>
+              </div>
             )}
 
-            {/* Appointments & Admissions Tab */}
+            {/* Appointments Tab */}
             {activeTab === 'appointments' && (
               <div className="space-y-6">
-                {/* Sub-tabs for Appointments and Admissions */}
-                <div className="border-b border-gray-200">
-                  <nav className="flex space-x-8">
-                    <button
-                      onClick={() => setActiveSubTab('appointments')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'appointments'
-                        ? 'border-orange-500 text-orange-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                      <Calendar className="h-4 w-4" />
-                      Appointments
-                    </button>
-                    <button
-                      onClick={() => setActiveSubTab('admissions')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'admissions'
-                        ? 'border-orange-500 text-orange-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                      <Bed className="h-4 w-4" />
-                      Admission History
-                    </button>
-                  </nav>
+                <div className="border-b border-gray-100 flex gap-6 mb-4">
+                  <button onClick={() => setActiveSubTab('appointments')} className={`pb-3 text-sm font-bold ${activeSubTab === 'appointments' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}>APPOINTMENTS</button>
+                  <button onClick={() => setActiveSubTab('admissions')} className={`pb-3 text-sm font-bold ${activeSubTab === 'admissions' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}>ADMISSIONS</button>
                 </div>
-
-                {/* Appointments Sub-tab */}
-                {activeSubTab === 'appointments' && (
+                {activeSubTab === 'appointments' ? (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium text-gray-900">Appointment History</h4>
-                      <button className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        New Appointment
-                      </button>
-                    </div>
-
-                    {patient.appointments && patient.appointments.length > 0 ? (
-                      <div className="space-y-3">
-                        {patient.appointments.map((appointment, index) => (
-                          <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium text-gray-900">{appointment.type}</p>
-                                <p className="text-sm text-gray-600">
-                                  {formatDate(appointment.appointment_date)} at {appointment.appointment_time}
-                                </p>
-                                {appointment.doctor && (
-                                  <p className="text-sm text-gray-600">
-                                    Dr. {appointment.doctor.user?.name || 'Unknown'} - {appointment.doctor.user?.specialization || 'General'}
-                                  </p>
-                                )}
-                                {appointment.symptoms && (
-                                  <p className="text-sm text-gray-500 mt-1">Symptoms: {appointment.symptoms}</p>
-                                )}
-                              </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                {appointment.status}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                    {patient.appointments?.map((app, i) => (
+                      <div key={i} className="bg-white p-4 rounded-xl border border-gray-200 flex justify-between items-center shadow-sm">
+                        <div>
+                          <p className="font-bold text-gray-900">{app.type}</p>
+                          <p className="text-sm text-gray-500">{formatDate(app.appointment_date)} at {app.appointment_time}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${app.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{app.status}</span>
                       </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-500">No appointments found</p>
-                      </div>
-                    )}
+                    ))}
+                    {(!patient.appointments || patient.appointments.length === 0) && <p className="text-center py-12 text-gray-500">No appointments found.</p>}
                   </div>
-                )}
-
-                {/* Admissions Sub-tab */}
-                {activeSubTab === 'admissions' && (
+                ) : (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium text-gray-900">Admission & Discharge History</h4>
-                    </div>
-
-                    {patient.bed_allocations && patient.bed_allocations.length > 0 ? (
-                      <div className="space-y-3">
-                        {patient.bed_allocations.map((allocation, index) => (
-                          <div key={index} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${allocation.status === 'active' ? 'bg-green-100' :
-                                  allocation.status === 'discharged' ? 'bg-blue-100' : 'bg-gray-100'
-                                  }`}>
-                                  {allocation.status === 'active' ? (
-                                    <LogIn className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
-                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
-                                      }`} />
-                                  ) : (
-                                    <LogOut className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
-                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
-                                      }`} />
-                                  )}
-                                </div>
-                                <div>
-                                  <h5 className="font-medium text-gray-900">
-                                    {allocation.status === 'active' ? 'Current Admission' : 'Previous Admission'}
-                                  </h5>
-                                  <p className="text-sm text-gray-600">
-                                    Bed: {allocation.bed?.bed_number || 'N/A'} • Room: {allocation.bed?.room_number || 'N/A'}
-                                  </p>
-                                </div>
-                              </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${allocation.status === 'active' ? 'bg-green-100 text-green-800' :
-                                allocation.status === 'discharged' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                {allocation.status}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <span className="text-gray-600">Admission Date:</span>
-                                <p className="font-medium">{formatDateTime(allocation.admission_date)}</p>
-                              </div>
-                              {allocation.discharge_date && (
-                                <div>
-                                  <span className="text-gray-600">Discharge Date:</span>
-                                  <p className="font-medium">{formatDateTime(allocation.discharge_date)}</p>
-                                </div>
-                              )}
-                              <div>
-                                <span className="text-gray-600">Admission Type:</span>
-                                <p className="font-medium">{allocation.admission_type || 'N/A'}</p>
-                              </div>
-                              {allocation.reason && (
-                                <div>
-                                  <span className="text-gray-600">Reason:</span>
-                                  <p className="font-medium">{allocation.reason}</p>
-                                </div>
-                              )}
-                              {allocation.daily_charges && (
-                                <div>
-                                  <span className="text-gray-600">Daily Charges:</span>
-                                  <p className="font-medium">₹{allocation.daily_charges}</p>
-                                </div>
-                              )}
-                              {allocation.total_charges && (
-                                <div>
-                                  <span className="text-gray-600">Total Charges:</span>
-                                  <p className="font-medium">₹{allocation.total_charges}</p>
-                                </div>
-                              )}
-                            </div>
-
-                            {allocation.status === 'active' && (
-                              <div className="mt-3 pt-3 border-t border-gray-200">
-                                <div className="flex items-center gap-2 text-sm text-green-600">
-                                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                  Currently admitted
-                                </div>
-                              </div>
-                            )}
+                    {patient.bed_allocations?.map((alloc, i) => (
+                      <div key={i} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex gap-3 items-center">
+                            <div className={`p-2 rounded-lg ${alloc.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}`}><Bed size={18} /></div>
+                            <div><h5 className="font-bold text-gray-900">Ward {alloc.bed?.room_number || 'N/A'} - Bed {alloc.bed?.bed_number || 'N/A'}</h5><p className="text-xs text-gray-500">{alloc.admission_type}</p></div>
                           </div>
-                        ))}
+                          <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${alloc.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{alloc.status}</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                          <div><p className="text-gray-400 text-xs">Admitted</p><p className="font-medium text-gray-900">{formatDate(alloc.admission_date)}</p></div>
+                          {alloc.discharge_date && <div><p className="text-gray-400 text-xs">Discharged</p><p className="font-medium text-gray-900">{formatDate(alloc.discharge_date)}</p></div>}
+                          {alloc.reason && <div className="col-span-2"><p className="text-gray-400 text-xs">Reason</p><p className="font-medium text-gray-900">{alloc.reason}</p></div>}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Bed className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-500">No admission history found</p>
-                      </div>
-                    )}
+                    ))}
+                    {(!patient.bed_allocations || patient.bed_allocations.length === 0) && <p className="text-center py-12 text-gray-500">No admission history found.</p>}
                   </div>
                 )}
               </div>
@@ -1003,123 +711,85 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
             {/* Billing Tab */}
             {activeTab === 'billing' && (
-              <div className="space-y-4">
-                <h4 className="font-medium text-gray-900">Billing Information</h4>
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-500">Billing information will be available soon</p>
-                </div>
-              </div>
-            )}
-
-            {/* Documents Tab */}
-            {activeTab === 'documents' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium text-gray-900">Patient Documents</h3>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Upload Section */}
-                  <div className="bg-blue-50 rounded-xl p-6">
-                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <Upload className="h-5 w-5 text-blue-600" />
-                      Upload New Documents
-                    </h4>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Upload medical reports, lab results, prescriptions, or any other relevant documents.
-                    </p>
-                    <DocumentUpload
-                      patientId={patient.id}
-                      uhid={patient.patient_id}
-                      category="medical-report"
-                      onUploadComplete={(doc) => {
-                        console.log('Document uploaded:', doc);
-                        setDocumentRefreshTrigger(prev => prev + 1);
-                      }}
-                      onUploadError={(error) => {
-                        console.error('Upload error:', error);
-                      }}
-                    />
-                  </div>
-
-                  {/* Documents List */}
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <DocumentList
-                      patientId={patient.id}
-                      showDelete={true}
-                      refreshTrigger={documentRefreshTrigger}
-                    />
+              <div className="space-y-8">
+                <div className="bg-orange-50/30 p-8 rounded-3xl border-2 border-orange-100 border-dashed">
+                  <h4 className="text-lg font-black text-orange-900 mb-6 flex items-center gap-2">
+                    <FileText className="text-orange-500" /> REGISTRATION BILLING SUMMARY
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                      <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Total Fee</p>
+                      <p className="text-3xl font-black text-gray-900">₹{patient.total_amount || '0'}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Payment Mode</p>
+                      <p className="text-2xl font-black text-gray-900">{patient.payment_mode || 'CASH'}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                      <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-1">Consultation</p>
+                      <p className="text-2xl font-black text-gray-900">₹{patient.consultation_fee || '0'}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                      <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">OP Card</p>
+                      <p className="text-2xl font-black text-gray-900">₹{patient.op_card_amount || '0'}</p>
+                    </div>
                   </div>
                 </div>
+                {patient.consulting_doctor_name && (
+                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase">Billing Context</h5>
+                    <div className="flex gap-12">
+                      <div><p className="text-gray-400 text-xs uppercase font-bold">Doctor</p><p className="font-bold text-gray-900">{patient.consulting_doctor_name}</p></div>
+                      <div><p className="text-gray-400 text-xs uppercase font-bold">Department</p><p className="font-bold text-gray-900">{patient.department_ward || 'General'}</p></div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
-      {showVitalsForm && patient && (
+
+      {/* Forms Modals */}
+      {showVitalsForm && (
         <VitalsForm
           patientId={patient.patient_id}
-          onClose={() => {
-            setShowVitalsForm(false);
-            setEditingVital(null);
-          }}
-          onVitalsRecorded={() => {
-            // Refresh vitals data
-            fetchPatientData();
-          }}
+          onClose={() => { setShowVitalsForm(false); setEditingVital(null); }}
+          onVitalsRecorded={fetchPatientData}
           editingVital={editingVital}
           currentUser={currentUser}
         />
       )}
-
-      {showPrescriptionForm && patient && (
+      {showPrescriptionForm && (
         <PrescriptionForm
           patientId={patient.patient_id}
           patientName={patient.name}
           currentUser={currentUser}
           onClose={() => setShowPrescriptionForm(false)}
-          onPrescriptionCreated={() => {
-            // Refresh patient data to show new prescription
-            fetchPatientData();
-          }}
+          onPrescriptionCreated={fetchPatientData}
+        />
+      )}
+      {showMedicalHistoryForm && (
+        <MedicalHistoryForm
+          patientId={patient.id}
+          onClose={() => setShowMedicalHistoryForm(false)}
+          onSuccess={fetchPatientData}
         />
       )}
     </div>
   );
 }
 
-// Vitals Form Component
-function VitalsForm({
-  patientId,
-  onClose,
-  onVitalsRecorded,
-  editingVital,
-  currentUser
-}: {
-  patientId: string;
-  onClose: () => void;
-  onVitalsRecorded: () => void;
-  editingVital: any | null;
-  currentUser: any | null;
-}) {
+// Sub-components
+function VitalsForm({ patientId, onClose, onVitalsRecorded, editingVital, currentUser }: any) {
   const [formData, setFormData] = useState({
-    bloodPressureSystolic: '',
-    bloodPressureDiastolic: '',
-    heartRate: '',
-    temperature: '',
-    respiratoryRate: '',
-    oxygenSaturation: '',
-    weight: '',
-    height: '',
-    bloodGlucose: '',
-    painScale: '',
-    notes: ''
+    bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', temperature: '',
+    respiratoryRate: '', oxygenSaturation: '', weight: '', height: '',
+    bloodGlucose: '', painScale: '', notes: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize form with existing data when editing
   useEffect(() => {
     if (editingVital) {
       setFormData({
@@ -1138,20 +808,13 @@ function VitalsForm({
     }
   }, [editingVital]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-
     try {
-      const vitalsData: any = {
+      const data = {
         patientId,
-        recordedBy: currentUser?.id || null,
+        recordedBy: currentUser?.id,
         bloodPressureSystolic: formData.bloodPressureSystolic ? parseInt(formData.bloodPressureSystolic) : undefined,
         bloodPressureDiastolic: formData.bloodPressureDiastolic ? parseInt(formData.bloodPressureDiastolic) : undefined,
         heartRate: formData.heartRate ? parseInt(formData.heartRate) : undefined,
@@ -1162,221 +825,41 @@ function VitalsForm({
         height: formData.height ? parseFloat(formData.height) : undefined,
         bloodGlucose: formData.bloodGlucose ? parseInt(formData.bloodGlucose) : undefined,
         painScale: formData.painScale ? parseInt(formData.painScale) : undefined,
-        notes: formData.notes || undefined
+        notes: formData.notes
       };
-
-      if (editingVital) {
-        // Update existing vital record
-        await updateVitalRecord(editingVital.id, vitalsData);
-      } else {
-        // Record new vital signs
-        await recordVitals(vitalsData);
-      }
-
+      if (editingVital) await updateVitalRecord(editingVital.id, data);
+      else await recordVitals(data);
       onVitalsRecorded();
       onClose();
-    } catch (err) {
-      console.error('Error recording vitals:', err);
-      setError(err instanceof Error ? err.message : 'Failed to record vitals');
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-gray-900">
-              {editingVital ? 'Edit Vitals' : 'Record New Vitals'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Blood Pressure */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Systolic BP (mmHg)
-                </label>
-                <input
-                  type="number"
-                  name="bloodPressureSystolic"
-                  value={formData.bloodPressureSystolic}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Diastolic BP (mmHg)
-                </label>
-                <input
-                  type="number"
-                  name="bloodPressureDiastolic"
-                  value={formData.bloodPressureDiastolic}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-            </div>
-
-            {/* Vital Signs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Heart Rate (bpm)
-                </label>
-                <input
-                  type="number"
-                  name="heartRate"
-                  value={formData.heartRate}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Temperature (°C)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  name="temperature"
-                  value={formData.temperature}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Respiratory Rate (bpm)
-                </label>
-                <input
-                  type="number"
-                  name="respiratoryRate"
-                  value={formData.respiratoryRate}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Oxygen Saturation (%)
-                </label>
-                <input
-                  type="number"
-                  name="oxygenSaturation"
-                  value={formData.oxygenSaturation}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-            </div>
-
-            {/* Physical Measurements */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Weight (kg)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  name="weight"
-                  value={formData.weight}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Height (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  name="height"
-                  value={formData.height}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Blood Glucose (mg/dL)
-                </label>
-                <input
-                  type="number"
-                  name="bloodGlucose"
-                  value={formData.bloodGlucose}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pain Scale (0-10)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  name="painScale"
-                  value={formData.painScale}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                placeholder="Additional notes about the patient's condition..."
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                disabled={loading}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : editingVital ? 'Update Vitals' : 'Record Vitals'}
-              </button>
-            </div>
-          </form>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8 overflow-y-auto max-h-[90vh]">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-2xl font-black text-gray-900">{editingVital ? 'Update Vitals' : 'Record New Vitals'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={24} /></button>
         </div>
+        {error && <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl text-sm font-bold border border-red-100">{error}</div>}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">BP Systolic</label><input type="number" value={formData.bloodPressureSystolic} onChange={e => setFormData({ ...formData, bloodPressureSystolic: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">BP Diastolic</label><input type="number" value={formData.bloodPressureDiastolic} onChange={e => setFormData({ ...formData, bloodPressureDiastolic: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Heart Rate</label><input type="number" value={formData.heartRate} onChange={e => setFormData({ ...formData, heartRate: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Temp (°F)</label><input type="number" step="0.1" value={formData.temperature} onChange={e => setFormData({ ...formData, temperature: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">SpO2 (%)</label><input type="number" value={formData.oxygenSaturation} onChange={e => setFormData({ ...formData, oxygenSaturation: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+            <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Resp Rate</label><input type="number" value={formData.respiratoryRate} onChange={e => setFormData({ ...formData, respiratoryRate: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500" /></div>
+          </div>
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="px-6 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl">Cancel</button>
+            <button type="submit" disabled={loading} className="px-8 py-3 bg-orange-600 text-white font-black rounded-xl hover:bg-orange-700 shadow-lg shadow-orange-100 disabled:opacity-50">{loading ? 'Saving...' : 'Record Vitals'}</button>
+          </div>
+        </form>
       </div>
     </div>
   );

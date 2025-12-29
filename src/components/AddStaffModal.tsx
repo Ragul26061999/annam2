@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
-import { createStaffMember } from '@/src/lib/staffService';
+import { createStaffMember, generateNextEmployeeId } from '@/src/lib/staffService';
 
 interface AddStaffModalProps {
     isOpen: boolean;
@@ -41,8 +41,18 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
         if (isOpen) {
             fetchDepartments();
             resetForm();
+            generateAndSetId();
         }
     }, [isOpen]);
+
+    const generateAndSetId = async () => {
+        try {
+            const nextId = await generateNextEmployeeId();
+            setFormData(prev => ({ ...prev, employee_id: nextId }));
+        } catch (err) {
+            console.error('Error generating employee ID:', err);
+        }
+    };
 
     const fetchDepartments = async () => {
         try {
@@ -291,15 +301,27 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                 <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                                     <IdCard size={16} /> Employee ID
                                 </label>
-                                <input
-                                    type="text"
-                                    name="employee_id"
-                                    value={formData.employee_id}
-                                    onChange={handleChange}
-                                    placeholder="EMP-001"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
-                                    disabled={submitting}
-                                />
+                                <div className="relative group">
+                                    <input
+                                        type="text"
+                                        name="employee_id"
+                                        value={formData.employee_id}
+                                        onChange={handleChange}
+                                        placeholder="EMP-001"
+                                        className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none font-mono"
+                                        disabled={submitting}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={generateAndSetId}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all"
+                                        title="Regenerate ID"
+                                        disabled={submitting}
+                                    >
+                                        <RefreshCcw size={16} className={submitting ? 'animate-spin' : ''} />
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-400 pl-2 italic">Automatically generated. Click refresh icon to update.</p>
                             </div>
 
                             {/* Hire Date */}

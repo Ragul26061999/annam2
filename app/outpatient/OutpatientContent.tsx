@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  Users, Calendar, Clock, Stethoscope, Filter, Search, 
-  UserPlus, RefreshCw, Eye, CheckCircle, XCircle, 
+import {
+  Users, Calendar, Clock, Stethoscope, Filter, Search,
+  UserPlus, RefreshCw, Eye, CheckCircle, XCircle,
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
   MoreVertical, Edit3, Trash2
@@ -30,6 +30,7 @@ interface Patient {
   patient_id: string;
   name: string;
   date_of_birth: string;
+  age?: number;
   gender: string;
   phone: string;
   email: string;
@@ -38,6 +39,7 @@ interface Patient {
   allergies: string;
   status: string;
   primary_complaint: string;
+  diagnosis?: string;
   admission_type: string;
   department_ward: string;
   room_number: string;
@@ -48,6 +50,13 @@ interface Patient {
   bed_id?: string | null;
   admission_date?: string | null;
   discharge_date?: string | null;
+  staff?: {
+    first_name: string;
+    last_name: string;
+    employee_id: string;
+  };
+  consulting_doctor_name?: string;
+  total_amount?: number;
 }
 
 export default function OutpatientContent() {
@@ -92,6 +101,13 @@ export default function OutpatientContent() {
 
   useEffect(() => {
     loadOutpatientData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadOutpatientData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [selectedDate, statusFilter]);
 
   const fetchAdmittedCount = async () => {
@@ -101,7 +117,7 @@ export default function OutpatientContent() {
         .select('patient_id')
         .is('discharge_date', null)
         .eq('status', 'active');
-      
+
       if (error) {
         console.error('Error fetching admitted count:', error);
         return 0;
@@ -117,10 +133,10 @@ export default function OutpatientContent() {
   const loadOutpatientData = async () => {
     try {
       setLoading(true);
-      
+
       // Get general dashboard stats
       const dashboardStats = await getDashboardStats();
-      
+
       // Get outpatient patients
       const response = await getAllPatients({
         page: 1,
@@ -128,16 +144,16 @@ export default function OutpatientContent() {
         status: statusFilter === '' ? undefined : statusFilter,
         searchTerm: searchTerm || undefined
       });
-      
+
       // Filter for outpatient patients only
       const outpatientPatients = response.patients.filter((p: any) => !p.is_admitted);
-      
+
       // Calculate admitted count
       const admittedCount = await fetchAdmittedCount();
-      
+
       // Calculate critical count
       const criticalCount = response.patients.filter((p: any) => p.is_critical).length;
-      
+
       setStats({
         totalPatients: dashboardStats.totalPatients,
         outpatientPatients: outpatientPatients.length,
@@ -147,7 +163,7 @@ export default function OutpatientContent() {
         waitingPatients: response.patients.filter((p: any) => p.status === 'scheduled').length,
         inConsultation: response.patients.filter((p: any) => p.status === 'in_progress').length
       });
-      
+
       setPatients(outpatientPatients);
       setError(null);
     } catch (err) {
@@ -158,7 +174,7 @@ export default function OutpatientContent() {
     }
   };
 
-  
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'scheduled': return 'bg-blue-100 text-blue-800';
@@ -185,11 +201,11 @@ export default function OutpatientContent() {
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -199,10 +215,10 @@ export default function OutpatientContent() {
       setPatientSearchError(null);
       return;
     }
-    
+
     setPatientSearchLoading(true);
     setPatientSearchError(null);
-    
+
     try {
       const patientData = await getPatientByUHID(patientId);
       setSearchedPatient(patientData);
@@ -233,8 +249,8 @@ export default function OutpatientContent() {
     if (!searchTerm) return true;
     const patientName = apt.patient?.name?.toLowerCase() || '';
     const doctorName = apt.doctor?.user?.name?.toLowerCase() || '';
-    return patientName.includes(searchTerm.toLowerCase()) || 
-           doctorName.includes(searchTerm.toLowerCase());
+    return patientName.includes(searchTerm.toLowerCase()) ||
+      doctorName.includes(searchTerm.toLowerCase());
   });
 
   if (loading) {
@@ -260,13 +276,6 @@ export default function OutpatientContent() {
               Register Outpatient
             </button>
           </Link>
-          <button
-            onClick={loadOutpatientData}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -369,7 +378,7 @@ export default function OutpatientContent() {
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-100">
         <div className="flex flex-wrap items-center gap-4">
           <span className="text-sm font-medium text-gray-700">Quick Actions:</span>
-          
+
           <Link href="/appointments">
             <button className="text-sm bg-white px-3 py-1.5 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors">
               Book Appointment
@@ -397,7 +406,7 @@ export default function OutpatientContent() {
           </div>
         </div>
       )}
-      
+
       {patientSearchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
@@ -409,7 +418,7 @@ export default function OutpatientContent() {
           </div>
         </div>
       )}
-      
+
       {searchedPatient && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -421,7 +430,7 @@ export default function OutpatientContent() {
               </button>
             </Link>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
@@ -432,7 +441,7 @@ export default function OutpatientContent() {
                 <p className="text-sm text-gray-600">{searchedPatient.patient_id}</p>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center text-sm text-gray-600">
                 <Phone size={14} className="mr-2" />
@@ -443,7 +452,7 @@ export default function OutpatientContent() {
                 <span className="capitalize">{searchedPatient.gender || 'Not specified'}</span>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center text-sm text-gray-600">
                 <Hash size={14} className="mr-2" />
@@ -457,7 +466,7 @@ export default function OutpatientContent() {
               )}
             </div>
           </div>
-          
+
           {searchedPatient.primary_complaint && (
             <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
               <p className="text-sm text-orange-800">
@@ -467,7 +476,7 @@ export default function OutpatientContent() {
           )}
         </div>
       )}
-      
+
       {/* Outpatient Display Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
@@ -482,13 +491,13 @@ export default function OutpatientContent() {
             </button>
           </Link>
         </div>
-        
+
         {patients.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {patients.slice(0, 3).map((patient) => (
-              <div 
-                key={patient.id} 
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+              <div
+                key={patient.id}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow flex flex-col"
               >
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -499,34 +508,52 @@ export default function OutpatientContent() {
                     Outpatient
                   </span>
                 </div>
-                
-                <div className="space-y-2 text-sm text-gray-600">
+
+                <div className="space-y-2 text-sm text-gray-600 flex-1">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4" />
-                    <span>Age: {calculateAge(patient.date_of_birth)} | {patient.gender}</span>
+                    <span>Age: {patient.age || calculateAge(patient.date_of_birth)} | {patient.gender}</span>
                   </div>
-                  
-                  {patient.primary_complaint && (
+
+                  {(patient.diagnosis || patient.primary_complaint) && (
                     <div className="flex items-start gap-2">
-                      <Stethoscope className="h-4 w-4 mt-0.5" />
-                      <span className="truncate" title={patient.primary_complaint}>
-                        {patient.primary_complaint.length > 30 
-                          ? `${patient.primary_complaint.substring(0, 30)}...` 
-                          : patient.primary_complaint}
-                      </span>
+                      <Stethoscope className="h-4 w-4 mt-0.5 text-blue-500" />
+                      <div className="overflow-hidden">
+                        <span className="truncate font-medium block" title={patient.diagnosis || patient.primary_complaint}>
+                          {patient.diagnosis || (patient.primary_complaint && patient.primary_complaint.length > 30
+                            ? `${patient.primary_complaint.substring(0, 30)}...`
+                            : patient.primary_complaint)}
+                        </span>
+                        {patient.consulting_doctor_name && (
+                          <span className="text-xs text-gray-500 italic">Dr. {patient.consulting_doctor_name}</span>
+                        )}
+                      </div>
                     </div>
                   )}
-                  
+
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <span>{patient.admission_date ? new Date(patient.admission_date).toLocaleDateString() : 'N/A'}</span>
                   </div>
+
+                  {patient.total_amount && parseFloat(patient.total_amount.toString()) > 0 && (
+                    <div className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-100 inline-block mt-1">
+                      Fees Paid: ₹{patient.total_amount}
+                    </div>
+                  )}
                 </div>
-                
+
+                {patient.staff && (
+                  <div className="mt-2 text-[10px] text-gray-500 flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded border border-gray-100 italic">
+                    <User size={10} className="text-blue-500" />
+                    <span>Reg. By: {patient.staff.first_name} {patient.staff.last_name}</span>
+                  </div>
+                )}
+
                 <div className="mt-3 pt-3 border-t border-gray-100">
-                  <Link 
-                    href={`/patients/${patient.patient_id}`} 
-                    className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1"
+                  <Link
+                    href={`/patients/${patient.patient_id}`}
+                    className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center gap-1"
                   >
                     View Details
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -544,7 +571,7 @@ export default function OutpatientContent() {
           </div>
         )}
       </div>
-      
+
       {/* Appointments Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-5 border-b border-gray-100">
@@ -575,7 +602,7 @@ export default function OutpatientContent() {
                   className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
                 />
               </div>
-              <select 
+              <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -589,7 +616,7 @@ export default function OutpatientContent() {
             </div>
           </div>
         </div>
-        
+
         <div className="divide-y divide-gray-100">
           {filteredAppointments.length === 0 ? (
             <div className="text-center py-12">
@@ -607,7 +634,7 @@ export default function OutpatientContent() {
               const patientName = appointment.patient?.name || 'Unknown Patient';
               const doctorName = appointment.doctor?.user?.name || 'Unknown Doctor';
               const patientInitials = patientName.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase();
-              
+
               return (
                 <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
@@ -616,7 +643,7 @@ export default function OutpatientContent() {
                       <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-orange-500 rounded-lg flex items-center justify-center">
                         <span className="text-white font-bold text-sm">{index + 1}</span>
                       </div>
-                      
+
                       {/* Patient Info */}
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
@@ -643,7 +670,7 @@ export default function OutpatientContent() {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       <Link href={`/patients/${appointment.patient_id}`}>
@@ -684,7 +711,7 @@ export default function OutpatientContent() {
           </div>
         </div>
       )}
-      
+
     </div>
   );
 }

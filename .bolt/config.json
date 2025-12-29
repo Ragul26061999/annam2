@@ -1,3 +1,16 @@
 {
-  "template": "bolt-vite-react-ts"
+  "template": "bolt-vite-react-ts",
+  "mcpServers": {
+    "annam": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref=zusheijhebsmjiyyeiqq"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_ac6025de8a67188dfe39decb9d357387eab6ba6f"
+      }
+    }
+  }
 }

@@ -53,6 +53,13 @@ export default function InpatientPage() {
 
   useEffect(() => {
     loadInpatientData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadInpatientData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [statusFilter]);
 
   const loadInpatientData = async () => {
@@ -172,13 +179,6 @@ export default function InpatientPage() {
               Register Inpatient
             </button>
           </Link>
-          <button
-            onClick={loadInpatientData}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -366,33 +366,62 @@ export default function InpatientPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <h3 className="font-semibold text-gray-900">{patientName}</h3>
-                          <span className="text-xs text-gray-500 font-mono">{patientId}</span>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(allocation.status)}`}>
+                          <span className="text-[10px] text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                            {allocation.patient?.uhid || 'N/A'}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full ${getStatusColor(allocation.status)}`}>
                             {allocation.status}
                           </span>
-                          {/* Admission type removed since admission_type column doesn't exist in database */}
+                          {allocation.patient?.is_critical && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-red-100 text-red-800 animate-pulse">
+                              <AlertTriangle size={10} />
+                              Critical
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-4 mt-1.5 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-600">
+                          <span className="flex items-center gap-1 font-medium">
                             {bedNumber} • {bedType}
                           </span>
                           <span className="flex items-center gap-1">
-                            <Stethoscope size={12} />
+                            <Stethoscope size={12} className="text-blue-500" />
                             Dr. {doctorName}
                           </span>
                           <span className="flex items-center gap-1">
-                            <Calendar size={12} />
+                            <Calendar size={12} className="text-gray-400" />
                             Admitted: {new Date(allocation.allocated_at).toLocaleDateString()}
                           </span>
-                          <span className="flex items-center gap-1 text-purple-600 font-medium">
+                          <span className="flex items-center gap-1 text-purple-600 font-bold">
                             <Clock size={12} />
                             {daysAdmitted} day{daysAdmitted !== 1 ? 's' : ''}
                           </span>
                         </div>
-                        {allocation.reason && (
-                          <p className="text-sm text-gray-500 mt-1">
-                            Reason: {allocation.reason}
-                          </p>
+
+                        {/* Additional Info Row */}
+                        <div className="mt-2 flex flex-wrap gap-3">
+                          {allocation.patient?.diagnosis && (
+                            <div className="text-xs text-gray-700 bg-blue-50 px-2 py-1 rounded border border-blue-100 flex items-center gap-1">
+                              <Activity size={10} className="text-blue-600" />
+                              <span className="font-medium">Diagnosis:</span>
+                              <span className="truncate max-w-[200px]" title={allocation.patient.diagnosis}>
+                                {allocation.patient.diagnosis}
+                              </span>
+                            </div>
+                          )}
+
+                          {allocation.reason && (
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <AlertCircle size={10} />
+                              <span className="italic">Note: {allocation.reason}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {allocation.staff && (
+                          <div className="mt-2 text-[10px] text-gray-500 flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded border border-gray-100 w-fit italic">
+                            <Users size={12} className="text-purple-500" />
+                            <span>Admitted By: {allocation.staff.first_name} {allocation.staff.last_name}</span>
+                          </div>
                         )}
                       </div>
                     </div>

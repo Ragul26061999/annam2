@@ -82,6 +82,13 @@ export default function LabXRayPage() {
 
   useEffect(() => {
     loadData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [activeSubTab, statusFilter, urgencyFilter]);
 
   const loadData = async () => {
@@ -208,8 +215,8 @@ export default function LabXRayPage() {
           <React.Fragment key={step}>
             <div
               className={`h-2 rounded-full flex-1 transition-all duration-500 ${idx <= currentIndex
-                  ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]')
-                  : 'bg-gray-200'
+                ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]')
+                : 'bg-gray-200'
                 }`}
               title={step.replace(/_/g, ' ')}
             />
@@ -262,8 +269,8 @@ export default function LabXRayPage() {
             <button
               onClick={() => setActiveTab('management')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'management'
-                  ? 'bg-teal-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-50'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-50'
                 }`}
             >
               Management
@@ -271,8 +278,8 @@ export default function LabXRayPage() {
             <button
               onClick={() => setActiveTab('analytics')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'analytics'
-                  ? 'bg-cyan-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-50'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-50'
                 }`}
             >
               Analytics
@@ -292,12 +299,6 @@ export default function LabXRayPage() {
               </button>
             </Link>
           </div>
-          <button
-            onClick={loadData}
-            className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-600 transition-colors shadow-sm"
-          >
-            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-          </button>
         </div>
       </div>
 
@@ -454,8 +455,8 @@ export default function LabXRayPage() {
               <button
                 onClick={() => setActiveSubTab('lab')}
                 className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'lab'
-                    ? 'border-teal-600 text-teal-600 bg-teal-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'border-teal-600 text-teal-600 bg-teal-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                   }`}
               >
                 <div className="flex items-center gap-2">
@@ -470,8 +471,8 @@ export default function LabXRayPage() {
               <button
                 onClick={() => setActiveSubTab('radiology')}
                 className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'radiology'
-                    ? 'border-cyan-600 text-cyan-600 bg-cyan-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'border-cyan-600 text-cyan-600 bg-cyan-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                   }`}
               >
                 <div className="flex items-center gap-2">

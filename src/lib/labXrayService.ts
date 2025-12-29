@@ -134,8 +134,8 @@ export async function createLabTestCatalogEntry(testData: Partial<LabTestCatalog
     .single();
 
   if (error) {
-    console.error('Error creating lab test:', JSON.stringify(error, null, 2));
-    throw new Error(`Failed to create lab test: ${error.message || error.code || 'Unknown error'}`);
+    console.error('Error creating lab test:', error);
+    throw new Error(`Failed to create lab test: ${error.message || error.code || 'Check console for details'}`);
   }
   return data;
 }
@@ -261,7 +261,7 @@ function generateLabOrderNumber(): string {
 export async function createLabTestOrder(orderData: LabTestOrder): Promise<any> {
   try {
     const orderNumber = generateLabOrderNumber();
-    
+
     const { data: order, error } = await supabase
       .from('lab_test_orders')
       .insert([{
@@ -607,7 +607,7 @@ function generateRadiologyOrderNumber(): string {
 export async function createRadiologyTestOrder(orderData: RadiologyTestOrder): Promise<any> {
   try {
     const orderNumber = generateRadiologyOrderNumber();
-    
+
     const { data: order, error } = await supabase
       .from('radiology_test_orders')
       .insert([{

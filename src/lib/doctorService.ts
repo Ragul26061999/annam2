@@ -15,18 +15,18 @@ export interface DoctorRegistrationData {
   qualification: string;
   experienceYears: number;
   consultationFee: number;
-  
+
   // User information
   name: string;
   email: string;
   phone: string;
   address: string;
-  
+
   // Schedule information (legacy - for compatibility)
   workingHoursStart: string;
   workingHoursEnd: string;
   workingDays: number[];
-  
+
   // Session-based availability
   sessions: {
     morning: SessionTiming;
@@ -34,11 +34,11 @@ export interface DoctorRegistrationData {
     evening: SessionTiming;
   };
   availableSessions: string[]; // ['morning', 'afternoon', 'evening']
-  
+
   // Room information
   roomNumber: string;
   floorNumber: number;
-  
+
   // Status
   emergencyAvailable: boolean;
 }
@@ -85,19 +85,19 @@ export async function generateDoctorId(): Promise<string> {
   const now = new Date();
   const year = now.getFullYear().toString().slice(-2);
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  
+
   try {
     // Get count of existing doctors for this month
     const { count, error } = await supabase
       .from('doctors')
       .select('id', { count: 'exact', head: true })
       .like('doctor_id', `DR${year}${month}%`);
-    
+
     if (error) {
       console.error('Error getting doctor count:', error);
       throw new Error('Failed to generate doctor ID');
     }
-    
+
     const sequence = ((count || 0) + 1).toString().padStart(4, '0');
     return `DR${year}${month}${sequence}`;
   } catch (error) {
@@ -220,11 +220,11 @@ export async function getAllDoctors(options: {
   availabilityStatus?: string;
   searchTerm?: string;
   includeMD?: boolean;
-} = {}): Promise<{ 
-  doctors: Doctor[]; 
-  total: number; 
-  page: number; 
-  limit: number; 
+} = {}): Promise<{
+  doctors: Doctor[];
+  total: number;
+  page: number;
+  limit: number;
 }> {
   try {
     const { page = 1, limit = 20, specialization, department, availabilityStatus, searchTerm, includeMD = false } = options;
@@ -459,7 +459,7 @@ export async function getDoctorById(doctorId: string): Promise<Doctor> {
  * Update doctor availability status
  */
 export async function updateDoctorAvailability(
-  doctorId: string, 
+  doctorId: string,
   availabilityStatus: string
 ): Promise<Doctor> {
   try {
@@ -616,7 +616,7 @@ export async function getDoctorAvailableSlots(
       .select('*, user:users(*)')
       .eq('id', doctorId)
       .single();
-    
+
     if (doctorError || !doctor) {
       console.error('Error fetching doctor:', doctorError);
       // Return empty slots instead of throwing error
@@ -657,7 +657,7 @@ export async function getDoctorAvailableSlots(
       const maxPatients = sessionConfig.maxPatients;
 
       const sessionSlots = generateTimeSlots(startTime, endTime, 30); // 30-minute intervals
-      
+
       // Filter out booked slots and limit by maxPatients
       const availableSlots = sessionSlots
         .filter(slot => !bookedSlots.has(slot))
@@ -680,17 +680,17 @@ function generateTimeSlots(startTime: string, endTime: string, intervalMinutes: 
   const slots: string[] = [];
   const [startHour, startMinute] = startTime.split(':').map(Number);
   const [endHour, endMinute] = endTime.split(':').map(Number);
-  
+
   const startTotalMinutes = startHour * 60 + startMinute;
   const endTotalMinutes = endHour * 60 + endMinute;
-  
+
   for (let minutes = startTotalMinutes; minutes < endTotalMinutes; minutes += intervalMinutes) {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     const timeString = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
     slots.push(timeString);
   }
-  
+
   return slots;
 }
 
@@ -704,7 +704,7 @@ export async function getDoctorsWithAvailableSlots(
   try {
     // Get available doctors
     const doctors = await getAvailableDoctors(date, '09:00', specialization);
-    
+
     // Get available slots for each doctor
     const doctorsWithSlots = await Promise.all(
       doctors.map(async (doctor) => {
@@ -717,7 +717,7 @@ export async function getDoctorsWithAvailableSlots(
     );
 
     // Filter out doctors with no available slots
-    return doctorsWithSlots.filter(doctor => 
+    return doctorsWithSlots.filter(doctor =>
       doctor.availableSlots.morning.length > 0 ||
       doctor.availableSlots.afternoon.length > 0 ||
       doctor.availableSlots.evening.length > 0
@@ -769,29 +769,29 @@ export async function getDoctorStats(doctorId?: string): Promise<{
 }> {
   try {
     const today = new Date().toISOString().split('T')[0];
-    
+
     let appointmentsQuery = supabase
       .from('appointments')
       .select('id, status, appointment_date');
-    
+
     if (doctorId) {
       appointmentsQuery = appointmentsQuery.eq('doctor_id', doctorId);
     }
-    
+
     const { data: appointments, error } = await appointmentsQuery;
-    
+
     if (error) {
       console.error('Error fetching appointment stats:', error);
       throw new Error(`Failed to fetch appointment stats: ${error.message}`);
     }
-    
+
     const totalAppointments = appointments?.length || 0;
     const todayAppointments = appointments?.filter(apt => apt.appointment_date === today).length || 0;
     const completedAppointments = appointments?.filter(apt => apt.status === 'completed').length || 0;
-    const pendingAppointments = appointments?.filter(apt => 
+    const pendingAppointments = appointments?.filter(apt =>
       apt.status === 'scheduled' || apt.status === 'confirmed'
     ).length || 0;
-    
+
     return {
       totalAppointments,
       todayAppointments,
@@ -829,64 +829,51 @@ export async function getAllSpecializations(): Promise<string[]> {
 }
 
 /**
+ * Add a new department
+ */
+export async function addDepartment(name: string): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('departments')
+      .insert([{ name, status: 'active' }])
+      .select('name')
+      .single();
+
+    if (error) {
+      console.error('Error adding department:', error);
+      throw new Error(`Failed to add department: ${error.message}`);
+    }
+
+    return data.name;
+  } catch (error) {
+    console.error('Error adding department:', error);
+    throw error;
+  }
+}
+
+/**
  * Get all departments
  */
 export async function getAllDepartments(): Promise<string[]> {
   try {
-    // Since the current schema doesn't have department field,
-    // we'll return common hospital departments based on specializations
-    const { data: doctors, error } = await supabase
-      .from('doctors')
-      .select('specialization')
+    const { data, error } = await supabase
+      .from('departments')
+      .select('name')
       .eq('status', 'active');
 
     if (error) {
-      console.error('Error fetching doctors:', error);
-      throw new Error(`Failed to fetch departments: ${error.message}`);
+      console.error('Error fetching departments:', error);
+      // Fallback to deriving from specializations if table has issues
+      const { data: doctors } = await supabase
+        .from('doctors')
+        .select('specialization')
+        .eq('status', 'active');
+
+      const departments = doctors?.map(d => getSpecializationDepartment(d.specialization)) || [];
+      return [...new Set(departments)].sort();
     }
 
-    // Map specializations to departments
-    const specializationToDepartment: Record<string, string> = {
-      'Cardiology': 'Cardiology',
-      'Pediatrics': 'Pediatrics',
-      'Orthopedics': 'Orthopedics',
-      'Neurology': 'Neurology',
-      'Dermatology': 'Dermatology',
-      'Gynecology': 'Obstetrics & Gynecology',
-      'Psychiatry': 'Psychiatry',
-      'Radiology': 'Radiology',
-      'Anesthesiology': 'Anesthesiology',
-      'Emergency Medicine': 'Emergency',
-      'Internal Medicine': 'Internal Medicine',
-      'Surgery': 'Surgery',
-      'Oncology': 'Oncology',
-      'Ophthalmology': 'Ophthalmology',
-      'ENT': 'ENT (Ear, Nose & Throat)',
-      'Urology': 'Urology',
-      'Gastroenterology': 'Gastroenterology',
-      'Endocrinology': 'Endocrinology',
-      'Nephrology': 'Nephrology',
-      'Pulmonology': 'Pulmonology',
-      'Rheumatology': 'Rheumatology',
-      'Hematology': 'Hematology',
-      'Infectious Disease': 'Infectious Disease',
-      'Pathology': 'Pathology',
-      'Physical Medicine': 'Physical Medicine & Rehabilitation',
-      'Plastic Surgery': 'Plastic Surgery',
-      'Vascular Surgery': 'Vascular Surgery',
-      'Thoracic Surgery': 'Thoracic Surgery',
-      'Neurosurgery': 'Neurosurgery',
-      'Dental': 'Dental',
-      'Physiotherapy': 'Physiotherapy',
-      'Nutrition': 'Nutrition & Dietetics',
-      'Other': 'Other'
-    };
-
-    const departments = doctors?.map(d => 
-      specializationToDepartment[d.specialization] || d.specialization
-    ) || [];
-    
-    const uniqueDepartments = [...new Set(departments)];
+    const uniqueDepartments = [...new Set(data?.map(d => d.name) || [])];
     return uniqueDepartments.sort();
   } catch (error) {
     console.error('Error fetching departments:', error);
@@ -923,24 +910,24 @@ export async function updateDoctor(
     };
 
     const doctorFields = {
-        ...(updates.licenseNumber && { license_number: updates.licenseNumber }),
-        ...(updates.specialization && { specialization: updates.specialization }),
-        ...(updates.qualification && { qualification: updates.qualification }),
-        ...(updates.experienceYears && { years_of_experience: updates.experienceYears }),
-        ...(updates.consultationFee && { consultation_fee: updates.consultationFee }),
-        ...(updates.roomNumber && { room_number: updates.roomNumber }),
-        ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined) && { 
-          availability_hours: {
-            sessions: updates.sessions,
-            availableSessions: updates.availableSessions,
-            workingDays: updates.workingDays,
-            emergencyAvailable: updates.emergencyAvailable,
-            ...(updates.floorNumber && { floorNumber: updates.floorNumber }),
-            ...(updates.workingHoursStart && { workingHoursStart: updates.workingHoursStart }),
-            ...(updates.workingHoursEnd && { workingHoursEnd: updates.workingHoursEnd })
-          }
-        })
-      };
+      ...(updates.licenseNumber && { license_number: updates.licenseNumber }),
+      ...(updates.specialization && { specialization: updates.specialization }),
+      ...(updates.qualification && { qualification: updates.qualification }),
+      ...(updates.experienceYears && { years_of_experience: updates.experienceYears }),
+      ...(updates.consultationFee && { consultation_fee: updates.consultationFee }),
+      ...(updates.roomNumber && { room_number: updates.roomNumber }),
+      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined) && {
+        availability_hours: {
+          sessions: updates.sessions,
+          availableSessions: updates.availableSessions,
+          workingDays: updates.workingDays,
+          emergencyAvailable: updates.emergencyAvailable,
+          ...(updates.floorNumber && { floorNumber: updates.floorNumber }),
+          ...(updates.workingHoursStart && { workingHoursStart: updates.workingHoursStart }),
+          ...(updates.workingHoursEnd && { workingHoursEnd: updates.workingHoursEnd })
+        }
+      })
+    };
 
     // Update user fields if any exist
     if (Object.keys(userFields).length > 0) {

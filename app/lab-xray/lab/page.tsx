@@ -187,6 +187,27 @@ export default function LabOrderPage() {
             // Update master data
             setLabCatalog(prev => [...prev, newEntry]);
 
+            // Automatically select this new test in the current list
+            setSelectedTests(prev => {
+                const newTests = [...prev];
+                // Find first empty row or the last row if it's empty
+                const emptyIndex = newTests.findIndex(t => !t.testId);
+
+                const selection = {
+                    testId: newEntry.id,
+                    testName: newEntry.test_name,
+                    groupName: newEntry.category || 'N/A',
+                    amount: newEntry.test_cost || 0
+                };
+
+                if (emptyIndex !== -1) {
+                    newTests[emptyIndex] = selection;
+                } else {
+                    newTests.push(selection);
+                }
+                return newTests;
+            });
+
             // Success!
             setNewTestData({ testName: '', groupName: '', amount: 0 });
             setShowNewTestModal(false);

@@ -36,21 +36,21 @@ const AppointmentManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showBookingForm, setShowBookingForm] = useState(false);
-  
+
   // Filters and search
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('today');
   const [doctorFilter, setDoctorFilter] = useState('');
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
-  
+
   // Data for filters
   const [doctors, setDoctors] = useState<any[]>([]);
-  
+
   // Selected appointment for actions
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
@@ -58,30 +58,38 @@ const AppointmentManagement: React.FC = () => {
   useEffect(() => {
     loadAppointments();
     loadDoctors();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadAppointments();
+      loadDoctors();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [currentPage, statusFilter, dateFilter, doctorFilter, searchTerm]);
 
   const loadAppointments = async () => {
     try {
       setLoading(true);
       setError('');
-      
+
       const filters: any = {
         page: currentPage,
         limit: itemsPerPage
       };
-      
+
       if (statusFilter !== 'all') {
         filters.status = statusFilter;
       }
-      
+
       if (doctorFilter) {
         filters.doctorId = doctorFilter;
       }
-      
+
       if (searchTerm) {
         filters.searchTerm = searchTerm;
       }
-      
+
       // Date filter logic
       const today = new Date();
       if (dateFilter === 'today') {
@@ -90,7 +98,7 @@ const AppointmentManagement: React.FC = () => {
         const weekStart = new Date(today);
         weekStart.setDate(today.getDate() - today.getDay());
         filters.dateFrom = weekStart.toISOString().split('T')[0];
-        
+
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
         filters.dateTo = weekEnd.toISOString().split('T')[0];
@@ -100,7 +108,7 @@ const AppointmentManagement: React.FC = () => {
         filters.dateFrom = monthStart.toISOString().split('T')[0];
         filters.dateTo = monthEnd.toISOString().split('T')[0];
       }
-      
+
       const response = await getAppointments(filters);
       setAppointments(response.appointments || []);
       setTotalItems(response.total || 0);
@@ -136,7 +144,7 @@ const AppointmentManagement: React.FC = () => {
     if (!confirm('Are you sure you want to cancel this appointment?')) {
       return;
     }
-    
+
     try {
       await cancelAppointment(appointmentId, 'Cancelled by staff');
       await loadAppointments();
@@ -203,7 +211,7 @@ const AppointmentManagement: React.FC = () => {
   const getAppointmentStats = () => {
     const today = new Date().toISOString().split('T')[0];
     const todayAppointments = appointments.filter(apt => apt.appointment_date === today);
-    
+
     return {
       total: appointments.length,
       today: todayAppointments.length,
@@ -253,7 +261,7 @@ const AppointmentManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center">
               <div className="p-3 bg-orange-100 rounded-xl">
@@ -265,7 +273,7 @@ const AppointmentManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center">
               <div className="p-3 bg-blue-100 rounded-xl">
@@ -277,7 +285,7 @@ const AppointmentManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center">
               <div className="p-3 bg-green-100 rounded-xl">
@@ -289,7 +297,7 @@ const AppointmentManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center">
               <div className="p-3 bg-red-100 rounded-xl">
@@ -316,7 +324,7 @@ const AppointmentManagement: React.FC = () => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
-            
+
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -329,7 +337,7 @@ const AppointmentManagement: React.FC = () => {
               <option value="cancelled">Cancelled</option>
               <option value="no_show">No Show</option>
             </select>
-            
+
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
@@ -340,7 +348,7 @@ const AppointmentManagement: React.FC = () => {
               <option value="week">This Week</option>
               <option value="month">This Month</option>
             </select>
-            
+
             <select
               value={doctorFilter}
               onChange={(e) => setDoctorFilter(e.target.value)}
@@ -491,7 +499,7 @@ const AppointmentManagement: React.FC = () => {
                           >
                             <MoreVertical size={16} />
                           </button>
-                          
+
                           {showActionMenu === appointment.id && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 z-10">
                               <div className="py-1">
@@ -527,7 +535,7 @@ const AppointmentManagement: React.FC = () => {
               </tbody>
             </table>
           </div>
-          
+
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200">
@@ -566,24 +574,23 @@ const AppointmentManagement: React.FC = () => {
                     >
                       <ChevronLeft size={20} />
                     </button>
-                    
+
                     {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                       const pageNumber = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
                       return (
                         <button
                           key={pageNumber}
                           onClick={() => setCurrentPage(pageNumber)}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                            currentPage === pageNumber
+                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${currentPage === pageNumber
                               ? 'z-10 bg-orange-50 border-orange-500 text-orange-600'
                               : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                          }`}
+                            }`}
                         >
                           {pageNumber}
                         </button>
                       );
                     })}
-                    
+
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}

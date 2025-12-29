@@ -16,7 +16,7 @@ export interface StaffMember {
   created_at?: string;
   updated_at?: string;
   // UI helper fields
-  name?: string; 
+  name?: string;
   department_name?: string;
 }
 
@@ -129,7 +129,7 @@ export async function getStaffMemberById(id: string): Promise<StaffMember | null
         .select('name')
         .eq('id', staff.department_id)
         .single();
-      
+
       if (deptError) {
         console.warn(`Could not fetch department name for staff ${id}:`, deptError.message);
       } else {
@@ -178,7 +178,7 @@ export async function updateStaffMember(id: string, updates: Partial<StaffMember
   try {
     // Strip UI-only fields before sending to Supabase
     const { name, department_name, created_at, updated_at, ...dbUpdates } = updates as any;
-    
+
     const { data: staff, error } = await supabase
       .from('staff')
       .update({ ...dbUpdates, updated_at: new Date().toISOString() })
@@ -249,7 +249,7 @@ export async function getStaffStats(): Promise<StaffStats> {
     staff?.forEach(member => {
       const deptName = member.department_id ? deptMap[member.department_id] : 'Unassigned';
       departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
-      
+
       if (member.role) {
         roleCounts[member.role] = (roleCounts[member.role] || 0) + 1;
       }
@@ -409,7 +409,7 @@ export async function updateStaffSchedule(id: string, updates: Partial<StaffSche
 /**
  * Get departments list
  */
-export async function getDepartments(): Promise<{id: string, name: string}[]> {
+export async function getDepartments(): Promise<{ id: string, name: string }[]> {
   try {
     const { data, error } = await supabase
       .from('departments')
@@ -492,5 +492,44 @@ export async function bulkDeleteStaff(ids: string[]): Promise<void> {
   } catch (error) {
     console.error('Error in bulkDeleteStaff:', error);
     throw error;
+  }
+}
+
+/**
+ * Generate the next unique employee ID
+ */
+export async function generateNextEmployeeId(): Promise<string> {
+  try {
+    const { data: staff, error } = await supabase
+      .from('staff')
+      .select('employee_id')
+      .not('employee_id', 'is', null)
+      .like('employee_id', 'EMP-%');
+
+    if (error) {
+      console.error('Error fetching employee IDs:', error);
+      return 'EMP-001';
+    }
+
+    if (!staff || staff.length === 0) {
+      return 'EMP-001';
+    }
+
+    // Extract numbers and find max
+    const numbers = staff
+      .map(s => {
+        const match = s.employee_id?.match(/EMP-(\d+)/);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(n => !isNaN(n));
+
+    const maxId = numbers.length > 0 ? Math.max(...numbers) : 0;
+    const nextId = maxId + 1;
+
+    // Pad with leading zeros
+    return `EMP-${nextId.toString().padStart(3, '0')}`;
+  } catch (error) {
+    console.error('Error in generateNextEmployeeId:', error);
+    return 'EMP-001';
   }
 }

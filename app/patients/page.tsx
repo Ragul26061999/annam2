@@ -74,6 +74,11 @@ interface Patient {
   total_amount?: string;
   payment_mode?: string;
   consulting_doctor_name?: string;
+  staff?: {
+    first_name: string;
+    last_name: string;
+    employee_id: string;
+  };
 }
 
 export default function PatientsPage() {
@@ -110,6 +115,13 @@ export default function PatientsPage() {
 
   useEffect(() => {
     fetchPatients();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchPatients();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [currentPage, statusFilter, searchTerm]);
 
   // Close dropdown when clicking outside
@@ -373,26 +385,6 @@ export default function PatientsPage() {
           <p className="text-gray-500 mt-1">Manage patient records and information</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md hover:bg-gray-50 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <Link href="/patients/emergency-register">
-            <button className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
-              <AlertTriangle size={16} className="mr-2" />
-              Emergency Register
-            </button>
-          </Link>
-          <Link href="/patients/enhanced-register">
-            <button className="flex items-center bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md border border-orange-400">
-              <UserPlus size={16} className="mr-2" />
-              Enhanced Registration
-            </button>
-          </Link>
         </div>      </div>
 
       {/* Stats Cards */}
@@ -649,6 +641,20 @@ export default function PatientsPage() {
                 <div className="bg-purple-50 rounded-xl p-3 mb-4">
                   <p className="text-xs font-medium text-purple-700 mb-1">Admission Type</p>
                   <p className="text-sm text-purple-900 capitalize italic font-medium">{patient.admission_type}</p>
+                </div>
+              )}
+
+              {/* Registered By Staff */}
+              {patient.staff && (
+                <div className="bg-green-50 rounded-xl p-3 mb-4 border border-green-100">
+                  <p className="text-xs font-medium text-green-700 mb-1 flex items-center">
+                    <Users size={12} className="mr-1" />
+                    Registered By
+                  </p>
+                  <p className="text-sm text-green-900 font-medium">
+                    {patient.staff.first_name} {patient.staff.last_name}
+                    <span className="text-xs text-green-600 ml-1">({patient.staff.employee_id})</span>
+                  </p>
                 </div>
               )}
 

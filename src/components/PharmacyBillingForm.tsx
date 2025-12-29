@@ -94,12 +94,12 @@ export default function PharmacyBillingForm({
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [prescription, setPrescription] = useState<Prescription | null>(null);
   const [lastPrescriptionUpdate, setLastPrescriptionUpdate] = useState<string>('');
-  
+
   // Customer details for custom billing
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
-  
+
   // Billing details
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi'>('cash');
   const [notes, setNotes] = useState('');
@@ -130,7 +130,7 @@ export default function PharmacyBillingForm({
         .select('*')
         .gt('stock_quantity', 0)
         .order('name', { ascending: true });
-      
+
       if (error) throw error;
       setMedications(data || []);
     } catch (error) {
@@ -140,7 +140,7 @@ export default function PharmacyBillingForm({
 
   const fetchPrescriptionDetails = async () => {
     if (!prescriptionId) return;
-    
+
     try {
       const { data: prescriptionData, error: prescriptionError } = await supabase
         .from('prescriptions')
@@ -180,16 +180,16 @@ export default function PharmacyBillingForm({
           total_price: item.total_price,
           stock_available: 0 // Will be updated when we fetch medication details
         }));
-        
+
         setBillingItems(updatedItems);
-        
+
         // Show notification to user about prescription update
         alert('Prescription has been updated by the doctor. Billing items have been refreshed.');
       }
 
       setPrescription(prescriptionWithItems);
       setLastPrescriptionUpdate(currentUpdate);
-      
+
       // Only set billing items if this is the initial load
       if (lastPrescriptionUpdate === '') {
         const items: BillingItem[] = itemsData.map((item: PrescriptionItem) => ({
@@ -202,7 +202,7 @@ export default function PharmacyBillingForm({
           total_price: item.total_price,
           stock_available: 0 // Will be updated when we fetch medication details
         }));
-        
+
         setBillingItems(items);
       }
     } catch (error) {
@@ -222,7 +222,7 @@ export default function PharmacyBillingForm({
 
   const addMedicationToBill = (medication: Medication) => {
     const existingItem = billingItems.find(item => item.medication_id === medication.id);
-    
+
     if (existingItem) {
       updateQuantity(existingItem.id, existingItem.quantity + 1);
     } else {
@@ -408,8 +408,8 @@ export default function PharmacyBillingForm({
                 {billingType === 'prescription' ? 'Prescription Billing' : 'Custom Billing'}
               </h2>
               <p className="text-sm text-gray-600">
-                {billingType === 'prescription' 
-                  ? 'Bill prescribed medications' 
+                {billingType === 'prescription'
+                  ? 'Bill prescribed medications'
                   : 'Create custom medication bill'
                 }
               </p>
@@ -522,14 +522,6 @@ export default function PharmacyBillingForm({
                       <FileText className="h-4 w-4" />
                       Prescription Details
                     </h3>
-                    <button
-                      onClick={refreshPrescription}
-                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                      title="Refresh prescription data"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Refresh
-                    </button>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -554,7 +546,7 @@ export default function PharmacyBillingForm({
                   <Package className="h-4 w-4" />
                   Billing Items
                 </h3>
-                
+
                 {billingItems.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Package className="h-12 w-12 mx-auto mb-3 text-gray-300" />
@@ -581,7 +573,7 @@ export default function PharmacyBillingForm({
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
-                        
+
                         <div className="grid grid-cols-3 gap-4">
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -612,7 +604,7 @@ export default function PharmacyBillingForm({
                               </button>
                             </div>
                           </div>
-                          
+
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Discount %
@@ -627,7 +619,7 @@ export default function PharmacyBillingForm({
                               className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
                             />
                           </div>
-                          
+
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Total
@@ -651,7 +643,7 @@ export default function PharmacyBillingForm({
                     <Calculator className="h-4 w-4" />
                     Payment Details
                   </h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -667,7 +659,7 @@ export default function PharmacyBillingForm({
                         <option value="upi">UPI</option>
                       </select>
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Overall Discount %

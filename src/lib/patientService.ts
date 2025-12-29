@@ -286,12 +286,6 @@ export async function insertPatientRecord(
       ? `${firstName} ${lastName}`
       : firstName || lastName || `Patient ${uhid}`;
 
-    // Generate barcode ID
-    const barcodeId = generateBarcodeId(uhid);
-
-    // Generate QR code for the UHID
-    const qrCodeDataUrl = await generateQRCode(uhid);
-
     // Prepare admission date and time
     let admissionDateTime = null;
     if (registrationData.admissionDate) {
@@ -302,209 +296,96 @@ export async function insertPatientRecord(
       }
     }
 
-    // First, get the current table schema to understand what columns are available
-    let patientData: any = {};
+    // Generate QR code for the UHID
+    const qrCodeDataUrl = await generateQRCode(uhid);
 
-    try {
-      // Try to get schema information
-      const { data: sampleData } = await supabase
-        .from('patients')
-        .select('*')
-        .limit(1);
+    // Build patient data object directly with all fields
+    const patientData: any = {
+      // Basic Information
+      patient_id: uhid,
+      name: fullName,
+      date_of_birth: registrationData.dateOfBirth || null,
+      age: registrationData.age ? parseInt(registrationData.age) : null,
+      gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
+      marital_status: registrationData.maritalStatus || null,
+      phone: registrationData.phone || null,
+      alternate_phone: registrationData.alternatePhone || null,
+      email: registrationData.email || `${uhid}@annam.com`,
+      address: registrationData.address || null,
+      city: registrationData.city || null,
+      state: registrationData.state || null,
+      pincode: registrationData.pincode || null,
 
-      // Build patient data dynamically based on what we know about the schema
-      patientData = {
-        // Basic Information
-        patient_id: uhid,
-        name: fullName,
-        date_of_birth: registrationData.dateOfBirth || null,
-        gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
-        marital_status: registrationData.maritalStatus || null,
-        phone: registrationData.phone || null,
-        email: registrationData.email || `${uhid}@annam.com`,
-        address: registrationData.address || null,
+      // Medical Information
+      diagnosis: registrationData.diagnosis || null,
+      blood_group: registrationData.bloodGroup || null,
+      allergies: registrationData.allergies || null,
+      medical_history: registrationData.medicalHistory || null,
+      current_medications: registrationData.currentMedications || null,
+      chronic_conditions: registrationData.chronicConditions || null,
+      previous_surgeries: registrationData.previousSurgeries || null,
 
-        // Medical Information
-        blood_group: registrationData.bloodGroup || null,
-        allergies: registrationData.allergies || null,
-        medical_history: registrationData.medicalHistory || null,
-        current_medications: registrationData.currentMedications || null,
-        chronic_conditions: registrationData.chronicConditions || null,
-        previous_surgeries: registrationData.previousSurgeries || null,
+      // Vitals
+      height: registrationData.height || null,
+      weight: registrationData.weight || null,
+      bmi: registrationData.bmi || null,
+      temperature: registrationData.temperature || null,
+      temp_unit: registrationData.tempUnit || null,
+      bp_systolic: registrationData.bpSystolic || null,
+      bp_diastolic: registrationData.bpDiastolic || null,
+      pulse: registrationData.pulse || null,
+      spo2: registrationData.spo2 || null,
+      respiratory_rate: registrationData.respiratoryRate || null,
+      random_blood_sugar: registrationData.randomBloodSugar || null,
+      vital_notes: registrationData.vitalNotes || null,
 
-        // New Admission Information
-        admission_date: admissionDateTime,
-        admission_time: registrationData.admissionTime || null,
-        primary_complaint: registrationData.primaryComplaint || null,
-        // Validate admission_type against allowed values
-        admission_type: (function () {
-          const type = registrationData.admissionType;
-          if (!type) return null;
-          // DB constraint allows: emergency, elective, referred, outpatient, transfer, inpatient
-          const validTypes = ['emergency', 'elective', 'referred', 'outpatient', 'transfer', 'inpatient'];
-          if (validTypes.includes(type)) return type;
+      // Billing
+      op_card_amount: registrationData.opCardAmount || null,
+      consultation_fee: registrationData.consultationFee || null,
+      total_amount: registrationData.totalAmount || null,
+      payment_mode: registrationData.paymentMode || null,
 
-          if (type === 'scheduled') return 'elective';
+      // Admission Information
+      admission_date: admissionDateTime,
+      admission_time: registrationData.admissionTime || null,
+      primary_complaint: registrationData.primaryComplaint || null,
+      admission_type: (function () {
+        const type = registrationData.admissionType;
+        if (!type) return 'outpatient';
+        const validTypes = ['emergency', 'elective', 'referred', 'outpatient', 'transfer', 'inpatient'];
+        if (validTypes.includes(type)) return type;
+        if (type === 'scheduled') return 'elective';
+        return 'outpatient';
+      })(),
+      referring_doctor_facility: registrationData.referringDoctorFacility || null,
+      department_ward: registrationData.departmentWard || null,
+      room_number: registrationData.roomNumber || null,
+      consulting_doctor_id: registrationData.consultingDoctorId || null,
+      consulting_doctor_name: registrationData.consultingDoctorName || null,
 
-          return 'outpatient'; // Fallback to outpatient as safer default
-        })(),
-        referring_doctor_facility: registrationData.referringDoctorFacility || null,
-        department_ward: registrationData.departmentWard || null,
-        room_number: registrationData.roomNumber || null,
+      // Guardian/Attendant Details
+      guardian_name: registrationData.guardianName || null,
+      guardian_relationship: registrationData.guardianRelationship || null,
+      guardian_phone: registrationData.guardianPhone || null,
+      guardian_address: registrationData.guardianAddress || null,
 
-        // Guardian/Attendant Details (Optional)
-        guardian_name: registrationData.guardianName || null,
-        guardian_relationship: registrationData.guardianRelationship || null,
-        guardian_phone: registrationData.guardianPhone || null,
-        guardian_address: registrationData.guardianAddress || null,
+      // Emergency Contact
+      emergency_contact_name: registrationData.emergencyContactName || null,
+      emergency_contact_phone: registrationData.emergencyContactPhone || null,
+      emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
 
-        // Emergency Contact (Optional)
-        emergency_contact_name: registrationData.emergencyContactName || null,
-        emergency_contact_phone: registrationData.emergencyContactPhone || null,
-        emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
+      // Insurance
+      insurance_number: registrationData.insuranceNumber || null,
+      insurance_provider: registrationData.insuranceProvider || null,
 
-        // Insurance Information
-        insurance_number: registrationData.insuranceNumber || null,
-        insurance_provider: registrationData.insuranceProvider || null,
-
-        // Additional fields
-        initial_symptoms: registrationData.initialSymptoms || null,
-        referred_by: registrationData.referredBy || null,
-
-        // QR Code
-        qr_code: qrCodeDataUrl,
-
-        // Link to users table
-        user_id: userId || null,
-
-        // System fields
-        status: 'active'
-      };
-
-      if (registrationData.staffId) {
-        patientData.staff_id = registrationData.staffId;
-      }
-
-      // Conditionally add age and diagnosis if they exist in the schema
-      if (sampleData && sampleData.length > 0) {
-        const samplePatient = sampleData[0];
-        // Check if age column exists
-        if ('age' in samplePatient) {
-          patientData.age = registrationData.age ? parseInt(registrationData.age) : null;
-        }
-
-        // Check if diagnosis column exists
-        if ('diagnosis' in samplePatient) {
-          patientData.diagnosis = registrationData.diagnosis || null;
-        }
-      }
-    } catch (schemaError) {
-      console.warn('Could not fetch schema information, using fallback approach');
-
-      // Fallback: build basic patient data without age and diagnosis initially
-      patientData = {
-        patient_id: uhid,
-        name: fullName,
-        date_of_birth: registrationData.dateOfBirth || null,
-        gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
-        marital_status: registrationData.maritalStatus || null,
-        phone: registrationData.phone || null,
-        email: registrationData.email || `${uhid}@annam.com`,
-        address: registrationData.address || null,
-        blood_group: registrationData.bloodGroup || null,
-        allergies: registrationData.allergies || null,
-        medical_history: registrationData.medicalHistory || null,
-        current_medications: registrationData.currentMedications || null,
-        chronic_conditions: registrationData.chronicConditions || null,
-        previous_surgeries: registrationData.previousSurgeries || null,
-        admission_date: admissionDateTime,
-        admission_time: registrationData.admissionTime || null,
-        primary_complaint: registrationData.primaryComplaint || null,
-        // Validate admission_type against allowed values
-        admission_type: (function () {
-          const type = registrationData.admissionType;
-          if (!type) return null;
-          // DB constraint allows: emergency, elective, referred, outpatient
-          const validTypes = ['emergency', 'elective', 'referred', 'outpatient'];
-          if (validTypes.includes(type)) return type;
-
-          if (type === 'inpatient' || type === 'scheduled') return 'elective';
-          if (type === 'transfer') return 'referred';
-
-          return 'outpatient'; // Fallback to outpatient as safer default than elective
-        })(),
-        referring_doctor_facility: registrationData.referringDoctorFacility || null,
-        department_ward: registrationData.departmentWard || null,
-        room_number: registrationData.roomNumber || null,
-        guardian_name: registrationData.guardianName || null,
-        guardian_relationship: registrationData.guardianRelationship || null,
-        guardian_phone: registrationData.guardianPhone || null,
-        guardian_address: registrationData.guardianAddress || null,
-        emergency_contact_name: registrationData.emergencyContactName || null,
-        emergency_contact_phone: registrationData.emergencyContactPhone || null,
-        emergency_contact_relationship: registrationData.emergencyContactRelationship || null,
-        insurance_number: registrationData.insuranceNumber || null,
-        insurance_provider: registrationData.insuranceProvider || null,
-        initial_symptoms: registrationData.initialSymptoms || null,
-        referred_by: registrationData.referredBy || null,
-        qr_code: qrCodeDataUrl,
-        user_id: userId || null,
-        status: 'active'
-      };
-
-      if (registrationData.staffId) {
-        patientData.staff_id = registrationData.staffId;
-      }
-
-      // Try to add additional columns, but handle errors gracefully
-      try {
-        // Check if columns exist in the actual table structure
-        const { data: tableInfo, error: tableError } = await supabase
-          .from('patients')
-          .select('*')
-          .limit(1);
-
-        if (!tableError && tableInfo && tableInfo.length > 0) {
-          const sampleRow = tableInfo[0];
-          if ('age' in sampleRow) {
-            patientData.age = registrationData.age ? parseInt(registrationData.age) : null;
-          }
-          if ('diagnosis' in sampleRow) {
-            patientData.diagnosis = registrationData.diagnosis || null;
-          }
-          if ('alternate_phone' in sampleRow) patientData.alternate_phone = registrationData.alternatePhone || null;
-          if ('city' in sampleRow) patientData.city = registrationData.city || null;
-          if ('state' in sampleRow) patientData.state = registrationData.state || null;
-          if ('pincode' in sampleRow) patientData.pincode = registrationData.pincode || null;
-
-          // Vitals mapping
-          if ('height' in sampleRow) patientData.height = registrationData.height || null;
-          if ('weight' in sampleRow) patientData.weight = registrationData.weight || null;
-          if ('bmi' in sampleRow) patientData.bmi = registrationData.bmi || null;
-          if ('temperature' in sampleRow) patientData.temperature = registrationData.temperature || null;
-          if ('temp_unit' in sampleRow) patientData.temp_unit = registrationData.tempUnit || null;
-          if ('bp_systolic' in sampleRow) patientData.bp_systolic = registrationData.bpSystolic || null;
-          if ('bp_diastolic' in sampleRow) patientData.bp_diastolic = registrationData.bpDiastolic || null;
-          if ('pulse' in sampleRow) patientData.pulse = registrationData.pulse || null;
-          if ('spo2' in sampleRow) patientData.spo2 = registrationData.spo2 || null;
-          if ('respiratory_rate' in sampleRow) patientData.respiratory_rate = registrationData.respiratoryRate || null;
-          if ('random_blood_sugar' in sampleRow) patientData.random_blood_sugar = registrationData.randomBloodSugar || null;
-          if ('vital_notes' in sampleRow) patientData.vital_notes = registrationData.vitalNotes || null;
-
-          // Billing mapping
-          if ('op_card_amount' in sampleRow) patientData.op_card_amount = registrationData.opCardAmount || null;
-          if ('consultation_fee' in sampleRow) patientData.consultation_fee = registrationData.consultationFee || null;
-          if ('total_amount' in sampleRow) patientData.total_amount = registrationData.totalAmount || null;
-          if ('payment_mode' in sampleRow) patientData.payment_mode = registrationData.paymentMode || null;
-
-          // Doctor mapping
-          if ('consulting_doctor_id' in sampleRow) patientData.consulting_doctor_id = registrationData.consultingDoctorId || null;
-          if ('consulting_doctor_name' in sampleRow) patientData.consulting_doctor_name = registrationData.consultingDoctorName || null;
-        }
-      } catch (columnError) {
-        console.warn('Additional columns may not exist in schema, will be skipped in insert');
-      }
-    }
+      // Additional fields
+      initial_symptoms: registrationData.initialSymptoms || null,
+      referred_by: registrationData.referredBy || null,
+      qr_code: qrCodeDataUrl,
+      user_id: userId || null,
+      staff_id: registrationData.staffId || null,
+      status: 'active'
+    };
 
     const { data: patient, error } = await supabase
       .from('patients')
@@ -742,7 +623,7 @@ export async function createInitialAppointment(
     // Generate appointment ID
     const appointmentId = `APT${Date.now()}`;
 
-    // Use tomorrow as default appointment date
+    // Use tomorrow as default appointment date to ensure it's not in the past
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -843,7 +724,21 @@ export async function registerNewPatient(
           .select('id')
           .limit(1);
 
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        let appointmentDate = now.toISOString().split('T')[0];
+        let appointmentTime = '09:00:00'; // Default to 9 AM
+
+        // If current time is past 9 AM, schedule for next day or later today if possible
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+
+        // Check if current time is past 9 AM
+        if (currentHour >= 9 && currentMinute > 0) {
+          // Schedule for tomorrow instead
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          appointmentDate = tomorrow.toISOString().split('T')[0];
+        }
 
         if (doctors && doctors.length > 0) {
           const doctorId = doctors[0].id;
@@ -851,8 +746,8 @@ export async function registerNewPatient(
           const appointmentData: AppointmentData = {
             patientId: patient.id,
             doctorId: doctorId,
-            appointmentDate: today,
-            appointmentTime: '09:00:00',
+            appointmentDate: appointmentDate,
+            appointmentTime: appointmentTime,
             durationMinutes: 30,
             type: 'consultation',
             isEmergency: false,
@@ -867,7 +762,7 @@ export async function registerNewPatient(
           // Try to create using the new appointment structure first
           try {
             // Create encounter first
-            const scheduledAt = `${today}T09:00:00`;
+            const scheduledAt = `${appointmentDate}T09:00:00`;
 
             const encounterRecord = {
               patient_id: patient.id,
@@ -906,8 +801,8 @@ export async function registerNewPatient(
               const legacyAppointmentRecord = {
                 appointment_id: appointmentId,
                 patient_id: patient.id,
-                appointment_date: today,
-                appointment_time: '09:00:00',
+                appointment_date: appointmentDate,
+                appointment_time: appointmentTime,
                 duration_minutes: 30,
                 type: 'consultation',
                 status: 'scheduled',
@@ -937,8 +832,8 @@ export async function registerNewPatient(
             const legacyAppointmentRecord = {
               appointment_id: appointmentId,
               patient_id: patient.id,
-              appointment_date: today,
-              appointment_time: '09:00:00',
+              appointment_date: appointmentDate,
+              appointment_time: appointmentTime,
               duration_minutes: 30,
               type: 'consultation',
               status: 'scheduled',
@@ -1039,7 +934,7 @@ export async function getPatientByUHID(uhid: string): Promise<any> {
 
     const { data: patient, error } = await supabase
       .from('patients')
-      .select('*')
+      .select('*, staff:staff_id(first_name, last_name, employee_id)')
       .eq('patient_id', trimmedUHID)
       .single();
 
@@ -1078,7 +973,7 @@ export async function getPatientWithRelatedData(uhid: string): Promise<any> {
       // If it's a UUID, we need to find the patient by database ID
       const { data: patientData, error: patientError } = await supabase
         .from('patients')
-        .select('*')
+        .select('*, staff:staff_id(first_name, last_name, employee_id)')
         .eq('id', uhid)
         .single();
 
@@ -1198,7 +1093,7 @@ export async function getAllPatients(
 
     let query = supabase
       .from('patients')
-      .select('*', { count: 'exact' });
+      .select('*, staff:staff_id(first_name, last_name, employee_id)', { count: 'exact' });
 
     // Apply filters
     if (status) {

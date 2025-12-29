@@ -55,7 +55,7 @@ export async function uploadDocumentFile(
       });
 
     if (error) {
-      console.error('Error uploading file:', error);
+      console.error('Error uploading file:', error.message, error);
       return { success: false, error: error.message };
     }
 
@@ -80,7 +80,7 @@ export async function saveDocumentMetadata(
       .single();
 
     if (error) {
-      console.error('Error saving document metadata:', error);
+      console.error('Error saving document metadata:', error.message, error);
       return { success: false, error: error.message };
     }
 
@@ -106,7 +106,7 @@ export async function uploadPatientDocument(
   try {
     // 1. Upload file to storage
     const uploadResult = await uploadDocumentFile(file, patientId, uhid);
-    
+
     if (!uploadResult.success || !uploadResult.filePath) {
       return { success: false, error: uploadResult.error || 'File upload failed' };
     }
@@ -126,7 +126,7 @@ export async function uploadPatientDocument(
     };
 
     const metadataResult = await saveDocumentMetadata(metadata);
-    
+
     if (!metadataResult.success) {
       // If metadata save fails, try to delete the uploaded file
       await supabase.storage.from(BUCKET_NAME).remove([uploadResult.filePath]);
@@ -144,6 +144,10 @@ export async function uploadPatientDocument(
  * Get all documents for a patient
  */
 export async function getPatientDocuments(patientId: string): Promise<PatientDocument[]> {
+  if (!patientId) {
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from('patient_documents')
@@ -152,7 +156,7 @@ export async function getPatientDocuments(patientId: string): Promise<PatientDoc
       .order('upload_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching patient documents:', error);
+      console.error('Error fetching patient documents:', error.message, error);
       return [];
     }
 
@@ -241,6 +245,10 @@ export async function deleteDocument(documentId: string, filePath: string): Prom
  * Get documents by category
  */
 export async function getDocumentsByCategory(patientId: string, category: string): Promise<PatientDocument[]> {
+  if (!patientId) {
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from('patient_documents')
@@ -250,7 +258,7 @@ export async function getDocumentsByCategory(patientId: string, category: string
       .order('upload_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching documents by category:', error);
+      console.error('Error fetching documents by category:', error.message, error);
       return [];
     }
 

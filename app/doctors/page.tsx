@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { 
-  Stethoscope, 
-  Search, 
-  Filter, 
-  Plus, 
-  Calendar, 
+import {
+  Stethoscope,
+  Search,
+  Filter,
+  Plus,
+  Calendar,
   MapPin,
   Users,
   Clock,
@@ -17,7 +17,7 @@ import {
   Edit
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
+import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 
@@ -25,7 +25,7 @@ import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 const getCardGradient = (doctorId: string | undefined) => {
   const colors = [
     'bg-gradient-to-r from-blue-400 to-blue-500',
-    'bg-gradient-to-r from-green-400 to-green-500', 
+    'bg-gradient-to-r from-green-400 to-green-500',
     'bg-gradient-to-r from-purple-400 to-purple-500',
     'bg-gradient-to-r from-red-400 to-red-500',
     'bg-gradient-to-r from-indigo-400 to-indigo-500',
@@ -58,20 +58,20 @@ const getNextAvailableSlot = (doctor: Doctor) => {
     const now = new Date();
     const currentTime = now.getHours() * 60 + now.getMinutes();
     const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    
+
     const availableSessions = availabilityData.availableSessions;
     const sessions = availabilityData.sessions;
     const workingDays = availabilityData.workingDays || [1, 2, 3, 4, 5, 6]; // Default Mon-Sat
-    
+
     // Helper function to parse time string to minutes
     const parseTimeToMinutes = (timeStr: string) => {
       const [hours, minutes] = timeStr.split(':').map(Number);
       return hours * 60 + minutes;
     };
-    
+
     // Check if today is a working day
     const isTodayWorkingDay = workingDays.includes(currentDay);
-    
+
     // Find next available session today
     if (isTodayWorkingDay) {
       for (const sessionName of ['morning', 'afternoon', 'evening'] as const) {
@@ -87,7 +87,7 @@ const getNextAvailableSlot = (doctor: Doctor) => {
         }
       }
     }
-    
+
     // Find next working day with available sessions
     for (let i = 1; i <= 7; i++) {
       const nextDay = (currentDay + i) % 7;
@@ -102,7 +102,7 @@ const getNextAvailableSlot = (doctor: Doctor) => {
         }
       }
     }
-    
+
     return 'Not available';
   } catch (error) {
     console.error('Error getting next available slot:', error);
@@ -128,24 +128,24 @@ const getAvailabilityStatus = (doctor: Doctor) => {
     const workingDays = availabilityData.workingDays || [1, 2, 3, 4, 5, 6];
     const availableSessions = availabilityData.availableSessions;
     const sessions = availabilityData.sessions;
-    
+
     if (doctor.status !== 'active') {
       return { status: 'Inactive', color: 'bg-red-100 text-red-700' };
     }
-    
+
     // Helper function to parse time string to minutes
     const parseTimeToMinutes = (timeStr: string) => {
       const [hours, minutes] = timeStr.split(':').map(Number);
       return hours * 60 + minutes;
     };
-    
+
     const isTodayWorkingDay = workingDays.includes(currentDay);
-    
+
     if (isTodayWorkingDay) {
       // Check if there are any upcoming sessions today
       let hasUpcomingSessions = false;
       let allSessionsOver = true;
-      
+
       for (const sessionName of ['morning', 'afternoon', 'evening'] as const) {
         if (availableSessions.includes(sessionName) && sessions[sessionName]) {
           const session = sessions[sessionName];
@@ -161,7 +161,7 @@ const getAvailabilityStatus = (doctor: Doctor) => {
           }
         }
       }
-      
+
       if (hasUpcomingSessions) {
         return { status: 'Available Today', color: 'bg-green-100 text-green-700' };
       } else if (!allSessionsOver) {
@@ -169,7 +169,7 @@ const getAvailabilityStatus = (doctor: Doctor) => {
         return { status: 'Duty Over', color: 'bg-orange-100 text-orange-700' };
       }
     }
-    
+
     // Find next working day
     for (let i = 1; i <= 7; i++) {
       const nextDay = (currentDay + i) % 7;
@@ -178,7 +178,7 @@ const getAvailabilityStatus = (doctor: Doctor) => {
         return { status: `Next: ${dayName}`, color: 'bg-blue-100 text-blue-700' };
       }
     }
-    
+
     return { status: 'No schedule', color: 'bg-gray-100 text-gray-700' };
   } catch {
     return { status: 'Check schedule', color: 'bg-yellow-100 text-yellow-700' };
@@ -191,10 +191,10 @@ const getSessionTimings = (doctor: Doctor) => {
     if (!availabilityData || !availabilityData.availableSessions || !availabilityData.sessions) {
       return [];
     }
-    
+
     const sessions = availabilityData.sessions;
     const availableSessions = availabilityData.availableSessions;
-    
+
     return availableSessions.map((sessionName: string) => {
       const session = sessions[sessionName];
       if (session) {
@@ -268,7 +268,7 @@ export default function DoctorsPage() {
     let filtered = doctors;
 
     if (searchTerm) {
-      filtered = filtered.filter(doctor => 
+      filtered = filtered.filter(doctor =>
         doctor.user?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doctor.license_number.toLowerCase().includes(searchTerm.toLowerCase())
@@ -288,25 +288,25 @@ export default function DoctorsPage() {
       const doctorsData = await getAllDoctorsSimple();
       setDoctors(doctorsData);
       setFilteredDoctors(doctorsData);
-      
+
       // Calculate stats
       // Get real stats from database
       const totalDoctors = doctorsData.length;
-      
+
       // Calculate doctors appearing today based on their working days and availability
       const todayDayOfWeek = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
       const doctorsAppearingToday = doctorsData.filter(doctor => {
         if (doctor.status !== 'active') return false;
-        
+
         const availabilityData = doctor.availability_hours;
         if (!availabilityData || !availabilityData.workingDays) {
           // Default working days if not specified (Mon-Fri)
           return [1, 2, 3, 4, 5].includes(todayDayOfWeek);
         }
-        
+
         return availabilityData.workingDays.includes(todayDayOfWeek);
       }).length;
-      
+
       // Get consultation stats from appointments
       const today = new Date().toISOString().split('T')[0];
       const { data: appointmentsData } = await supabase
@@ -321,7 +321,7 @@ export default function DoctorsPage() {
         .select('id')
         .eq('appointment_date', today)
         .in('status', ['scheduled', 'confirmed', 'pending']);
-      
+
       setStats({
         totalDoctors,
         onDuty: doctorsAppearingToday,
@@ -353,6 +353,16 @@ export default function DoctorsPage() {
     }
   };
 
+  const handleCreateDepartment = async (name: string) => {
+    try {
+      await addDepartment(name);
+      await loadDepartments();
+    } catch (error) {
+      console.error('Error in handleCreateDepartment:', error);
+      throw error;
+    }
+  };
+
   const handleAddDoctor = async () => {
     try {
       const doctorData: DoctorRegistrationData = {
@@ -361,7 +371,7 @@ export default function DoctorsPage() {
         sessions: formData.sessions,
         availableSessions: formData.availableSessions
       };
-      
+
       await createDoctor(doctorData);
       setShowAddModal(false);
       resetForm();
@@ -374,7 +384,7 @@ export default function DoctorsPage() {
 
   const handleEditDoctor = async () => {
     if (!selectedDoctor) return;
-    
+
     try {
       await updateDoctor(selectedDoctor.id, formData);
       setShowEditModal(false);
@@ -416,7 +426,7 @@ export default function DoctorsPage() {
 
   const openEditModal = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
-    
+
     // Parse availability_hours to get sessions and available sessions
     let sessions = {
       morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
@@ -424,13 +434,13 @@ export default function DoctorsPage() {
       evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
     };
     let availableSessions: string[] = [];
-    
+
     if (doctor.availability_hours) {
       try {
-        const availabilityData = typeof doctor.availability_hours === 'string' 
-          ? JSON.parse(doctor.availability_hours) 
+        const availabilityData = typeof doctor.availability_hours === 'string'
+          ? JSON.parse(doctor.availability_hours)
           : doctor.availability_hours;
-        
+
         if (availabilityData.sessions) {
           sessions = { ...sessions, ...availabilityData.sessions };
         }
@@ -441,27 +451,27 @@ export default function DoctorsPage() {
         console.error('Error parsing availability_hours:', error);
       }
     }
-    
+
     setFormData({
-        name: doctor.user?.name || '',
-        email: doctor.user?.email || '',
-        phone: doctor.user?.phone || '',
-        address: doctor.user?.address || '',
-        licenseNumber: doctor.license_number,
-        specialization: doctor.specialization,
-        department: doctor.department || '',
-        qualification: doctor.qualification,
-        experienceYears: doctor.years_of_experience,
-        consultationFee: doctor.consultation_fee,
-        workingHoursStart: doctor.working_hours_start || '09:00',
-        workingHoursEnd: doctor.working_hours_end || '17:00',
-        workingDays: doctor.working_days || [1, 2, 3, 4, 5],
-        roomNumber: doctor.room_number,
-        floorNumber: doctor.floor_number || 1,
-        emergencyAvailable: doctor.emergency_available || false,
-        sessions,
-        availableSessions
-      });
+      name: doctor.user?.name || '',
+      email: doctor.user?.email || '',
+      phone: doctor.user?.phone || '',
+      address: doctor.user?.address || '',
+      licenseNumber: doctor.license_number,
+      specialization: doctor.specialization,
+      department: doctor.department || '',
+      qualification: doctor.qualification,
+      experienceYears: doctor.years_of_experience,
+      consultationFee: doctor.consultation_fee,
+      workingHoursStart: doctor.working_hours_start || '09:00',
+      workingHoursEnd: doctor.working_hours_end || '17:00',
+      workingDays: doctor.working_days || [1, 2, 3, 4, 5],
+      roomNumber: doctor.room_number,
+      floorNumber: doctor.floor_number || 1,
+      emergencyAvailable: doctor.emergency_available || false,
+      sessions,
+      availableSessions
+    });
     setShowEditModal(true);
   };
 
@@ -489,7 +499,7 @@ export default function DoctorsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Doctors</h1>
           <p className="text-gray-500 mt-1">Manage doctor profiles and schedules</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
         >
@@ -573,7 +583,7 @@ export default function DoctorsPage() {
               <Filter size={16} className="mr-2" />
               Filter
             </button>
-            <select 
+            <select
               value={selectedSpecialization}
               onChange={(e) => setSelectedSpecialization(e.target.value)}
               className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -592,7 +602,7 @@ export default function DoctorsPage() {
         {filteredDoctors.map((doctor) => {
           const buttonColors = getCardButtonColors(doctor.id);
           const cardGradient = getCardGradient(doctor.id);
-          
+
           return (
             <motion.div
               key={doctor.id}
@@ -610,7 +620,7 @@ export default function DoctorsPage() {
                     <p className="text-sm text-gray-500">{doctor.license_number}</p>
                   </div>
                 </div>
-                  <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
                   <MoreVertical size={16} className="text-gray-500" />
                 </button>
               </div>
@@ -674,7 +684,7 @@ export default function DoctorsPage() {
                   <Calendar size={14} className="mr-1" />
                   Schedule
                 </button>
-                <button 
+                <button
                   onClick={() => openEditModal(doctor)}
                   className={`flex-1 flex items-center justify-center ${buttonColors.edit} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}
                 >
@@ -705,6 +715,7 @@ export default function DoctorsPage() {
         departments={departments}
         isEditing={false}
         title="Add New Doctor"
+        onAddDepartment={handleCreateDepartment}
       />
 
       {/* Edit Doctor Modal */}
@@ -718,6 +729,7 @@ export default function DoctorsPage() {
         departments={departments}
         isEditing={true}
         title="Edit Doctor"
+        onAddDepartment={handleCreateDepartment}
       />
     </div>
   );

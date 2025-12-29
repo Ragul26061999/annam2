@@ -61,28 +61,42 @@ export async function validateAppointmentData(
   const dayOfWeek = appointmentDateTime.getDay();
 
   // Check if appointment is in the past (allow same-day appointments and immediate scheduling)
-  // Only prevent appointments that are more than 1 hour in the past
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  if (appointmentDateTime < oneHourAgo) {
-    errors.push('Appointment cannot be scheduled more than 1 hour in the past');
+  // Only prevent appointments that are significantly in the past
+  const appointmentDateOnly = appointmentDateTime.toISOString().split('T')[0];
+  const todayDateOnly = now.toISOString().split('T')[0];
+
+  // For same-day appointments, allow scheduling for later in the day, but prevent if time has already passed
+  if (appointmentDateOnly === todayDateOnly) {
+    // Allow same-day appointments if they're later today (after current time)
+    // Or if they're within a reasonable grace period (e.g., last hour) for registration purposes
+    const oneHourBeforeNow = new Date(now.getTime() - 60 * 60 * 1000);
+    if (appointmentDateTime < oneHourBeforeNow) {
+      errors.push('Same-day appointment cannot be scheduled more than 1 hour before current time');
+    }
+  } else {
+    // For future appointments, prevent if more than 1 hour in the past (for rescheduling)
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    if (appointmentDateTime < oneHourAgo) {
+      errors.push('Appointment cannot be scheduled more than 1 hour in the past');
+    }
   }
 
   // Emergency appointments have different validation rules
   if (appointmentData.isEmergency && businessRules.allowEmergencyBooking) {
     // Emergency appointments can be booked immediately (no minimum advance time)
-    
+
     // Emergency appointments have extended advance booking window
     const daysUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
     if (daysUntilAppointment > businessRules.emergencyMaxAdvanceDays) {
       errors.push(`Emergency appointments cannot be booked more than ${businessRules.emergencyMaxAdvanceDays} days in advance`);
     }
-    
+
     // Emergency appointments can be scheduled on weekends
     // Emergency appointments can be scheduled outside normal business hours (24/7)
   } else {
     // Regular appointment validation - no minimum advance booking time
     // Only check if it's not in the past (already handled above)
-    
+
     // Check maximum advance booking time
     const daysUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
     if (daysUntilAppointment > businessRules.maxAdvanceBookingDays) {
@@ -161,14 +175,14 @@ export async function validateAppointment(
 ): Promise<ValidationResult> {
   // Run basic validation
   const basicValidation = await validateAppointmentData(appointmentData, businessRules);
-  
+
   if (!basicValidation.isValid) {
     return basicValidation;
   }
 
   // Run conflict validation
   const conflictValidation = await checkAppointmentConflicts(appointmentData, excludeAppointmentId);
-  
+
   return {
     isValid: basicValidation.isValid && conflictValidation.isValid,
     errors: [...basicValidation.errors, ...conflictValidation.errors],
@@ -186,7 +200,7 @@ export async function getAlternativeSlots(
   const suggestions: AppointmentSlot[] = [];
   const requestedDate = new Date(appointmentData.appointmentDate);
   const duration = appointmentData.durationMinutes || 30;
-  
+
   try {
     // Get doctor information
     const { data: doctor, error: doctorError } = await supabase
@@ -204,7 +218,7 @@ export async function getAlternativeSlots(
       const checkDate = new Date(requestedDate);
       checkDate.setDate(requestedDate.getDate() + dayOffset);
       const dateStr = checkDate.toISOString().split('T')[0];
-      
+
       // Skip weekends if not allowed
       const dayOfWeek = checkDate.getDay();
       if (!DEFAULT_BUSINESS_RULES.allowWeekendBooking && (dayOfWeek === 0 || dayOfWeek === 6)) {
@@ -249,7 +263,7 @@ export async function getAlternativeSlots(
               appointmentDate: dateStr,
               appointmentTime: timeStr
             };
-            
+
             const validation = await validateAppointmentData(altData);
             if (validation.isValid) {
               suggestions.push({
@@ -282,10 +296,10 @@ export async function validateAppointmentWithSuggestions(
   businessRules: BusinessRules = DEFAULT_BUSINESS_RULES
 ): Promise<ValidationResult & { suggestions?: AppointmentSlot[] }> {
   const validation = await validateAppointment(appointmentData, excludeAppointmentId, businessRules);
-  
+
   // If validation fails due to conflicts, provide alternative suggestions
-  if (!validation.isValid && validation.errors.some(error => 
-    error.includes('conflicting appointment') || 
+  if (!validation.isValid && validation.errors.some(error =>
+    error.includes('conflicting appointment') ||
     error.includes('maximum daily appointment limit')
   )) {
     const suggestions = await getAlternativeSlots(appointmentData);
@@ -294,14 +308,14 @@ export async function validateAppointmentWithSuggestions(
       suggestions
     };
   }
-  
+
   return validation;
 }
 
 // Helper function to extract token from notes
 export function extractTokenFromNotes(notes: string | null | undefined): string | null {
   if (!notes) return null;
-  
+
   const tokenMatch = notes.match(/Token:\s*([A-Z]\d{3})/);
   return tokenMatch ? tokenMatch[1] : null;
 }
@@ -342,7 +356,7 @@ export interface Appointment {
   created_by?: string;
   created_at: string;
   updated_at: string;
-  
+
   // Related data
   patient?: any;
   doctor?: {
@@ -387,19 +401,19 @@ export async function generateAppointmentId(): Promise<string> {
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
   const day = now.getDate().toString().padStart(2, '0');
   const datePrefix = `${year}${month}${day}`;
-  
+
   try {
     // Get count of existing appointments for today
     const { count, error } = await supabase
       .from('appointments')
       .select('id', { count: 'exact', head: true })
       .like('appointment_id', `APT${datePrefix}%`);
-    
+
     if (error) {
       console.error('Error getting appointment count:', error);
       throw new Error('Failed to generate appointment ID');
     }
-    
+
     const sequence = ((count || 0) + 1).toString().padStart(4, '0');
     return `APT${datePrefix}${sequence}`;
   } catch (error) {
@@ -412,7 +426,7 @@ export async function generateAppointmentId(): Promise<string> {
  * Generate a unique token number for an appointment (per doctor per day)
  */
 export async function generateAppointmentToken(
-  doctorId: string, 
+  doctorId: string,
   appointmentDate: string
 ): Promise<number> {
   try {
@@ -446,44 +460,50 @@ export async function createAppointment(
   try {
     // Validate appointment data and check for conflicts
     const validation = await validateAppointment(appointmentData);
-    
+
     if (!validation.isValid) {
       const errorMessage = validation.errors.join('; ');
       throw new Error(`Appointment validation failed: ${errorMessage}`);
     }
-    
+
     // Log warnings if any
     if (validation.warnings.length > 0) {
       console.warn('Appointment warnings:', validation.warnings.join('; '));
     }
-    
+
     // Verify that the doctor exists in the doctors table
     const { data: existingDoctor } = await supabase
       .from('doctors')
       .select('id')
       .eq('id', appointmentData.doctorId)
       .single();
-    
+
     if (!existingDoctor) {
       throw new Error(`Doctor with ID ${appointmentData.doctorId} not found. Only registered doctors can have appointments.`);
     }
-    
+
     // Create encounter first (required for appointment)
-    const scheduledAt = `${appointmentData.appointmentDate}T${appointmentData.appointmentTime}:00`;
-    
+    // Ensure the timestamp is formatted correctly (YYYY-MM-DDTHH:mm:ss)
+    let timeStr = appointmentData.appointmentTime;
+    // If time is HH:mm, add :00
+    if (timeStr && timeStr.length === 5) {
+      timeStr += ':00';
+    }
+    const scheduledAt = `${appointmentData.appointmentDate}T${timeStr}`;
+
     // Get encounter type from ref_code table
     let encounterTypeId = null;
     const { data: encounterType } = await supabase
       .from('ref_code')
       .select('id')
-      .eq('domain', 'encounter_type')
-      .eq('code', appointmentData.type || 'consultation')
+      .eq('code_type', 'encounter_type')
+      .eq('code_value', appointmentData.type || 'consultation')
       .single();
-    
+
     if (encounterType) {
       encounterTypeId = encounterType.id;
     }
-    
+
     const encounterRecord = {
       patient_id: appointmentData.patientId,
       clinician_id: appointmentData.doctorId,
@@ -500,8 +520,13 @@ export async function createAppointment(
       .single();
 
     if (encounterError) {
-      console.error('Error creating encounter:', encounterError);
-      throw new Error(`Failed to create encounter: ${encounterError.message}`);
+      console.error('Error creating encounter. Details:', {
+        message: encounterError.message,
+        code: encounterError.code,
+        details: encounterError.details,
+        hint: encounterError.hint
+      });
+      throw new Error(`Failed to create encounter: ${encounterError.message || 'Unknown database error'}`);
     }
 
     // Get appointment status from ref_code table
@@ -509,10 +534,10 @@ export async function createAppointment(
     const { data: appointmentStatus } = await supabase
       .from('ref_code')
       .select('id')
-      .eq('domain', 'appointment_status')
-      .eq('code', 'scheduled')
+      .eq('code_type', 'appointment_status')
+      .eq('code_value', 'scheduled')
       .single();
-    
+
     if (appointmentStatus) {
       statusId = appointmentStatus.id;
     }
@@ -637,7 +662,7 @@ export async function getAppointments(options: {
               `)
               .eq('id', apt.encounter.clinician_id)
               .single();
-            
+
             if (doctor && doctor.user) {
               const userArray = Array.isArray(doctor.user) ? doctor.user : [doctor.user];
               const firstUser = userArray[0];
@@ -675,7 +700,7 @@ export async function getAppointments(options: {
             created_by: undefined,
             created_at: apt.created_at,
             updated_at: apt.updated_at,
-            
+
             // Related data
             patient: patientData,
             doctor: doctorData,
@@ -759,7 +784,7 @@ export async function getAppointments(options: {
         created_by: apt.created_by,
         created_at: apt.created_at,
         updated_at: apt.updated_at,
-        
+
         // Related data
         patient: apt.patient,
         doctor: apt.doctor
@@ -901,7 +926,7 @@ export async function getAppointmentDetails(appointmentId: string): Promise<{
     // Fetch patient vitals
     let vitals: any[] = [];
     let latestVitals: any | null = null;
-    
+
     if (patient?.id) {
       try {
         const { data: vitalsData } = await supabase
@@ -920,7 +945,7 @@ export async function getAppointmentDetails(appointmentId: string): Promise<{
 
     // Fetch medical history
     let medicalHistory: any[] = [];
-    
+
     if (patient?.id) {
       try {
         // Try to fetch from medical_history table
@@ -999,7 +1024,7 @@ export async function updateAppointmentMedicalInfo(
 ): Promise<Appointment> {
   try {
     const updateData: any = {};
-    
+
     if (medicalInfo.diagnosis) updateData.diagnosis = medicalInfo.diagnosis;
     if (medicalInfo.treatmentPlan) updateData.treatment_plan = medicalInfo.treatmentPlan;
     if (medicalInfo.prescriptions) updateData.prescriptions = medicalInfo.prescriptions;
@@ -1111,7 +1136,7 @@ export async function getAvailableSlots(
     // Get doctor information - check both doctors table and users with MD role
     let doctor: any = null;
     let doctorError: any = null;
-    
+
     // First try to get from doctors table
     const { data: doctorData, error: docError } = await supabase
       .from('doctors')
@@ -1121,7 +1146,7 @@ export async function getAvailableSlots(
       `)
       .eq('id', doctorId)
       .single();
-    
+
     if (doctorData) {
       doctor = doctorData;
     } else {
@@ -1149,7 +1174,7 @@ export async function getAvailableSlots(
     // Generate time slots based on doctor's session-based availability
     const slots: AppointmentSlot[] = [];
     const availabilityHours = doctor.availability_hours;
-    
+
     if (!availabilityHours || !availabilityHours.sessions || !availabilityHours.availableSessions) {
       console.warn('Doctor has no session-based availability configured');
       return slots;
@@ -1168,18 +1193,18 @@ export async function getAvailableSlots(
       for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute += 30) {
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-          
+
           // Check if slot is available
           const isBooked = existingAppointments?.some(apt => {
             const aptTime = apt.appointment_time;
             const aptDuration = apt.duration_minutes || 30;
             const aptEndTime = new Date(`2000-01-01T${aptTime}`);
             aptEndTime.setMinutes(aptEndTime.getMinutes() + aptDuration);
-            
+
             const slotTime = new Date(`2000-01-01T${timeString}`);
             const slotEndTime = new Date(slotTime);
             slotEndTime.setMinutes(slotEndTime.getMinutes() + 30);
-            
+
             return (slotTime < aptEndTime && slotEndTime > new Date(`2000-01-01T${aptTime}`));
           });
 
@@ -1207,7 +1232,7 @@ export async function getAvailableSlots(
     availabilityHours.availableSessions.forEach((sessionName: string) => {
       const session = availabilityHours.sessions[sessionName];
       const sessionTime = sessionTimes[sessionName as keyof typeof sessionTimes];
-      
+
       if (!session || !sessionTime) return;
 
       const startHour = parseInt(session.startTime?.split(':')[0] || sessionTime.start.split(':')[0]);
@@ -1216,23 +1241,23 @@ export async function getAvailableSlots(
       const slotDuration = 30; // 30 minutes per slot
       const slotsPerSession = Math.floor((endHour - startHour) * 60 / slotDuration);
       const maxSlotsForSession = Math.min(slotsPerSession, maxPatients);
-      
+
       let slotsGenerated = 0;
       for (let hour = startHour; hour < endHour && slotsGenerated < maxSlotsForSession; hour++) {
         for (let minute = 0; minute < 60 && slotsGenerated < maxSlotsForSession; minute += slotDuration) {
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-          
+
           // Check if slot is available
           const isBooked = existingAppointments?.some(apt => {
             const aptTime = apt.appointment_time;
             const aptDuration = apt.duration_minutes || 30;
             const aptEndTime = new Date(`2000-01-01T${aptTime}`);
             aptEndTime.setMinutes(aptEndTime.getMinutes() + aptDuration);
-            
+
             const slotTime = new Date(`2000-01-01T${timeString}`);
             const slotEndTime = new Date(slotTime);
             slotEndTime.setMinutes(slotEndTime.getMinutes() + slotDuration);
-            
+
             return (slotTime < aptEndTime && slotEndTime > new Date(`2000-01-01T${aptTime}`));
           });
 
@@ -1245,7 +1270,7 @@ export async function getAvailableSlots(
             specialization: doctor.specialization,
             sessionType: sessionName as 'morning' | 'afternoon' | 'evening'
           });
-          
+
           slotsGenerated++;
         }
       }
@@ -1269,7 +1294,7 @@ export async function rescheduleAppointment(
   try {
     // First, get the current appointment
     const currentAppointment = await getAppointmentById(appointmentId);
-    
+
     if (!currentAppointment) {
       throw new Error('Appointment not found');
     }
@@ -1289,12 +1314,12 @@ export async function rescheduleAppointment(
 
     // Validate the new appointment time (exclude current appointment from conflict check)
     const validation = await validateAppointment(rescheduleData, currentAppointment.id);
-    
+
     if (!validation.isValid) {
       const errorMessage = validation.errors.join('; ');
       throw new Error(`Reschedule validation failed: ${errorMessage}`);
     }
-    
+
     // Log warnings if any
     if (validation.warnings.length > 0) {
       console.warn('Reschedule warnings:', validation.warnings.join('; '));
@@ -1412,7 +1437,7 @@ export async function getAppointmentStats(
 
     if (dateRange) {
       query = query.gte('scheduled_at', `${dateRange.start}T00:00:00Z`)
-                   .lte('scheduled_at', `${dateRange.end}T23:59:59Z`);
+        .lte('scheduled_at', `${dateRange.end}T23:59:59Z`);
     }
 
     const { data: appointments, error } = await query;
@@ -1424,20 +1449,20 @@ export async function getAppointmentStats(
 
     const today = new Date().toISOString().split('T')[0];
     const total = appointments?.length || 0;
-    
+
     // For now, assume all appointments are scheduled since we don't have status mapping
-    const scheduled = appointments?.filter(apt => 
+    const scheduled = appointments?.filter(apt =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] >= today
     ).length || 0;
-    
+
     const completed = 0; // No status mapping yet
     const cancelled = 0; // No status mapping yet
-    
-    const todayCount = appointments?.filter(apt => 
+
+    const todayCount = appointments?.filter(apt =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] === today
     ).length || 0;
-    
-    const upcomingCount = appointments?.filter(apt => 
+
+    const upcomingCount = appointments?.filter(apt =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] > today
     ).length || 0;
 
@@ -1465,7 +1490,7 @@ export async function getUpcomingAppointments(
 ): Promise<Appointment[]> {
   try {
     const today = new Date().toISOString();
-    
+
     let query = supabase
       .from('appointment')
       .select(`
@@ -1524,7 +1549,7 @@ export async function getUpcomingAppointments(
       created_by: undefined,
       created_at: apt.created_at,
       updated_at: apt.updated_at,
-      
+
       // Related data
       patient: apt.encounter?.patient,
       doctor: apt.encounter?.clinician

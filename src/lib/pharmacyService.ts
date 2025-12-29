@@ -356,12 +356,13 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
       .select(`
         id,
         created_at,
-        doctor_id,
+        doctor:doctor_id(user:user_id(name)),
         prescription_items(
           medication_id,
           dosage,
           frequency,
-          duration
+          duration,
+          medication:medication_id(name, generic_name)
         )
       `)
       .eq('patient_id', patientId)
@@ -370,28 +371,14 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
     if (prescError) {
       console.error('Error fetching prescriptions:', prescError);
     } else if (prescriptions) {
-      // Get doctor names
-      const doctorIds = [...new Set(prescriptions.map(p => p.doctor_id))];
-      const { data: doctors } = await supabase
-        .from('users')
-        .select('id, name')
-        .in('id', doctorIds);
+      prescriptions.forEach((prescription: any) => {
+        const doctorName = prescription.doctor?.user?.name || 'Unknown Doctor';
 
-      // Get medicine names
-      const medicineIds = prescriptions.flatMap(p => 
-        p.prescription_items?.map(item => item.medication_id) || []
-      );
-      const { data: medicines } = await supabase
-        .from('medications')
-        .select('id, name, generic_name')
-        .in('id', medicineIds);
+        const items = prescription.prescription_items || [];
+        items.forEach((item: any) => {
+          if (!item) return;
+          const medicine = item.medication;
 
-      prescriptions.forEach(prescription => {
-        const doctor = doctors?.find(d => d.id === prescription.doctor_id);
-        
-        prescription.prescription_items?.forEach(item => {
-          const medicine = medicines?.find(m => m.id === item.medication_id);
-          
           history.push({
             id: `presc_${prescription.id}_${item.medication_id}`,
             patient_id: patientId,
@@ -401,7 +388,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
             frequency: item.frequency || '',
             duration: item.duration || '',
             prescribed_date: prescription.created_at,
-            prescribed_by: doctor?.name || 'Unknown Doctor',
+            prescribed_by: doctorName,
             status: 'prescribed'
           });
         });
@@ -413,32 +400,32 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
       .from('prescription_dispensed')
       .select(`
         id,
-        dispensed_at,
+        dispensed_date,
         total_amount,
         payment_status,
-        dispensed_by,
+        pharmacist_id,
         prescription_dispensed_items(
           medication_id,
-          quantity_dispensed,
+          dispensed_quantity,
           unit_price,
           total_price
         )
       `)
       .eq('patient_id', patientId)
-      .order('dispensed_at', { ascending: false });
+      .order('dispensed_date', { ascending: false });
 
     if (dispError) {
       console.error('Error fetching dispensed medications:', dispError);
     } else if (dispensed) {
       // Get pharmacist names
-      const pharmacistIds = [...new Set(dispensed.map(d => d.dispensed_by))];
+      const pharmacistIds = [...new Set(dispensed.map(d => d.pharmacist_id))];
       const { data: pharmacists } = await supabase
         .from('users')
         .select('id, name')
         .in('id', pharmacistIds);
 
       // Get medication names
-      const medicationIds = dispensed.flatMap(d => 
+      const medicationIds = dispensed.flatMap(d =>
         d.prescription_dispensed_items?.map(item => item.medication_id) || []
       );
       const { data: medications } = await supabase
@@ -447,21 +434,23 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
         .in('id', medicationIds);
 
       dispensed.forEach(dispense => {
-        const pharmacist = pharmacists?.find(p => p.id === dispense.dispensed_by);
-        
-        dispense.prescription_dispensed_items?.forEach(item => {
+        const pharmacist = pharmacists?.find(p => p.id === dispense.pharmacist_id);
+
+        const dispensedItems = dispense.prescription_dispensed_items || [];
+        dispensedItems.forEach(item => {
+          if (!item) return; // Skip if item is null/undefined
           const medication = medications?.find(m => m.id === item.medication_id);
-          
+
           history.push({
             id: `disp_${dispense.id}_${item.medication_id}`,
             patient_id: patientId,
             medication_name: medication?.name || 'Unknown',
             generic_name: medication?.generic_name || '',
-            dosage: `${medication?.strength} ${medication?.dosage_form}` || '',
-            frequency: `Qty: ${item.quantity_dispensed}`,
+            dosage: medication ? `${medication.strength || ''} ${medication.dosage_form || ''}`.trim() : '',
+            frequency: `Qty: ${item.dispensed_quantity}`,
             duration: '',
             prescribed_date: '',
-            dispensed_date: dispense.dispensed_at,
+            dispensed_date: dispense.dispensed_date,
             prescribed_by: '',
             dispensed_by: pharmacist?.name || 'Unknown Pharmacist',
             status: 'dispensed',
@@ -513,7 +502,7 @@ export async function getPharmacyDashboardStats(): Promise<{
 
     // Get today's sales - include payments collected today regardless of bill date
     const today = new Date().toISOString().split('T')[0];
-    
+
     // Get sales from stock transactions (immediate sales)
     const { data: todaySalesData } = await supabase
       .from('stock_transactions')
@@ -523,7 +512,7 @@ export async function getPharmacyDashboardStats(): Promise<{
       .lt('created_at', `${today}T23:59:59`);
 
     const stockSales = todaySalesData?.reduce((sum, transaction) => sum + (transaction.total_amount || 0), 0) || 0;
-    
+
     // Get payments collected today (regardless of original bill date)
     const { data: todayPaymentsData } = await supabase
       .from('billing')
@@ -533,7 +522,7 @@ export async function getPharmacyDashboardStats(): Promise<{
       .lt('updated_at', `${today}T23:59:59`);
 
     const paymentsCollected = todayPaymentsData?.reduce((sum, bill) => sum + (bill.total_amount || 0), 0) || 0;
-    
+
     const todaySales = stockSales + paymentsCollected;
 
     // Get pending bills count (align with 'billing')
@@ -692,12 +681,12 @@ export async function getPendingPrescriptions(): Promise<PendingPrescription[]> 
         doctor_id,
         issue_date,
         status,
-        patients!inner(name),
-        users!inner(name),
+        patients!patient_id(name),
+        doctor:doctor_id(user:user_id(name)),
         prescription_items(
           id,
           medication_id,
-          medication_name,
+          medication:medication_id(name),
           quantity,
           unit_price,
           total_price
@@ -716,12 +705,15 @@ export async function getPendingPrescriptions(): Promise<PendingPrescription[]> 
       prescription_id: prescription.prescription_id,
       patient_id: prescription.patient_id,
       patient_name: (prescription.patients as any)?.name || 'Unknown Patient',
-      doctor_name: (prescription.users as any)?.name || 'Unknown Doctor',
+      doctor_name: (prescription.doctor as any)?.user?.name || 'Unknown Doctor',
       issue_date: prescription.issue_date,
       status: prescription.status,
       total_items: prescription.prescription_items?.length || 0,
-      total_amount: prescription.prescription_items?.reduce((sum, item) => sum + item.total_price, 0) || 0,
-      prescription_items: prescription.prescription_items || []
+      total_amount: (prescription.prescription_items as any[])?.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0) || 0,
+      prescription_items: (prescription.prescription_items as any[])?.map(item => ({
+        ...item,
+        medication_name: item.medication?.name || 'Unknown Medicine'
+      })) || []
     }));
 
     return formattedPrescriptions;
@@ -1174,10 +1166,10 @@ export async function addStockWithAutoSplit(
 
     // Calculate how many batches we need
     const numBatches = Math.ceil(totalQuantity / maxBatchSize);
-    
+
     for (let i = 0; i < numBatches; i++) {
       const batchQuantity = Math.min(maxBatchSize, remainingQuantity - (i * maxBatchSize));
-      const batchNumber = baseBatchNumber 
+      const batchNumber = baseBatchNumber
         ? `${baseBatchNumber}-${String(batchCounter).padStart(2, '0')}`
         : `AUTO-${Date.now()}-${String(batchCounter).padStart(2, '0')}`;
 
@@ -1235,19 +1227,19 @@ export async function calculateOptimalBatchSize(
       // Calculate based on monthly usage
       const threeMonthsSupply = monthlyUsage * 3;
       const minRecommended = Math.max(threeMonthsSupply, medication.minimum_stock_level * 2);
-      
+
       // Consider shelf life - don't recommend more than 75% of shelf life to avoid expiry
       const maxBasedOnShelfLife = monthlyUsage * (shelfLifeMonths * 0.75);
-      
+
       recommendedBatchSize = Math.min(minRecommended, maxBasedOnShelfLife, 2000);
       recommendedBatchSize = Math.max(recommendedBatchSize, 100); // Minimum 100 units
-      
+
       reasoning = `Based on monthly usage of ${monthlyUsage} units and ${shelfLifeMonths} months shelf life. Recommended ${recommendedBatchSize} units to cover 3 months supply while minimizing expiry risk.`;
     } else {
       // Use minimum stock level as baseline
       recommendedBatchSize = Math.max(medication.minimum_stock_level * 3, 500);
       recommendedBatchSize = Math.min(recommendedBatchSize, 1500);
-      
+
       reasoning = `Based on minimum stock level of ${medication.minimum_stock_level} units. Recommended ${recommendedBatchSize} units to maintain adequate buffer.`;
     }
 
@@ -1270,9 +1262,9 @@ export async function calculateOptimalBatchSize(
 
 export async function createPharmacyBill(
   patientId: string,
-  items: { 
-    medication_id: string; 
-    quantity: number; 
+  items: {
+    medication_id: string;
+    quantity: number;
     unit_price: number;
     batch_id?: string;
     batch_number?: string;
@@ -1359,14 +1351,14 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
   try {
     // 1) Fetch bill items for the given batch number (support legacy/new table names)
     let items: any[] = [];
-    
+
     try {
       const res = await supabase
         .from('billing_item')
         .select('id, bill_id, medicine_id, quantity, unit_price, total_amount, batch_number, created_at')
         .eq('batch_number', batchNumber)
         .order('id', { ascending: false });
-      
+
       if (res.error) {
         console.warn('Failed to fetch from billing_item:', res.error?.message || 'Unknown error');
       } else if (res.data && res.data.length > 0) {
@@ -1384,7 +1376,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
           .select('id, bill_id, medication_id, quantity, unit_price, total_amount, batch_number, created_at')
           .eq('batch_number', batchNumber)
           .order('id', { ascending: false });
-        
+
         if (res2.error) {
           console.warn('Failed to fetch from pharmacy_bill_items:', res2.error?.message || 'Unknown error');
         } else if (res2.data && res2.data.length > 0) {
@@ -1397,7 +1389,7 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
         console.warn('Exception querying pharmacy_bill_items:', fallbackError);
       }
     }
-    
+
     // If no items found in either table, return empty
     if (items.length === 0) {
       return [];
@@ -1891,7 +1883,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     // Get all stock transactions for trends
     const today = new Date();
     const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1).toISOString();
-    
+
     const { data: transactions, error: txError } = await supabase
       .from('stock_transactions')
       .select('medication_id, transaction_type, quantity, unit_price, total_amount, created_at')
@@ -1908,25 +1900,25 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     if (batchError) throw batchError;
 
     // Calculate total stock values
-    const totalCostValue = (medications || []).reduce((sum, med) => 
+    const totalCostValue = (medications || []).reduce((sum, med) =>
       sum + ((med.available_stock || 0) * (med.purchase_price || 0)), 0);
-    const totalRetailValue = (medications || []).reduce((sum, med) => 
+    const totalRetailValue = (medications || []).reduce((sum, med) =>
       sum + ((med.available_stock || 0) * (med.selling_price || 0)), 0);
     const profitMargin = totalCostValue > 0 ? ((totalRetailValue - totalCostValue) / totalCostValue) * 100 : 0;
 
     // Stock summary
     const totalUnits = (medications || []).reduce((sum, med) => sum + (med.available_stock || 0), 0);
-    const lowStockItems = (medications || []).filter(med => 
+    const lowStockItems = (medications || []).filter(med =>
       med.available_stock <= 10 && med.available_stock > 0).length;
-    
+
     const now = new Date();
-    const expiredItems = (batches || []).filter(batch => 
+    const expiredItems = (batches || []).filter(batch =>
       new Date(batch.expiry_date) < now && batch.current_quantity > 0).length;
-    
+
     const ninetyDaysFromNow = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000));
-    const expiringSoonItems = (batches || []).filter(batch => 
-      new Date(batch.expiry_date) >= now && 
-      new Date(batch.expiry_date) <= ninetyDaysFromNow && 
+    const expiringSoonItems = (batches || []).filter(batch =>
+      new Date(batch.expiry_date) >= now &&
+      new Date(batch.expiry_date) <= ninetyDaysFromNow &&
       batch.current_quantity > 0).length;
 
     // Category breakdown
@@ -1955,7 +1947,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     const monthlyMap = new Map();
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
-    
+
     // Initialize last 6 months
     for (let i = 5; i >= 0; i--) {
       const month = new Date(currentYear, currentMonth - i, 1);
@@ -2028,7 +2020,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
       return {
         period: period.period,
         count: filtered.length,
-        totalValue: filtered.reduce((sum, batch) => 
+        totalValue: filtered.reduce((sum, batch) =>
           sum + (batch.current_quantity * (batch.selling_price || 0)), 0)
       };
     });
@@ -2175,7 +2167,7 @@ export async function getComprehensiveMedicineData(medicationId: string): Promis
               .from('suppliers')
               .select('id, name')
               .in('id', supplierIds);
-            
+
             if (!supplierError && suppliers) {
               // Merge supplier data
               batchesData = batchesData.map(batch => {
@@ -2247,7 +2239,7 @@ export async function getComprehensiveMedicineData(medicationId: string): Promis
       const purchasePrice = batch.purchase_price || 0;
       const sellingPrice = batch.selling_price || 0;
       const soldQuantity = Math.max(0, originalQuantity - currentStock);
-      
+
       const expiryDate = new Date(batch.expiry_date);
       const today = new Date();
       const daysToExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -2276,20 +2268,20 @@ export async function getComprehensiveMedicineData(medicationId: string): Promis
     const totalBatches = processedBatches.length;
     const totalCostValue = processedBatches.reduce((sum, batch) => sum + batch.cost_value, 0);
     const totalRetailValue = processedBatches.reduce((sum, batch) => sum + batch.retail_value, 0);
-    
+
     const expiredStock = processedBatches
       .filter(batch => batch.days_to_expiry < 0)
       .reduce((sum, batch) => sum + batch.current_stock, 0);
-    
+
     const expiringSoonStock = processedBatches
       .filter(batch => batch.days_to_expiry >= 0 && batch.days_to_expiry <= 90)
       .reduce((sum, batch) => sum + batch.current_stock, 0);
-    
-    const lowStockBatches = processedBatches.filter(batch => 
+
+    const lowStockBatches = processedBatches.filter(batch =>
       batch.current_stock > 0 && batch.current_stock <= 10
     ).length;
-    
-    const outOfStockBatches = processedBatches.filter(batch => 
+
+    const outOfStockBatches = processedBatches.filter(batch =>
       batch.current_stock <= 0
     ).length;
 

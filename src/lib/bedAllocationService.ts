@@ -26,11 +26,21 @@ export interface BedAllocation {
   patient: {
     name: string;
     uhid: string;
+    age?: number;
+    gender?: string;
+    diagnosis?: string;
+    is_critical?: boolean;
+    phone?: string;
   };
   bed: Bed;
   doctor: {
     license_number: string;
     name: string;
+  };
+  staff?: {
+    first_name: string;
+    last_name: string;
+    employee_id: string;
   };
 }
 
@@ -66,21 +76,21 @@ export async function generateAllocationId(): Promise<string> {
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
   const day = now.getDate().toString().padStart(2, '0');
   const datePrefix = `${year}${month}${day}`;
-  
+
   try {
     // Get count of existing allocations for today
     const { count, error } = await supabase
       .from('bed_allocations')
       .select('id', { count: 'exact', head: true })
       .like('allocation_id', `BA${datePrefix}%`);
-    
+
     if (error) {
       console.warn('Error getting allocation count (might be missing allocation_id column):', error);
       // Fallback: Use timestamp if we can't get count
       const timestamp = now.getTime().toString().slice(-4);
       return `BA${datePrefix}${timestamp}`;
     }
-    
+
     const sequence = ((count || 0) + 1).toString().padStart(4, '0');
     return `BA${datePrefix}${sequence}`;
   } catch (error) {
@@ -134,7 +144,7 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
       .from('bed_allocations')
       .select('*')
       .limit(1);
-    
+
     const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
 
     // Create allocation record with available columns
@@ -154,7 +164,7 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
     // Add optional columns if they exist
     if (availableColumns.includes('allocation_id')) allocationRecord.allocation_id = allocationId;
     if (availableColumns.includes('admission_time')) allocationRecord.admission_time = admissionTime;
-    
+
     if (availableColumns.includes('reason_for_admission')) {
       allocationRecord.reason_for_admission = allocationData.reason;
     } else if (availableColumns.includes('reason')) {
@@ -379,16 +389,16 @@ export async function getBedAllocations(options: {
   limit: number;
 }> {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      patientId, 
-      doctorId, 
-      bedId, 
-      status, 
+    const {
+      page = 1,
+      limit = 20,
+      patientId,
+      doctorId,
+      bedId,
+      status,
       admissionType,
       dateRange,
-      searchTerm 
+      searchTerm
     } = options;
     const offset = (page - 1) * limit;
 
@@ -398,9 +408,10 @@ export async function getBedAllocations(options: {
         *,
         allocated_at:admission_date,
         discharged_at:discharge_date,
-        patient:patients(name, uhid:patient_id),
+        patient:patients(name, uhid:patient_id, age, gender, diagnosis, is_critical, phone),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
-        doctor:doctors(license_number, name:users!user_id(name))
+        doctor:doctors(license_number, name:users!user_id(name)),
+        staff:staff_id(first_name, last_name, employee_id)
       `, { count: 'exact' });
 
     // Apply filters
@@ -409,10 +420,10 @@ export async function getBedAllocations(options: {
     if (bedId) query = query.eq('bed_id', bedId);
     if (status) query = query.eq('status', status);
     // Note: admission_type column doesn't exist in the schema, so we can't filter by it
-    
+
     if (dateRange) {
       query = query.gte('admission_date', dateRange.start)
-                   .lte('admission_date', dateRange.end);
+        .lte('admission_date', dateRange.end);
     }
 
     if (searchTerm) {
@@ -432,7 +443,7 @@ export async function getBedAllocations(options: {
       console.warn('Ordering by admission_date failed, trying without ordering:', orderError);
       result = await query.range(offset, offset + limit - 1);
     }
-    
+
     const { data: allocations, error, count } = result;
 
     if (error) {
@@ -476,14 +487,14 @@ export async function getAllBeds(options: {
   limit: number;
 }> {
   try {
-    const { 
-      page = 1, 
-      limit = 50, 
-      bedType, 
-      status, 
-      wardName, 
+    const {
+      page = 1,
+      limit = 50,
+      bedType,
+      status,
+      wardName,
       floorNumber,
-      searchTerm 
+      searchTerm
     } = options;
     const offset = (page - 1) * limit;
 
@@ -630,6 +641,7 @@ export async function getPatientBedHistory(patientId: string): Promise<BedAlloca
           *,
           allocated_at:admission_date,
           discharged_at:discharge_date,
+          patient:patients(name, uhid:patient_id, age, gender, diagnosis, is_critical, phone),
           bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
           doctor:doctors(license_number, name:users!user_id(name))
         `)
@@ -649,7 +661,7 @@ export async function getPatientBedHistory(patientId: string): Promise<BedAlloca
         `)
         .eq('patient_id', patientId);
     }
-    
+
     const { data: allocations, error } = result;
 
     if (error) {
@@ -703,7 +715,7 @@ export async function getBedAllocationById(allocationId: string): Promise<BedAll
         *,
         allocated_at:admission_date,
         discharged_at:discharge_date,
-        patient:patients(name, uhid:patient_id),
+        patient:patients(name, uhid:patient_id, age, gender, diagnosis, is_critical, phone),
         bed:beds(id, bed_number, room_number, bed_type, floor_number, daily_rate),
         doctor:doctors(license_number, name:users!user_id(name))
       `)

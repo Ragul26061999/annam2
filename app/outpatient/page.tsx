@@ -67,6 +67,11 @@ interface Patient {
   total_amount?: string;
   payment_mode?: string;
   consulting_doctor_name?: string;
+  staff?: {
+    first_name: string;
+    last_name: string;
+    employee_id: string;
+  };
 }
 
 function OutpatientPageContent() {
@@ -110,6 +115,13 @@ function OutpatientPageContent() {
   }, [searchParams]);
   useEffect(() => {
     loadOutpatientData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadOutpatientData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [selectedDate, statusFilter]);
 
 
@@ -283,13 +295,6 @@ function OutpatientPageContent() {
               Register Outpatient
             </button>
           </Link>
-          <button
-            onClick={loadOutpatientData}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -576,6 +581,13 @@ function OutpatientPageContent() {
                       </div>
                     )}
                   </div>
+
+                  {patient.staff && (
+                    <div className="mt-2 text-[10px] text-gray-500 flex items-center gap-1.5 px-2 py-0.5 bg-gray-50 rounded border border-gray-100 italic">
+                      <User size={10} className="text-blue-500" />
+                      <span>Registered By: {patient.staff.first_name} {patient.staff.last_name}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-gray-100">
@@ -595,11 +607,12 @@ function OutpatientPageContent() {
             <User className="h-12 w-12 text-gray-400 mx-auto mb-3" />
             <p className="text-gray-500">No recent outpatients found</p>
           </div>
-        )}
-      </div>
+        )
+        }
+      </div >
 
       {/* Appointments Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      < div className="bg-white rounded-xl shadow-sm border border-gray-100" >
         <div className="p-5 border-b border-gray-100">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -718,7 +731,7 @@ function OutpatientPageContent() {
             })
           )}
         </div>
-      </div>
+      </div >
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -739,7 +752,7 @@ function OutpatientPageContent() {
       )}
 
 
-    </div>
+    </div >
   );
 }
 

@@ -74,7 +74,7 @@ export default function InventoryPage() {
   const [historyEntries, setHistoryEntries] = useState<BatchPurchaseHistoryEntry[]>([])
   const [salesHistoryEntries, setSalesHistoryEntries] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyTab, setHistoryTab] = useState<'purchases'|'sales'>('purchases')
+  const [historyTab, setHistoryTab] = useState<'purchases' | 'sales'>('purchases')
   const [historyFilter, setHistoryFilter] = useState<'all' | 'this_month' | 'last_3_months'>('all')
   const [showMedicineDetail, setShowMedicineDetail] = useState(false)
   const [selectedMedicineDetail, setSelectedMedicineDetail] = useState<Medicine | null>(null)
@@ -103,7 +103,7 @@ export default function InventoryPage() {
   })
   const [editBatchError, setEditBatchError] = useState('')
   const [editBatchSuccess, setEditBatchSuccess] = useState('')
-  const [supplierOptions, setSupplierOptions] = useState<{id: string; name: string}[]>([])
+  const [supplierOptions, setSupplierOptions] = useState<{ id: string; name: string }[]>([])
   const [loadingEditBatch, setLoadingEditBatch] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
@@ -116,7 +116,7 @@ export default function InventoryPage() {
   const [purchaseHistory, setPurchaseHistory] = useState<StockTransaction[]>([])
   const [loadingPurchases, setLoadingPurchases] = useState(false)
   const [showExpiredStockModal, setShowExpiredStockModal] = useState(false)
-  const [expiredBatch, setExpiredBatch] = useState<{medicineId: string; batchNumber: string; medicineName: string} | null>(null)
+  const [expiredBatch, setExpiredBatch] = useState<{ medicineId: string; batchNumber: string; medicineName: string } | null>(null)
   const [expiredAdjustmentType, setExpiredAdjustmentType] = useState<'delete' | 'adjust'>('delete')
   const [expiredAdjustmentQuantity, setExpiredAdjustmentQuantity] = useState(0)
   const [expiredNotes, setExpiredNotes] = useState('')
@@ -148,6 +148,13 @@ export default function InventoryPage() {
 
   useEffect(() => {
     loadMedicines()
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadMedicines()
+    }, 30000)
+
+    return () => clearInterval(interval)
   }, [])
 
   // Consume deferred action from dashboard (view/edit medicine)
@@ -171,234 +178,234 @@ export default function InventoryPage() {
           setShowAddMedicine(true)
         }
 
-  // Helpers for date formatting/defaults used in edit modal
-  const fmtDate = (d: Date) => {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }
-  const defaultExpiry = () => {
-    const d = new Date()
-    d.setMonth(d.getMonth() + 12)
-    return fmtDate(d)
-  }
-  const sanitizeDate = (val?: string) => (val && val.trim() ? val : null)
+        // Helpers for date formatting/defaults used in edit modal
+        const fmtDate = (d: Date) => {
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          return `${y}-${m}-${day}`
+        }
+        const defaultExpiry = () => {
+          const d = new Date()
+          d.setMonth(d.getMonth() + 12)
+          return fmtDate(d)
+        }
+        const sanitizeDate = (val?: string) => (val && val.trim() ? val : null)
 
-  // Load batch details and suppliers when opening edit modal
-  useEffect(() => {
-    const loadEditBatchData = async () => {
-      if (!showEditBatch || !editingBatch) return
-      try {
-        setLoadingEditBatch(true)
-        setEditBatchError('')
-        setEditBatchSuccess('')
-        const [{ data: b, error: bErr }, { data: suppliers }] = await Promise.all([
-          supabase
-            .from('medicine_batches')
-            .select('batch_number, purchase_price, selling_price, supplier_id, manufacturing_date, expiry_date, received_date, current_quantity, received_quantity, status, notes, batch_barcode')
-            .eq('id', editingBatch.id)
-            .single(),
-          supabase
-            .from('suppliers')
-            .select('id, name')
-            .eq('status', 'active')
-            .order('name')
-        ])
-        const suppliersArr = (suppliers || []).map((s: any) => ({ id: s.id, name: s.name }))
-        setSupplierOptions(suppliersArr)
-        if (!bErr && b) {
-          console.log('DB fetched batch row:', JSON.stringify(b, null, 2))
-          const supplierName = suppliersArr.find((s: any) => s.id === b.supplier_id)?.name || ''
-          setEditBatchForm({
-            batch_number: b.batch_number || '',
-            purchase_price: Number(b.purchase_price ?? 0),
-            selling_price: Number(b.selling_price ?? 0),
-            supplier_id: b.supplier_id || '',
-            supplier_name: supplierName,
-            manufacturing_date: b.manufacturing_date || '',
-            expiry_date: b.expiry_date || '',
-            received_date: b.received_date || '',
-            current_quantity: Number(b.current_quantity ?? 0),
-            received_quantity: Number(b.received_quantity ?? 0),
-            status: b.status || 'active',
-            notes: b.notes || '',
-            batch_barcode: b.batch_barcode || ''
-          })
-          console.log('Set form after DB fetch:', JSON.stringify({
-            current_quantity: Number(b.current_quantity ?? 0),
-            received_quantity: Number(b.received_quantity ?? 0),
-            status: b.status || 'active'
-          }, null, 2))
-
-          // Fallback: use robust stock sources if quantities look missing/zero
-          const needQtyFallback = !(Number(b.current_quantity) > 0 || Number(b.received_quantity) > 0)
-          if (needQtyFallback && (b.batch_number || editingBatch.batch_number)) {
+        // Load batch details and suppliers when opening edit modal
+        useEffect(() => {
+          const loadEditBatchData = async () => {
+            if (!showEditBatch || !editingBatch) return
             try {
-              const bn = b.batch_number || editingBatch.batch_number
-              // 1) Service fallback (preferred)
-              try {
-                const robustAny: any = await getBatchStockRobust(bn)
-                console.log('getBatchStockRobust:', robustAny)
-                if (robustAny) {
-                  const cq1 = Number(
-                    robustAny.remaining_units ?? robustAny.remainingUnits ?? robustAny.current_quantity ?? robustAny.current_stock ?? 0
-                  )
-                  const rq1 = Number(
-                    robustAny.purchased_units ?? robustAny.purchasedUnits ?? robustAny.received_quantity ?? robustAny.total_received ?? 0
-                  )
-                  if (Number.isFinite(cq1) || Number.isFinite(rq1)) {
-                    setEditBatchForm(f => ({
-                      ...f,
-                      current_quantity: Number.isFinite(cq1) ? cq1 : f.current_quantity,
-                      received_quantity: Number.isFinite(rq1) ? rq1 : f.received_quantity
-                    }))
-                  }
-                }
-              } catch (e) {
-                console.warn('getBatchStockRobust fallback failed', e)
-              }
-              // 2) View fallback
-              try {
-                const { data: sv } = await supabase
-                  .from('batch_stock_v')
-                  .select('*')
-                  .eq('batch_number', bn)
-                  .maybeSingle()
-                console.log('batch_stock_v row:', sv)
-                if (sv) {
-                  const cq = Number(
-                    sv.current_quantity ?? sv.remainingUnits ?? sv.remaining_units ?? sv.current_stock ?? sv.stock_remaining ?? 0
-                  )
-                  const rq = Number(
-                    sv.received_quantity ?? sv.purchasedUnits ?? sv.purchased_units ?? sv.total_received ?? 0
-                  )
-                  setEditBatchForm(f => ({
-                    ...f,
-                    current_quantity: Number.isFinite(cq) ? cq : f.current_quantity,
-                    received_quantity: Number.isFinite(rq) ? rq : f.received_quantity
-                  }))
-                }
-              } catch (e) {
-                console.warn('batch_stock_v fallback failed', e)
-              }
+              setLoadingEditBatch(true)
+              setEditBatchError('')
+              setEditBatchSuccess('')
+              const [{ data: b, error: bErr }, { data: suppliers }] = await Promise.all([
+                supabase
+                  .from('medicine_batches')
+                  .select('batch_number, purchase_price, selling_price, supplier_id, manufacturing_date, expiry_date, received_date, current_quantity, received_quantity, status, notes, batch_barcode')
+                  .eq('id', editingBatch.id)
+                  .single(),
+                supabase
+                  .from('suppliers')
+                  .select('id, name')
+                  .eq('status', 'active')
+                  .order('name')
+              ])
+              const suppliersArr = (suppliers || []).map((s: any) => ({ id: s.id, name: s.name }))
+              setSupplierOptions(suppliersArr)
+              if (!bErr && b) {
+                console.log('DB fetched batch row:', JSON.stringify(b, null, 2))
+                const supplierName = suppliersArr.find((s: any) => s.id === b.supplier_id)?.name || ''
+                setEditBatchForm({
+                  batch_number: b.batch_number || '',
+                  purchase_price: Number(b.purchase_price ?? 0),
+                  selling_price: Number(b.selling_price ?? 0),
+                  supplier_id: b.supplier_id || '',
+                  supplier_name: supplierName,
+                  manufacturing_date: b.manufacturing_date || '',
+                  expiry_date: b.expiry_date || '',
+                  received_date: b.received_date || '',
+                  current_quantity: Number(b.current_quantity ?? 0),
+                  received_quantity: Number(b.received_quantity ?? 0),
+                  status: b.status || 'active',
+                  notes: b.notes || '',
+                  batch_barcode: b.batch_barcode || ''
+                })
+                console.log('Set form after DB fetch:', JSON.stringify({
+                  current_quantity: Number(b.current_quantity ?? 0),
+                  received_quantity: Number(b.received_quantity ?? 0),
+                  status: b.status || 'active'
+                }, null, 2))
 
-              // 3) Transactions fallback (purchase - sale)
-              try {
-                const { data: txs } = await supabase
-                  .from('stock_transactions')
-                  .select('transaction_type, quantity, transaction_date')
-                  .eq('batch_number', bn)
-                  .order('transaction_date', { ascending: true })
-                console.log('stock_transactions rows:', txs?.length || 0)
-                if (txs && txs.length) {
-                  const firstTx = txs[0] as any
-                  let received = 0
-                  let balance = 0
-                  // Use transaction_date as received_date if it's the first purchase
-                  const receivedDate = firstTx.transaction_type === 'purchase' ? firstTx.transaction_date?.split('T')[0] : ''
-                  for (const t of txs as any[]) {
-                    const q = Number(t.quantity) || 0
-                    if ((t.transaction_type || '').toLowerCase() === 'purchase') {
-                      received += q
-                      balance += q
-                    } else if ((t.transaction_type || '').toLowerCase() === 'sale') {
-                      balance -= q
+                // Fallback: use robust stock sources if quantities look missing/zero
+                const needQtyFallback = !(Number(b.current_quantity) > 0 || Number(b.received_quantity) > 0)
+                if (needQtyFallback && (b.batch_number || editingBatch.batch_number)) {
+                  try {
+                    const bn = b.batch_number || editingBatch.batch_number
+                    // 1) Service fallback (preferred)
+                    try {
+                      const robustAny: any = await getBatchStockRobust(bn)
+                      console.log('getBatchStockRobust:', robustAny)
+                      if (robustAny) {
+                        const cq1 = Number(
+                          robustAny.remaining_units ?? robustAny.remainingUnits ?? robustAny.current_quantity ?? robustAny.current_stock ?? 0
+                        )
+                        const rq1 = Number(
+                          robustAny.purchased_units ?? robustAny.purchasedUnits ?? robustAny.received_quantity ?? robustAny.total_received ?? 0
+                        )
+                        if (Number.isFinite(cq1) || Number.isFinite(rq1)) {
+                          setEditBatchForm(f => ({
+                            ...f,
+                            current_quantity: Number.isFinite(cq1) ? cq1 : f.current_quantity,
+                            received_quantity: Number.isFinite(rq1) ? rq1 : f.received_quantity
+                          }))
+                        }
+                      }
+                    } catch (e) {
+                      console.warn('getBatchStockRobust fallback failed', e)
                     }
-                  }
-                  if (Number.isFinite(received) || Number.isFinite(balance)) {
-                    setEditBatchForm(f => ({
-                      ...f,
-                      current_quantity: Number.isFinite(balance) ? Math.max(balance, 0) : f.current_quantity,
-                      received_quantity: Number.isFinite(received) ? received : f.received_quantity,
-                      received_date: receivedDate || f.received_date
-                    }))
+                    // 2) View fallback
+                    try {
+                      const { data: sv } = await supabase
+                        .from('batch_stock_v')
+                        .select('*')
+                        .eq('batch_number', bn)
+                        .maybeSingle()
+                      console.log('batch_stock_v row:', sv)
+                      if (sv) {
+                        const cq = Number(
+                          sv.current_quantity ?? sv.remainingUnits ?? sv.remaining_units ?? sv.current_stock ?? sv.stock_remaining ?? 0
+                        )
+                        const rq = Number(
+                          sv.received_quantity ?? sv.purchasedUnits ?? sv.purchased_units ?? sv.total_received ?? 0
+                        )
+                        setEditBatchForm(f => ({
+                          ...f,
+                          current_quantity: Number.isFinite(cq) ? cq : f.current_quantity,
+                          received_quantity: Number.isFinite(rq) ? rq : f.received_quantity
+                        }))
+                      }
+                    } catch (e) {
+                      console.warn('batch_stock_v fallback failed', e)
+                    }
+
+                    // 3) Transactions fallback (purchase - sale)
+                    try {
+                      const { data: txs } = await supabase
+                        .from('stock_transactions')
+                        .select('transaction_type, quantity, transaction_date')
+                        .eq('batch_number', bn)
+                        .order('transaction_date', { ascending: true })
+                      console.log('stock_transactions rows:', txs?.length || 0)
+                      if (txs && txs.length) {
+                        const firstTx = txs[0] as any
+                        let received = 0
+                        let balance = 0
+                        // Use transaction_date as received_date if it's the first purchase
+                        const receivedDate = firstTx.transaction_type === 'purchase' ? firstTx.transaction_date?.split('T')[0] : ''
+                        for (const t of txs as any[]) {
+                          const q = Number(t.quantity) || 0
+                          if ((t.transaction_type || '').toLowerCase() === 'purchase') {
+                            received += q
+                            balance += q
+                          } else if ((t.transaction_type || '').toLowerCase() === 'sale') {
+                            balance -= q
+                          }
+                        }
+                        if (Number.isFinite(received) || Number.isFinite(balance)) {
+                          setEditBatchForm(f => ({
+                            ...f,
+                            current_quantity: Number.isFinite(balance) ? Math.max(balance, 0) : f.current_quantity,
+                            received_quantity: Number.isFinite(received) ? received : f.received_quantity,
+                            received_date: receivedDate || f.received_date
+                          }))
+                        }
+                      }
+                    } catch (e) {
+                      console.warn('transactions fallback failed', e)
+                    }
+                  } catch (e) {
+                    console.warn('Fallback batch_stock_v query failed', e)
                   }
                 }
-              } catch (e) {
-                console.warn('transactions fallback failed', e)
+              } else {
+                setEditBatchForm({
+                  batch_number: editingBatch.batch_number || '',
+                  purchase_price: 0,
+                  selling_price: 0,
+                  supplier_id: '',
+                  supplier_name: '',
+                  manufacturing_date: '',
+                  expiry_date: '',
+                  received_date: '',
+                  current_quantity: 0,
+                  received_quantity: 0,
+                  status: 'active',
+                  notes: '',
+                  batch_barcode: ''
+                })
               }
             } catch (e) {
-              console.warn('Fallback batch_stock_v query failed', e)
+              console.error('Failed to load batch/suppliers for edit', e)
+              setEditBatchError('Failed to load batch details')
+            } finally {
+              setLoadingEditBatch(false)
             }
           }
-        } else {
-          setEditBatchForm({
-            batch_number: editingBatch.batch_number || '',
-            purchase_price: 0,
-            selling_price: 0,
-            supplier_id: '',
-            supplier_name: '',
-            manufacturing_date: '',
-            expiry_date: '',
-            received_date: '',
-            current_quantity: 0,
-            received_quantity: 0,
-            status: 'active',
-            notes: '',
-            batch_barcode: ''
-          })
+          loadEditBatchData()
+        }, [showEditBatch, editingBatch])
+
+        const saveEditedBatch = React.useCallback(async () => {
+          if (!editingBatch) return
+          try {
+            setLoading(true)
+            const payload: any = {
+              purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
+              selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
+              supplier_id: editBatchForm.supplier_id || null,
+              manufacturing_date: sanitizeDate(editBatchForm.manufacturing_date),
+              expiry_date: sanitizeDate(editBatchForm.expiry_date) ?? defaultExpiry(),
+              received_date: sanitizeDate(editBatchForm.received_date),
+              notes: editBatchForm.notes?.trim() || null
+            }
+            const { error } = await supabase
+              .from('medicine_batches')
+              .update(payload)
+              .eq('id', editingBatch.id)
+            if (error) throw error
+            await loadMedicines()
+            if (selectedMedicineDetail) {
+              const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id)
+              if (updatedMed) setSelectedMedicineDetail(updatedMed)
+            }
+            setShowEditBatch(false)
+            setEditingBatch(null)
+            alert('Batch updated successfully!')
+          } catch (err: any) {
+            console.error('Failed to update batch', err)
+            alert('Failed to update batch: ' + (err?.message || 'Unknown error'))
+          } finally {
+            setLoading(false)
+          }
+        }, [editingBatch, editBatchForm, medicines, selectedMedicineDetail])
+
+        // Total units sold for this batch from MCP (stock_transactions sales)
+        const loadBatchSoldTotal = async (batchNumber: string) => {
+          try {
+            const { data, error } = await supabase
+              .from('stock_transactions')
+              .select('quantity')
+              .eq('batch_number', batchNumber)
+              .eq('transaction_type', 'sale')
+            if (error) throw error
+            // Some schemas store sales as positive quantities; take absolute and sum
+            const total = (data || []).reduce((sum: number, r: any) => sum + Math.abs(Number(r.quantity) || 0), 0)
+            setSoldTotalsMap(prev => ({ ...prev, [batchNumber]: Math.max(0, total) }))
+          } catch {
+            setSoldTotalsMap(prev => ({ ...prev, [batchNumber]: 0 }))
+          }
         }
-      } catch (e) {
-        console.error('Failed to load batch/suppliers for edit', e)
-        setEditBatchError('Failed to load batch details')
-      } finally {
-        setLoadingEditBatch(false)
-      }
-    }
-    loadEditBatchData()
-  }, [showEditBatch, editingBatch])
-
-  const saveEditedBatch = React.useCallback(async () => {
-    if (!editingBatch) return
-    try {
-      setLoading(true)
-      const payload: any = {
-        purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
-        selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
-        supplier_id: editBatchForm.supplier_id || null,
-        manufacturing_date: sanitizeDate(editBatchForm.manufacturing_date),
-        expiry_date: sanitizeDate(editBatchForm.expiry_date) ?? defaultExpiry(),
-        received_date: sanitizeDate(editBatchForm.received_date),
-        notes: editBatchForm.notes?.trim() || null
-      }
-      const { error } = await supabase
-        .from('medicine_batches')
-        .update(payload)
-        .eq('id', editingBatch.id)
-      if (error) throw error
-      await loadMedicines()
-      if (selectedMedicineDetail) {
-        const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id)
-        if (updatedMed) setSelectedMedicineDetail(updatedMed)
-      }
-      setShowEditBatch(false)
-      setEditingBatch(null)
-      alert('Batch updated successfully!')
-    } catch (err: any) {
-      console.error('Failed to update batch', err)
-      alert('Failed to update batch: ' + (err?.message || 'Unknown error'))
-    } finally {
-      setLoading(false)
-    }
-  }, [editingBatch, editBatchForm, medicines, selectedMedicineDetail])
-
-  // Total units sold for this batch from MCP (stock_transactions sales)
-  const loadBatchSoldTotal = async (batchNumber: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('stock_transactions')
-        .select('quantity')
-        .eq('batch_number', batchNumber)
-        .eq('transaction_type', 'sale')
-      if (error) throw error
-      // Some schemas store sales as positive quantities; take absolute and sum
-      const total = (data || []).reduce((sum: number, r: any) => sum + Math.abs(Number(r.quantity) || 0), 0)
-      setSoldTotalsMap(prev => ({ ...prev, [batchNumber]: Math.max(0, total) }))
-    } catch {
-      setSoldTotalsMap(prev => ({ ...prev, [batchNumber]: 0 }))
-    }
-  }
 
         return true
       }
@@ -409,7 +416,7 @@ export default function InventoryPage() {
         }, 200)
         setTimeout(() => clearInterval(id), 4000)
       }
-    } catch {}
+    } catch { }
   }, [medicines])
 
   useEffect(() => {
@@ -418,22 +425,22 @@ export default function InventoryPage() {
       medicines.flatMap(m => m.batches.map(b => b.batch_number))
     ))
     if (batchNumbers.length === 0) return
-    ;(async () => {
-      try {
-        const results: Record<string, { remainingUnits: number; soldUnitsThisMonth: number; purchasedUnitsThisMonth: number }> = {}
-        await Promise.all(batchNumbers.map(async (bn) => {
-          try {
-            const stats = await getBatchStockStats(bn)
-            results[bn] = stats
-          } catch (e) {
-            console.error('Failed to load batch stats for', bn, e)
-          }
-        }))
-        setBatchStatsMap(results)
-      } catch (e) {
-        console.error('Failed to load batch stats', e)
-      }
-    })()
+      ; (async () => {
+        try {
+          const results: Record<string, { remainingUnits: number; soldUnitsThisMonth: number; purchasedUnitsThisMonth: number }> = {}
+          await Promise.all(batchNumbers.map(async (bn) => {
+            try {
+              const stats = await getBatchStockStats(bn)
+              results[bn] = stats
+            } catch (e) {
+              console.error('Failed to load batch stats for', bn, e)
+            }
+          }))
+          setBatchStatsMap(results)
+        } catch (e) {
+          console.error('Failed to load batch stats', e)
+        }
+      })()
   }, [medicines])
 
   const loadMedicines = async () => {
@@ -469,7 +476,7 @@ export default function InventoryPage() {
         suppliersMap = Object.fromEntries((suppliers || []).map(s => [s.id, s.name]))
       }
 
-  
+
 
 
       const mapped: Medicine[] = (meds || []).map((m: any) => {
@@ -574,19 +581,19 @@ export default function InventoryPage() {
 
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.combination || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
-    
+      (medicine.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (medicine.combination || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
+
     const matchesDosage = !dosageFilter || medicine.unit === dosageFilter
-    
-    const matchesStatus = statusFilter === '' || 
-                         (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
-                         (statusFilter === 'expired' && medicine.batches.some(batch => new Date(batch.expiry_date) < new Date())) ||
-                         (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level) ||
-                         (statusFilter === 'out_of_stock' && medicine.total_stock <= 0)
-    
+
+    const matchesStatus = statusFilter === '' ||
+      (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
+      (statusFilter === 'expired' && medicine.batches.some(batch => new Date(batch.expiry_date) < new Date())) ||
+      (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level) ||
+      (statusFilter === 'out_of_stock' && medicine.total_stock <= 0)
+
     return matchesSearch && matchesDosage && matchesStatus
   })
 
@@ -618,7 +625,7 @@ export default function InventoryPage() {
         total_stock: 0,
         batches: []
       }
-      
+
       setMedicines([...medicines, medicine])
       setNewMedicine({
         name: '',
@@ -687,7 +694,7 @@ export default function InventoryPage() {
     const today = new Date()
     const threeMonthsFromNow = new Date()
     threeMonthsFromNow.setMonth(today.getMonth() + 3)
-    
+
     return expiry <= threeMonthsFromNow && expiry > today
   }
 
@@ -727,7 +734,7 @@ export default function InventoryPage() {
     try {
       // Use robust batch stock function that prevents negative values
       const robustStats = await getBatchStockRobust(batchNumber)
-      
+
       if (robustStats) {
         setBatchStatsMap(prev => ({
           ...prev,
@@ -882,10 +889,10 @@ export default function InventoryPage() {
       setLoadingMedicineDetail(true)
       setSelectedMedicineDetail(medicine)
       setShowMedicineDetail(true)
-      
+
       // Load comprehensive medicine data using MCP
       const comprehensiveData = await getComprehensiveMedicineData(medicine.id)
-      
+
       if (comprehensiveData) {
         setComprehensiveMedicineData(comprehensiveData)
         // Trigger robust per-batch stats load for monthly sold/purchased metrics
@@ -899,7 +906,7 @@ export default function InventoryPage() {
         } catch (e) {
           console.error('Failed to load robust batch stats for medicine detail:', e)
         }
-        
+
         // Convert to legacy format for backward compatibility
         const convertedSummary: MedicineStockSummary = {
           medication_id: comprehensiveData.medication_info.id,
@@ -913,11 +920,11 @@ export default function InventoryPage() {
           expired_batches: comprehensiveData.stock_summary.expired_stock,
           expiring_soon_batches: comprehensiveData.stock_summary.expiring_soon_stock,
           needs_reconciliation: false,
-          overall_alert_level: comprehensiveData.stock_summary.expired_stock > 0 ? 'CRITICAL' : 
-                              comprehensiveData.stock_summary.low_stock_batches > 0 ? 'WARNING' : 'NORMAL'
+          overall_alert_level: comprehensiveData.stock_summary.expired_stock > 0 ? 'CRITICAL' :
+            comprehensiveData.stock_summary.low_stock_batches > 0 ? 'WARNING' : 'NORMAL'
         }
         setMedicineStockSummary(convertedSummary)
-        
+
         // Set empty stock truth data since we have comprehensive data
         setBatchStockTruth([])
       } else {
@@ -927,7 +934,7 @@ export default function InventoryPage() {
           getStockTruth(medicine.id),
           loadPurchaseHistory(medicine.id)
         ])
-        
+
         if (robustSummary) {
           const convertedSummary = {
             medication_id: robustSummary.medication_id,
@@ -1074,19 +1081,19 @@ export default function InventoryPage() {
 
   const confirmDeleteBatch = async () => {
     if (!batchToDelete) return
-    
+
     try {
       setLoading(true)
       const { error } = await supabase
         .from('medicine_batches')
         .delete()
         .eq('id', batchToDelete)
-      
+
       if (error) throw error
-      
+
       // Refresh the medicines list
       await loadMedicines()
-      
+
       // Update the selected medicine detail
       if (selectedMedicineDetail) {
         const updatedMedicine = medicines.find(m => m.id === selectedMedicineDetail.id)
@@ -1094,9 +1101,9 @@ export default function InventoryPage() {
           setSelectedMedicineDetail(updatedMedicine)
         }
       }
-      
+
       alert('Batch deleted successfully!')
-      
+
       setShowDeleteConfirm(false)
       setBatchToDelete(null)
     } catch (error: any) {
@@ -1115,15 +1122,15 @@ export default function InventoryPage() {
         .select('batch_barcode')
         .eq('id', batch.id)
         .single()
-      
+
       const barcode = batchData?.batch_barcode || 'N/A'
       // Use definitive stock truth for accurate quantity on label
       const stockTruth = await getStockTruth(undefined, batch.batch_number)
       const quantity = stockTruth && stockTruth.length > 0 ? stockTruth[0].current_quantity : batch.quantity
-      
+
       const printWindow = window.open('', '_blank')
       if (!printWindow) return
-      
+
       const labelContent = `
         <!DOCTYPE html>
         <html>
@@ -1259,12 +1266,12 @@ export default function InventoryPage() {
             </div>
             
             <div class="footer">
-              Printed: ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB', {hour12: false})}
+              Printed: ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB', { hour12: false })}
             </div>
           </body>
         </html>
       `
-      
+
       printWindow.document.write(labelContent)
       printWindow.document.close()
       printWindow.focus()
@@ -1286,27 +1293,27 @@ export default function InventoryPage() {
         .select('batch_barcode')
         .eq('id', batch.id)
         .single()
-      
+
       const barcode = batchData?.batch_barcode || batch.batch_number
-      
+
       // Get definitive stock data from the stock truth system
       const stockTruth = await getStockTruth(undefined, batch.batch_number)
       const quantity = stockTruth && stockTruth.length > 0 ? stockTruth[0].current_quantity : batch.quantity
 
       // Prepare safe medicine name so label always shows something readable
       const safeMedicineName = (medicineName || '').trim() || 'Unknown Medicine'
-      const shortMedicineName = safeMedicineName.length > 20 
+      const shortMedicineName = safeMedicineName.length > 20
         ? safeMedicineName.substring(0, 20) + '...'
         : safeMedicineName
-      
+
       // Format dates outside template literal to avoid parsing issues
       const expiryDate = new Date(batch.expiry_date).toLocaleDateString('en-GB')
       const printDate = new Date().toLocaleDateString('en-GB')
-      const printTime = new Date().toLocaleTimeString('en-GB', {hour12: false, hour: '2-digit', minute: '2-digit'})
-      
+      const printTime = new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' })
+
       const printWindow = window.open('', '_blank')
       if (!printWindow) return
-      
+
       const labelContent = `
         <!DOCTYPE html>
         <html>
@@ -1451,7 +1458,7 @@ export default function InventoryPage() {
           </body>
         </html>
       `
-      
+
       printWindow.document.write(labelContent)
       printWindow.document.close()
       printWindow.focus()
@@ -1495,1622 +1502,1609 @@ export default function InventoryPage() {
 
       <div className="container mx-auto px-6 py-8 space-y-8">
 
-  {/* Edit Batch Modal - Modern Stunning UI */}
-  {showEditBatch && editingBatch && (
-    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col"
-      >
-        {/* Header with gradient */}
-        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">Edit Batch Details</h2>
-              <p className="text-blue-100 text-sm mt-1">
-                {selectedMedicineDetail?.name ? (
-                  <><span className="font-semibold">{selectedMedicineDetail.name}</span> — Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
-                ) : (
-                  <>Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
-                )}
-              </p>
-            </div>
-            <button 
-              className="p-2 hover:bg-white/20 rounded-full transition-colors" 
-              onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
+        {/* Edit Batch Modal - Modern Stunning UI */}
+        {showEditBatch && editingBatch && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col"
             >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        {/* Loading State */}
-        {loadingEditBatch ? (
-          <div className="p-12 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-            <p className="text-gray-500">Loading batch details...</p>
-          </div>
-        ) : (
-          <>
-            {/* Batch Info Header Card */}
-            <div className="mx-6 mt-6 p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                    <Package className="w-7 h-7 text-white" />
-                  </div>
+              {/* Header with gradient */}
+              <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Batch Number</div>
-                    <div className="text-xl font-bold text-slate-800 font-mono">{editBatchForm.batch_number || editingBatch.batch_number || '—'}</div>
+                    <h2 className="text-2xl font-bold tracking-tight">Edit Batch Details</h2>
+                    <p className="text-blue-100 text-sm mt-1">
+                      {selectedMedicineDetail?.name ? (
+                        <><span className="font-semibold">{selectedMedicineDetail.name}</span> — Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
+                      ) : (
+                        <>Batch <span className="font-mono">{editBatchForm.batch_number || editingBatch.batch_number}</span></>
+                      )}
+                    </p>
                   </div>
-                </div>
-                <div className="text-right space-y-1">
-                  <div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Current Stock</div>
-                    <div className="text-2xl font-bold text-emerald-600">{Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : 0}</div>
-                  </div>
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">
-                      Received: {Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs border ${editBatchForm.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                      {editBatchForm.status || 'active'}
-                    </span>
-                  </div>
+                  <button
+                    className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                    onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
               </div>
-              {editBatchForm.batch_barcode && (
-                <div className="mt-3 pt-3 border-t border-slate-200">
-                  <div className="text-xs text-slate-500">Barcode: <span className="font-mono text-slate-700">{editBatchForm.batch_barcode}</span></div>
+
+              {/* Loading State */}
+              {loadingEditBatch ? (
+                <div className="p-12 flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-500">Loading batch details...</p>
                 </div>
+              ) : (
+                <>
+                  {/* Batch Info Header Card */}
+                  <div className="mx-6 mt-6 p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                          <Package className="w-7 h-7 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Batch Number</div>
+                          <div className="text-xl font-bold text-slate-800 font-mono">{editBatchForm.batch_number || editingBatch.batch_number || '—'}</div>
+                        </div>
+                      </div>
+                      <div className="text-right space-y-1">
+                        <div>
+                          <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">Current Stock</div>
+                          <div className="text-2xl font-bold text-emerald-600">{Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : 0}</div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">
+                            Received: {Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs border ${editBatchForm.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                            {editBatchForm.status || 'active'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {editBatchForm.batch_barcode && (
+                      <div className="mt-3 pt-3 border-t border-slate-200">
+                        <div className="text-xs text-slate-500">Barcode: <span className="font-mono text-slate-700">{editBatchForm.batch_barcode}</span></div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Error/Success Messages */}
+                  {editBatchError && (
+                    <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                      <p className="text-red-700 text-sm">{editBatchError}</p>
+                    </div>
+                  )}
+                  {editBatchSuccess && (
+                    <div className="mx-6 mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                      <Package className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                      <p className="text-emerald-700 text-sm">{editBatchSuccess}</p>
+                    </div>
+                  )}
+
+                  {/* Form Fields */}
+                  <div className="p-6 space-y-6 overflow-y-auto">
+                    {/* Pricing Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-xs">₹</span>
+                        Pricing Information
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Purchase Price (Cost)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : ''}
+                              onChange={e => setEditBatchForm(f => ({ ...f, purchase_price: Number(e.target.value) }))}
+                              className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Selling Price (MRP)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : ''}
+                              onChange={e => setEditBatchForm(f => ({ ...f, selling_price: Number(e.target.value) }))}
+                              className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Quantity */}
+                      <div className="mt-4 grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Received Quantity</label>
+                          <input
+                            type="number"
+                            value={Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
+                            readOnly
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Quantity (Units in this batch)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : ''}
+                            onChange={e => setEditBatchForm(f => ({ ...f, current_quantity: Number(e.target.value) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Supplier Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                          <Truck className="w-3 h-3 text-purple-600" />
+                        </span>
+                        Supplier
+                      </h3>
+                      <select
+                        value={editBatchForm.supplier_id || ''}
+                        onChange={e => {
+                          const selectedSupplier = supplierOptions.find(s => s.id === e.target.value);
+                          setEditBatchForm(f => ({ ...f, supplier_id: e.target.value, supplier_name: selectedSupplier?.name || '' }));
+                        }}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white appearance-none cursor-pointer"
+                      >
+                        <option value="">— Select Supplier —</option>
+                        {supplierOptions.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Dates Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center">
+                          <Calendar className="w-3 h-3 text-amber-600" />
+                        </span>
+                        Important Dates
+                      </h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Manufacturing</label>
+                          <input
+                            type="date"
+                            value={editBatchForm.manufacturing_date || ''}
+                            onChange={e => setEditBatchForm(f => ({ ...f, manufacturing_date: e.target.value }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Received</label>
+                          <input
+                            type="date"
+                            value={editBatchForm.received_date || ''}
+                            onChange={e => setEditBatchForm(f => ({ ...f, received_date: e.target.value }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-2">Expiry Date <span className="text-red-500">*</span></label>
+                          <input
+                            type="date"
+                            value={editBatchForm.expiry_date || ''}
+                            onChange={e => setEditBatchForm(f => ({ ...f, expiry_date: e.target.value }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Notes Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
+                          <Info className="w-3 h-3 text-slate-600" />
+                        </span>
+                        Additional Notes
+                      </h3>
+                      <textarea
+                        value={editBatchForm.notes || ''}
+                        onChange={e => setEditBatchForm(f => ({ ...f, notes: e.target.value }))}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white resize-none"
+                        rows={3}
+                        placeholder="Add any additional notes about this batch..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between rounded-b-3xl">
+                    <button
+                      className="px-6 py-3 text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all font-medium"
+                      onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      onClick={async () => {
+                        if (!editingBatch) return;
+                        setEditBatchError('');
+                        setEditBatchSuccess('');
+                        try {
+                          setLoading(true);
+                          // basic validation
+                          if (Number(editBatchForm.current_quantity) < 0) {
+                            setEditBatchError('Quantity cannot be negative');
+                            setLoading(false);
+                            return;
+                          }
+                          const payload: any = {
+                            purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
+                            selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
+                            supplier_id: editBatchForm.supplier_id || null,
+                            manufacturing_date: (editBatchForm.manufacturing_date && editBatchForm.manufacturing_date.trim()) ? editBatchForm.manufacturing_date : null,
+                            expiry_date: (editBatchForm.expiry_date && editBatchForm.expiry_date.trim()) ? editBatchForm.expiry_date : (() => { const d = new Date(); d.setMonth(d.getMonth() + 12); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })(),
+                            received_date: (editBatchForm.received_date && editBatchForm.received_date.trim()) ? editBatchForm.received_date : null,
+                            current_quantity: Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : null,
+                            notes: editBatchForm.notes?.trim() || null,
+                          };
+                          const { error } = await supabase
+                            .from('medicine_batches')
+                            .update(payload)
+                            .eq('id', editingBatch.id);
+                          if (error) throw error;
+                          await loadMedicines();
+                          if (selectedMedicineDetail) {
+                            const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id);
+                            if (updatedMed) setSelectedMedicineDetail(updatedMed);
+                          }
+                          setEditBatchSuccess('Batch updated successfully!');
+                          setTimeout(() => {
+                            setShowEditBatch(false);
+                            setEditingBatch(null);
+                            setEditBatchError('');
+                            setEditBatchSuccess('');
+                          }, 1500);
+                        } catch (err: any) {
+                          console.error('Failed to update batch', err);
+                          setEditBatchError('Failed to update batch: ' + (err?.message || 'Unknown error'));
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          Saving...
+                        </>
+                      ) : 'Save Changes'}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Error/Success Messages */}
-            {editBatchError && (
-              <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <p className="text-red-700 text-sm">{editBatchError}</p>
-              </div>
-            )}
-            {editBatchSuccess && (
-              <div className="mx-6 mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-                <Package className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                <p className="text-emerald-700 text-sm">{editBatchSuccess}</p>
-              </div>
-            )}
-
-            {/* Form Fields */}
-            <div className="p-6 space-y-6 overflow-y-auto">
-              {/* Pricing Section */}
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-xs">₹</span>
-                  Pricing Information
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
+        {/* Edit Medicine Modal */}
+        {showEditMedicine && editingMedicine && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200"
+            >
+              {/* Header with gradient */}
+              <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
+                <div className="flex items-center justify-between">
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Purchase Price (Cost)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0" 
-                        value={Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : ''}
-                        onChange={e => setEditBatchForm(f => ({ ...f, purchase_price: Number(e.target.value) }))}
-                        className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
-                        placeholder="0.00" 
-                      />
-                    </div>
+                    <h2 className="text-2xl font-bold tracking-tight">Edit Medicine</h2>
+                    <p className="text-blue-100 text-sm mt-1">
+                      Update medicine information and formulation details
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Selling Price (MRP)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0" 
-                        value={Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : ''}
-                        onChange={e => setEditBatchForm(f => ({ ...f, selling_price: Number(e.target.value) }))}
-                        className="w-full pl-8 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
-                        placeholder="0.00" 
-                      />
-                    </div>
+                  <button
+                    className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                    onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Content */}
+              <div className="p-8 space-y-6">
+                {/* Medicine Icon and Name */}
+                <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <Package className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs text-blue-600 uppercase tracking-wider font-medium">Medicine Name</div>
+                    <div className="text-lg font-bold text-blue-900">{editingMedicine.name}</div>
                   </div>
                 </div>
-                {/* Quantity */}
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Received Quantity</label>
+
+                {/* Form Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Name Field */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      Medicine Name
+                    </label>
                     <input
-                      type="number"
-                      value={Number.isFinite(editBatchForm.received_quantity) ? editBatchForm.received_quantity : 0}
-                      readOnly
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700"
+                      type="text"
+                      value={editingMedicine.name}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, name: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                      placeholder="Enter medicine name"
                     />
                   </div>
+
+                  {/* Combination Field */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      Combination / Formulation
+                    </label>
+                    <input
+                      type="text"
+                      value={editingMedicine.combination || ''}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, combination: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                      placeholder="e.g., Paracetamol 500mg + Caffeine 65mg"
+                    />
+                    <p className="text-xs text-gray-500 mt-2 ml-1">
+                      💡 Enter the medicine combination, dosage strength, or formulation details
+                    </p>
+                  </div>
+
+                  {/* Nickname Field */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
+                      Nickname / Short Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editingMedicine.nickname || ''}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, nickname: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                      placeholder="e.g., PCM, Para"
+                    />
+                    <p className="text-xs text-gray-500 mt-2 ml-1">
+                      🏷️ Short form or alias for quick search
+                    </p>
+                  </div>
+
+                  {/* Manufacturer */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Quantity (Units in this batch)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Manufacturer
+                    </label>
+                    <input
+                      type="text"
+                      value={editingMedicine.manufacturer}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, manufacturer: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                      placeholder="Enter manufacturer name"
+                    />
+                  </div>
+
+                  {/* Dosage Form */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                      Dosage Form
+                    </label>
+                    <select
+                      value={editingMedicine.unit}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
+                    >
+                      <option value="">Select dosage form</option>
+                      {dosageTypes.map((dt) => (
+                        <option key={dt} value={dt}>{dt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Minimum Stock Level */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      Minimum Stock Level
+                    </label>
                     <input
                       type="number"
-                      min="0"
-                      value={Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : ''}
-                      onChange={e => setEditBatchForm(f => ({ ...f, current_quantity: Number(e.target.value) }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                      value={editingMedicine.min_stock_level}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, min_stock_level: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
                       placeholder="0"
+                      min="0"
+                    />
+                    <p className="text-xs text-gray-500 mt-2 ml-1">
+                      ⚠️ Alert when stock falls below this level
+                    </p>
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                      Category
+                    </label>
+                    <input
+                      type="text"
+                      value={editingMedicine.category || ''}
+                      onChange={(e) => setEditingMedicine({ ...editingMedicine, category: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+                      placeholder="e.g., Antibiotics, Pain Relief"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Supplier Section */}
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
-                    <Truck className="w-3 h-3 text-purple-600" />
-                  </span>
-                  Supplier
-                </h3>
-                <select 
-                  value={editBatchForm.supplier_id || ''}
-                  onChange={e => {
-                    const selectedSupplier = supplierOptions.find(s => s.id === e.target.value);
-                    setEditBatchForm(f => ({ ...f, supplier_id: e.target.value, supplier_name: selectedSupplier?.name || '' }));
-                  }}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white appearance-none cursor-pointer"
+              {/* Footer Actions */}
+              <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">💡 Tip:</span> All fields are optional except the medicine name
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
+                      className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all duration-200 flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedMedicine}
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Edit className="w-4 h-4" />
+                          Save Changes
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Medicine Confirmation Modal */}
+        {showDeleteMedicineConfirm && medicineToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
+                <h2 className="text-xl font-bold text-gray-900">Delete Medicine</h2>
+              </div>
+              <p className="text-gray-600 mb-4">
+                This will permanently delete <span className="font-semibold">{medicineToDelete.name}</span> and all its batches. This action cannot be undone.
+              </p>
+              <div className="bg-red-50 text-red-700 border border-red-200 rounded px-3 py-2 text-sm mb-6">
+                Warning: If this medicine is referenced in bills or prescriptions, the delete may fail due to database constraints.
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowDeleteMedicineConfirm(false); setMedicineToDelete(null) }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <option value="">— Select Supplier —</option>
-                  {supplierOptions.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteMedicine}
+                  className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Delete Medicine
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            {error}
+          </div>
+        )}
+
+        {/* Enhanced Search and Filter Section */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search Bar */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search medicines by name, manufacturer, or dosage type..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
+              />
+            </div>
+
+            {/* Filter Dropdowns */}
+            <div className="flex gap-3">
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <select
+                  value={dosageFilter}
+                  onChange={(e) => setDosageFilter(e.target.value)}
+                  className="pl-10 pr-8 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
+                >
+                  <option value="">All Dosage Types</option>
+                  {dosageTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Dates Section */}
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center">
-                    <Calendar className="w-3 h-3 text-amber-600" />
-                  </span>
-                  Important Dates
-                </h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Manufacturing</label>
-                    <input 
-                      type="date" 
-                      value={editBatchForm.manufacturing_date || ''}
-                      onChange={e => setEditBatchForm(f => ({ ...f, manufacturing_date: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Received</label>
-                    <input 
-                      type="date" 
-                      value={editBatchForm.received_date || ''}
-                      onChange={e => setEditBatchForm(f => ({ ...f, received_date: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Expiry Date <span className="text-red-500">*</span></label>
-                    <input 
-                      type="date" 
-                      value={editBatchForm.expiry_date || ''}
-                      onChange={e => setEditBatchForm(f => ({ ...f, expiry_date: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Notes Section */}
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
-                    <Info className="w-3 h-3 text-slate-600" />
-                  </span>
-                  Additional Notes
-                </h3>
-                <textarea 
-                  value={editBatchForm.notes || ''}
-                  onChange={e => setEditBatchForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white resize-none" 
-                  rows={3} 
-                  placeholder="Add any additional notes about this batch..." 
-                />
+              <div className="relative">
+                <AlertTriangle className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="pl-10 pr-8 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
+                >
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="low_stock">Low Stock</option>
+                  <option value="out_of_stock">Out of Stock</option>
+                  <option value="expired">Expired</option>
+                </select>
               </div>
             </div>
 
-            {/* Footer Actions */}
-            <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between rounded-b-3xl">
-              <button 
-                className="px-6 py-3 text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-all font-medium" 
-                onClick={() => { setShowEditBatch(false); setEditingBatch(null); setEditBatchError(''); setEditBatchSuccess(''); }}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                onClick={async () => {
-                  if (!editingBatch) return;
-                  setEditBatchError('');
-                  setEditBatchSuccess('');
-                  try {
-                    setLoading(true);
-                    // basic validation
-                    if (Number(editBatchForm.current_quantity) < 0) {
-                      setEditBatchError('Quantity cannot be negative');
-                      setLoading(false);
-                      return;
-                    }
-                    const payload: any = {
-                      purchase_price: Number.isFinite(editBatchForm.purchase_price) ? editBatchForm.purchase_price : null,
-                      selling_price: Number.isFinite(editBatchForm.selling_price) ? editBatchForm.selling_price : null,
-                      supplier_id: editBatchForm.supplier_id || null,
-                      manufacturing_date: (editBatchForm.manufacturing_date && editBatchForm.manufacturing_date.trim()) ? editBatchForm.manufacturing_date : null,
-                      expiry_date: (editBatchForm.expiry_date && editBatchForm.expiry_date.trim()) ? editBatchForm.expiry_date : (() => { const d = new Date(); d.setMonth(d.getMonth() + 12); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
-                      received_date: (editBatchForm.received_date && editBatchForm.received_date.trim()) ? editBatchForm.received_date : null,
-                      current_quantity: Number.isFinite(editBatchForm.current_quantity) ? editBatchForm.current_quantity : null,
-                      notes: editBatchForm.notes?.trim() || null,
-                    };
-                    const { error } = await supabase
-                      .from('medicine_batches')
-                      .update(payload)
-                      .eq('id', editingBatch.id);
-                    if (error) throw error;
-                    await loadMedicines();
-                    if (selectedMedicineDetail) {
-                      const updatedMed = medicines.find(m => m.id === selectedMedicineDetail.id);
-                      if (updatedMed) setSelectedMedicineDetail(updatedMed);
-                    }
-                    setEditBatchSuccess('Batch updated successfully!');
-                    setTimeout(() => {
-                      setShowEditBatch(false);
-                      setEditingBatch(null);
-                      setEditBatchError('');
-                      setEditBatchSuccess('');
-                    }, 1500);
-                  } catch (err: any) {
-                    console.error('Failed to update batch', err);
-                    setEditBatchError('Failed to update batch: ' + (err?.message || 'Unknown error'));
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Saving...
-                  </>
-                ) : 'Save Changes'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )}
-
-  {/* Edit Medicine Modal */}
-  {showEditMedicine && editingMedicine && (
-    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200"
-      >
-        {/* Header with gradient */}
-        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">Edit Medicine</h2>
-              <p className="text-blue-100 text-sm mt-1">
-                Update medicine information and formulation details
-              </p>
-            </div>
-            <button 
-              className="p-2 hover:bg-white/20 rounded-full transition-colors" 
-              onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        {/* Form Content */}
-        <div className="p-8 space-y-6">
-          {/* Medicine Icon and Name */}
-          <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Package className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1">
-              <div className="text-xs text-blue-600 uppercase tracking-wider font-medium">Medicine Name</div>
-              <div className="text-lg font-bold text-blue-900">{editingMedicine.name}</div>
-            </div>
-          </div>
-
-          {/* Form Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Name Field */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                Medicine Name
-              </label>
-              <input
-                type="text"
-                value={editingMedicine.name}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, name: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="Enter medicine name"
-              />
-            </div>
-
-            {/* Combination Field */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                Combination / Formulation
-              </label>
-              <input
-                type="text"
-                value={editingMedicine.combination || ''}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, combination: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="e.g., Paracetamol 500mg + Caffeine 65mg"
-              />
-              <p className="text-xs text-gray-500 mt-2 ml-1">
-                💡 Enter the medicine combination, dosage strength, or formulation details
-              </p>
-            </div>
-
-            {/* Nickname Field */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                Nickname / Short Name
-              </label>
-              <input
-                type="text"
-                value={editingMedicine.nickname || ''}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, nickname: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="e.g., PCM, Para"
-              />
-              <p className="text-xs text-gray-500 mt-2 ml-1">
-                🏷️ Short form or alias for quick search
-              </p>
-            </div>
-
-            {/* Manufacturer */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                Manufacturer
-              </label>
-              <input
-                type="text"
-                value={editingMedicine.manufacturer}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, manufacturer: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="Enter manufacturer name"
-              />
-            </div>
-
-            {/* Dosage Form */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                Dosage Form
-              </label>
-              <select
-                value={editingMedicine.unit}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, unit: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
-              >
-                <option value="">Select dosage form</option>
-                {dosageTypes.map((dt) => (
-                  <option key={dt} value={dt}>{dt}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Minimum Stock Level */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                Minimum Stock Level
-              </label>
-              <input
-                type="number"
-                value={editingMedicine.min_stock_level}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, min_stock_level: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="0"
-                min="0"
-              />
-              <p className="text-xs text-gray-500 mt-2 ml-1">
-                ⚠️ Alert when stock falls below this level
-              </p>
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-                Category
-              </label>
-              <input
-                type="text"
-                value={editingMedicine.category || ''}
-                onChange={(e) => setEditingMedicine({ ...editingMedicine, category: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                placeholder="e.g., Antibiotics, Pain Relief"
-              />
+            {/* Results Counter */}
+            <div className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">
+                  {filteredMedicines.length} medicines
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium">💡 Tip:</span> All fields are optional except the medicine name
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setShowEditMedicine(false); setEditingMedicine(null) }}
-                className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all duration-200 flex items-center gap-2"
-              >
-                <X className="w-4 h-4" />
-                Cancel
-              </button>
-              <button 
-                onClick={saveEditedMedicine} 
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Edit className="w-4 h-4" />
-                    Save Changes
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* Delete Medicine Confirmation Modal */}
-  {showDeleteMedicineConfirm && medicineToDelete && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div className="flex items-center mb-4">
-          <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
-          <h2 className="text-xl font-bold text-gray-900">Delete Medicine</h2>
-        </div>
-        <p className="text-gray-600 mb-4">
-          This will permanently delete <span className="font-semibold">{medicineToDelete.name}</span> and all its batches. This action cannot be undone.
-        </p>
-        <div className="bg-red-50 text-red-700 border border-red-200 rounded px-3 py-2 text-sm mb-6">
-          Warning: If this medicine is referenced in bills or prescriptions, the delete may fail due to database constraints.
-        </div>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => { setShowDeleteMedicineConfirm(false); setMedicineToDelete(null) }}
-            className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={confirmDeleteMedicine}
-            className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
-            disabled={loading}
-          >
-            {loading ? (
+        {/* Enhanced Dashboard Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {(() => {
+            const stats = dashboardStats()
+            return (
               <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Deleting...
-              </>
-            ) : (
-              <>
-                <Trash2 className="w-4 h-4" />
-                Delete Medicine
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          {error}
-        </div>
-      )}
-
-      {/* Enhanced Search and Filter Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search Bar */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search medicines by name, manufacturer, or dosage type..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-            />
-          </div>
-          
-          {/* Filter Dropdowns */}
-          <div className="flex gap-3">
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <select
-                value={dosageFilter}
-                onChange={(e) => setDosageFilter(e.target.value)}
-                className="pl-10 pr-8 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
-              >
-                <option value="">All Dosage Types</option>
-                {dosageTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="relative">
-              <AlertTriangle className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="pl-10 pr-8 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
-              >
-                <option value="">All Status</option>
-                <option value="active">Active</option>
-                <option value="low_stock">Low Stock</option>
-                <option value="out_of_stock">Out of Stock</option>
-                <option value="expired">Expired</option>
-              </select>
-            </div>
-          </div>
-          
-          {/* Results Counter */}
-          <div className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-            <div className="flex items-center gap-2">
-              <Package className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">
-                {filteredMedicines.length} medicines
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Dashboard Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        {(() => {
-          const stats = dashboardStats()
-          return (
-            <>
-              <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Package className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded-full">Total</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold text-gray-900">{stats.totalMedicines}</div>
-                  <div className="text-sm text-gray-600">Medicines</div>
-                </div>
-              </div>
-
-              <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Layers className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-xs text-purple-600 font-semibold bg-purple-50 px-2 py-1 rounded-full">Batches</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold text-gray-900">{stats.totalBatches}</div>
-                  <div className="text-sm text-gray-600">Total Batches</div>
-                </div>
-              </div>
-
-              <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <AlertTriangle className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-xs text-orange-600 font-semibold bg-orange-50 px-2 py-1 rounded-full">Warning</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold text-gray-900">{stats.lowStock}</div>
-                  <div className="text-sm text-gray-600">Low Stock</div>
-                </div>
-              </div>
-
-              <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Clock className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-xs text-orange-600 font-semibold bg-orange-50 px-2 py-1 rounded-full">Alert</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold text-gray-900">{stats.expiringSoon}</div>
-                  <div className="text-sm text-gray-600">Expiring Soon</div>
-                </div>
-              </div>
-
-              <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <AlertTriangle className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-xs text-red-600 font-semibold bg-red-50 px-2 py-1 rounded-full">Critical</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold text-gray-900">{stats.expired}</div>
-                  <div className="text-sm text-gray-600">Expired</div>
-                </div>
-              </div>
-            </>
-          )
-        })()}
-      </div>
-
-      {/* Overall Remaining Stock card removed per request */}
-
-      {/* Enhanced Medicines Table */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden">
-        {loading ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-            <Package className="w-12 h-12 mx-auto mb-4 text-gray-400 animate-pulse" />
-            <p className="text-gray-600 font-medium">Loading medicines...</p>
-            <p className="text-gray-500 text-sm mt-1">Fetching inventory data</p>
-          </div>
-        ) : filteredMedicines.length === 0 ? (
-          <div className="text-center py-16">
-            <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-600 font-medium text-lg">No medicines found</p>
-            <p className="text-gray-500 text-sm mt-1">Try adjusting your search or filters</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-900">Medicine Name</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-900">Combination</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-900">Dosage Type</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-900">Manufacturer</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-900">Stock</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-900">Batches</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-900">Status</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-900">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMedicines.map((medicine) => {
-                  const status = getStockStatus(medicine)
-                  return (
-                    <tr 
-                      key={medicine.id} 
-                      className="border-b border-gray-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 group"
-                      onClick={() => openMedicineDetail(medicine)}
-                    >
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                            <Package className="w-5 h-5 text-blue-600" />
-                          </div>
-                          <div>
-                            <span className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{medicine.name}</span>
-                            {medicine.nickname && (
-                              <div className="text-xs text-pink-600 font-medium mt-0.5">
-                                🏷️ {medicine.nickname}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-sm text-gray-700">
-                          {medicine.combination || <span className="text-gray-400 italic">-</span>}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                          {medicine.unit}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-gray-700">{medicine.manufacturer}</td>
-                      <td className="py-4 px-4 text-center">
-                        <div className="inline-flex flex-col items-center">
-                          <div className={`text-lg font-bold ${medicine.total_stock <= medicine.min_stock_level ? 'text-red-600' : medicine.total_stock <= medicine.min_stock_level * 2 ? 'text-yellow-600' : 'text-green-600'}`}>
-                            {medicine.total_stock}
-                          </div>
-                          <div className="text-xs text-gray-500">Min: {medicine.min_stock_level}</div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                          {medicine.batches.length}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(status)}`}>
-                          {status.replace('_', ' ').toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleEditMedicine(medicine)
-                            }}
-                            className="group/edit p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 flex items-center gap-2"
-                            title="Edit Medicine"
-                          >
-                            <Edit className="w-4 h-4 group-hover/edit:scale-110 transition-transform" />
-                            <span className="text-sm font-medium">Edit</span>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteMedicine(medicine)
-                            }}
-                            className="group/delete p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 flex items-center gap-2"
-                            title="Delete Medicine"
-                          >
-                            <Trash2 className="w-4 h-4 group-hover/delete:scale-110 transition-transform" />
-                            <span className="text-sm font-medium">Delete</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Modern Medicine Entry Form */}
-      {showAddMedicine && (
-        <MedicineEntryForm
-          onClose={() => setShowAddMedicine(false)}
-          onSuccess={() => {
-            setShowAddMedicine(false);
-            // Refresh the medicines list
-            window.location.reload();
-          }}
-        />
-      )}
-
-      {/* Add Batch Modal (Full Form) */}
-      {showAddBatch && selectedMedicine && (
-        <MedicineEntryForm
-          preselectedMedicine={{
-            id: selectedMedicine.id,
-            name: selectedMedicine.name,
-            medication_code: selectedMedicine.medication_code,
-          }}
-          initialTab="batch"
-          onClose={() => {
-            setShowAddBatch(false)
-            setSelectedMedicine(null)
-          }}
-          onSuccess={() => {
-            setShowAddBatch(false)
-            setSelectedMedicine(null)
-            // Refresh data to reflect new batch
-            window.location.reload()
-          }}
-        />
-      )}
-
-      {/* Batch Purchase History Modal */}
-      {showHistoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Batch History - {historyBatchNumber}</h2>
-              <button onClick={() => { setShowHistoryModal(false); setHistoryEntries([]); setSalesHistoryEntries([]); setHistoryBatchNumber(''); }} className="btn-secondary">Close</button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex items-center gap-2 mb-3">
-              <button
-                onClick={() => setHistoryTab('purchases')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyTab === 'purchases' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                Purchases
-              </button>
-              <button
-                onClick={() => setHistoryTab('sales')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyTab === 'sales' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                Sales
-              </button>
-            </div>
-
-            {/* Time Filters */}
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setHistoryFilter('all')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  historyFilter === 'all' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All Time
-              </button>
-              <button
-                onClick={() => setHistoryFilter('this_month')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  historyFilter === 'this_month' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setHistoryFilter('last_3_months')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  historyFilter === 'last_3_months' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Last 3 Months
-              </button>
-            </div>
-
-            {historyLoading ? (
-              <div className="text-center py-8">Loading history...</div>
-            ) : (
-              <>
-                {/* Totals */}
-                <div className="flex items-center gap-4 mb-3 text-sm">
-                  {historyTab === 'purchases' ? (
-                    <>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Purchased Qty: <span className="font-semibold">{getFilteredHistoryEntries().reduce((s, e) => s + (e.quantity || 0), 0)}</span></div>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Amount: <span className="font-semibold">₹{getFilteredHistoryEntries().reduce((s, e) => s + (e.total_amount || 0), 0)}</span></div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Sold Qty: <span className="font-semibold">{getFilteredSalesEntries().reduce((s, e) => s + Math.abs(e.quantity || 0), 0)}</span></div>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Sales: <span className="font-semibold">₹{getFilteredSalesEntries().reduce((s, e) => s + (e.total_amount || 0), 0)}</span></div>
-                    </>
-                  )}
-                </div>
-
-                {/* Tables */}
-                {historyTab === 'purchases' ? (
-                  getFilteredHistoryEntries().length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-lg mb-2">No purchases found</p>
-                      <p className="text-sm">No purchase history for this batch in the selected time period.</p>
+                <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <Package className="w-6 h-6 text-white" />
                     </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm table-auto">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-3 px-2">Date</th>
-                            <th className="text-left py-3 px-2">Bill #</th>
-                            <th className="text-left py-3 px-2">Patient</th>
-                            <th className="text-left py-3 px-2">Medicine</th>
-                            <th className="text-left py-3 px-2">Qty</th>
-                            <th className="text-left py-3 px-2">Amount</th>
-                            <th className="text-left py-3 px-2">Payment</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getFilteredHistoryEntries().map((entry) => (
-                            <tr key={`${entry.bill_id}-${entry.medication_id}`} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-2">{safeFormatDateTime(entry.purchased_at)}</td>
-                              <td className="py-3 px-2">{safeText(entry.bill_number)}</td>
-                              <td className="py-3 px-2">
-                                <div className="leading-tight">
-                                  <div className="text-gray-900">{safeText(entry.patient_name)}</div>
-                                  {entry.patient_uhid && (
-                                    <div className="text-xs text-gray-500">UHID: {safeText(entry.patient_uhid)}</div>
-                                  )}
+                    <div className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded-full">Total</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold text-gray-900">{stats.totalMedicines}</div>
+                    <div className="text-sm text-gray-600">Medicines</div>
+                  </div>
+                </div>
+
+                <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <Layers className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-xs text-purple-600 font-semibold bg-purple-50 px-2 py-1 rounded-full">Batches</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold text-gray-900">{stats.totalBatches}</div>
+                    <div className="text-sm text-gray-600">Total Batches</div>
+                  </div>
+                </div>
+
+                <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <AlertTriangle className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-xs text-orange-600 font-semibold bg-orange-50 px-2 py-1 rounded-full">Warning</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold text-gray-900">{stats.lowStock}</div>
+                    <div className="text-sm text-gray-600">Low Stock</div>
+                  </div>
+                </div>
+
+                <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <Clock className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-xs text-orange-600 font-semibold bg-orange-50 px-2 py-1 rounded-full">Alert</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold text-gray-900">{stats.expiringSoon}</div>
+                    <div className="text-sm text-gray-600">Expiring Soon</div>
+                  </div>
+                </div>
+
+                <div className="group bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <AlertTriangle className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-xs text-red-600 font-semibold bg-red-50 px-2 py-1 rounded-full">Critical</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold text-gray-900">{stats.expired}</div>
+                    <div className="text-sm text-gray-600">Expired</div>
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+        </div>
+
+        {/* Overall Remaining Stock card removed per request */}
+
+        {/* Enhanced Medicines Table */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 overflow-hidden">
+          {loading ? (
+            <div className="text-center py-16">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <Package className="w-12 h-12 mx-auto mb-4 text-gray-400 animate-pulse" />
+              <p className="text-gray-600 font-medium">Loading medicines...</p>
+              <p className="text-gray-500 text-sm mt-1">Fetching inventory data</p>
+            </div>
+          ) : filteredMedicines.length === 0 ? (
+            <div className="text-center py-16">
+              <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <p className="text-gray-600 font-medium text-lg">No medicines found</p>
+              <p className="text-gray-500 text-sm mt-1">Try adjusting your search or filters</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-900">Medicine Name</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-900">Combination</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-900">Dosage Type</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-900">Manufacturer</th>
+                    <th className="text-center py-4 px-6 font-semibold text-gray-900">Stock</th>
+                    <th className="text-center py-4 px-6 font-semibold text-gray-900">Batches</th>
+                    <th className="text-center py-4 px-6 font-semibold text-gray-900">Status</th>
+                    <th className="text-center py-4 px-6 font-semibold text-gray-900">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMedicines.map((medicine) => {
+                    const status = getStockStatus(medicine)
+                    return (
+                      <tr
+                        key={medicine.id}
+                        className="border-b border-gray-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 group"
+                        onClick={() => openMedicineDetail(medicine)}
+                      >
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                              <Package className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <span className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{medicine.name}</span>
+                              {medicine.nickname && (
+                                <div className="text-xs text-pink-600 font-medium mt-0.5">
+                                  🏷️ {medicine.nickname}
                                 </div>
-                              </td>
-                              <td className="py-3 px-2">{safeText(entry.medication_name)}</td>
-                              <td className="py-3 px-2">{entry.quantity}</td>
-                              <td className="py-3 px-2">₹{entry.total_amount}</td>
-                              <td className="py-3 px-2">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${entry.payment_status === 'paid' ? 'bg-green-100 text-green-800' : entry.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
-                                  {entry.payment_status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                ) : (
-                  getFilteredSalesEntries().length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-lg mb-2">No sales found</p>
-                      <p className="text-sm">No sales history for this batch in the selected time period.</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm table-auto">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-3 px-2">Date</th>
-                            <th className="text-left py-3 px-2">Bill #</th>
-                            <th className="text-left py-3 px-2">Qty</th>
-                            <th className="text-left py-3 px-2">Unit Price</th>
-                            <th className="text-left py-3 px-2">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getFilteredSalesEntries().map((row: any) => (
-                            <tr key={row.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-2">{safeFormatDateTime(row.created_at)}</td>
-                              <td className="py-3 px-2">{safeText(row.reference_id)}</td>
-                              <td className="py-3 px-2">{Math.abs(row.quantity || 0)}</td>
-                              <td className="py-3 px-2">₹{row.unit_price}</td>
-                              <td className="py-3 px-2">₹{row.total_amount}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                )}
-              </>
-            )}
-          </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="text-sm text-gray-700">
+                            {medicine.combination || <span className="text-gray-400 italic">-</span>}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                            {medicine.unit}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-gray-700">{medicine.manufacturer}</td>
+                        <td className="py-4 px-4 text-center">
+                          <div className="inline-flex flex-col items-center">
+                            <div className={`text-lg font-bold ${medicine.total_stock <= medicine.min_stock_level ? 'text-red-600' : medicine.total_stock <= medicine.min_stock_level * 2 ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {medicine.total_stock}
+                            </div>
+                            <div className="text-xs text-gray-500">Min: {medicine.min_stock_level}</div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {medicine.batches.length}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-center">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(status)}`}>
+                            {status.replace('_', ' ').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEditMedicine(medicine)
+                              }}
+                              className="group/edit p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 flex items-center gap-2"
+                              title="Edit Medicine"
+                            >
+                              <Edit className="w-4 h-4 group-hover/edit:scale-110 transition-transform" />
+                              <span className="text-sm font-medium">Edit</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteMedicine(medicine)
+                              }}
+                              className="group/delete p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 flex items-center gap-2"
+                              title="Delete Medicine"
+                            >
+                              <Trash2 className="w-4 h-4 group-hover/delete:scale-110 transition-transform" />
+                              <span className="text-sm font-medium">Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Medicine Detail Modal */}
-      {showMedicineDetail && selectedMedicineDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-7xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 shadow-lg">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-4">
-                    <h2 className="text-3xl font-bold text-white tracking-tight">{selectedMedicineDetail.name}</h2>
-                    {medicineStockSummary?.overall_alert_level && (
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
-                        medicineStockSummary.overall_alert_level === 'CRITICAL' ? 'bg-red-600 text-white' :
-                        medicineStockSummary.overall_alert_level === 'WARNING' ? 'bg-amber-500 text-white' :
-                        medicineStockSummary.overall_alert_level === 'INFO' ? 'bg-blue-600 text-white' :
-                        'bg-emerald-500 text-white'
-                      }`}>
-                        {medicineStockSummary.overall_alert_level}
-                      </span>
+        {/* Modern Medicine Entry Form */}
+        {showAddMedicine && (
+          <MedicineEntryForm
+            onClose={() => setShowAddMedicine(false)}
+            onSuccess={() => {
+              setShowAddMedicine(false);
+              // Refresh the medicines list
+              window.location.reload();
+            }}
+          />
+        )}
+
+        {/* Add Batch Modal (Full Form) */}
+        {showAddBatch && selectedMedicine && (
+          <MedicineEntryForm
+            preselectedMedicine={{
+              id: selectedMedicine.id,
+              name: selectedMedicine.name,
+              medication_code: selectedMedicine.medication_code,
+            }}
+            initialTab="batch"
+            onClose={() => {
+              setShowAddBatch(false)
+              setSelectedMedicine(null)
+            }}
+            onSuccess={() => {
+              setShowAddBatch(false)
+              setSelectedMedicine(null)
+              // Refresh data to reflect new batch
+              window.location.reload()
+            }}
+          />
+        )}
+
+        {/* Batch Purchase History Modal */}
+        {showHistoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Batch History - {historyBatchNumber}</h2>
+                <button onClick={() => { setShowHistoryModal(false); setHistoryEntries([]); setSalesHistoryEntries([]); setHistoryBatchNumber(''); }} className="btn-secondary">Close</button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex items-center gap-2 mb-3">
+                <button
+                  onClick={() => setHistoryTab('purchases')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyTab === 'purchases' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Purchases
+                </button>
+                <button
+                  onClick={() => setHistoryTab('sales')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyTab === 'sales' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Sales
+                </button>
+              </div>
+
+              {/* Time Filters */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setHistoryFilter('all')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  All Time
+                </button>
+                <button
+                  onClick={() => setHistoryFilter('this_month')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyFilter === 'this_month'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  This Month
+                </button>
+                <button
+                  onClick={() => setHistoryFilter('last_3_months')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${historyFilter === 'last_3_months'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  Last 3 Months
+                </button>
+              </div>
+
+              {historyLoading ? (
+                <div className="text-center py-8">Loading history...</div>
+              ) : (
+                <>
+                  {/* Totals */}
+                  <div className="flex items-center gap-4 mb-3 text-sm">
+                    {historyTab === 'purchases' ? (
+                      <>
+                        <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Purchased Qty: <span className="font-semibold">{getFilteredHistoryEntries().reduce((s, e) => s + (e.quantity || 0), 0)}</span></div>
+                        <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Amount: <span className="font-semibold">₹{getFilteredHistoryEntries().reduce((s, e) => s + (e.total_amount || 0), 0)}</span></div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Sold Qty: <span className="font-semibold">{getFilteredSalesEntries().reduce((s, e) => s + Math.abs(e.quantity || 0), 0)}</span></div>
+                        <div className="px-3 py-2 bg-gray-100 rounded-lg">Total Sales: <span className="font-semibold">₹{getFilteredSalesEntries().reduce((s, e) => s + (e.total_amount || 0), 0)}</span></div>
+                      </>
                     )}
                   </div>
-                  
-                  {/* Medicine Info Grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm mb-4">
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Code</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.medication_code || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Dosage Type</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.unit}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Manufacturer</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.manufacturer}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Strength</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.strength || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Form</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.dosage_form || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-300 text-xs font-medium mb-1">Generic</div>
-                      <div className="text-white font-semibold">{selectedMedicineDetail.generic_name || 'N/A'}</div>
-                    </div>
-                  </div>
-                  
-                  {/* Stock Summary Cards */}
-                  {medicineStockSummary && (
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                        <div className="text-slate-300 text-xs font-medium mb-2">Total Stock</div>
-                        <div className="text-2xl font-bold text-white">{medicineStockSummary.total_quantity}</div>
-                        <div className="text-slate-300 text-xs mt-1">{medicineStockSummary.total_batches} batches</div>
-                      </div>
-                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                        <div className="text-slate-300 text-xs font-medium mb-2">Cost Value</div>
-                        <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_cost_value || 0).toLocaleString()}</div>
-                        <div className="text-slate-300 text-xs mt-1">at purchase price</div>
-                      </div>
-                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                        <div className="text-slate-300 text-xs font-medium mb-2">Retail Value</div>
-                        <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_retail_value || 0).toLocaleString()}</div>
-                        <div className="text-slate-300 text-xs mt-1">at selling price</div>
-                      </div>
-                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                        <div className="text-slate-300 text-xs font-medium mb-2">Critical Batches</div>
-                        <div className="text-2xl font-bold text-red-300">{medicineStockSummary.critical_low_batches}</div>
-                        <div className="text-slate-300 text-xs mt-1">low stock</div>
-                      </div>
-                      <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                        <div className="text-slate-300 text-xs font-medium mb-2">Expiry Issues</div>
-                        <div className="text-2xl font-bold text-amber-300">{medicineStockSummary.expired_batches + medicineStockSummary.expiring_soon_batches}</div>
-                        <div className="text-slate-300 text-xs mt-1">expired/expiring</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Actions on right: Add Batch + Close */}
-                <button
-                  onClick={() => {
-                    setSelectedMedicine(selectedMedicineDetail)
-                    setShowAddBatch(true)
-                  }}
-                  className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  Batch
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMedicineDetail(false)
-                    setSelectedMedicineDetail(null)
-                    setMedicineStockSummary(null)
-                    setBatchStockTruth([])
-                  }}
-                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors ml-4"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
 
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(95vh-200px)]">
-              {loadingMedicineDetail ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading medicine details...</p>
-                </div>
-              ) : (comprehensiveMedicineData?.batches || selectedMedicineDetail.batches || []).length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                  <p className="text-lg mb-2">No batches available</p>
-                  <p className="text-sm">Add the first batch to start tracking inventory</p>
-                  <div className="mt-4">
-                    <button
-                      onClick={() => {
-                        setSelectedMedicine(selectedMedicineDetail)
-                        setShowAddBatch(true)
-                      }}
-                      className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Batch
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(comprehensiveMedicineData?.batches || selectedMedicineDetail.batches || []).map((batch: any) => {
-                    const isExpired = new Date(batch.expiry_date) < new Date()
-                    const expSoon = isExpiringSoon(batch.expiry_date)
-                    const batchStats = batchStatsMap[batch.batch_number]
-                    // Use comprehensive current_stock for truth; fallback to legacy quantity
-                    const remaining = (typeof batch.current_stock === 'number' ? batch.current_stock : batch.quantity) ?? 0
-                    const derivedStatus = getBatchStatus(batch as any, remaining, selectedMedicineDetail?.min_stock_level || 0)
-                    
-                    return (
-                      <div key={batch.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                        {/* Batch Header */}
-                        <div className="p-4 border-b border-gray-100">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="text-lg font-semibold text-gray-900">{batch.batch_number}</h4>
-                              <p className="text-sm text-gray-500">Supplier: {batch.supplier_name || batch.supplier}</p>
-                            </div>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(derivedStatus)}`}>
-                              {derivedStatus.replace('_', ' ')}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Batch Details */}
-                        <div className="p-4 space-y-4">
-                          {/* Quantity & Pricing */}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-gray-50 rounded-lg p-3">
-                              <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
-                              <div className="text-xl font-bold text-gray-900">{remaining}</div>
-                              {(() => {
-                                const receivedFromLedger = receivedTotalsMap[batch.batch_number]
-                                const totalSoldLedger = soldTotalsMap[batch.batch_number] || 0
-                                const current = typeof batch.current_stock === 'number' ? batch.current_stock : (typeof batch.quantity === 'number' ? batch.quantity : 0)
-                                const derivedFromLedger = current + totalSoldLedger
-                                const receivedFallback = (typeof batch.received_quantity === 'number' ? batch.received_quantity :
-                                  typeof batch.original_quantity === 'number' ? batch.original_quantity : undefined)
-                                const receivedTotal = (typeof receivedFromLedger === 'number' && receivedFromLedger > 0)
-                                  ? receivedFromLedger
-                                  : (typeof receivedFallback === 'number' && receivedFallback > 0)
-                                    ? receivedFallback
-                                    : derivedFromLedger
-                                return (
-                                  <div className="text-xs text-gray-500">
-                                    Received: {Math.max(0, receivedTotal)}
+                  {/* Tables */}
+                  {historyTab === 'purchases' ? (
+                    getFilteredHistoryEntries().length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                        <p className="text-lg mb-2">No purchases found</p>
+                        <p className="text-sm">No purchase history for this batch in the selected time period.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm table-auto">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-3 px-2">Date</th>
+                              <th className="text-left py-3 px-2">Bill #</th>
+                              <th className="text-left py-3 px-2">Patient</th>
+                              <th className="text-left py-3 px-2">Medicine</th>
+                              <th className="text-left py-3 px-2">Qty</th>
+                              <th className="text-left py-3 px-2">Amount</th>
+                              <th className="text-left py-3 px-2">Payment</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getFilteredHistoryEntries().map((entry) => (
+                              <tr key={`${entry.bill_id}-${entry.medication_id}`} className="border-b hover:bg-gray-50">
+                                <td className="py-3 px-2">{safeFormatDateTime(entry.purchased_at)}</td>
+                                <td className="py-3 px-2">{safeText(entry.bill_number)}</td>
+                                <td className="py-3 px-2">
+                                  <div className="leading-tight">
+                                    <div className="text-gray-900">{safeText(entry.patient_name)}</div>
+                                    {entry.patient_uhid && (
+                                      <div className="text-xs text-gray-500">UHID: {safeText(entry.patient_uhid)}</div>
+                                    )}
                                   </div>
-                                )
-                              })()}
-                            </div>
-                            <div className="bg-gray-50 rounded-lg p-3">
-                              <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
-                              <div className="text-xl font-bold text-green-600">₹{batch.selling_price}</div>
-                              <div className="text-xs text-gray-500">Cost: ₹{batch.purchase_price || batch.unit_cost}</div>
-                            </div>
-                          </div>
+                                </td>
+                                <td className="py-3 px-2">{safeText(entry.medication_name)}</td>
+                                <td className="py-3 px-2">{entry.quantity}</td>
+                                <td className="py-3 px-2">₹{entry.total_amount}</td>
+                                <td className="py-3 px-2">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${entry.payment_status === 'paid' ? 'bg-green-100 text-green-800' : entry.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                                    {entry.payment_status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : (
+                    getFilteredSalesEntries().length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                        <p className="text-lg mb-2">No sales found</p>
+                        <p className="text-sm">No sales history for this batch in the selected time period.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm table-auto">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-3 px-2">Date</th>
+                              <th className="text-left py-3 px-2">Bill #</th>
+                              <th className="text-left py-3 px-2">Qty</th>
+                              <th className="text-left py-3 px-2">Unit Price</th>
+                              <th className="text-left py-3 px-2">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getFilteredSalesEntries().map((row: any) => (
+                              <tr key={row.id} className="border-b hover:bg-gray-50">
+                                <td className="py-3 px-2">{safeFormatDateTime(row.created_at)}</td>
+                                <td className="py-3 px-2">{safeText(row.reference_id)}</td>
+                                <td className="py-3 px-2">{Math.abs(row.quantity || 0)}</td>
+                                <td className="py-3 px-2">₹{row.unit_price}</td>
+                                <td className="py-3 px-2">₹{row.total_amount}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
-                          {/* Dates */}
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-gray-600">Manufacturing:</span>
-                              <span className="text-sm font-medium">{new Date(batch.manufacturing_date).toLocaleDateString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-gray-600">Received:</span>
-                              <span className="text-sm font-medium">{new Date(batch.received_date).toLocaleDateString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-gray-600">Expiry:</span>
-                              <span className={`text-sm font-medium flex items-center gap-1 ${isExpired ? 'text-red-600' : expSoon ? 'text-yellow-600' : 'text-gray-900'}`}>
-                                {(isExpired || expSoon) && (
-                                  <AlertTriangle className={`w-4 h-4 ${isExpired ? 'text-red-500' : 'text-yellow-500'}`} />
-                                )}
-                                {new Date(batch.expiry_date).toLocaleDateString()}
+        {/* Medicine Detail Modal */}
+        {showMedicineDetail && selectedMedicineDetail && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-7xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 shadow-lg">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-4">
+                      <h2 className="text-3xl font-bold text-white tracking-tight">{selectedMedicineDetail.name}</h2>
+                      {medicineStockSummary?.overall_alert_level && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${medicineStockSummary.overall_alert_level === 'CRITICAL' ? 'bg-red-600 text-white' :
+                          medicineStockSummary.overall_alert_level === 'WARNING' ? 'bg-amber-500 text-white' :
+                            medicineStockSummary.overall_alert_level === 'INFO' ? 'bg-blue-600 text-white' :
+                              'bg-emerald-500 text-white'
+                          }`}>
+                          {medicineStockSummary.overall_alert_level}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Medicine Info Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm mb-4">
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Code</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.medication_code || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Dosage Type</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.unit}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Manufacturer</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.manufacturer}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Strength</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.strength || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Form</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.dosage_form || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-300 text-xs font-medium mb-1">Generic</div>
+                        <div className="text-white font-semibold">{selectedMedicineDetail.generic_name || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    {/* Stock Summary Cards */}
+                    {medicineStockSummary && (
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                          <div className="text-slate-300 text-xs font-medium mb-2">Total Stock</div>
+                          <div className="text-2xl font-bold text-white">{medicineStockSummary.total_quantity}</div>
+                          <div className="text-slate-300 text-xs mt-1">{medicineStockSummary.total_batches} batches</div>
+                        </div>
+                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                          <div className="text-slate-300 text-xs font-medium mb-2">Cost Value</div>
+                          <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_cost_value || 0).toLocaleString()}</div>
+                          <div className="text-slate-300 text-xs mt-1">at purchase price</div>
+                        </div>
+                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                          <div className="text-slate-300 text-xs font-medium mb-2">Retail Value</div>
+                          <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_retail_value || 0).toLocaleString()}</div>
+                          <div className="text-slate-300 text-xs mt-1">at selling price</div>
+                        </div>
+                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                          <div className="text-slate-300 text-xs font-medium mb-2">Critical Batches</div>
+                          <div className="text-2xl font-bold text-red-300">{medicineStockSummary.critical_low_batches}</div>
+                          <div className="text-slate-300 text-xs mt-1">low stock</div>
+                        </div>
+                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                          <div className="text-slate-300 text-xs font-medium mb-2">Expiry Issues</div>
+                          <div className="text-2xl font-bold text-amber-300">{medicineStockSummary.expired_batches + medicineStockSummary.expiring_soon_batches}</div>
+                          <div className="text-slate-300 text-xs mt-1">expired/expiring</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions on right: Add Batch + Close */}
+                  <button
+                    onClick={() => {
+                      setSelectedMedicine(selectedMedicineDetail)
+                      setShowAddBatch(true)
+                    }}
+                    className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Batch
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMedicineDetail(false)
+                      setSelectedMedicineDetail(null)
+                      setMedicineStockSummary(null)
+                      setBatchStockTruth([])
+                    }}
+                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors ml-4"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto max-h-[calc(95vh-200px)]">
+                {loadingMedicineDetail ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading medicine details...</p>
+                  </div>
+                ) : (comprehensiveMedicineData?.batches || selectedMedicineDetail.batches || []).length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-lg mb-2">No batches available</p>
+                    <p className="text-sm">Add the first batch to start tracking inventory</p>
+                    <div className="mt-4">
+                      <button
+                        onClick={() => {
+                          setSelectedMedicine(selectedMedicineDetail)
+                          setShowAddBatch(true)
+                        }}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Batch
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {(comprehensiveMedicineData?.batches || selectedMedicineDetail.batches || []).map((batch: any) => {
+                      const isExpired = new Date(batch.expiry_date) < new Date()
+                      const expSoon = isExpiringSoon(batch.expiry_date)
+                      const batchStats = batchStatsMap[batch.batch_number]
+                      // Use comprehensive current_stock for truth; fallback to legacy quantity
+                      const remaining = (typeof batch.current_stock === 'number' ? batch.current_stock : batch.quantity) ?? 0
+                      const derivedStatus = getBatchStatus(batch as any, remaining, selectedMedicineDetail?.min_stock_level || 0)
+
+                      return (
+                        <div key={batch.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                          {/* Batch Header */}
+                          <div className="p-4 border-b border-gray-100">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">{batch.batch_number}</h4>
+                                <p className="text-sm text-gray-500">Supplier: {batch.supplier_name || batch.supplier}</p>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(derivedStatus)}`}>
+                                {derivedStatus.replace('_', ' ')}
                               </span>
                             </div>
                           </div>
 
-                          {/* Stats */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-blue-50 rounded-lg p-2">
-                              <div className="text-xs text-blue-600 font-medium">Sold This Month</div>
-                              <div className="text-lg font-bold text-blue-700">{batchStats?.soldUnitsThisMonth ?? '—'}</div>
+                          {/* Batch Details */}
+                          <div className="p-4 space-y-4">
+                            {/* Quantity & Pricing */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-gray-50 rounded-lg p-3">
+                                <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
+                                <div className="text-xl font-bold text-gray-900">{remaining}</div>
+                                {(() => {
+                                  const receivedFromLedger = receivedTotalsMap[batch.batch_number]
+                                  const totalSoldLedger = soldTotalsMap[batch.batch_number] || 0
+                                  const current = typeof batch.current_stock === 'number' ? batch.current_stock : (typeof batch.quantity === 'number' ? batch.quantity : 0)
+                                  const derivedFromLedger = current + totalSoldLedger
+                                  const receivedFallback = (typeof batch.received_quantity === 'number' ? batch.received_quantity :
+                                    typeof batch.original_quantity === 'number' ? batch.original_quantity : undefined)
+                                  const receivedTotal = (typeof receivedFromLedger === 'number' && receivedFromLedger > 0)
+                                    ? receivedFromLedger
+                                    : (typeof receivedFallback === 'number' && receivedFallback > 0)
+                                      ? receivedFallback
+                                      : derivedFromLedger
+                                  return (
+                                    <div className="text-xs text-gray-500">
+                                      Received: {Math.max(0, receivedTotal)}
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                              <div className="bg-gray-50 rounded-lg p-3">
+                                <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
+                                <div className="text-xl font-bold text-green-600">₹{batch.selling_price}</div>
+                                <div className="text-xs text-gray-500">Cost: ₹{batch.purchase_price || batch.unit_cost}</div>
+                              </div>
                             </div>
-                            <div className="bg-green-50 rounded-lg p-2">
-                              <div className="text-xs text-green-600 font-medium">Available</div>
-                              <div className="text-lg font-bold text-green-700">{remaining}</div>
-                            </div>
-                          </div>
 
-                          {/* Actions */}
-                          <div className="flex gap-2 pt-2 border-t border-gray-100">
-                            <button
-                              onClick={() => handleEditBatch(batch)}
-                              className="flex-1 bg-slate-700 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-1"
-                              title="Edit Batch"
-                            >
-                              <Edit className="w-3 h-3" />
-                              Edit
-                            </button>
-                            {isExpired && (
+                            {/* Dates */}
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">Manufacturing:</span>
+                                <span className="text-sm font-medium">{new Date(batch.manufacturing_date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">Received:</span>
+                                <span className="text-sm font-medium">{new Date(batch.received_date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">Expiry:</span>
+                                <span className={`text-sm font-medium flex items-center gap-1 ${isExpired ? 'text-red-600' : expSoon ? 'text-yellow-600' : 'text-gray-900'}`}>
+                                  {(isExpired || expSoon) && (
+                                    <AlertTriangle className={`w-4 h-4 ${isExpired ? 'text-red-500' : 'text-yellow-500'}`} />
+                                  )}
+                                  {new Date(batch.expiry_date).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Stats */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-blue-50 rounded-lg p-2">
+                                <div className="text-xs text-blue-600 font-medium">Sold This Month</div>
+                                <div className="text-lg font-bold text-blue-700">{batchStats?.soldUnitsThisMonth ?? '—'}</div>
+                              </div>
+                              <div className="bg-green-50 rounded-lg p-2">
+                                <div className="text-xs text-green-600 font-medium">Available</div>
+                                <div className="text-lg font-bold text-green-700">{remaining}</div>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2 pt-2 border-t border-gray-100">
                               <button
-                                onClick={() => handleExpiredStockAdjustment(selectedMedicineDetail.id, batch.batch_number, selectedMedicineDetail.name)}
-                                className="flex-1 bg-orange-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-orange-700 transition-colors flex items-center justify-center gap-1"
-                                title="Adjust Expired Stock"
+                                onClick={() => handleEditBatch(batch)}
+                                className="flex-1 bg-slate-700 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-1"
+                                title="Edit Batch"
                               >
-                                <AlertTriangle className="w-3 h-3" />
-                                Expired
+                                <Edit className="w-3 h-3" />
+                                Edit
                               </button>
-                            )}
-                            <button
-                              onClick={() => handleDeleteBatch(batch.id)}
-                              className={`${isExpired ? 'flex-1' : 'flex-1'} bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-1`}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              Delete
-                            </button>
-                            {!isExpired && (
-                              <>
+                              {isExpired && (
                                 <button
-                                  onClick={() => printStandardLabel(batch as any, selectedMedicineDetail.name)}
-                                  className="flex-1 bg-blue-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-                                  title="Print Standard Label"
+                                  onClick={() => handleExpiredStockAdjustment(selectedMedicineDetail.id, batch.batch_number, selectedMedicineDetail.name)}
+                                  className="flex-1 bg-orange-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-orange-700 transition-colors flex items-center justify-center gap-1"
+                                  title="Adjust Expired Stock"
                                 >
-                                  <Printer className="w-3 h-3" />
-                                  Print Label
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Expired
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    openBatchHistory(batch.batch_number)
-                                    setShowMedicineDetail(false)
-                                  }}
-                                  className="flex-1 bg-gray-100 text-gray-700 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
-                                >
-                                  <History className="w-3 h-3" />
-                                  History
-                                </button>
-                              </>
-                            )}
+                              )}
+                              <button
+                                onClick={() => handleDeleteBatch(batch.id)}
+                                className={`${isExpired ? 'flex-1' : 'flex-1'} bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-1`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                              {!isExpired && (
+                                <>
+                                  <button
+                                    onClick={() => printStandardLabel(batch as any, selectedMedicineDetail.name)}
+                                    className="flex-1 bg-blue-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                                    title="Print Standard Label"
+                                  >
+                                    <Printer className="w-3 h-3" />
+                                    Print Label
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      openBatchHistory(batch.batch_number)
+                                      setShowMedicineDetail(false)
+                                    }}
+                                    className="flex-1 bg-gray-100 text-gray-700 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    <History className="w-3 h-3" />
+                                    History
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Purchase History Section */}
-              <div className="mt-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Purchase History
-                  </h3>
-                  <button
-                    onClick={() => loadPurchaseHistory(selectedMedicineDetail.id)}
-                    className="btn-secondary"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Refresh
-                  </button>
-                </div>
-                
-                {loadingPurchases ? (
-                  <div className="text-center py-8">Loading purchase history...</div>
-                ) : (comprehensiveMedicineData?.purchase_history || purchaseHistory).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p className="text-lg mb-2">No purchase history found</p>
-                    <p className="text-sm">Purchase entries will appear here</p>
+                      )
+                    })}
                   </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-3 px-2">Date</th>
-                          <th className="text-left py-3 px-2">Batch</th>
-                          <th className="text-left py-3 px-2">Quantity</th>
-                          <th className="text-left py-3 px-2">Unit Price</th>
-                          <th className="text-left py-3 px-2">Total</th>
-                          <th className="text-left py-3 px-2">Supplier</th>
-                          <th className="text-left py-3 px-2">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(comprehensiveMedicineData?.purchase_history || purchaseHistory).map((purchase: any) => (
-                          <tr key={purchase.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2">
-                              {new Date(purchase.created_at || purchase.purchase_date).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 px-2">{purchase.batch_number || '—'}</td>
-                            <td className="py-3 px-2">{purchase.quantity}</td>
-                            <td className="py-3 px-2">₹{purchase.unit_price}</td>
-                            <td className="py-3 px-2">₹{(purchase.quantity * purchase.unit_price).toFixed(2)}</td>
-                            <td className="py-3 px-2">{purchase.supplier_name || '—'}</td>
-                            <td className="py-3 px-2">
-                              <button
-                                onClick={() => handleEditPurchase(purchase as any)}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="Edit Purchase"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                            </td>
+                )}
+
+                {/* Purchase History Section */}
+                <div className="mt-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-semibold text-gray-900">
+                      Purchase History
+                    </h3>
+                  </div>
+
+                  {loadingPurchases ? (
+                    <div className="text-center py-8">Loading purchase history...</div>
+                  ) : (comprehensiveMedicineData?.purchase_history || purchaseHistory).length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-lg mb-2">No purchase history found</p>
+                      <p className="text-sm">Purchase entries will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-2">Date</th>
+                            <th className="text-left py-3 px-2">Batch</th>
+                            <th className="text-left py-3 px-2">Quantity</th>
+                            <th className="text-left py-3 px-2">Unit Price</th>
+                            <th className="text-left py-3 px-2">Total</th>
+                            <th className="text-left py-3 px-2">Supplier</th>
+                            <th className="text-left py-3 px-2">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        </thead>
+                        <tbody>
+                          {(comprehensiveMedicineData?.purchase_history || purchaseHistory).map((purchase: any) => (
+                            <tr key={purchase.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-2">
+                                {new Date(purchase.created_at || purchase.purchase_date).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 px-2">{purchase.batch_number || '—'}</td>
+                              <td className="py-3 px-2">{purchase.quantity}</td>
+                              <td className="py-3 px-2">₹{purchase.unit_price}</td>
+                              <td className="py-3 px-2">₹{(purchase.quantity * purchase.unit_price).toFixed(2)}</td>
+                              <td className="py-3 px-2">{purchase.supplier_name || '—'}</td>
+                              <td className="py-3 px-2">
+                                <button
+                                  onClick={() => handleEditPurchase(purchase as any)}
+                                  className="text-blue-600 hover:text-blue-800"
+                                  title="Edit Purchase"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center mb-4">
-              <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
-              <h2 className="text-xl font-bold text-gray-900">Confirm Delete</h2>
-            </div>
-            
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete this batch? This action cannot be undone and will remove all associated data.
-            </p>
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
+                <h2 className="text-xl font-bold text-gray-900">Confirm Delete</h2>
+              </div>
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteConfirm(false)
-                  setBatchToDelete(null)
-                }}
-                className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDeleteBatch}
-                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    Delete Batch
-                  </>
-                )}
-              </button>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete this batch? This action cannot be undone and will remove all associated data.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setBatchToDelete(null)
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteBatch}
+                  className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Delete Batch
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Edit Purchase Modal */}
-      {showEditPurchase && editingPurchase && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Edit Purchase Entry</h2>
-              <button
-                onClick={() => {
-                  setShowEditPurchase(false)
-                  setEditingPurchase(null)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Batch Number
-                </label>
-                <input
-                  type="text"
-                  value={editingPurchase.batch_number || ''}
-                  onChange={(e) => setEditingPurchase({...editingPurchase, batch_number: e.target.value})}
-                  className="input"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  value={editingPurchase.quantity}
-                  onChange={(e) => setEditingPurchase({...editingPurchase, quantity: parseInt(e.target.value) || 0})}
-                  className="input"
-                  min="1"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Unit Price (₹)
-                </label>
-                <input
-                  type="number"
-                  value={editingPurchase.unit_price}
-                  onChange={(e) => setEditingPurchase({...editingPurchase, unit_price: parseFloat(e.target.value) || 0})}
-                  className="input"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Expiry Date
-                </label>
-                <input
-                  type="date"
-                  value={editingPurchase.expiry_date || ''}
-                  onChange={(e) => setEditingPurchase({...editingPurchase, expiry_date: e.target.value})}
-                  className="input"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes
-                </label>
-                <textarea
-                  value={editingPurchase.notes || ''}
-                  onChange={(e) => setEditingPurchase({...editingPurchase, notes: e.target.value})}
-                  className="input"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
+        {/* Edit Purchase Modal */}
+        {showEditPurchase && editingPurchase && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Edit Purchase Entry</h2>
                 <button
                   onClick={() => {
                     setShowEditPurchase(false)
                     setEditingPurchase(null)
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                  className="text-gray-400 hover:text-gray-600"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleUpdatePurchase({
-                    quantity: editingPurchase.quantity,
-                    unit_price: editingPurchase.unit_price,
-                    batch_number: editingPurchase.batch_number || undefined,
-                    expiry_date: editingPurchase.expiry_date || undefined,
-                    notes: editingPurchase.notes || undefined
-                  })}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                  disabled={loading}
-                >
-                  {loading ? 'Updating...' : 'Update Purchase'}
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Expired Stock Adjustment Modal */}
-      {showExpiredStockModal && expiredBatch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-orange-600">Adjust Expired Stock</h2>
-              <button
-                onClick={() => {
-                  setShowExpiredStockModal(false)
-                  setExpiredBatch(null)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">
-                Medicine: <span className="font-medium">{expiredBatch.medicineName}</span>
-              </p>
-              <p className="text-sm text-gray-600 mb-4">
-                Batch: <span className="font-medium">{expiredBatch.batchNumber}</span>
-              </p>
-              
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Adjustment Type
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Batch Number
                   </label>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setExpiredAdjustmentType('delete')}
-                      className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${
-                        expiredAdjustmentType === 'delete'
-                          ? 'bg-red-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      Delete Entire Batch
-                    </button>
-                    <button
-                      onClick={() => setExpiredAdjustmentType('adjust')}
-                      className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${
-                        expiredAdjustmentType === 'adjust'
-                          ? 'bg-orange-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      Adjust Quantity
-                    </button>
-                  </div>
+                  <input
+                    type="text"
+                    value={editingPurchase.batch_number || ''}
+                    onChange={(e) => setEditingPurchase({ ...editingPurchase, batch_number: e.target.value })}
+                    className="input"
+                  />
                 </div>
 
-                {expiredAdjustmentType === 'adjust' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      New Quantity
-                    </label>
-                    <input
-                      type="number"
-                      value={expiredAdjustmentQuantity}
-                      onChange={(e) => setExpiredAdjustmentQuantity(parseInt(e.target.value) || 0)}
-                      className="input"
-                      min="0"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    value={editingPurchase.quantity}
+                    onChange={(e) => setEditingPurchase({ ...editingPurchase, quantity: parseInt(e.target.value) || 0 })}
+                    className="input"
+                    min="1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unit Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingPurchase.unit_price}
+                    onChange={(e) => setEditingPurchase({ ...editingPurchase, unit_price: parseFloat(e.target.value) || 0 })}
+                    className="input"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editingPurchase.expiry_date || ''}
+                    onChange={(e) => setEditingPurchase({ ...editingPurchase, expiry_date: e.target.value })}
+                    className="input"
+                  />
+                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Notes
                   </label>
                   <textarea
-                    value={expiredNotes}
-                    onChange={(e) => setExpiredNotes(e.target.value)}
+                    value={editingPurchase.notes || ''}
+                    onChange={(e) => setEditingPurchase({ ...editingPurchase, notes: e.target.value })}
                     className="input"
                     rows={3}
-                    placeholder="Reason for expired stock adjustment..."
                   />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowEditPurchase(false)
+                      setEditingPurchase(null)
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleUpdatePurchase({
+                      quantity: editingPurchase.quantity,
+                      unit_price: editingPurchase.unit_price,
+                      batch_number: editingPurchase.batch_number || undefined,
+                      expiry_date: editingPurchase.expiry_date || undefined,
+                      notes: editingPurchase.notes || undefined
+                    })}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={loading}
+                  >
+                    {loading ? 'Updating...' : 'Update Purchase'}
+                  </button>
                 </div>
               </div>
             </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowExpiredStockModal(false)
-                  setExpiredBatch(null)
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleProcessExpiredStock}
-                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                disabled={loading || (expiredAdjustmentType === 'adjust' && expiredAdjustmentQuantity === 0)}
-              >
-                {loading ? 'Processing...' : 'Process Adjustment'}
-              </button>
+          </div>
+        )}
+
+        {/* Expired Stock Adjustment Modal */}
+        {showExpiredStockModal && expiredBatch && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-orange-600">Adjust Expired Stock</h2>
+                <button
+                  onClick={() => {
+                    setShowExpiredStockModal(false)
+                    setExpiredBatch(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  Medicine: <span className="font-medium">{expiredBatch.medicineName}</span>
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  Batch: <span className="font-medium">{expiredBatch.batchNumber}</span>
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Adjustment Type
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setExpiredAdjustmentType('delete')}
+                        className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${expiredAdjustmentType === 'delete'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                      >
+                        Delete Entire Batch
+                      </button>
+                      <button
+                        onClick={() => setExpiredAdjustmentType('adjust')}
+                        className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${expiredAdjustmentType === 'adjust'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                      >
+                        Adjust Quantity
+                      </button>
+                    </div>
+                  </div>
+
+                  {expiredAdjustmentType === 'adjust' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        New Quantity
+                      </label>
+                      <input
+                        type="number"
+                        value={expiredAdjustmentQuantity}
+                        onChange={(e) => setExpiredAdjustmentQuantity(parseInt(e.target.value) || 0)}
+                        className="input"
+                        min="0"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes
+                    </label>
+                    <textarea
+                      value={expiredNotes}
+                      onChange={(e) => setExpiredNotes(e.target.value)}
+                      className="input"
+                      rows={3}
+                      placeholder="Reason for expired stock adjustment..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowExpiredStockModal(false)
+                    setExpiredBatch(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleProcessExpiredStock}
+                  className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                  disabled={loading || (expiredAdjustmentType === 'adjust' && expiredAdjustmentQuantity === 0)}
+                >
+                  {loading ? 'Processing...' : 'Process Adjustment'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       </div>
     </div>
