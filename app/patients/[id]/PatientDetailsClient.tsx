@@ -104,6 +104,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showMedicalHistoryForm, setShowMedicalHistoryForm] = useState(false);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
+  const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -458,8 +459,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === tab.id
-                      ? 'border-orange-500 text-orange-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                 >
                   <tab.icon className="h-4 w-4" />
@@ -831,8 +832,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     <button
                       onClick={() => setActiveSubTab('appointments')}
                       className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'appointments'
-                          ? 'border-orange-500 text-orange-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
                       <Calendar className="h-4 w-4" />
@@ -841,8 +842,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     <button
                       onClick={() => setActiveSubTab('admissions')}
                       className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'admissions'
-                          ? 'border-orange-500 text-orange-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
                       <Bed className="h-4 w-4" />
@@ -882,8 +883,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                 )}
                               </div>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                  appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
+                                appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
                                 {appointment.status}
                               </span>
@@ -914,15 +915,15 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-lg ${allocation.status === 'active' ? 'bg-green-100' :
-                                    allocation.status === 'discharged' ? 'bg-blue-100' : 'bg-gray-100'
+                                  allocation.status === 'discharged' ? 'bg-blue-100' : 'bg-gray-100'
                                   }`}>
                                   {allocation.status === 'active' ? (
                                     <LogIn className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
-                                        allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
+                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
                                       }`} />
                                   ) : (
                                     <LogOut className={`h-4 w-4 ${allocation.status === 'active' ? 'text-green-600' :
-                                        allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
+                                      allocation.status === 'discharged' ? 'text-blue-600' : 'text-gray-600'
                                       }`} />
                                   )}
                                 </div>
@@ -936,8 +937,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                 </div>
                               </div>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${allocation.status === 'active' ? 'bg-green-100 text-green-800' :
-                                  allocation.status === 'discharged' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
+                                allocation.status === 'discharged' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
                                 {allocation.status}
                               </span>
@@ -1034,7 +1035,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                       category="medical-report"
                       onUploadComplete={(doc) => {
                         console.log('Document uploaded:', doc);
-                        // Force refresh of document list
+                        setDocumentRefreshTrigger(prev => prev + 1);
                       }}
                       onUploadError={(error) => {
                         console.error('Upload error:', error);
@@ -1047,6 +1048,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     <DocumentList
                       patientId={patient.id}
                       showDelete={true}
+                      refreshTrigger={documentRefreshTrigger}
                     />
                   </div>
                 </div>

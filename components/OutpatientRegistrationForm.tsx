@@ -56,6 +56,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
     const [departments, setDepartments] = useState<string[]>([]);
     const [isSuccess, setIsSuccess] = useState(false);
     const [registrationResult, setRegistrationResult] = useState<any>(null);
+    const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
 
     const [formData, setFormData] = useState({
         // Step 1: Patient Info
@@ -332,12 +333,13 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                     Upload Documents
                                 </h4>
                                 <DocumentUpload
-                                    patientId={registrationResult.patientId}
+                                    patientId={registrationResult.patient.id}
                                     uhid={registrationResult.uhid}
                                     staffId={formData.staffId}
                                     category="general"
                                     onUploadComplete={(doc) => {
                                         console.log('Document uploaded:', doc);
+                                        setDocumentRefreshTrigger(prev => prev + 1);
                                     }}
                                     onUploadError={(error) => {
                                         console.error('Upload error:', error);
@@ -348,8 +350,9 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             {/* Documents List */}
                             <div className="bg-gray-50 rounded-xl p-6">
                                 <DocumentList
-                                    patientId={registrationResult.patientId}
+                                    patientId={registrationResult.patient.id}
                                     showDelete={true}
+                                    refreshTrigger={documentRefreshTrigger}
                                 />
                             </div>
                         </div>

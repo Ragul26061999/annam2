@@ -40,6 +40,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
         admissionDate: new Date().toISOString().split('T')[0],
         staffId: ''
     });
+    const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
 
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -420,6 +421,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                                     category="general"
                                     onUploadComplete={(doc) => {
                                         console.log('Document uploaded:', doc);
+                                        setDocumentRefreshTrigger(prev => prev + 1);
                                     }}
                                     onUploadError={(error) => {
                                         console.error('Upload error:', error);
@@ -432,6 +434,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                                 <DocumentList
                                     patientId={selectedPatient.id}
                                     showDelete={true}
+                                    refreshTrigger={documentRefreshTrigger}
                                 />
                             </div>
                         </div>

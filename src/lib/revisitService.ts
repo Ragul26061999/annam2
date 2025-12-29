@@ -104,7 +104,7 @@ export async function getPatientVisitHistory(patientId: string, limit: number = 
   try {
     const { data, error } = await supabase
       .from('patient_revisits')
-      .select('*, staff:staff_id(name)')
+      .select('*, staff:staff_id(first_name, last_name)')
       .eq('patient_id', patientId)
       .order('visit_date', { ascending: false })
       .order('visit_time', { ascending: false })
@@ -235,7 +235,7 @@ export async function getRecentRevisits(limit: number = 20) {
       .select(`
         *,
         patient:patient_id(name, patient_id, phone),
-        staff:staff_id(name)
+        staff:staff_id(first_name, last_name)
       `)
       .order('visit_date', { ascending: false })
       .order('visit_time', { ascending: false })
@@ -255,7 +255,7 @@ export async function getRecentRevisits(limit: number = 20) {
       console.warn('patient_revisits table does not exist yet. Please run the SQL migration script.');
       return [];
     }
-    console.error('Error fetching recent revisits:', error);
+    console.error('Error fetching recent revisits:', JSON.stringify(error, null, 2));
     return [];
   }
 }

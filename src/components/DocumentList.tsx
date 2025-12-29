@@ -23,12 +23,14 @@ interface DocumentListProps {
     patientId: string;
     onDocumentDeleted?: () => void;
     showDelete?: boolean;
+    refreshTrigger?: number;
 }
 
 export default function DocumentList({
     patientId,
     onDocumentDeleted,
-    showDelete = true
+    showDelete = true,
+    refreshTrigger = 0
 }: DocumentListProps) {
     const [documents, setDocuments] = useState<PatientDocument[]>([]);
     const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ export default function DocumentList({
 
     useEffect(() => {
         loadDocuments();
-    }, [patientId]);
+    }, [patientId, refreshTrigger]);
 
     const loadDocuments = async () => {
         setLoading(true);
