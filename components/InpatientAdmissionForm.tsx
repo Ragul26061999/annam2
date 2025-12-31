@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import {
     Search, User, Building, Stethoscope,
     CreditCard, FileText, Bed, CheckCircle,
-    Loader2, AlertCircle, X, Hash, Phone, Upload
+    Loader2, AlertCircle, X, Hash, Phone, Upload, Plus, Check, Trash2,
+    Calendar, Users, Activity, Info, ChevronDown, ChevronUp, Clock
 } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { getAllDoctorsSimple, type Doctor } from '../src/lib/doctorService';
-import { getAvailableBeds, allocateBed, type Bed as BedType } from '../src/lib/bedAllocationService';
+import { getAvailableBeds, allocateBed, type Bed as BedType, getNextIPNumber } from '../src/lib/bedAllocationService';
 import { updatePatientAdmissionStatus } from '../src/lib/patientService';
 import StaffSelect from '../src/components/StaffSelect';
 import DocumentUpload from '../src/components/DocumentUpload';
@@ -38,8 +39,13 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
         diagnosisAtAdmission: '',
         selectedBedId: '',
         admissionDate: new Date().toISOString().split('T')[0],
-        staffId: ''
+        staffId: '',
+        admissionCategory: '',
+        ipNumber: '' // Added IP Number
     });
+    const [admissionCategories, setAdmissionCategories] = useState<string[]>([]);
+    const [isAddingCategory, setIsAddingCategory] = useState(false);
+    const [newCategory, setNewCategory] = useState('');
     const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
 
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -55,8 +61,44 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
 
             const beds = await getAvailableBeds();
             setAvailableBeds(beds);
+
+            const ipNum = await getNextIPNumber();
+            setFormData(prev => ({ ...prev, ipNumber: ipNum }));
         } catch (error) {
             console.error('Error loading initial data:', error);
+        }
+
+        fetchAdmissionCategories();
+    };
+
+    const fetchAdmissionCategories = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('admission_categories')
+                .select('name')
+                .eq('status', 'active')
+                .order('name');
+            if (error) throw error;
+            setAdmissionCategories(data.map(c => c.name));
+        } catch (err) {
+            console.error('Error fetching categories:', err);
+        }
+    };
+
+    const handleAddCategory = async () => {
+        if (!newCategory.trim()) return;
+        try {
+            const { error } = await supabase
+                .from('admission_categories')
+                .insert([{ name: newCategory.trim() }]);
+            if (error) throw error;
+            setAdmissionCategories(prev => [...prev, newCategory.trim()].sort());
+            setFormData(prev => ({ ...prev, admissionCategory: newCategory.trim() }));
+            setNewCategory('');
+            setIsAddingCategory(false);
+        } catch (err) {
+            console.error('Error adding category:', err);
+            setMessage({ type: 'error', text: 'Failed to add category' });
         }
     };
 
@@ -123,7 +165,9 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                     admissionDate: formData.admissionDate,
                     admissionType: 'inpatient',
                     reason: formData.reasonForAdmission || formData.diagnosisAtAdmission,
-                    staffId: formData.staffId
+                    staffId: formData.staffId,
+                    admissionCategory: formData.admissionCategory,
+                    ipNumber: formData.ipNumber
                 });
             }
 
@@ -133,8 +177,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                 diagnosis: formData.diagnosisAtAdmission,
                 primary_complaint: formData.reasonForAdmission,
                 admission_date: formData.admissionDate,
-                // Store advance amount and doctors in metadata or other available fields if needed
-                // For now, we'll focus on the core patient fields
+                admission_category: formData.admissionCategory
             };
 
             await updatePatientAdmissionStatus(
@@ -277,6 +320,22 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                         />
                     </div>
 
+                    {/* Inpatient Number (Automatic) */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                            <Hash className="h-4 w-4 text-gray-400" /> Inpatient Number (Automatic)
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.ipNumber}
+                            onChange={(e) => setFormData(prev => ({ ...prev, ipNumber: e.target.value }))}
+                            className="w-full px-4 py-2 border border-blue-200 bg-blue-50 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono font-bold text-blue-900"
+                            placeholder="Generating..."
+                            readOnly
+                        />
+                        <p className="text-[10px] text-blue-600 mt-1">This number is generated automatically for each admission.</p>
+                    </div>
+
                     {/* Attending Doctor */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
@@ -315,6 +374,64 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                                 </option>
                             ))}
                         </select>
+                    </div>
+
+                    {/* Admission Category */}
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                                <Stethoscope className="h-4 w-4 text-gray-400" /> Admission Category
+                            </span>
+                            {!isAddingCategory ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddingCategory(true)}
+                                    className="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center gap-1"
+                                >
+                                    <Plus size={14} /> Add Category
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddingCategory(false)}
+                                    className="text-gray-500 hover:text-gray-600 text-xs font-medium"
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                        </label>
+
+                        {!isAddingCategory ? (
+                            <select
+                                value={formData.admissionCategory}
+                                onChange={(e) => setFormData(prev => ({ ...prev, admissionCategory: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                required
+                            >
+                                <option value="">Select Admission Category</option>
+                                {admissionCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newCategory}
+                                    onChange={(e) => setNewCategory(e.target.value)}
+                                    placeholder="Enter new category..."
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    autoFocus
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAddCategory}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <Check size={18} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

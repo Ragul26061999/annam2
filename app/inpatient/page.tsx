@@ -7,9 +7,10 @@ import {
   RefreshCw, ArrowLeft, Eye, LogOut, Clock, Calendar,
   Filter, Hash, Stethoscope, Building, ChevronRight,
   Heart, TrendingUp, CheckCircle, XCircle, Loader2,
-  UserPlus, AlertCircle, Phone
+  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
+import { deletePatient } from '../../src/lib/patientService';
 import {
   getBedAllocations,
   getBedStats,
@@ -50,6 +51,11 @@ export default function InpatientPage() {
   // admissionTypeFilter is removed since admission_type column doesn't exist in the database
   // const [admissionTypeFilter, setAdmissionTypeFilter] = useState('all');
   const [showAvailableBeds, setShowAvailableBeds] = useState(false);
+
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadInpatientData();
@@ -137,6 +143,29 @@ export default function InpatientPage() {
     const diffTime = Math.abs(today.getTime() - admission.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
+  };
+
+  const handleDeleteClick = (allocation: any) => {
+    setPatientToDelete(allocation);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!patientToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deletePatient(patientToDelete.patient_id);
+      await loadInpatientData();
+      alert(`Patient ${patientToDelete.patient?.name || 'Unknown'} has been permanently deleted from the database.`);
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert('Failed to delete patient. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
+      setPatientToDelete(null);
+    }
   };
 
   const filteredAllocations = allocations.filter(allocation => {
@@ -434,14 +463,22 @@ export default function InpatientPage() {
                         </button>
                       </Link>
                       {(allocation.status === 'active' || allocation.status === 'allocated') && (
-                        <button
-                          className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
-                          title="Discharge Patient"
-                        >
-                          <LogOut size={14} />
-                          Discharge
-                        </button>
+                        <Link href={`/inpatient/discharge/${allocation.id}`}>
+                          <button
+                            className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
+                            title="Discharge Patient"
+                          >
+                            <LogOut size={14} />
+                            Discharge
+                          </button>
+                        </Link>
                       )}
+                      <button 
+                        onClick={() => handleDeleteClick(allocation)}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Patient"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -501,6 +538,86 @@ export default function InpatientPage() {
             >
               <XCircle className="h-5 w-5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmOpen && patientToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Delete Patient</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={isDeleting}
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this patient? <strong className="text-red-600">This action cannot be undone and will permanently remove all patient data from the database.</strong>
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-red-900 mb-1">Patient Details:</p>
+                <p className="text-sm text-red-800">
+                  <strong>Name:</strong> {patientToDelete.patient?.name || 'Unknown Patient'}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>UHID:</strong> {patientToDelete.patient_id}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Phone:</strong> {patientToDelete.patient?.phone || 'N/A'}
+                </p>
+              </div>
+              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-xs text-yellow-800 flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <strong>Warning:</strong> All associated records (appointments, vitals, medical history) will also be affected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Patient
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

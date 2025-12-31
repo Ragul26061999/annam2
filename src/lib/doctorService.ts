@@ -988,3 +988,49 @@ export async function updateDoctor(
     throw error;
   }
 }
+
+/**
+ * Delete a doctor by ID
+ */
+export async function deleteDoctor(doctorId: string): Promise<void> {
+  try {
+    // First, get the doctor to find the user_id
+    const { data: doctor, error: fetchError } = await supabase
+      .from('doctors')
+      .select('user_id')
+      .eq('id', doctorId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching doctor:', fetchError);
+      throw new Error(`Failed to fetch doctor: ${fetchError.message}`);
+    }
+
+    // Delete the doctor record
+    const { error: doctorError } = await supabase
+      .from('doctors')
+      .delete()
+      .eq('id', doctorId);
+
+    if (doctorError) {
+      console.error('Error deleting doctor:', doctorError);
+      throw new Error(`Failed to delete doctor: ${doctorError.message}`);
+    }
+
+    // Delete the associated user record
+    if (doctor.user_id) {
+      const { error: userError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', doctor.user_id);
+
+      if (userError) {
+        console.error('Error deleting associated user:', userError);
+        // Don't throw error for user deletion failure, as doctor record is already deleted
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting doctor:', error);
+    throw error;
+  }
+}

@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Filter, Plus, Edit, Trash2, Calendar, MoreVertical, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound, Clock, MapPin, Phone, Mail, Award, Stethoscope, Save, X, User, Building } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Trash2, Calendar, MoreVertical, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound, Clock, MapPin, Phone, Mail, Award, Stethoscope, Save, X, User, Building, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAllDoctors, createDoctor, updateDoctor, getDoctorsBySpecialization, getAllSpecializations, getAllDepartments, addDepartment, updateDoctorAvailability, type Doctor, type DoctorRegistrationData } from '../src/lib/doctorService';
+import { getAllDoctors, createDoctor, updateDoctor, getDoctorsBySpecialization, getAllSpecializations, getAllDepartments, addDepartment, updateDoctorAvailability, deleteDoctor, type Doctor, type DoctorRegistrationData } from '../src/lib/doctorService';
 import { Check } from 'lucide-react';
 
 // Department definitions with icons
@@ -244,6 +244,20 @@ const DoctorManagementDashboard: React.FC = () => {
       await loadDoctors();
     } catch (error) {
       console.error('Error updating doctor status:', error);
+    }
+  };
+
+  const handleDeleteDoctor = async (doctorId: string) => {
+    if (!window.confirm('Are you sure you want to delete this doctor? This action cannot be undone and will permanently remove the doctor and associated records from the system.')) {
+      return;
+    }
+
+    try {
+      await deleteDoctor(doctorId);
+      await loadDoctors();
+    } catch (error) {
+      console.error('Error deleting doctor:', error);
+      alert('Failed to delete doctor. Please try again.');
     }
   };
 
@@ -546,6 +560,14 @@ const DoctorManagementDashboard: React.FC = () => {
                         <Edit size={14} className="mr-1" />
                         Edit
                       </button>
+                      <button
+                        className="flex-1 flex items-center justify-center px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm font-medium"
+                        onClick={() => handleDeleteDoctor(doctor.id)}
+                        title="Delete Doctor"
+                      >
+                        <Trash2 size={14} className="mr-1" />
+                        Delete
+                      </button>
                     </div>
                   </motion.div>
                 );
@@ -608,7 +630,11 @@ const DoctorManagementDashboard: React.FC = () => {
                           >
                             <Edit size={18} />
                           </button>
-                          <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <button 
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={() => handleDeleteDoctor(doctor.id)}
+                            title="Delete Doctor"
+                          >
                             <Trash2 size={18} />
                           </button>
                         </div>

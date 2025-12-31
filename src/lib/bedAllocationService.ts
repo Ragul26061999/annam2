@@ -9,6 +9,8 @@ export interface BedAllocationData {
   admissionType: 'emergency' | 'elective' | 'scheduled' | 'referred' | 'transfer' | 'inpatient' | 'outpatient';
   reason: string;
   staffId?: string;
+  admissionCategory?: string;
+  ipNumber?: string; // New field for Inpatient Number
 }
 
 export interface BedAllocation {
@@ -21,8 +23,10 @@ export interface BedAllocation {
   reason: string;
   status: string;
   allocated_by: string;
+  ip_number?: string; // Add this
   created_at: string;
   updated_at: string;
+  // ...
   patient: {
     name: string;
     uhid: string;
@@ -66,6 +70,42 @@ export interface BedStats {
 }
 
 /**
+ * Generate a unique IP Number (Inpatient Number)
+ * Format: IP{Year}{Month}{XXXX} where XXXX is sequential
+ */
+export async function getNextIPNumber(): Promise<string> {
+  const now = new Date();
+  const yearTwoDigits = now.getFullYear().toString().slice(-2);
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const prefix = `IP${yearTwoDigits}${month}`;
+
+  try {
+    const { data, error } = await supabase
+      .from('bed_allocations')
+      .select('ip_number')
+      .like('ip_number', `${prefix}%`)
+      .order('ip_number', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn('Error fetching last IP number:', error);
+      return `${prefix}0001`;
+    }
+
+    if (data && data.length > 0 && data[0].ip_number) {
+      const lastNumber = parseInt(data[0].ip_number.slice(prefix.length));
+      const nextNumber = (lastNumber + 1).toString().padStart(4, '0');
+      return `${prefix}${nextNumber}`;
+    }
+
+    return `${prefix}0001`;
+  } catch (error) {
+    console.error('Error in getNextIPNumber:', error);
+    return `${prefix}0001`;
+  }
+}
+
+/**
  * Generate a unique bed allocation ID
  * Format: BA{Year}{Month}{Day}{Sequential}
  * Example: BA202501150001
@@ -85,8 +125,7 @@ export async function generateAllocationId(): Promise<string> {
       .like('allocation_id', `BA${datePrefix}%`);
 
     if (error) {
-      console.warn('Error getting allocation count (might be missing allocation_id column):', error);
-      // Fallback: Use timestamp if we can't get count
+      console.warn('Error getting allocation count:', error);
       const timestamp = now.getTime().toString().slice(-4);
       return `BA${datePrefix}${timestamp}`;
     }
@@ -95,7 +134,6 @@ export async function generateAllocationId(): Promise<string> {
     return `BA${datePrefix}${sequence}`;
   } catch (error) {
     console.error('Error in generateAllocationId:', error);
-    // Ultimate fallback
     return `BA${new Date().getTime()}`;
   }
 }
@@ -159,6 +197,17 @@ export async function allocateBed(allocationData: BedAllocationData): Promise<Be
 
     if (allocationData.staffId) {
       allocationRecord.staff_id = allocationData.staffId;
+    }
+
+    if (allocationData.admissionCategory) {
+      allocationRecord.admission_category = allocationData.admissionCategory;
+    }
+
+    // Handle ip_number
+    if (allocationData.ipNumber) {
+      allocationRecord.ip_number = allocationData.ipNumber;
+    } else if (availableColumns.includes('ip_number')) {
+      allocationRecord.ip_number = await getNextIPNumber();
     }
 
     // Add optional columns if they exist
@@ -734,6 +783,39 @@ export async function getBedAllocationById(allocationId: string): Promise<BedAll
     throw error;
   }
 }
+/**
+ * Delete a bed
+ */
+export async function deleteBed(bedId: string): Promise<void> {
+  try {
+    // First, check if the bed has any active allocations
+    const { data: activeAllocation, error: allocationError } = await supabase
+      .from('bed_allocations')
+      .select('*')
+      .eq('bed_id', bedId)
+      .eq('status', 'active')
+      .single();
+
+    if (activeAllocation) {
+      throw new Error('Cannot delete bed with active patient allocation. Please discharge the patient first.');
+    }
+
+    // Delete the bed
+    const { error } = await supabase
+      .from('beds')
+      .delete()
+      .eq('id', bedId);
+
+    if (error) {
+      console.error('Error deleting bed:', error);
+      throw new Error(`Failed to delete bed: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('Error in deleteBed:', error);
+    throw error;
+  }
+}
+
 /**
  * Create a new bed
  */

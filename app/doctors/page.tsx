@@ -17,7 +17,7 @@ import {
   Edit
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
+import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, deleteDoctor, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 
@@ -424,6 +424,20 @@ export default function DoctorsPage() {
     });
   };
 
+  const handleDeleteDoctor = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete doctor "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteDoctor(id);
+      loadDoctors();
+    } catch (error) {
+      console.error('Error deleting doctor:', error);
+      alert('Failed to delete doctor. Please try again.');
+    }
+  };
+
   const openEditModal = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
 
@@ -690,6 +704,17 @@ export default function DoctorsPage() {
                 >
                   <Edit size={14} className="mr-1" />
                   Edit
+                </button>
+                <button
+                  onClick={() => handleDeleteDoctor(doctor.id, doctor.user?.name || 'Unknown')}
+                  className="flex-1 flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
+                  title="Delete Doctor"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                  </svg>
                 </button>
               </div>
             </motion.div>

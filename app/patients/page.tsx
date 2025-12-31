@@ -27,7 +27,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus, getDailyPatientStats } from '../../src/lib/patientService';
+import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updatePatientAdmissionStatus, getDailyPatientStats, deletePatient } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import AdmissionModal from '../../src/components/AdmissionModal';
 import DischargeModal from '../../src/components/DischargeModal';
@@ -288,12 +288,7 @@ export default function PatientsPage() {
     setIsDeleting(true);
     try {
       // Permanently delete patient from database
-      const { error } = await supabase
-        .from('patients')
-        .delete()
-        .eq('id', patientToDelete.id);
-
-      if (error) throw error;
+      await deletePatient(patientToDelete.patient_id);
 
       // Refresh the patient list
       await fetchPatients();

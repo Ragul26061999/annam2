@@ -1461,6 +1461,52 @@ export async function getCriticalPatientsCount(): Promise<number> {
 }
 
 /**
+ * Delete a patient by ID
+ */
+export async function deletePatient(patientId: string): Promise<void> {
+  try {
+    // First, get the patient to find the user_id
+    const { data: patient, error: fetchError } = await supabase
+      .from('patients')
+      .select('user_id')
+      .eq('patient_id', patientId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching patient:', fetchError);
+      throw new Error(`Failed to fetch patient: ${fetchError.message}`);
+    }
+
+    // Delete the patient record
+    const { error: patientError } = await supabase
+      .from('patients')
+      .delete()
+      .eq('patient_id', patientId);
+
+    if (patientError) {
+      console.error('Error deleting patient:', patientError);
+      throw new Error(`Failed to delete patient: ${patientError.message}`);
+    }
+
+    // Delete the associated user record if it exists
+    if (patient?.user_id) {
+      const { error: userError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', patient.user_id);
+
+      if (userError) {
+        console.error('Error deleting associated user:', userError);
+        // Don't throw error for user deletion failure, as patient record was successfully deleted
+      }
+    }
+  } catch (error) {
+    console.error('Error in deletePatient:', error);
+    throw error;
+  }
+}
+
+/**
  * Get daily patient statistics (New Today, Outpatients Today, Inpatients Today)
  */
 export async function getDailyPatientStats(): Promise<{

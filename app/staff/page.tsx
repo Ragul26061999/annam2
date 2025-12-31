@@ -28,7 +28,7 @@ import {
   X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
-import { StaffMember, getStaffMembers } from '@/src/lib/staffService';
+import { StaffMember, getStaffMembers, deleteStaffMember } from '@/src/lib/staffService';
 import AddStaffModal from '@/src/components/AddStaffModal';
 
 interface StaffStats {
@@ -112,6 +112,20 @@ export default function StaffPage() {
   };
 
   const roles = ['All', ...new Set(staffMembers.map(s => s.role))].filter(role => role !== 'Doctor').sort();
+
+  const handleDeleteStaff = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete staff member "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteStaffMember(id);
+      await fetchStaffData();
+    } catch (error) {
+      console.error('Error deleting staff member:', error);
+      alert('Failed to delete staff member. Please try again.');
+    }
+  };
 
   if (loading && staffMembers.length === 0) {
     return (
@@ -273,8 +287,15 @@ export default function StaffPage() {
                         <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-blue-500 transition-all">
                           <ArrowUpDown size={18} />
                         </button>
-                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-indigo-500 transition-all">
-                          <MoreVertical size={18} />
+                        <button 
+                          className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-red-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteStaff(staff.id, staff.name || 'Unknown');
+                          }}
+                          title="Delete Staff"
+                        >
+                          <UserMinus size={18} />
                         </button>
                       </div>
                     </td>

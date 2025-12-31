@@ -17,9 +17,13 @@ import {
   Calendar,
   Activity,
   Heart,
-  ArrowRightLeft
+  ArrowRightLeft,
+  AlertTriangle,
+  X,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
+import { deleteBed } from '@/src/lib/bedAllocationService';
 import BedTransferModal from '@/src/components/BedTransferModal';
 import AddBedModal from '@/src/components/AddBedModal';
 
@@ -73,6 +77,14 @@ export default function BedsPage() {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showAddBedModal, setShowAddBedModal] = useState(false);
   const [selectedBed, setSelectedBed] = useState<BedData | null>(null);
+
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bedToDelete, setBedToDelete] = useState<BedData | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Dropdown state
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   const fetchBedData = async () => {
     try {
@@ -228,6 +240,51 @@ export default function BedsPage() {
     setSelectedBed(bed);
     setShowTransferModal(true);
   };
+
+  const handleDeleteBed = (bed: BedData) => {
+    setBedToDelete(bed);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!bedToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteBed(bedToDelete.id);
+      await fetchBedData();
+      alert(`Bed ${bedToDelete.bed_number} has been permanently deleted from the system.`);
+    } catch (error) {
+      console.error('Error deleting bed:', error);
+      alert('Failed to delete bed. Please check if the bed has active patient allocation and try again.');
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
+      setBedToDelete(null);
+    }
+  };
+
+  const toggleDropdown = (bedId: string) => {
+    setOpenDropdownId(openDropdownId === bedId ? null : bedId);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.dropdown-container')) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    if (openDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openDropdownId]);
 
   if (loading) {
     return (
@@ -406,9 +463,66 @@ export default function BedsPage() {
                 <span className={`px-2 py-1 text-xs font-medium rounded-full ${getBedStatusColor(bed.status)}`}>
                   {bed.status.charAt(0).toUpperCase() + bed.status.slice(1)}
                 </span>
-                <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                  <MoreVertical size={16} className="text-gray-500" />
-                </button>
+                <div className="dropdown-container relative">
+                  <button 
+                    onClick={() => toggleDropdown(bed.id)}
+                    className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <MoreVertical size={16} className="text-gray-500" />
+                  </button>
+                  
+                  {openDropdownId === bed.id && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 dropdown-container">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            setSelectedBed(bed);
+                            setShowAssignModal(true);
+                            setOpenDropdownId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <UserPlus size={14} />
+                          Assign Patient
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleTransferBed(bed);
+                            setOpenDropdownId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          disabled={bed.status !== 'occupied'}
+                        >
+                          <ArrowRightLeft size={14} />
+                          Transfer Patient
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleDischargeBed(bed);
+                            setOpenDropdownId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          disabled={bed.status !== 'occupied'}
+                        >
+                          <UserMinus size={14} />
+                          Discharge Patient
+                        </button>
+                        <div className="border-t border-gray-200 my-1"></div>
+                        <button
+                          onClick={() => {
+                            handleDeleteBed(bed);
+                            setOpenDropdownId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          disabled={bed.status !== 'available'}
+                        >
+                          <Trash2 size={14} />
+                          Delete Bed
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -556,6 +670,89 @@ export default function BedsPage() {
           setShowAddBedModal(false);
         }}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmOpen && bedToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Delete Bed</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setBedToDelete(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={isDeleting}
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this bed? <strong className="text-red-600">This action cannot be undone and will permanently remove the bed from the system.</strong>
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-red-900 mb-1">Bed Details:</p>
+                <p className="text-sm text-red-800">
+                  <strong>Bed Number:</strong> {bedToDelete.bed_number}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Room:</strong> {bedToDelete.room_number}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Type:</strong> {bedToDelete.bed_type}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Status:</strong> {bedToDelete.status}
+                </p>
+              </div>
+              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-xs text-yellow-800 flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <strong>Warning:</strong> Only beds without active patient allocations can be deleted.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setBedToDelete(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Bed
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

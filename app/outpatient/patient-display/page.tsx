@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, User, Calendar, Clock, MapPin, Building, Stethoscope, FileText } from 'lucide-react';
-import { getAllPatients } from '../../../src/lib/patientService';
+import { ArrowLeft, User, Calendar, Clock, MapPin, Building, Stethoscope, FileText, MoreVertical, Trash2, AlertTriangle, X } from 'lucide-react';
+import { getAllPatients, deletePatient } from '../../../src/lib/patientService';
 
 interface Patient {
   id: string;
@@ -70,6 +70,33 @@ export default function PatientDisplayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'outpatient' | 'inpatient'>('outpatient');
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteClick = (patient: Patient) => {
+    setPatientToDelete(patient);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!patientToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deletePatient(patientToDelete.patient_id);
+      await fetchPatients();
+      alert(`Patient ${patientToDelete.name} has been permanently deleted from the database.`);
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert('Failed to delete patient. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
+      setPatientToDelete(null);
+    }
+  };
 
   useEffect(() => {
     fetchPatients();
@@ -174,6 +201,85 @@ export default function PatientDisplayPage() {
   }
 
   return (
+    <>
+      {deleteConfirmOpen && patientToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Delete Patient</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={isDeleting}
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this patient? <strong className="text-red-600">This action cannot be undone and will permanently remove all patient data from the database.</strong>
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-red-900 mb-1">Patient Details:</p>
+                <p className="text-sm text-red-800">
+                  <strong>Name:</strong> {patientToDelete.name}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>UHID:</strong> {patientToDelete.patient_id}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>Phone:</strong> {patientToDelete.phone}
+                </p>
+              </div>
+              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-xs text-yellow-800 flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <strong>Warning:</strong> All associated records (appointments, vitals, medical history) will also be affected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setPatientToDelete(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Patient
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
@@ -351,15 +457,24 @@ export default function PatientDisplayPage() {
                   <span className="text-[10px] text-gray-400">
                     Added {new Date(patient.created_at).toLocaleDateString()}
                   </span>
-                  <Link
-                    href={`/patients/${patient.patient_id}`}
-                    className="text-orange-600 hover:text-orange-700 text-sm font-bold flex items-center gap-1"
-                  >
-                    View Details
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/patients/${patient.patient_id}`}
+                      className="text-orange-600 hover:text-orange-700 text-sm font-bold flex items-center gap-1"
+                    >
+                      View Details
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                      </svg>
+                    </Link>
+                    <button 
+                      onClick={() => handleDeleteClick(patient)}
+                      className="text-red-600 hover:text-red-800 text-sm font-bold flex items-center gap-1"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -367,5 +482,6 @@ export default function PatientDisplayPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
