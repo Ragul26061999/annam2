@@ -644,6 +644,12 @@ export default function DoctorsPage() {
                   <Stethoscope size={14} className="mr-2" />
                   {doctor.specialization} • {formatExperience(doctor.experience_years || 0)}
                 </div>
+                {doctor.department && (
+                  <div className="flex items-center text-sm text-gray-600">
+                    <Award size={14} className="mr-2" />
+                    Department: {doctor.department}
+                  </div>
+                )}
                 <div className="flex items-center text-sm text-gray-600">
                   <Award size={14} className="mr-2" />
                   {doctor.qualification}
