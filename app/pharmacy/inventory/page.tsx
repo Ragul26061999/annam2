@@ -450,7 +450,7 @@ export default function InventoryPage() {
       // Fetch active medications
       const { data: meds, error: medsError } = await supabase
         .from('medications')
-        .select('id, name, nickname, category, manufacturer, available_stock, minimum_stock_level, dosage_form, combination')
+        .select('id, name, category, manufacturer, available_stock, minimum_stock_level, dosage_form, combination')
         .eq('status', 'active')
         .order('name')
 
@@ -499,7 +499,7 @@ export default function InventoryPage() {
         return {
           id: m.id,
           name: m.name,
-          nickname: m.nickname,
+          nickname: m.nickname || null, // Handle missing nickname field
           category: m.category,
           description: '',
           manufacturer: m.manufacturer,
