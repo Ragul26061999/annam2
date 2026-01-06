@@ -10,6 +10,7 @@ import {
 import { supabase } from '../../../../src/lib/supabase';
 import { getBedAllocationById } from '../../../../src/lib/bedAllocationService';
 import { createDischargeSummary, type DischargeSummaryData } from '../../../../src/lib/dischargeService';
+import DischargeAttachments from '../../../../src/components/DischargeAttachments';
 
 export default function DischargeSummaryPage() {
     const router = useRouter();
@@ -20,6 +21,8 @@ export default function DischargeSummaryPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [createdSummaryId, setCreatedSummaryId] = useState<string | null>(null);
+    const [staffId, setStaffId] = useState<string>('');
 
     const [formData, setFormData] = useState<Partial<DischargeSummaryData>>({
         discharge_date: new Date().toISOString().split('T')[0],
@@ -80,7 +83,11 @@ export default function DischargeSummaryPage() {
         setError(null);
 
         try {
-            await createDischargeSummary(formData as DischargeSummaryData);
+            const summary = await createDischargeSummary({
+                ...formData as DischargeSummaryData,
+                created_by: staffId
+            });
+            setCreatedSummaryId(summary.id);
             setSuccess(true);
             // Optional: Redirect or show print option
         } catch (err: any) {
@@ -399,6 +406,38 @@ export default function DischargeSummaryPage() {
                         </button>
                     </div>
                 </form>
+
+                {/* Attachments Section */}
+                {createdSummaryId && (
+                    <div className="mt-8 p-6 bg-white rounded-xl shadow-sm border">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <FileText size={20} className="text-blue-600" />
+                            Discharge Summary Attachments
+                        </h3>
+                        <DischargeAttachments
+                            dischargeSummaryId={createdSummaryId}
+                            uploadedBy={staffId}
+                            onAttachmentChange={() => {
+                                // Optional: Refresh data or show notification
+                            }}
+                        />
+                    </div>
+                )}
+
+                {/* Staff Selection */}
+                <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                        Staff Member *
+                    </label>
+                    <input
+                        type="text"
+                        value={staffId}
+                        onChange={(e) => setStaffId(e.target.value)}
+                        placeholder="Enter your staff ID"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                    />
+                </div>
             </div>
 
             <style jsx global>{`

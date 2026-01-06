@@ -24,10 +24,13 @@ export interface DischargeSummaryData {
     follow_up_advice: string;
     review_on?: string;
     prescription: string;
+    created_by?: string;
 }
 
 export async function createDischargeSummary(data: DischargeSummaryData) {
     try {
+        console.log('Creating discharge summary with data:', data);
+        
         const { data: summary, error } = await supabase
             .from('discharge_summaries')
             .insert([data])
@@ -36,45 +39,13 @@ export async function createDischargeSummary(data: DischargeSummaryData) {
 
         if (error) {
             console.error('Error creating discharge summary:', error);
-            throw new Error(`Failed to create discharge summary: ${error.message}`);
+            const errorMessage = error.message || error.details || JSON.stringify(error);
+            throw new Error(`Failed to create discharge summary: ${errorMessage}`);
         }
 
-        // Also update the bed allocation status to discharged if not already done
-        const { error: allocationError } = await supabase
-            .from('bed_allocations')
-            .update({
-                status: 'discharged',
-                discharge_date: new Date().toISOString()
-            })
-            .eq('id', data.allocation_id);
-
-        if (allocationError) {
-            console.warn('Error updating bed allocation status:', allocationError);
-        }
-
-        // Get the bed entry associated with this allocation
-        const { data: allocationData } = await supabase
-            .from('bed_allocations')
-            .select('bed_id')
-            .eq('id', data.allocation_id)
-            .single();
-
-        if (allocationData?.bed_id) {
-            // Update bed status to available
-            await supabase
-                .from('beds')
-                .update({ status: 'available' })
-                .eq('id', allocationData.bed_id);
-        }
-
-        // Update patient admission status
-        await supabase
-            .from('patients')
-            .update({ is_admitted: false, admission_type: 'outpatient' })
-            .eq('id', data.patient_id);
-
+        console.log('Discharge summary created successfully:', summary);
         return summary;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error in createDischargeSummary:', error);
         throw error;
     }
@@ -90,7 +61,7 @@ export async function getDischargeSummaryByAllocation(allocationId: string) {
 
         if (error) {
             console.error('Error fetching discharge summary:', error);
-            throw error;
+            throw new Error(`Failed to fetch discharge summary: ${error.message}`);
         }
 
         return data;

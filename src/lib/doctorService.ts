@@ -164,7 +164,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       authUserId = existingUser.auth_id;
       user = existingUser;
     } else {
-      // Create new auth user
+      // Try to create new auth user
       const { data: authUser, error: authError } = await supabase.auth.signUp({
         email: doctorData.email,
         password: 'Doctor@123', // Default password, should be changed on first login
@@ -179,42 +179,66 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       });
 
       if (authError) {
-        console.error('Error creating doctor auth user:', authError);
-        throw new Error(`Failed to create doctor authentication: ${authError.message}`);
-      }
-
-      authUserId = authUser.user?.id;
-
-      // Create user record with unique employee ID
-      const userData = {
-        auth_id: authUserId,
-        employee_id: uniqueEmployeeId,
-        name: doctorData.name,
-        email: doctorData.email,
-        phone: doctorData.phone,
-        address: doctorData.address,
-        role: 'doctor',
-        status: 'active',
-        permissions: {
-          view_patients: true,
-          create_appointments: true,
-          update_medical_records: true,
-          prescribe_medications: true
+        if (authError.message.includes('User already registered') || authError.message.includes('user_already_exists')) {
+          // User exists in auth but not in our users table - try to get the existing auth user
+          console.log('Auth user already exists, attempting to link to existing user record');
+          
+          // Try to sign in to get the existing auth user ID
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: doctorData.email,
+            password: 'Doctor@123'
+          });
+          
+          if (!signInError && signInData.user) {
+            authUserId = signInData.user.id;
+            console.log('Successfully linked to existing auth user');
+          } else {
+            // If we can't sign in, we need to handle this differently
+            // For now, we'll throw an error with a more helpful message
+            throw new Error(`Doctor with email ${doctorData.email} already exists in the system. Please use a different email or contact the administrator to reset the password.`);
+          }
+        } else {
+          console.error('Error creating doctor auth user:', authError);
+          throw new Error(`Failed to create doctor authentication: ${authError.message}`);
         }
-      };
-
-      const { data: newUser, error: userError } = await supabase
-        .from('users')
-        .insert([userData])
-        .select()
-        .single();
-
-      if (userError) {
-        console.error('Error creating user record:', userError);
-        throw new Error(`Failed to create user record: ${userError.message}`);
+      } else {
+        authUserId = authUser.user?.id;
       }
 
-      user = newUser;
+      if (authUserId) {
+        // Create user record with unique employee ID
+        const userData = {
+          auth_id: authUserId,
+          employee_id: uniqueEmployeeId,
+          name: doctorData.name,
+          email: doctorData.email,
+          phone: doctorData.phone,
+          address: doctorData.address,
+          role: 'doctor',
+          status: 'active',
+          permissions: {
+            view_patients: true,
+            create_appointments: true,
+            update_medical_records: true,
+            prescribe_medications: true
+          }
+        };
+
+        const { data: newUser, error: userError } = await supabase
+          .from('users')
+          .insert([userData])
+          .select()
+          .single();
+
+        if (userError) {
+          console.error('Error creating user record:', userError);
+          throw new Error(`Failed to create user record: ${userError.message}`);
+        }
+
+        user = newUser;
+      } else {
+        throw new Error('Failed to create or retrieve authentication user');
+      }
     }
 
     // Prepare session-based availability data

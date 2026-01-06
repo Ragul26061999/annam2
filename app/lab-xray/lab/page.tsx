@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -35,7 +35,9 @@ import {
     createLabTestCatalogEntry,
     LabTestCatalog
 } from '../../../src/lib/labXrayService';
+import { createLabTestBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
 import StaffSelect from '../../../src/components/StaffSelect';
+import UniversalPaymentModal from '../../../src/components/UniversalPaymentModal';
 import { getAllDoctorsSimple } from '../../../src/lib/doctorService';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -49,7 +51,6 @@ interface TestSelection {
 export default function LabOrderPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
-    const [searchingPatient, setSearchingPatient] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,9 @@ export default function LabOrderPage() {
 
     // Search States
     const [uhidSearch, setUhidSearch] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+    const [searchingPatient, setSearchingPatient] = useState(false);
 
     // New Test State
     const [showNewTestModal, setShowNewTestModal] = useState(false);
@@ -90,6 +94,9 @@ export default function LabOrderPage() {
     const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
     const [totalAmount, setTotalAmount] = useState(0);
     const [staffId, setStaffId] = useState('');
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [generatedBill, setGeneratedBill] = useState<PaymentRecord | null>(null);
+    const [createdOrders, setCreatedOrders] = useState<any[]>([]);
 
     useEffect(() => {
         loadInitialData();
@@ -99,6 +106,56 @@ export default function LabOrderPage() {
         const total = selectedTests.reduce((sum, test) => sum + test.amount, 0);
         setTotalAmount(total);
     }, [selectedTests]);
+
+    // Real-time search with debouncing
+    const searchPatients = useCallback(async (searchTerm: string) => {
+        if (!searchTerm.trim()) {
+            setSearchResults([]);
+            setShowSearchDropdown(false);
+            return;
+        }
+
+        setSearchingPatient(true);
+        try {
+            const { data, error } = await supabase
+                .from('patients')
+                .select('*')
+                .or(`patient_id.ilike.%${searchTerm.trim()}%,name.ilike.%${searchTerm.trim()}%,phone.ilike.%${searchTerm.trim()}%`)
+                .limit(10)
+                .order('name');
+
+            if (error) throw error;
+            setSearchResults(data || []);
+            setShowSearchDropdown(true);
+        } catch (err) {
+            console.error('Search error:', err);
+            setSearchResults([]);
+        } finally {
+            setSearchingPatient(false);
+        }
+    }, []);
+
+    // Debounced search
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            searchPatients(uhidSearch);
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [uhidSearch, searchPatients]);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element;
+            if (!target.closest('.search-container')) {
+                setShowSearchDropdown(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const loadInitialData = async () => {
         try {
@@ -117,6 +174,36 @@ export default function LabOrderPage() {
         }
     };
 
+    const handlePatientSelect = (patient: any) => {
+        // Calculate age
+        let age = '';
+        if (patient.date_of_birth) {
+            const birthDate = new Date(patient.date_of_birth);
+            const today = new Date();
+            let years = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                years--;
+            }
+            age = years.toString();
+        }
+
+        setPatientDetails({
+            id: patient.id,
+            uhid: patient.patient_id,
+            name: patient.name,
+            gender: patient.gender || '',
+            age: age,
+            contactNo: patient.phone || '',
+            emailId: patient.email || ''
+        });
+
+        setUhidSearch(patient.name); // Show selected patient name
+        setShowSearchDropdown(false);
+        setSearchResults([]);
+        setError(null);
+    };
+
     const handleUHIDSearch = async () => {
         if (!uhidSearch.trim()) return;
 
@@ -126,42 +213,20 @@ export default function LabOrderPage() {
             const { data, error } = await supabase
                 .from('patients')
                 .select('*')
-                .ilike('patient_id', uhidSearch.trim())
-                .single();
+                .or(`patient_id.ilike.%${uhidSearch.trim()}%,name.ilike.%${uhidSearch.trim()}%`)
+                .limit(1);
 
             if (error) {
-                if (error.code === 'PGRST116') {
-                    setError('Patient not found with this UHID.');
-                } else {
-                    throw error;
-                }
+                throw error;
+            }
+
+            if (!data || data.length === 0) {
+                setError('Patient not found with this UHID or name.');
                 return;
             }
 
-            if (data) {
-                // Calculate age
-                let age = '';
-                if (data.date_of_birth) {
-                    const birthDate = new Date(data.date_of_birth);
-                    const today = new Date();
-                    let years = today.getFullYear() - birthDate.getFullYear();
-                    const m = today.getMonth() - birthDate.getMonth();
-                    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                        years--;
-                    }
-                    age = years.toString();
-                }
-
-                setPatientDetails({
-                    id: data.id,
-                    uhid: data.patient_id,
-                    name: data.name,
-                    gender: data.gender || '',
-                    age: age,
-                    contactNo: data.phone || '',
-                    emailId: data.email || ''
-                });
-            }
+            const patient = data[0];
+            handlePatientSelect(patient);
         } catch (err: any) {
             console.error('Patient search error:', err);
             setError('An error occurred while searching for the patient.');
@@ -269,7 +334,8 @@ export default function LabOrderPage() {
         setError(null);
 
         try {
-            const promises = selectedTests.map(test =>
+            // Create lab test orders
+            const orderPromises = selectedTests.map(test =>
                 createLabTestOrder({
                     patient_id: patientDetails.id,
                     ordering_doctor_id: orderingDoctorId,
@@ -281,15 +347,29 @@ export default function LabOrderPage() {
                 })
             );
 
-            await Promise.all(promises);
+            const orders = await Promise.all(orderPromises);
+            setCreatedOrders(orders);
+
+            // Create bill for the lab tests
+            const bill = await createLabTestBill(patientDetails.id, orders, staffId);
+            setGeneratedBill(bill);
+
+            // Show payment modal
+            setShowPaymentModal(true);
             setSuccess(true);
-            setTimeout(() => router.push('/lab-xray'), 2000);
         } catch (err: any) {
             console.error('Submission error:', err);
             setError(err.message || 'Failed to create orders.');
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handlePaymentSuccess = () => {
+        // Reset form and redirect
+        setTimeout(() => {
+            router.push('/lab-xray');
+        }, 1000);
     };
 
     if (loading) {
@@ -346,24 +426,58 @@ export default function LabOrderPage() {
                             <div className="p-6 space-y-5">
                                 {/* UHID Search */}
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UHID / Patient ID</label>
-                                    <div className="relative group">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UHID / Patient Name</label>
+                                    <div className="relative group search-container">
                                         <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${searchingPatient ? 'text-teal-500' : 'text-slate-400 group-focus-within:text-teal-500'}`} size={18} />
                                         <input
                                             type="text"
-                                            placeholder="Enter UHID..."
+                                            placeholder="Enter UHID or Patient Name..."
                                             value={uhidSearch}
                                             onChange={(e) => setUhidSearch(e.target.value)}
-                                            onKeyPress={(e) => e.key === 'Enter' && handleUHIDSearch()}
+                                            onFocus={() => setShowSearchDropdown(searchResults.length > 0)}
                                             className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl transition-all outline-none text-sm font-semibold text-slate-700"
                                         />
-                                        <button
-                                            onClick={handleUHIDSearch}
-                                            disabled={searchingPatient}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors disabled:opacity-50"
-                                        >
-                                            {searchingPatient ? <Loader2 className="animate-spin h-5 w-5" /> : <ChevronDown size={20} />}
-                                        </button>
+                                        {uhidSearch && (
+                                            <button
+                                                onClick={() => {
+                                                    setUhidSearch('');
+                                                    setSearchResults([]);
+                                                    setShowSearchDropdown(false);
+                                                }}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-red-500 rounded-xl transition-colors"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        )}
+                                        
+                                        {/* Search Results Dropdown */}
+                                        {showSearchDropdown && searchResults.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-lg max-h-80 overflow-y-auto z-50">
+                                                {searchResults.map((patient) => (
+                                                    <button
+                                                        key={patient.id}
+                                                        onClick={() => handlePatientSelect(patient)}
+                                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-b-0"
+                                                    >
+                                                        <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                                                            <User size={16} className="text-teal-600" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-semibold text-slate-900 truncate">
+                                                                {patient.name}
+                                                            </div>
+                                                            <div className="text-xs text-slate-500 flex items-center gap-2">
+                                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">
+                                                                    {patient.patient_id}
+                                                                </span>
+                                                                <span>{patient.gender}</span>
+                                                                {patient.phone && <span>• {patient.phone}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -755,6 +869,16 @@ export default function LabOrderPage() {
                     }
                 </AnimatePresence >
             </div >
+
+            {/* Payment Modal */}
+            {generatedBill && (
+                <UniversalPaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    bill={generatedBill}
+                    onSuccess={handlePaymentSuccess}
+                />
+            )}
         </div >
     );
 }

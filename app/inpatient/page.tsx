@@ -19,6 +19,7 @@ import {
   type BedStats,
   type Bed as BedType
 } from '../../src/lib/bedAllocationService';
+import IPatientPharmacyRecommendations from '../../src/components/IPatientPharmacyRecommendations';
 
 interface InpatientStats {
   admittedPatients: number;
@@ -485,6 +486,25 @@ export default function InpatientPage() {
               );
             })
           )}
+        </div>
+      </div>
+
+      {/* Pharmacy Recommendations Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pharmacy Recommendations</h3>
+          <IPatientPharmacyRecommendations
+            patientId={allocations[0]?.patient_id || ''}
+            patientData={{
+              diagnosis: allocations[0]?.patient?.diagnosis || '',
+              allergies: (allocations[0]?.patient as any)?.allergies?.split(',').filter(Boolean) || [],
+              current_medications: (allocations[0]?.patient as any)?.current_medications?.split(',').filter(Boolean) || []
+            }}
+            onRecommendationProcessed={() => {
+              // Refresh data when recommendations are processed
+              loadInpatientData();
+            }}
+          />
         </div>
       </div>
 
