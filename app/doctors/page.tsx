@@ -366,7 +366,7 @@ export default function DoctorsPage() {
   const handleAddDoctor = async () => {
     try {
       const doctorData: DoctorRegistrationData = {
-        doctorId: formData.licenseNumber,
+        doctorId: '', // This will be generated automatically
         ...formData,
         sessions: formData.sessions,
         availableSessions: formData.availableSessions

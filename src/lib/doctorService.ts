@@ -91,7 +91,7 @@ export async function generateDoctorId(): Promise<string> {
     const { count, error } = await supabase
       .from('doctors')
       .select('id', { count: 'exact', head: true })
-      .like('doctor_id', `DR${year}${month}%`);
+      .like('license_number', `DR${year}${month}%`);
 
     if (error) {
       console.error('Error getting doctor count:', error);
@@ -107,56 +107,114 @@ export async function generateDoctorId(): Promise<string> {
 }
 
 /**
+ * Generate a unique employee ID to avoid conflicts
+ */
+export async function generateEmployeeId(): Promise<string> {
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(-2);
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+
+  try {
+    // Get count of existing users for this month
+    const { count, error } = await supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .like('employee_id', `EMP${year}${month}%`);
+
+    if (error) {
+      console.error('Error getting employee count:', error);
+      throw new Error('Failed to generate employee ID');
+    }
+
+    const sequence = ((count || 0) + 1).toString().padStart(4, '0');
+    return `EMP${year}${month}${sequence}`;
+  } catch (error) {
+    console.error('Error generating employee ID:', error);
+    throw error;
+  }
+}
+
+/**
  * Create a new doctor record
  */
 export async function createDoctor(doctorData: DoctorRegistrationData): Promise<Doctor> {
   try {
-    // First, create user account
-    const { data: authUser, error: authError } = await supabase.auth.signUp({
-      email: doctorData.email,
-      password: 'password', // Default password, should be changed on first login
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: {
-          role: 'doctor',
-          name: doctorData.name,
-          email_confirm: true
-        }
-      }
-    });
+    // Generate unique IDs
+    const uniqueDoctorId = await generateDoctorId();
+    const uniqueEmployeeId = await generateEmployeeId();
 
-    if (authError) {
-      console.error('Error creating doctor auth user:', authError);
-      throw new Error(`Failed to create doctor authentication: ${authError.message}`);
+    // Check if user already exists in users table
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id, email, auth_id')
+      .eq('email', doctorData.email)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing user:', checkError);
+      throw new Error(`Failed to check existing user: ${checkError.message}`);
     }
 
-    // Create user record
-    const userData = {
-      auth_id: authUser.user?.id,
-      employee_id: doctorData.doctorId,
-      name: doctorData.name,
-      email: doctorData.email,
-      phone: doctorData.phone,
-      address: doctorData.address,
-      role: 'doctor',
-      status: 'active',
-      permissions: {
-        view_patients: true,
-        create_appointments: true,
-        update_medical_records: true,
-        prescribe_medications: true
+    let authUserId = null;
+    let user = null;
+
+    if (existingUser) {
+      // User already exists, use existing auth_id
+      console.log('User already exists, using existing record');
+      authUserId = existingUser.auth_id;
+      user = existingUser;
+    } else {
+      // Create new auth user
+      const { data: authUser, error: authError } = await supabase.auth.signUp({
+        email: doctorData.email,
+        password: 'Doctor@123', // Default password, should be changed on first login
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            role: 'doctor',
+            name: doctorData.name,
+            email_confirm: true
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('Error creating doctor auth user:', authError);
+        throw new Error(`Failed to create doctor authentication: ${authError.message}`);
       }
-    };
 
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .insert([userData])
-      .select()
-      .single();
+      authUserId = authUser.user?.id;
 
-    if (userError) {
-      console.error('Error creating user record:', userError);
-      throw new Error(`Failed to create user record: ${userError.message}`);
+      // Create user record with unique employee ID
+      const userData = {
+        auth_id: authUserId,
+        employee_id: uniqueEmployeeId,
+        name: doctorData.name,
+        email: doctorData.email,
+        phone: doctorData.phone,
+        address: doctorData.address,
+        role: 'doctor',
+        status: 'active',
+        permissions: {
+          view_patients: true,
+          create_appointments: true,
+          update_medical_records: true,
+          prescribe_medications: true
+        }
+      };
+
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert([userData])
+        .select()
+        .single();
+
+      if (userError) {
+        console.error('Error creating user record:', userError);
+        throw new Error(`Failed to create user record: ${userError.message}`);
+      }
+
+      user = newUser;
     }
 
     // Prepare session-based availability data
@@ -166,10 +224,10 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       workingDays: doctorData.workingDays
     };
 
-    // Create doctor record
+    // Create doctor record with unique doctor ID
     const doctorRecord = {
       user_id: user.id,
-      license_number: doctorData.licenseNumber,
+      license_number: uniqueDoctorId, // Use generated unique doctor ID
       specialization: doctorData.specialization,
       qualification: doctorData.qualification,
       years_of_experience: doctorData.experienceYears,
@@ -809,19 +867,20 @@ export async function getDoctorStats(doctorId?: string): Promise<{
  */
 export async function getAllSpecializations(): Promise<string[]> {
   try {
+    // Fetch from the specializations table we created
     const { data: specializations, error } = await supabase
-      .from('doctors')
-      .select('specialization')
-      .eq('status', 'active');
+      .from('specializations')
+      .select('name')
+      .eq('status', 'active')
+      .order('name');
 
     if (error) {
       console.error('Error fetching specializations:', error);
       throw new Error(`Failed to fetch specializations: ${error.message}`);
     }
 
-    // Get unique specializations
-    const uniqueSpecializations = [...new Set(specializations?.map(s => s.specialization) || [])];
-    return uniqueSpecializations.sort();
+    // Return the specialization names
+    return specializations?.map(s => s.name) || [];
   } catch (error) {
     console.error('Error fetching specializations:', error);
     throw error;
