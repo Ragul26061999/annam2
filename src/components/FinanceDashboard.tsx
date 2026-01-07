@@ -20,7 +20,12 @@ import {
   FileText,
   AlertCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  Pill,
+  TestTube,
+  Scan,
+  Stethoscope,
+  User
 } from 'lucide-react';
 import { 
   getFinanceStats, 
@@ -33,6 +38,7 @@ import {
   type RevenueBreakdown,
   type PaymentMethodStats
 } from '../lib/financeService';
+import TransactionViewModal from './TransactionViewModal';
 
 interface FinanceDashboardProps {
   className?: string;
@@ -49,6 +55,20 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  // Source colors and icons for different billing types
+  const sourceConfig: Record<string, { color: string; bgColor: string; icon: any; label: string }> = {
+    billing: { color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Stethoscope, label: 'Consultation' },
+    pharmacy: { color: 'text-green-600', bgColor: 'bg-green-100', icon: Pill, label: 'Pharmacy' },
+    lab: { color: 'text-purple-600', bgColor: 'bg-purple-100', icon: TestTube, label: 'Lab Test' },
+    radiology: { color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Scan, label: 'Radiology' },
+    diagnostic: { color: 'text-pink-600', bgColor: 'bg-pink-100', icon: FileText, label: 'Diagnostic' },
+    outpatient: { color: 'text-teal-600', bgColor: 'bg-teal-100', icon: User, label: 'Outpatient' }
+  };
 
   useEffect(() => {
     loadFinanceData();
@@ -84,6 +104,28 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
     }
   };
 
+  // Filter records based on search, status, type, and date range
+  const filteredRecords = billingRecords.filter(record => {
+    const matchesSearch = !searchTerm || 
+      record.bill_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.patient?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.patient?.patient_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || record.payment_status === statusFilter;
+    const matchesType = typeFilter === 'all' || record.source === typeFilter;
+    
+    // Date filtering
+    let matchesDate = true;
+    if (dateFromFilter) {
+      matchesDate = matchesDate && new Date(record.bill_date) >= new Date(dateFromFilter);
+    }
+    if (dateToFilter) {
+      matchesDate = matchesDate && new Date(record.bill_date) <= new Date(dateToFilter);
+    }
+    
+    return matchesSearch && matchesStatus && matchesType && matchesDate;
+  });
+
   const handleExport = async () => {
     try {
       const data = await import('../lib/financeService').then(module => 
@@ -108,6 +150,16 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
     } catch (error) {
       console.error('Error exporting data:', error);
     }
+  };
+
+  const handleViewRecord = (record: BillingRecord) => {
+    setSelectedRecord(record);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedRecord(null);
   };
 
   const getStatusColor = (status: string) => {
@@ -150,12 +202,12 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
   }
 
   return (
-    <div className={`space-y-6 p-6 ${className}`}>
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Finance Dashboard</h1>
-          <p className="text-gray-500 mt-1">Manage billing, revenue, and financial reports</p>
+          <h1 className="text-3xl font-bold text-gray-900">Finance Dashboard</h1>
+          <p className="text-gray-500 mt-2">Complete financial overview and transaction management</p>
         </div>
         <div className="flex gap-2">
           <button 
@@ -165,12 +217,9 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
             <Download size={16} className="mr-2" />
             Export Report
           </button>
-          <button className="flex items-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
-            <Plus size={16} className="mr-2" />
-            New Invoice
-          </button>
         </div>
       </div>
+
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -239,6 +288,84 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
         </div>
       </div>
 
+      {/* Source Breakdown Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div 
+          onClick={() => window.open('/finance/billing', '_blank')}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Stethoscope className="text-blue-600" size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Consultations</p>
+              <p className="text-lg font-bold text-gray-900">{formatAmount(stats?.billingRevenue || 0)}</p>
+              <p className="text-xs text-gray-400">{stats?.billingCount || 0} records</p>
+            </div>
+          </div>
+        </div>
+        <div 
+          onClick={() => window.open('/finance/pharmacy', '_blank')}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+              <Pill className="text-green-600" size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Pharmacy</p>
+              <p className="text-lg font-bold text-gray-900">{formatAmount(stats?.pharmacyRevenue || 0)}</p>
+              <p className="text-xs text-gray-400">{stats?.pharmacyCount || 0} records</p>
+            </div>
+          </div>
+        </div>
+        <div 
+          onClick={() => window.open('/finance/lab', '_blank')}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+              <TestTube className="text-purple-600" size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Lab Tests</p>
+              <p className="text-lg font-bold text-gray-900">{formatAmount(stats?.labRevenue || 0)}</p>
+              <p className="text-xs text-gray-400">{stats?.labCount || 0} records</p>
+            </div>
+          </div>
+        </div>
+        <div 
+          onClick={() => window.open('/finance/radiology', '_blank')}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+              <Scan className="text-orange-600" size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Radiology</p>
+              <p className="text-lg font-bold text-gray-900">{formatAmount(stats?.radiologyRevenue || 0)}</p>
+              <p className="text-xs text-gray-400">{stats?.radiologyCount || 0} records</p>
+            </div>
+          </div>
+        </div>
+        <div 
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+              <User className="text-teal-600" size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Outpatient</p>
+              <p className="text-lg font-bold text-gray-900">{formatAmount(stats?.outpatientRevenue || 0)}</p>
+              <p className="text-xs text-gray-400">{stats?.outpatientCount || 0} records</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Search and Filters */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <div className="flex flex-col sm:flex-row gap-4">
@@ -279,12 +406,12 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
               onChange={(e) => setTypeFilter(e.target.value)}
               className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
             >
-              <option value="all">All Types</option>
-              <option value="consultation">Consultation</option>
-              <option value="surgery">Surgery</option>
-              <option value="medication">Medication</option>
+              <option value="all">All Sources</option>
+              <option value="billing">Consultations & Billing</option>
+              <option value="pharmacy">Pharmacy</option>
               <option value="lab">Lab Tests</option>
-              <option value="room">Room Charges</option>
+              <option value="radiology">Radiology & Scans</option>
+              <option value="outpatient">Outpatient</option>
             </select>
           </div>
         </div>
@@ -296,6 +423,8 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Date From</label>
                 <input
                   type="date"
+                  value={dateFromFilter}
+                  onChange={(e) => setDateFromFilter(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
@@ -303,16 +432,24 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Date To</label>
                 <input
                   type="date"
+                  value={dateToFilter}
+                  onChange={(e) => setDateToFilter(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Min Amount</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('all');
+                    setTypeFilter('all');
+                    setDateFromFilter('');
+                    setDateToFilter('');
+                  }}
+                  className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Clear Filters
+                </button>
               </div>
             </div>
           </div>
@@ -325,24 +462,40 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Recent Transactions</h2>
-            <button className="text-sm text-orange-600 hover:text-orange-700 font-medium">
-              View All
+            <button 
+              onClick={() => window.open('/finance/billing', '_blank')}
+              className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+            >
+              View All Billing
             </button>
           </div>
           
           <div className="space-y-3">
-            {billingRecords.map((record) => (
+            {filteredRecords.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
+                <Receipt className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                <p className="text-gray-500">No transactions found</p>
+                <p className="text-sm text-gray-400 mt-1">Try adjusting your filters</p>
+              </div>
+            ) : null}
+            {filteredRecords.map((record) => (
               <div key={record.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
-                      {record.total_amount > 1000 ? `${Math.round(record.total_amount / 1000)}K` : `₹${record.total_amount}`}
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sourceConfig[record.source]?.bgColor || 'bg-gray-100'}`}>
+                      {(() => {
+                        const IconComponent = sourceConfig[record.source]?.icon || Receipt;
+                        return <IconComponent className={`${sourceConfig[record.source]?.color || 'text-gray-600'}`} size={20} />;
+                      })()}
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">
-                        {record.patient?.first_name} {record.patient?.last_name}
+                        {record.patient?.name || 'Unknown Patient'}
                       </h3>
-                      <p className="text-sm text-gray-500">{record.bill_id} • {record.patient?.uhid}</p>
+                      <p className="text-sm text-gray-500">{record.bill_id} • {record.patient?.patient_id || 'N/A'}</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${sourceConfig[record.source]?.bgColor || 'bg-gray-100'} ${sourceConfig[record.source]?.color || 'text-gray-600'}`}>
+                        {sourceConfig[record.source]?.label || record.source}
+                      </span>
                       <div className="flex items-center mt-1 space-x-4">
                         <div className="flex items-center text-xs text-gray-600">
                           <Calendar size={12} className="mr-1" />
@@ -363,7 +516,10 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
                         <span className="ml-1">{record.payment_status?.charAt(0).toUpperCase() + record.payment_status?.slice(1)}</span>
                       </span>
                     </div>
-                    <button className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                    <button 
+                      onClick={() => handleViewRecord(record)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
                       <Eye size={16} />
                     </button>
                   </div>
@@ -450,6 +606,13 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
           Load More Transactions
         </button>
       </div>
+
+      {/* Transaction View Modal */}
+      <TransactionViewModal 
+        record={selectedRecord}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+      />
     </div>
   );
 }
