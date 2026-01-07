@@ -116,6 +116,7 @@ interface Patient {
     balance_due?: number;
     payment_status?: string;
     bill_number?: string;
+    bed_allocation_id?: string;
   };
   staff?: {
     first_name: string;
@@ -261,7 +262,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       try {
         const { data: billingData, error: billingError } = await supabase
           .from('billing')
-          .select('advance_amount, amount_paid, balance_due, payment_status, bill_number')
+          .select('advance_amount, amount_paid, balance_due, payment_status, bill_number, bed_allocation_id')
           .eq('patient_id', patientData.id)
           .order('issued_at', { ascending: false })
           .limit(1)
@@ -1019,6 +1020,91 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
             {/* Billing Tab */}
             {activeTab === 'billing' && (
               <div className="space-y-8">
+                {/* Consolidated Patient Billing Card */}
+                <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-8 rounded-3xl shadow-lg text-white">
+                  <h4 className="text-xl font-bold mb-8 flex items-center gap-3">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <FileText className="text-white" size={24} />
+                    </div>
+                    CONSOLIDATED PATIENT BILLING
+                  </h4>
+                  
+                  {(() => {
+                    // 1. Registration/OP Billing
+                    const regTotal = Number(patient.total_amount) || 0;
+                    // Only consider it a registration bill if it's not an IP bill
+                    const latestBill = patient.billing;
+                    const isIpBill = latestBill?.bed_allocation_id;
+                    
+                    // If the latest bill is IP or doesn't match registration amount logic, we might be cautious.
+                    // But for now, we use the existing pattern but fix the balance calculation.
+                    const regPaid = isIpBill ? 0 : (Number(latestBill?.amount_paid) || 0);
+                    
+                    // Fix: Do not rely on balance_due if it's 0 but total > paid. 
+                    // Always calculate balance as Total - Paid for consistency in this view.
+                    const regBalance = Math.max(0, regTotal - regPaid);
+
+                    // 2. IP Billing
+                    const ipTotal = Number(ipBilling?.total ?? ipAllocation?.total_charges ?? 0) || 0;
+                    const ipPaid = Number(ipBilling?.amount_paid ?? 0) || 0;
+                    const ipBalance = Number.isFinite(Number(ipBilling?.balance_due))
+                      ? Number(ipBilling?.balance_due)
+                      : Math.max(0, ipTotal - ipPaid);
+
+                    // 3. Lab & Radiology Billing
+                    // We need to sum up costs. For 'paid' status, we check if payment_status === 'paid'.
+                    // Note: This logic assumes individual orders track their payment status.
+                    const labTotal = labOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+                    const labPaid = labOrders
+                      .filter(order => order.payment_status === 'paid')
+                      .reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+                    
+                    const radTotal = radiologyOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+                    const radPaid = radiologyOrders
+                      .filter(order => order.payment_status === 'paid')
+                      .reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+
+                    const diagTotal = labTotal + radTotal;
+                    const diagPaid = labPaid + radPaid;
+                    const diagBalance = diagTotal - diagPaid;
+
+                    // Grand Totals
+                    const overallFee = regTotal + ipTotal + diagTotal;
+                    const totalPaid = regPaid + ipPaid + diagPaid;
+                    const totalRemaining = regBalance + ipBalance + diagBalance;
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="bg-white/10 backdrop-blur-sm p-6 rounded-2xl border border-white/10">
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Overall Fee</p>
+                          <p className="text-4xl font-black text-white">₹{formatMoney(overallFee)}</p>
+                          <div className="mt-2 text-xs text-gray-400 flex gap-2">
+                             <span>Reg: ₹{formatMoney(regTotal)}</span> • 
+                             <span>IP: ₹{formatMoney(ipTotal)}</span> • 
+                             <span>Diag: ₹{formatMoney(diagTotal)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-green-500/20 backdrop-blur-sm p-6 rounded-2xl border border-green-500/30">
+                          <p className="text-xs font-bold text-green-300 uppercase tracking-widest mb-2">Total Paid</p>
+                          <p className="text-4xl font-black text-green-400">₹{formatMoney(totalPaid)}</p>
+                          <div className="mt-2 text-xs text-green-300/70">
+                            {overallFee > 0 ? Math.round((totalPaid / overallFee) * 100) : 0}% Settled
+                          </div>
+                        </div>
+                        <div className="bg-orange-500/20 backdrop-blur-sm p-6 rounded-2xl border border-orange-500/30">
+                          <p className="text-xs font-bold text-orange-300 uppercase tracking-widest mb-2">Remaining Balance</p>
+                          <p className="text-4xl font-black text-orange-400">₹{formatMoney(totalRemaining)}</p>
+                          {totalRemaining > 0 && (
+                             <button className="mt-4 w-full py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-lg transition-colors shadow-lg shadow-orange-900/20">
+                               Pay Now
+                             </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 <div className="bg-orange-50/30 p-8 rounded-3xl border-2 border-orange-100 border-dashed">
                   <h4 className="text-lg font-black text-orange-900 mb-6 flex items-center gap-2">
                     <FileText className="text-orange-500" /> REGISTRATION BILLING SUMMARY
