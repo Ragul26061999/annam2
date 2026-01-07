@@ -1038,8 +1038,34 @@ export async function getPatientWithRelatedData(uhid: string): Promise<any> {
       patient.appointments = [];
     }
 
+    // Fetch bed allocations with bed details
+    try {
+      const { data: bedAllocations, error: bedAllocationsError } = await supabase
+        .from('bed_allocations')
+        .select(`
+          *,
+          bed:bed_id(
+            room_number,
+            bed_number,
+            bed_type,
+            floor_number
+          )
+        `)
+        .eq('patient_id', patient.id)
+        .order('admission_date', { ascending: false });
+
+      if (!bedAllocationsError && bedAllocations) {
+        patient.bed_allocations = bedAllocations;
+      } else {
+        patient.bed_allocations = [];
+      }
+    } catch (bedAllocationError) {
+      console.warn('Error fetching bed allocations:', bedAllocationError);
+      patient.bed_allocations = [];
+    }
+
     // Initialize other related data arrays
-    patient.bed_allocations = [];
+    patient.bed_allocations = patient.bed_allocations || [];
 
     return patient;
   } catch (error) {
@@ -1507,44 +1533,64 @@ export async function deletePatient(patientId: string): Promise<void> {
 }
 
 /**
- * Get daily patient statistics (New Today, Outpatients Today, Inpatients Today)
+ * Get patient statistics (New Today, Total Outpatients, Total Inpatients)
  */
 export async function getDailyPatientStats(): Promise<{
   newToday: number;
   outpatientToday: number;
   inpatientToday: number;
+  totalOutpatients: number;
+  totalInpatients: number;
 }> {
   try {
     const today = new Date().toISOString().split('T')[0];
     const nextDay = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
 
-    // Fetch all patients created today
-    const { data, error } = await supabase
+    // Fetch all patients created today for new today count
+    const { data: todayPatients, error: todayError } = await supabase
       .from('patients')
       .select('admission_type, created_at')
       .gte('created_at', `${today}T00:00:00`)
       .lt('created_at', `${nextDay}T00:00:00`);
 
-    if (error) {
-      console.error('Error fetching daily stats:', error);
-      return { newToday: 0, outpatientToday: 0, inpatientToday: 0 };
+    if (todayError) {
+      console.error('Error fetching today patients:', todayError);
+      return { newToday: 0, outpatientToday: 0, inpatientToday: 0, totalOutpatients: 0, totalInpatients: 0 };
     }
 
-    const patients = data || [];
-    const newToday = patients.length;
+    // Fetch all patients for total counts
+    const { data: allPatients, error: allError } = await supabase
+      .from('patients')
+      .select('admission_type');
 
-    // Based on our logic: Outpatient = NULL, Inpatient = Any non-null value (elective, emergency, etc.)
-    // Note: We are using explicit null check for outpatient as per our insert logic
-    const outpatientToday = patients.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
-    const inpatientToday = patients.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
+    if (allError) {
+      console.error('Error fetching all patients:', allError);
+      return { newToday: 0, outpatientToday: 0, inpatientToday: 0, totalOutpatients: 0, totalInpatients: 0 };
+    }
+
+    const patientsToday = todayPatients || [];
+    const patientsAll = allPatients || [];
+    
+    const newToday = patientsToday.length;
+
+    // Based on our logic: Outpatient = NULL or 'outpatient', Inpatient = Any non-null value (elective, emergency, etc.)
+    // Today's counts
+    const outpatientToday = patientsToday.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
+    const inpatientToday = patientsToday.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
+
+    // Total counts
+    const totalOutpatients = patientsAll.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
+    const totalInpatients = patientsAll.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
 
     return {
       newToday,
       outpatientToday,
-      inpatientToday
+      inpatientToday,
+      totalOutpatients,
+      totalInpatients
     };
   } catch (error) {
     console.error('Error in getDailyPatientStats:', error);
-    return { newToday: 0, outpatientToday: 0, inpatientToday: 0 };
+    return { newToday: 0, outpatientToday: 0, inpatientToday: 0, totalOutpatients: 0, totalInpatients: 0 };
   }
 }

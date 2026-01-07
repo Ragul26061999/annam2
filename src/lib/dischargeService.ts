@@ -25,6 +25,21 @@ export interface DischargeSummaryData {
     review_on?: string;
     prescription: string;
     created_by?: string;
+
+    // Billing fields (pending bills)
+    bed_days?: number;
+    bed_daily_rate?: number;
+    bed_total?: number;
+    pharmacy_amount?: number;
+    lab_amount?: number;
+    procedure_amount?: number;
+    other_amount?: number;
+    discount_amount?: number;
+    gross_amount?: number;
+    net_amount?: number;
+    paid_amount?: number;
+    pending_amount?: number;
+    payment_splits?: any;
 }
 
 export async function createDischargeSummary(data: DischargeSummaryData) {
@@ -33,13 +48,22 @@ export async function createDischargeSummary(data: DischargeSummaryData) {
         
         const { data: summary, error } = await supabase
             .from('discharge_summaries')
-            .insert([data])
+            .upsert([data], { onConflict: 'allocation_id' })
             .select()
             .single();
 
         if (error) {
-            console.error('Error creating discharge summary:', error);
-            const errorMessage = error.message || error.details || JSON.stringify(error);
+            console.error('Error creating discharge summary:', {
+                message: error.message,
+                details: (error as any).details,
+                hint: (error as any).hint,
+                code: (error as any).code
+            });
+            const errorMessage =
+                error.message ||
+                (error as any).details ||
+                (error as any).hint ||
+                JSON.stringify(error);
             throw new Error(`Failed to create discharge summary: ${errorMessage}`);
         }
 
@@ -69,4 +93,24 @@ export async function getDischargeSummaryByAllocation(allocationId: string) {
         console.error('Error in getDischargeSummaryByAllocation:', error);
         throw error;
     }
+}
+
+export async function getDischargeSummaryIdsByAllocations(allocationIds: string[]) {
+    if (!allocationIds.length) return {} as Record<string, string>;
+
+    const { data, error } = await supabase
+        .from('discharge_summaries')
+        .select('id, allocation_id')
+        .in('allocation_id', allocationIds);
+
+    if (error) {
+        console.error('Error fetching discharge summaries by allocations:', error);
+        throw new Error(`Failed to fetch discharge summaries: ${error.message}`);
+    }
+
+    const map: Record<string, string> = {};
+    (data || []).forEach((row: any) => {
+        if (row?.allocation_id && row?.id) map[String(row.allocation_id)] = String(row.id);
+    });
+    return map;
 }

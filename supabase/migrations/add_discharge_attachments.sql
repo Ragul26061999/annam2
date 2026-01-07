@@ -28,7 +28,7 @@ COMMENT ON COLUMN discharge_attachments.file_url IS 'Public URL for file access'
 -- Create storage bucket for discharge attachments
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types, created_at)
 VALUES (
-    gen_random_uuid(),
+    'discharge-attachments',
     'discharge-attachments',
     true,
     10485760, -- 10MB

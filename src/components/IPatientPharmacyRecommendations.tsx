@@ -51,12 +51,19 @@ export default function IPatientPharmacyRecommendations({
   const [showManualForm, setShowManualForm] = useState(false);
 
   useEffect(() => {
+    if (!patientId) {
+      setRecommendations([]);
+      setError(null);
+      return;
+    }
+
     loadExistingRecommendations();
   }, [patientId]);
 
   const loadExistingRecommendations = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await getPatientMedicationRecommendations(patientId);
       setRecommendations(data);
     } catch (err: any) {

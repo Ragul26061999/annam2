@@ -1,5 +1,33 @@
 import { supabase } from './supabase';
 
+ function describeSupabaseError(err: any): string {
+   if (!err) return 'Unknown error';
+   if (typeof err === 'string') return err;
+   if (err instanceof Error && err.message) return err.message;
+
+   try {
+     const props = Object.getOwnPropertyNames(err).reduce<Record<string, any>>((acc, key) => {
+       acc[key] = (err as any)[key];
+       return acc;
+     }, {});
+     const json = JSON.stringify(props);
+     return json === '{}' ? String(err) : json;
+   } catch {
+     return String(err);
+   }
+ }
+
+ function toServiceError(context: string, err: any): Error {
+   const message = describeSupabaseError(err);
+   const wrapped = new Error(`${context}: ${message}`);
+   (wrapped as any).cause = err;
+   return wrapped;
+ }
+
+ function isUuid(value: string): boolean {
+   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+ }
+
 export interface MedicationRecommendation {
   id: string;
   patient_id: string;
@@ -61,59 +89,8 @@ export async function getIPatientMedicationRecommendations(
   try {
     const recommendations: MedicationRecommendation[] = [];
 
-    // Get recommendation rules based on diagnosis
-    const { data: rules, error: rulesError } = await supabase
-      .from('medication_recommendation_rules')
-      .select('*')
-      .eq('is_active', true)
-      .ilike('condition', `%${request.diagnosis}%`);
-
-    if (rulesError) {
-      console.error('Error fetching recommendation rules:', rulesError);
-    }
-
-    // Apply rules to generate recommendations
-    if (rules && rules.length > 0) {
-      for (const rule of rules) {
-        // Check for contraindications
-        const hasContraindications = rule.contraindications.some((contra: string) =>
-          request.allergies.some((allergy: string) => 
-            allergy.toLowerCase().includes(contra.toLowerCase())
-          )
-        );
-
-        if (!hasContraindications) {
-          for (const medRec of rule.medication_recommendations) {
-            // Get medication details
-            const { data: medication, error: medError } = await supabase
-              .from('medicines')
-              .select('*')
-              .eq('id', medRec.medication_id)
-              .single();
-
-            if (!medError && medication) {
-              recommendations.push({
-                id: crypto.randomUUID(),
-                patient_id: request.patient_id,
-                medication_id: medRec.medication_id,
-                medication_name: medication.name,
-                generic_name: medication.generic_name,
-                dosage: medRec.dosage,
-                frequency: medRec.frequency,
-                duration: medRec.duration,
-                quantity: calculateQuantity(medRec.dosage, medRec.frequency, medRec.duration),
-                instructions: generateInstructions(medication, medRec),
-                reason_for_recommendation: `${rule.rule_name} for ${request.diagnosis}`,
-                recommended_by: 'system',
-                recommendation_date: new Date().toISOString().split('T')[0],
-                status: 'pending',
-                notes: rule.notes
-              });
-            }
-          }
-        }
-      }
-    }
+    // Note: recommendation rules table is not present in current schema.
+    // We only generate standard prophylactic recommendations.
 
     // Add standard prophylactic medications for IP patients
     const prophylacticMeds = await getProphylacticMedications(request);
@@ -160,7 +137,7 @@ async function getProphylacticMedications(
     for (const med of standardIPMeds) {
       if (med.condition === 'all' || request.diagnosis.toLowerCase().includes(med.condition)) {
         const { data: medication } = await supabase
-          .from('medicines')
+          .from('medications')
           .select('*')
           .ilike('name', `%${med.medication_name}%`)
           .limit(1)
@@ -253,17 +230,31 @@ export async function saveMedicationRecommendations(
   recommendations: MedicationRecommendation[]
 ): Promise<void> {
   try {
+    const payload = recommendations.map(rec => ({
+      patient_id: rec.patient_id,
+      medication_id: rec.medication_id || null,
+      medication_name: rec.medication_name,
+      dosage: rec.dosage || null,
+      frequency: rec.frequency || null,
+      duration: rec.duration || null,
+      quantity: rec.quantity ?? 1,
+      instructions: rec.instructions || null,
+      prescribed_by: rec.approved_by || null,
+      status: rec.status === 'rejected' ? 'cancelled' : rec.status,
+      notes: rec.notes || rec.reason_for_recommendation || null
+    }));
+
     const { error } = await supabase
-      .from('medication_recommendations')
-      .insert(recommendations);
+      .from('ip_pharmacy_recommendations')
+      .insert(payload);
 
     if (error) {
       console.error('Error saving recommendations:', error);
-      throw error;
+      throw toServiceError('Error saving recommendations', error);
     }
   } catch (error) {
     console.error('Error in saveMedicationRecommendations:', error);
-    throw error;
+    throw toServiceError('Error in saveMedicationRecommendations', error);
   }
 }
 
@@ -272,21 +263,54 @@ export async function getPatientMedicationRecommendations(
   patientId: string
 ): Promise<MedicationRecommendation[]> {
   try {
+    if (!patientId || !isUuid(patientId)) {
+      return [];
+    }
+
     const { data, error } = await supabase
-      .from('medication_recommendations')
+      .from('ip_pharmacy_recommendations')
       .select('*')
       .eq('patient_id', patientId)
-      .order('recommendation_date', { ascending: false });
+      .order('prescribed_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching recommendations:', error);
-      throw error;
+      throw toServiceError('Error fetching recommendations', error);
     }
 
-    return data || [];
+    const mapped: MedicationRecommendation[] = (data || []).map((row: any) => {
+      const rawStatus = String(row.status || 'pending');
+      const status: MedicationRecommendation['status'] =
+        rawStatus === 'cancelled' ? 'rejected' :
+        rawStatus === 'dispensed' ? 'dispensed' :
+        rawStatus === 'approved' ? 'approved' :
+        'pending';
+
+      return {
+        id: row.id,
+        patient_id: row.patient_id,
+        medication_id: row.medication_id || '',
+        medication_name: row.medication_name,
+        generic_name: '',
+        dosage: row.dosage || '',
+        frequency: row.frequency || '',
+        duration: row.duration || '',
+        quantity: row.quantity ?? 1,
+        instructions: row.instructions || '',
+        reason_for_recommendation: row.notes || '',
+        recommended_by: row.prescribed_by || 'system',
+        recommendation_date: row.prescribed_at ? String(row.prescribed_at).split('T')[0] : new Date().toISOString().split('T')[0],
+        status,
+        approved_by: row.prescribed_by || undefined,
+        approved_at: row.prescribed_at || undefined,
+        notes: row.notes || undefined
+      };
+    });
+
+    return mapped;
   } catch (error) {
     console.error('Error in getPatientMedicationRecommendations:', error);
-    throw error;
+    throw toServiceError('Error in getPatientMedicationRecommendations', error);
   }
 }
 
@@ -298,23 +322,25 @@ export async function updateRecommendationStatus(
   notes?: string
 ): Promise<void> {
   try {
-    const updateData: any = { status };
-    if (approvedBy) updateData.approved_by = approvedBy;
-    if (approvedBy) updateData.approved_at = new Date().toISOString();
+    const updateData: any = {
+      status: status === 'rejected' ? 'cancelled' : status
+    };
+    if (approvedBy) updateData.edited_by = approvedBy;
+    if (approvedBy) updateData.edited_at = new Date().toISOString();
     if (notes) updateData.notes = notes;
 
     const { error } = await supabase
-      .from('medication_recommendations')
+      .from('ip_pharmacy_recommendations')
       .update(updateData)
       .eq('id', recommendationId);
 
     if (error) {
       console.error('Error updating recommendation:', error);
-      throw error;
+      throw toServiceError('Error updating recommendation', error);
     }
   } catch (error) {
     console.error('Error in updateRecommendationStatus:', error);
-    throw error;
+    throw toServiceError('Error in updateRecommendationStatus', error);
   }
 }
 

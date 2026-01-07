@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
 import { deletePatient } from '../../src/lib/patientService';
+import { getDischargeSummaryIdsByAllocations } from '../../src/lib/dischargeService';
 import {
   getBedAllocations,
   getBedStats,
@@ -44,6 +45,7 @@ export default function InpatientPage() {
     pendingDischarges: 0
   });
   const [allocations, setAllocations] = useState<BedAllocation[]>([]);
+  const [dischargeSummaryByAllocation, setDischargeSummaryByAllocation] = useState<Record<string, string>>({});
   const [availableBedsList, setAvailableBedsList] = useState<BedType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export default function InpatientPage() {
   // admissionTypeFilter is removed since admission_type column doesn't exist in the database
   // const [admissionTypeFilter, setAdmissionTypeFilter] = useState('all');
   const [showAvailableBeds, setShowAvailableBeds] = useState(false);
+  const [selectedPatientForPharmacy, setSelectedPatientForPharmacy] = useState<string>('');
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -81,8 +84,8 @@ export default function InpatientPage() {
 
       // Get active bed allocations
       const allocationResponse = await getBedAllocations({
-        status: statusFilter === 'all' ? 'active' : statusFilter,
-        limit: 50
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        limit: 100
       });
 
       // Get available beds
@@ -91,7 +94,7 @@ export default function InpatientPage() {
       // Calculate today's admissions
       const today = new Date().toISOString().split('T')[0];
       const todayAdmissions = allocationResponse.allocations.filter(
-        a => a.allocated_at?.startsWith(today)
+        a => a.admission_date?.startsWith(today)
       ).length;
 
       setStats({
@@ -106,7 +109,22 @@ export default function InpatientPage() {
       });
 
       setAllocations(allocationResponse.allocations);
+
+      try {
+        const allocationIds = (allocationResponse.allocations || []).map(a => a.id);
+        const map = await getDischargeSummaryIdsByAllocations(allocationIds);
+        setDischargeSummaryByAllocation(map);
+      } catch (e) {
+        console.error('Error loading discharge summaries for allocations:', e);
+        setDischargeSummaryByAllocation({});
+      }
       setAvailableBedsList(available);
+      
+      // Set default selected patient for pharmacy recommendations
+      if (allocationResponse.allocations.length > 0 && !selectedPatientForPharmacy) {
+        setSelectedPatientForPharmacy(allocationResponse.allocations[0].patient_id);
+      }
+      
       setError(null);
     } catch (err) {
       console.error('Error loading inpatient data:', err);
@@ -138,8 +156,8 @@ export default function InpatientPage() {
   //   }
   // };
 
-  const calculateDaysAdmitted = (allocatedAt: string) => {
-    const admission = new Date(allocatedAt);
+  const calculateDaysAdmitted = (admissionDate: string) => {
+    const admission = new Date(admissionDate);
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - admission.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -380,7 +398,7 @@ export default function InpatientPage() {
               const bedNumber = allocation.bed?.bed_number || 'N/A';
               const bedType = allocation.bed?.bed_type || 'General';
               const doctorName = (allocation.doctor?.name && typeof allocation.doctor.name === 'string') ? allocation.doctor.name.trim() || 'Not Assigned' : 'Not Assigned';
-              const daysAdmitted = calculateDaysAdmitted(allocation.allocated_at);
+              const daysAdmitted = calculateDaysAdmitted(allocation.admission_date);
 
               return (
                 <div key={allocation.id} className="p-4 hover:bg-gray-50 transition-colors">
@@ -419,7 +437,7 @@ export default function InpatientPage() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Calendar size={12} className="text-gray-400" />
-                            Admitted: {new Date(allocation.allocated_at).toLocaleDateString()}
+                            Admitted: {new Date(allocation.admission_date).toLocaleDateString()}
                           </span>
                           <span className="flex items-center gap-1 text-purple-600 font-bold">
                             <Clock size={12} />
@@ -463,6 +481,19 @@ export default function InpatientPage() {
                           <Eye size={18} />
                         </button>
                       </Link>
+
+                      {dischargeSummaryByAllocation[allocation.id] && (
+                        <Link href={`/inpatient/discharge/${allocation.id}?view=1`}>
+                          <button
+                            className="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                            title="View Discharge Summary"
+                          >
+                            <Eye size={14} />
+                            View Summary
+                          </button>
+                        </Link>
+                      )}
+
                       {(allocation.status === 'active' || allocation.status === 'allocated') && (
                         <Link href={`/inpatient/discharge/${allocation.id}`}>
                           <button
@@ -490,23 +521,45 @@ export default function InpatientPage() {
       </div>
 
       {/* Pharmacy Recommendations Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pharmacy Recommendations</h3>
-          <IPatientPharmacyRecommendations
-            patientId={allocations[0]?.patient_id || ''}
-            patientData={{
-              diagnosis: allocations[0]?.patient?.diagnosis || '',
-              allergies: (allocations[0]?.patient as any)?.allergies?.split(',').filter(Boolean) || [],
-              current_medications: (allocations[0]?.patient as any)?.current_medications?.split(',').filter(Boolean) || []
-            }}
-            onRecommendationProcessed={() => {
-              // Refresh data when recommendations are processed
-              loadInpatientData();
-            }}
-          />
+      {allocations.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Pharmacy Recommendations</h3>
+              {allocations.length > 1 && (
+                <select
+                  value={selectedPatientForPharmacy}
+                  onChange={(e) => setSelectedPatientForPharmacy(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {allocations.map((allocation) => (
+                    <option key={allocation.patient_id} value={allocation.patient_id}>
+                      {allocation.patient?.name || 'Unknown'} ({allocation.patient?.uhid || 'N/A'})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {(() => {
+              const selectedAllocation = allocations.find(a => a.patient_id === selectedPatientForPharmacy);
+              return (
+                <IPatientPharmacyRecommendations
+                  patientId={selectedAllocation?.patient_id || ''}
+                  patientData={{
+                    diagnosis: selectedAllocation?.patient?.diagnosis || '',
+                    allergies: (selectedAllocation?.patient as any)?.allergies?.split(',').filter(Boolean) || [],
+                    current_medications: (selectedAllocation?.patient as any)?.current_medications?.split(',').filter(Boolean) || []
+                  }}
+                  onRecommendationProcessed={() => {
+                    // Refresh data when recommendations are processed
+                    loadInpatientData();
+                  }}
+                />
+              );
+            })()}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* OP to IP Connection Info */}
       <div className="bg-gradient-to-r from-orange-50 to-purple-50 rounded-xl p-6 border border-orange-100">

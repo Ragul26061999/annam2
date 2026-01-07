@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS medication_recommendations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-    medication_id UUID REFERENCES medicines(id) ON DELETE SET NULL,
+    medication_id UUID REFERENCES medications(id) ON DELETE SET NULL,
     medication_name VARCHAR(200) NOT NULL,
     generic_name VARCHAR(200),
     dosage VARCHAR(100) NOT NULL,
@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS medication_recommendation_rules (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+ALTER TABLE medication_recommendation_rules
+    ADD CONSTRAINT medication_recommendation_rules_rule_name_condition_key
+    UNIQUE (rule_name, condition);
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_medication_recommendations_patient_id ON medication_recommendations(patient_id);

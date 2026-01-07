@@ -140,7 +140,7 @@ export class BillingService {
       // Get bed information
       const { data: bedData, error: bedError } = await supabase
         .from('beds')
-        .select('bed_number, room_number, department_ward')
+        .select('bed_number, room_number, bed_type, daily_rate')
         .eq('id', bedId)
         .single();
 
@@ -152,22 +152,24 @@ export class BillingService {
       const diffTime = Math.abs(discharge.getTime() - admission.getTime());
       const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-      // Determine bed type and get rate
+      // Determine bed type label
+      const rawBedType = String((bedData as any)?.bed_type || '').toLowerCase();
       let bedType = 'General Ward Bed';
-      let dailyRate = 800; // Default rate
 
-      if (bedData.department_ward?.toLowerCase().includes('icu')) {
-        bedType = 'ICU Bed';
-        dailyRate = 5000;
-      } else if (bedData.department_ward?.toLowerCase().includes('emergency')) {
-        bedType = 'Emergency Bed';
-        dailyRate = 1200;
-      } else if (bedData.room_number && !bedData.room_number.includes('Ward')) {
-        bedType = 'Private Room';
-        dailyRate = 2000;
+      if (rawBedType.includes('icu')) bedType = 'ICU Bed';
+      else if (rawBedType.includes('emergency')) bedType = 'Emergency Bed';
+      else if (rawBedType.includes('private')) bedType = 'Private Room';
+
+      // Prefer bed.daily_rate if present
+      let dailyRate = typeof (bedData as any)?.daily_rate === 'number'
+        ? (bedData as any).daily_rate
+        : Number((bedData as any)?.daily_rate);
+
+      if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+        dailyRate = 800; // Default rate
       }
 
-      // Try to get actual rate from fee_rates table
+      // Try to get actual rate from fee_rates table (fallback/override)
       const { data: rateData } = await supabase
         .from('fee_rates')
         .select('rate_per_unit')
@@ -248,13 +250,26 @@ export class BillingService {
       .select('*')
       .eq('bed_allocation_id', bedAllocationId)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return null; // No record found
+      const errAny: any = error as any;
+      const code = errAny?.code;
+      const message = errAny?.message;
+      const details = errAny?.details;
+      const hint = errAny?.hint;
+
+      // If PostgREST returns "no rows", treat it as not found.
+      if (code === 'PGRST116' || code === 'PGRST117') {
+        return null;
       }
-      console.error('Error fetching patient admission:', error);
+
+      console.error('Error fetching patient admission:', {
+        code,
+        message,
+        details,
+        hint
+      });
       throw error;
     }
 

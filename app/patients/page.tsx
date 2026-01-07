@@ -94,7 +94,9 @@ export default function PatientsPage() {
   const [dailyStats, setDailyStats] = useState({
     newToday: 0,
     outpatientToday: 0,
-    inpatientToday: 0
+    inpatientToday: 0,
+    totalOutpatients: 0,
+    totalInpatients: 0
   });
 
   // Admission modal state
@@ -341,8 +343,10 @@ export default function PatientsPage() {
   const stats = {
     total: totalPatients,
     newToday: dailyStats.newToday,
-    outpatient: dailyStats.outpatientToday,
-    inpatient: dailyStats.inpatientToday
+    outpatient: dailyStats.totalOutpatients,
+    inpatient: dailyStats.totalInpatients,
+    outpatientToday: dailyStats.outpatientToday,
+    inpatientToday: dailyStats.inpatientToday
   };
 
   // Filter patients based on search and status
@@ -423,7 +427,7 @@ export default function PatientsPage() {
               <p className="text-2xl font-bold text-gray-900 mt-1">{stats.outpatient.toLocaleString()}</p>
               <div className="flex items-center mt-2">
                 <Clock className="h-3 w-3 text-orange-500 mr-1" />
-                <span className="text-sm font-medium text-orange-600">New Today</span>
+                <span className="text-sm font-medium text-orange-600">New Today: {stats.outpatientToday.toLocaleString()}</span>
               </div>
             </div>
             <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
@@ -439,7 +443,7 @@ export default function PatientsPage() {
               <p className="text-2xl font-bold text-gray-900 mt-1">{stats.inpatient.toLocaleString()}</p>
               <div className="flex items-center mt-2">
                 <Bed className="h-3 w-3 text-purple-500 mr-1" />
-                <span className="text-sm font-medium text-purple-600">New Today</span>
+                <span className="text-sm font-medium text-purple-600">New Today: {stats.inpatientToday.toLocaleString()}</span>
               </div>
             </div>
             <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">

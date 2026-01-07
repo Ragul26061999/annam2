@@ -23,6 +23,33 @@ export async function uploadDischargeAttachment(
   uploadedBy: string
 ): Promise<DischargeAttachment> {
   try {
+    let uploadedByUserId = uploadedBy;
+
+    // discharge_attachments.uploaded_by references public.users(id) (app user), not auth.users(id)
+    if (!uploadedByUserId) {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error('User not authenticated. Please log in again.');
+      }
+
+      const authUserId = authData.user.id;
+      const { data: appUser, error: appUserError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', authUserId)
+        .maybeSingle();
+
+      if (appUserError) {
+        throw new Error(appUserError.message || 'Failed to resolve application user.');
+      }
+
+      if (!appUser?.id) {
+        throw new Error('No user profile found for this login. Please create a user with employee_id in Users table.');
+      }
+
+      uploadedByUserId = appUser.id;
+    }
+
     // Generate unique file path
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -55,14 +82,19 @@ export async function uploadDischargeAttachment(
         file_path: filePath,
         file_type: file.type,
         file_size: file.size,
-        uploaded_by: uploadedBy,
+        uploaded_by: uploadedByUserId,
         file_url: urlData.publicUrl
       })
       .select()
       .single();
 
     if (dbError) {
-      console.error('Error saving attachment record:', dbError);
+      console.error('Error saving attachment record:', {
+        message: dbError.message,
+        details: (dbError as any).details,
+        hint: (dbError as any).hint,
+        code: (dbError as any).code
+      });
       // Clean up uploaded file if database insert fails
       await supabase.storage
         .from('discharge-attachments')

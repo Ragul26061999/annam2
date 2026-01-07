@@ -42,6 +42,7 @@ import MedicalHistoryForm from '../../../src/components/MedicalHistoryForm';
 import AddDummyMedicalHistory from '../../../src/components/AddDummyMedicalHistory';
 import MedicationHistory from '../../../src/components/MedicationHistory';
 import { getCurrentUser, getCurrentUserProfile } from '../../../src/lib/supabase';
+import { supabase } from '../../../src/lib/supabase';
 import PrescriptionForm from '../../../src/components/PrescriptionForm';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -106,12 +107,39 @@ interface Patient {
   pincode?: string;
   appointments: any[];
   bed_allocations: any[];
+  billing?: {
+    advance_amount?: number;
+    amount_paid?: number;
+    balance_due?: number;
+    payment_status?: string;
+    bill_number?: string;
+  };
   staff?: {
     first_name: string;
     last_name: string;
     employee_id: string;
   };
 }
+
+type BillingPaymentRow = {
+  method: string;
+  amount: number;
+  reference?: string | null;
+  received_at?: string;
+};
+
+type IpBilling = {
+  id: string;
+  bill_number?: string | null;
+  bill_no?: string | null;
+  total?: number | null;
+  amount_paid?: number | null;
+  balance_due?: number | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  issued_at?: string;
+  bed_allocation_id?: string | null;
+};
 
 interface PatientDetailsClientProps {
   params: { id: string };
@@ -136,6 +164,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
   const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
 
+  const [ipAllocation, setIpAllocation] = useState<any | null>(null);
+  const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
+  const [ipBillingPayments, setIpBillingPayments] = useState<BillingPaymentRow[]>([]);
+
   useEffect(() => {
     const fetchUser = async () => {
       const userProfile = await getCurrentUserProfile();
@@ -158,6 +190,83 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       setLoading(true);
       const patientData = await getPatientWithRelatedData(params.id.trim());
       setPatient(patientData);
+
+      // Resolve active/latest IP allocation
+      const allocations = Array.isArray(patientData?.bed_allocations) ? patientData.bed_allocations : [];
+      const activeAlloc = allocations.find((a: any) => a?.status === 'active') || null;
+      const latestAlloc = allocations.length
+        ? allocations
+          .slice()
+          .sort((a: any, b: any) => {
+            const ad = a?.admission_date ? new Date(a.admission_date).getTime() : 0;
+            const bd = b?.admission_date ? new Date(b.admission_date).getTime() : 0;
+            return bd - ad;
+          })[0]
+        : null;
+      const allocForBilling = activeAlloc || latestAlloc;
+      setIpAllocation(allocForBilling || null);
+
+      // Fetch IP billing ledger by bed_allocation_id (if any)
+      try {
+        if (allocForBilling?.id) {
+          const { data: ipBill, error: ipBillError } = await supabase
+            .from('billing')
+            .select('id, bill_no, bill_number, total, amount_paid, balance_due, payment_status, payment_method, issued_at, bed_allocation_id')
+            .eq('bed_allocation_id', allocForBilling.id)
+            .order('issued_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (ipBillError) {
+            console.warn('Failed to load IP billing ledger:', ipBillError);
+            setIpBilling(null);
+            setIpBillingPayments([]);
+          } else {
+            setIpBilling((ipBill as any) || null);
+
+            if (ipBill?.id) {
+              const { data: payRows, error: payErr } = await supabase
+                .from('billing_payments')
+                .select('method, amount, reference, received_at')
+                .eq('billing_id', ipBill.id)
+                .order('received_at', { ascending: true });
+
+              if (payErr) {
+                console.warn('Failed to load IP payment splits:', payErr);
+                setIpBillingPayments([]);
+              } else {
+                setIpBillingPayments((payRows as any) || []);
+              }
+            } else {
+              setIpBillingPayments([]);
+            }
+          }
+        } else {
+          setIpBilling(null);
+          setIpBillingPayments([]);
+        }
+      } catch (ipBillingErr) {
+        console.warn('Failed to load IP billing:', ipBillingErr);
+        setIpBilling(null);
+        setIpBillingPayments([]);
+      }
+
+      // Fetch billing information for this patient
+      try {
+        const { data: billingData, error: billingError } = await supabase
+          .from('billing')
+          .select('advance_amount, amount_paid, balance_due, payment_status, bill_number')
+          .eq('patient_id', patientData.id)
+          .order('issued_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!billingError && billingData) {
+          setPatient(prev => prev ? { ...prev, billing: billingData } : prev);
+        }
+      } catch (billingErr) {
+        console.warn('No billing record found for patient:', billingErr);
+      }
 
       setVitalsLoading(true);
       try {
@@ -236,6 +345,12 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       minute: '2-digit',
       hour12: true
     });
+  };
+
+  const formatMoney = (value: any) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('en-IN');
   };
 
   if (loading) {
@@ -435,7 +550,16 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               <div className="flex items-center text-sm">
                 <MapPin className="h-4 w-4 text-gray-400 mr-3" />
                 <span className="text-gray-600">Ward/Room:</span>
-                <span className="ml-2 font-medium">{patient.department_ward || 'N/A'} / {patient.room_number || 'N/A'}</span>
+                <span className="ml-2 font-medium">
+                  {(() => {
+                    const activeAllocation = patient.bed_allocations?.find((alloc: any) => alloc.status === 'active');
+                    if (activeAllocation?.bed) {
+                      const bed = activeAllocation.bed;
+                      return `${bed.room_number || 'N/A'} - Bed ${bed.bed_number || 'N/A'}`;
+                    }
+                    return `${patient.department_ward || 'N/A'} / ${patient.room_number || 'N/A'}`;
+                  })()}
+                </span>
               </div>
             </div>
           </div>
@@ -738,7 +862,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <h4 className="text-lg font-black text-orange-900 mb-6 flex items-center gap-2">
                     <FileText className="text-orange-500" /> REGISTRATION BILLING SUMMARY
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
                       <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Total Fee</p>
                       <p className="text-3xl font-black text-gray-900">₹{patient.total_amount || '0'}</p>
@@ -755,7 +879,132 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                       <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">OP Card</p>
                       <p className="text-2xl font-black text-gray-900">₹{patient.op_card_amount || '0'}</p>
                     </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                      <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Advance Amount</p>
+                      <p className="text-2xl font-black text-gray-900">₹{patient.billing?.advance_amount || '0'}</p>
+                    </div>
                   </div>
+                </div>
+                {patient.billing && (
+                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase">Billing Details</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <p className="text-gray-400 text-xs uppercase font-bold">Amount Paid</p>
+                        <p className="font-bold text-gray-900">₹{patient.billing.amount_paid || '0'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs uppercase font-bold">Balance Due</p>
+                        <p className="font-bold text-gray-900">₹{patient.billing.balance_due || '0'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs uppercase font-bold">Payment Status</p>
+                        <p className="font-bold text-gray-900 capitalize">{patient.billing.payment_status || 'Pending'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase flex items-center gap-2">
+                    <Bed size={16} /> Inpatient (IP) Billing Summary
+                  </h5>
+
+                  {!ipAllocation ? (
+                    <div className="text-sm text-gray-600">No IP admission found for this patient.</div>
+                  ) : (() => {
+                    const totalCharge = Number(ipBilling?.total ?? ipAllocation?.total_charges ?? 0) || 0;
+                    const paid = Number(ipBilling?.amount_paid ?? 0) || 0;
+                    const pending = Number.isFinite(Number(ipBilling?.balance_due))
+                      ? Number(ipBilling?.balance_due)
+                      : Math.max(0, totalCharge - paid);
+
+                    const paymentStatus = (ipBilling?.payment_status || ipAllocation?.status || 'pending');
+                    const paymentType = (ipBilling?.payment_method || (ipBillingPayments.length === 1 ? ipBillingPayments[0].method : (ipBillingPayments.length > 1 ? 'split' : '—')));
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total IP Charge</p>
+                            <p className="text-2xl font-black text-gray-900">₹{formatMoney(totalCharge)}</p>
+                          </div>
+                          <div className="bg-green-50 p-5 rounded-2xl border border-green-100">
+                            <p className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-1">Paid</p>
+                            <p className="text-2xl font-black text-gray-900">₹{formatMoney(paid)}</p>
+                          </div>
+                          <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100">
+                            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Pending</p>
+                            <p className="text-2xl font-black text-gray-900">₹{formatMoney(pending)}</p>
+                          </div>
+                          <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100">
+                            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Payment Type</p>
+                            <p className="text-xl font-black text-gray-900 uppercase">{String(paymentType || '—')}</p>
+                            <p className="text-xs text-indigo-700 mt-1">Status: <span className="font-bold capitalize">{String(paymentStatus)}</span></p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                          <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="font-bold text-gray-900">IP Admission & Bill Details</div>
+                              {ipBilling?.id && (
+                                <div className="text-xs text-gray-500">Bill: <span className="font-semibold">{ipBilling.bill_number || ipBilling.bill_no || ipBilling.id}</span></div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">IP Number</p>
+                                <p className="font-bold text-gray-900">{ipAllocation.ip_number || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">Admission Date</p>
+                                <p className="font-bold text-gray-900">{formatDate(ipAllocation.admission_date)}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">Ward / Bed</p>
+                                <p className="font-bold text-gray-900">{ipAllocation.bed?.room_number || 'N/A'} - Bed {ipAllocation.bed?.bed_number || 'N/A'}</p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">Daily Charge</p>
+                                <p className="font-bold text-gray-900">₹{formatMoney(ipAllocation.daily_charges ?? 0)}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">Allocation Total</p>
+                                <p className="font-bold text-gray-900">₹{formatMoney(ipAllocation.total_charges ?? 0)}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase font-bold">Ledger Total</p>
+                                <p className="font-bold text-gray-900">₹{formatMoney(ipBilling?.total ?? 0)}</p>
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold mb-2">Split Payments</p>
+                              {ipBillingPayments.length === 0 ? (
+                                <div className="text-sm text-gray-600">No split payments recorded.</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {ipBillingPayments.map((p, idx) => (
+                                    <div key={idx} className="grid grid-cols-12 gap-3 items-center p-3 rounded-lg border border-gray-200 bg-white text-sm">
+                                      <div className="col-span-3 font-bold text-gray-900 uppercase">{p.method}</div>
+                                      <div className="col-span-3 text-gray-800 font-semibold">₹{formatMoney(p.amount)}</div>
+                                      <div className="col-span-6 text-gray-600 truncate">{p.reference || '—'}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 {patient.consulting_doctor_name && (
                   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
