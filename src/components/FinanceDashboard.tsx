@@ -351,6 +351,7 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
           </div>
         </div>
         <div 
+          onClick={() => window.open('/finance/outpatient', '_blank')}
           className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
         >
           <div className="flex items-center space-x-3">

@@ -9,13 +9,13 @@ export interface BillingRecord {
   subtotal: number;
   tax_amount: number;
   discount_amount: number;
-  payment_status: 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled';
-  payment_method?: string;
+  payment_status: string;
+  payment_method: string;
   payment_date?: string;
   created_at: string;
   updated_at: string;
-  source: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic';
-  patient?: {
+  source: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic' | 'outpatient';
+  patient: {
     name: string;
     patient_id: string;
     phone: string;
