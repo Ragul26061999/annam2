@@ -1,32 +1,44 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, CreditCard, DollarSign, Smartphone, Building, CheckCircle, AlertCircle } from 'lucide-react';
-import { processPayment, type PaymentRecord } from '../lib/universalPaymentService';
+import { processSplitPayments, type PaymentRecord, type PaymentSplit } from '../lib/universalPaymentService';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  bill: PaymentRecord;
+  bill: PaymentRecord | null;
   onSuccess?: () => void;
 }
 
 interface Payment {
-  method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'insurance';
+  method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'insurance' | 'cheque' | 'wallet';
   amount: number;
-  reference?: string;
+  transaction_reference?: string;
+  bank_name?: string;
+  card_last_four?: string;
+  upi_id?: string;
+  cheque_number?: string;
+  cheque_date?: string;
+  notes?: string;
 }
 
 export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess }: PaymentModalProps) {
   const [payments, setPayments] = useState<Payment[]>([
-    { method: 'cash', amount: bill.total_amount }
+    { method: 'cash', amount: bill?.total_amount || 0 }
   ]);
+
+  useEffect(() => {
+    if (bill) {
+      setPayments([{ method: 'cash', amount: bill.total_amount }]);
+    }
+  }, [bill]);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-  const remaining = bill.total_amount - totalPaid;
+  const remaining = (bill?.total_amount || 0) - totalPaid;
 
   const addPaymentRow = () => {
     setPayments([...payments, { method: 'cash', amount: 0 }]);
@@ -47,7 +59,7 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (Math.abs(totalPaid - bill.total_amount) > 0.01) {
+    if (!bill || Math.abs(totalPaid - bill.total_amount) > 0.01) {
       setError('Payment amount must equal the total bill amount');
       return;
     }
@@ -56,15 +68,25 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
     setError(null);
 
     try {
-      // Process each payment
-      for (const payment of payments) {
-        await processPayment(
-          bill.id,
-          payment.method,
-          payment.amount,
-          payment.reference
-        );
-      }
+      // Convert Payment interface to PaymentSplit
+      const paymentSplits: PaymentSplit[] = payments.map(p => ({
+        method: p.method,
+        amount: p.amount,
+        transaction_reference: p.transaction_reference,
+        bank_name: p.bank_name,
+        card_last_four: p.card_last_four,
+        upi_id: p.upi_id,
+        cheque_number: p.cheque_number,
+        cheque_date: p.cheque_date,
+        notes: p.notes
+      }));
+
+      // Process split payments
+      await processSplitPayments(
+        bill.id,
+        paymentSplits,
+        'Front Desk Staff' // This should come from user context
+      );
 
       setSuccess(true);
       onSuccess?.();
@@ -114,22 +136,22 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
           <div className="mt-4 p-4 bg-gray-50 rounded-lg">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-600">Bill Number:</span>
-              <span className="font-semibold">{bill.bill_id}</span>
+              <span className="font-semibold">{bill?.bill_id || 'N/A'}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-600">Total Amount:</span>
               <span className="text-xl font-bold text-gray-900">
-                ₹{bill.total_amount.toLocaleString()}
+                ₹{bill?.total_amount?.toLocaleString() || '0'}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Payment Status:</span>
               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                bill.payment_status === 'paid' 
+                bill?.payment_status === 'paid' 
                   ? 'bg-green-100 text-green-800'
                   : 'bg-yellow-100 text-yellow-800'
               }`}>
-                {bill.payment_status?.toUpperCase() || 'PENDING'}
+                {bill?.payment_status?.toUpperCase() || 'PENDING'}
               </span>
             </div>
           </div>
@@ -183,8 +205,8 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
                       <div className="col-span-4">
                         <input
                           type="text"
-                          value={payment.reference || ''}
-                          onChange={(e) => updatePayment(index, 'reference', e.target.value)}
+                          value={payment.transaction_reference || ''}
+                          onChange={(e) => updatePayment(index, 'transaction_reference', e.target.value)}
                           placeholder="Reference (Optional)"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
@@ -252,7 +274,7 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
                 </button>
                 <button
                   type="submit"
-                  disabled={processing || Math.abs(totalPaid - bill.total_amount) > 0.01}
+                  disabled={processing || !bill || Math.abs(totalPaid - bill.total_amount) > 0.01}
                   className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {processing ? 'Processing...' : 'Complete Payment'}

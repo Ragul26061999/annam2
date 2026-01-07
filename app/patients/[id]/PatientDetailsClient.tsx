@@ -46,7 +46,7 @@ import PrescriptionForm from '../../../src/components/PrescriptionForm';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DocumentUpload from '../../../src/components/DocumentUpload';
-import DocumentList from '../../../src/components/DocumentList';
+import EnhancedDocumentList from '../../../src/components/EnhancedDocumentList';
 
 interface Patient {
   id: string;
@@ -134,6 +134,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [showMedicalHistoryForm, setShowMedicalHistoryForm] = useState(false);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
+  const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -210,7 +211,11 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Not specified';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    // Convert UTC to Indian time (UTC+5:30)
+    const date = new Date(dateString);
+    const indianTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    return indianTime.toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -219,12 +224,17 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
   const formatDateTime = (dateString: string) => {
     if (!dateString) return 'Not specified';
-    return new Date(dateString).toLocaleString('en-US', {
+    // Convert UTC to Indian time (UTC+5:30)
+    const date = new Date(dateString);
+    const indianTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    return indianTime.toLocaleString('en-IN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -655,12 +665,24 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     patientId={patient.id}
                     uhid={patient.patient_id}
                     category="medical-report"
-                    onUploadComplete={() => setDocumentRefreshTrigger(prev => prev + 1)}
+                    onUploadComplete={(doc) => {
+                      setDocumentRefreshTrigger(prev => prev + 1);
+                      // Add to temporary documents if it's a temp file
+                      if (doc.id && doc.id.startsWith('temp-')) {
+                        setTemporaryDocuments(prev => [...prev, doc]);
+                      }
+                    }}
                   />
                 </div>
                 <div>
                   <h4 className="font-bold text-gray-900 mb-4 px-2">Recent Files</h4>
-                  <DocumentList patientId={patient.id} showDelete={true} refreshTrigger={documentRefreshTrigger} />
+                  <EnhancedDocumentList 
+                    patientId={patient.id} 
+                    uhid={patient.patient_id}
+                    showDelete={true} 
+                    refreshTrigger={documentRefreshTrigger} 
+                    temporaryFiles={temporaryDocuments}
+                  />
                 </div>
               </div>
             )}

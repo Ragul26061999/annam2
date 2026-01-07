@@ -15,6 +15,7 @@ export interface PatientDocument {
   notes?: string;
   created_at?: string;
   updated_at?: string;
+  temp_file?: File; // Add temporary file property
 }
 
 export interface DocumentUploadData {

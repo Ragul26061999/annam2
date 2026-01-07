@@ -20,17 +20,19 @@ import {
 } from '../lib/documentService';
 
 interface DocumentListProps {
-    patientId: string;
+    patientId?: string;
     onDocumentDeleted?: () => void;
     showDelete?: boolean;
     refreshTrigger?: number;
+    temporaryFiles?: any[]; // Add temporary files from upload
 }
 
 export default function DocumentList({
     patientId,
     onDocumentDeleted,
     showDelete = true,
-    refreshTrigger = 0
+    refreshTrigger = 0,
+    temporaryFiles = []
 }: DocumentListProps) {
     const [documents, setDocuments] = useState<PatientDocument[]>([]);
     const [loading, setLoading] = useState(true);
@@ -41,12 +43,45 @@ export default function DocumentList({
         loadDocuments();
     }, [patientId, refreshTrigger]);
 
+    useEffect(() => {
+        // Update documents when temporary files change
+        if (temporaryFiles.length > 0) {
+            const tempDocs = temporaryFiles.map(file => ({
+                id: file.id,
+                patient_id: patientId || 'temp',
+                uhid: '',
+                document_name: file.document_name,
+                document_type: file.mime_type,
+                file_path: '',
+                file_size: file.file_size,
+                mime_type: file.mime_type,
+                uploaded_by: '',
+                upload_date: file.upload_date,
+                category: file.category,
+                notes: file.notes,
+                created_at: file.upload_date,
+                updated_at: file.upload_date,
+                temp_file: file.temp_file
+            }));
+            setDocuments(prev => [...tempDocs, ...prev.filter(d => !d.id.startsWith('temp-'))]);
+        }
+    }, [temporaryFiles, patientId]);
+
     const loadDocuments = async () => {
+        if (!patientId) {
+            setLoading(false);
+            return;
+        }
+        
         setLoading(true);
         setError(null);
         try {
             const docs = await getPatientDocuments(patientId);
-            setDocuments(docs);
+            setDocuments(prev => {
+                // Keep temporary files and add database files
+                const tempFiles = prev.filter(d => d.id.startsWith('temp-'));
+                return [...tempFiles, ...docs];
+            });
         } catch (err: any) {
             setError(err.message || 'Failed to load documents');
         } finally {
@@ -56,7 +91,20 @@ export default function DocumentList({
 
     const handleDownload = async (doc: PatientDocument) => {
         try {
-            await downloadDocument(doc.file_path, doc.document_name);
+            if (doc.temp_file) {
+                // Handle temporary file download
+                const url = URL.createObjectURL(doc.temp_file);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = doc.document_name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } else {
+                // Handle database file download
+                await downloadDocument(doc.file_path, doc.document_name);
+            }
         } catch (err: any) {
             alert('Failed to download document: ' + err.message);
         }
@@ -69,14 +117,23 @@ export default function DocumentList({
 
         setDeletingId(doc.id);
         try {
-            const result = await deleteDocument(doc.id, doc.file_path);
-            if (result.success) {
+            if (doc.temp_file) {
+                // Handle temporary file deletion (just remove from state)
                 setDocuments(prev => prev.filter(d => d.id !== doc.id));
                 if (onDocumentDeleted) {
                     onDocumentDeleted();
                 }
             } else {
-                alert('Failed to delete document: ' + result.error);
+                // Handle database file deletion
+                const result = await deleteDocument(doc.id, doc.file_path);
+                if (result.success) {
+                    setDocuments(prev => prev.filter(d => d.id !== doc.id));
+                    if (onDocumentDeleted) {
+                        onDocumentDeleted();
+                    }
+                } else {
+                    alert('Failed to delete document: ' + result.error);
+                }
             }
         } catch (err: any) {
             alert('Failed to delete document: ' + err.message);
