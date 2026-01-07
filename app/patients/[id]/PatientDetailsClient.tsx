@@ -1167,6 +1167,69 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     );
                   })()}
                 </div>
+
+                {/* Lab & Radiology Billing Summary */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase flex items-center gap-2">
+                    <Microscope size={16} /> Lab & Radiology Billing Summary
+                  </h5>
+                  
+                  {labOrders.length === 0 && radiologyOrders.length === 0 ? (
+                     <div className="text-sm text-gray-600">No lab or radiology orders found.</div>
+                  ) : (() => {
+                    const labTotal = labOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+                    const radiologyTotal = radiologyOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
+                    const diagnosticTotal = labTotal + radiologyTotal;
+                    
+                    return (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+                            <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-1">Total Lab Charges</p>
+                            <p className="text-2xl font-black text-gray-900">₹{formatMoney(labTotal)}</p>
+                            <p className="text-xs text-purple-700 mt-1">{labOrders.length} Orders</p>
+                          </div>
+                          <div className="bg-cyan-50 p-5 rounded-2xl border border-cyan-100">
+                            <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest mb-1">Total Radiology Charges</p>
+                            <p className="text-2xl font-black text-gray-900">₹{formatMoney(radiologyTotal)}</p>
+                            <p className="text-xs text-cyan-700 mt-1">{radiologyOrders.length} Orders</p>
+                          </div>
+                          <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
+                             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Grand Total</p>
+                             <p className="text-2xl font-black text-gray-900">₹{formatMoney(diagnosticTotal)}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                           <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                              <div className="font-bold text-gray-900">Recent Diagnostic Charges</div>
+                           </div>
+                           <div className="divide-y divide-gray-100">
+                              {[...labOrders, ...radiologyOrders]
+                                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                .slice(0, 5)
+                                .map((order, idx) => (
+                                  <div key={idx} className="p-4 flex justify-between items-center hover:bg-gray-50 transition-colors">
+                                     <div>
+                                        <p className="font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</p>
+                                        <p className="text-xs text-gray-500">{formatDate(order.created_at)} • {order.test_catalog?.category || order.test_catalog?.modality || 'Diagnostic'}</p>
+                                     </div>
+                                     <div className="text-right">
+                                        <p className="font-bold text-gray-900">₹{formatMoney(order.test_catalog?.test_cost || 0)}</p>
+                                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                           {order.payment_status || 'Pending'}
+                                        </span>
+                                     </div>
+                                  </div>
+                                ))
+                              }
+                           </div>
+                        </div>
+                    </div>
+                    );
+                  })()}
+                </div>
+
                 {patient.consulting_doctor_name && (
                   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                     <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase">Billing Context</h5>
