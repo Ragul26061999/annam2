@@ -311,26 +311,36 @@ export async function getBillingRecords(
     console.log('getBillingRecords - Outpatient result:', outpatientResult);
     console.log('getBillingRecords - Outpatient data:', outpatientResult.data);
     
-    const billingRecords = (billingResult.data || []).map((b: any) => ({
-      id: b.id,
-      bill_id: b.bill_number || b.bill_no || `BILL-${b.id.substring(0, 8)}`,
-      patient_id: b.patient_id,
-      bill_date: b.bill_date || b.issued_at || b.created_at,
-      total_amount: Number(b.total) || 0,
-      subtotal: Number(b.subtotal) || 0,
-      tax_amount: Number(b.tax) || 0,
-      discount_amount: Number(b.discount) || 0,
-      payment_status: b.payment_status || 'pending',
-      payment_method: b.payment_method,
-      created_at: b.created_at,
-      updated_at: b.updated_at || b.created_at,
-      source: 'billing' as const,
-      patient: b.patients || {
-        name: b.customer_name || 'Unknown Customer',
-        patient_id: b.customer_phone || 'N/A',
-        phone: b.customer_phone || ''
-      }
-    }));
+    const billingRecords = (billingResult.data || []).map((b: any) => {
+      // Determine source based on bill_type
+      let source = 'billing';
+      if (b.bill_type === 'lab') source = 'lab';
+      else if (b.bill_type === 'radiology') source = 'radiology';
+      else if (b.bill_type === 'pharmacy') source = 'pharmacy';
+      else if (b.bill_type === 'diagnostic') source = 'diagnostic';
+      else if (b.bill_type === 'outpatient') source = 'outpatient';
+      
+      return {
+        id: b.id,
+        bill_id: b.bill_number || b.bill_no || `BILL-${b.id.substring(0, 8)}`,
+        patient_id: b.patient_id,
+        bill_date: b.bill_date || b.issued_at || b.created_at,
+        total_amount: Number(b.total) || 0,
+        subtotal: Number(b.subtotal) || 0,
+        tax_amount: Number(b.tax) || 0,
+        discount_amount: Number(b.discount) || 0,
+        payment_status: b.payment_status || 'pending',
+        payment_method: b.payment_method,
+        created_at: b.created_at,
+        updated_at: b.updated_at || b.created_at,
+        source: source as any,
+        patient: b.patients || {
+          name: b.customer_name || 'Unknown Customer',
+          patient_id: b.customer_phone || 'N/A',
+          phone: b.customer_phone || ''
+        }
+      };
+    });
 
     const pharmacyRecords = (pharmacyResult.data || []).map((b: any) => ({
       id: b.id,

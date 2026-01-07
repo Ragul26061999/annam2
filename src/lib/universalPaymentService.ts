@@ -35,6 +35,7 @@ export interface PaymentData {
   payment_method?: string; // Default for backward compatibility
   notes?: string;
   created_by?: string;
+  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'other';
 }
 
 export interface PaymentSplit {
@@ -103,6 +104,7 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
         tax: data.tax_amount,
         payment_status: 'pending',
         payment_method: data.payment_method,
+        bill_type: data.bill_type || 'consultation',
         issued_at: new Date().toISOString(),
       })
       .select()
@@ -315,6 +317,7 @@ export async function createLabTestBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
+    bill_type: 'lab',
   });
 }
 
@@ -418,5 +421,6 @@ export async function createOPConsultationBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
+    bill_type: 'consultation',
   });
 }
