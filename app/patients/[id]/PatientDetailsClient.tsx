@@ -33,11 +33,14 @@ import {
   LogIn,
   LogOut,
   Upload,
-  FolderOpen
+  FolderOpen,
+  Microscope,
+  Radiation
 } from 'lucide-react';
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
 import { getMedicalHistory, MedicalHistoryEvent } from '../../../src/lib/medicalHistoryService';
+import { getPatientLabOrders, getPatientRadiologyOrders } from '../../../src/lib/labXrayService';
 import MedicalHistoryForm from '../../../src/components/MedicalHistoryForm';
 import AddDummyMedicalHistory from '../../../src/components/AddDummyMedicalHistory';
 import MedicationHistory from '../../../src/components/MedicationHistory';
@@ -152,6 +155,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeSubTab, setActiveSubTab] = useState('appointments');
+  const [activeReportTab, setActiveReportTab] = useState('generated');
   const [vitals, setVitals] = useState<any[]>([]);
   const [showVitalsForm, setShowVitalsForm] = useState(false);
   const [editingVital, setEditingVital] = useState<any | null>(null);
@@ -167,6 +171,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [ipAllocation, setIpAllocation] = useState<any | null>(null);
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
   const [ipBillingPayments, setIpBillingPayments] = useState<BillingPaymentRow[]>([]);
+  const [labOrders, setLabOrders] = useState<any[]>([]);
+  const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -286,6 +292,18 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
         console.error('Error fetching medical history data:', historyError);
       } finally {
         setHistoryLoading(false);
+      }
+
+      // Fetch Lab & Radiology Orders
+      try {
+        const [lOrders, rOrders] = await Promise.all([
+          getPatientLabOrders(patientData.id),
+          getPatientRadiologyOrders(patientData.id)
+        ]);
+        setLabOrders(lOrders);
+        setRadiologyOrders(rOrders);
+      } catch (reportsError) {
+        console.error('Error fetching medical reports:', reportsError);
       }
     } catch (err) {
       console.error('Error fetching patient data:', err);
@@ -573,8 +591,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 { id: 'overview', name: 'Overview', icon: Eye },
                 { id: 'vitals', name: 'Vitals', icon: Activity },
                 { id: 'medical-history', name: 'Medical History', icon: Heart },
+                { id: 'reports-docs', name: 'Medical Records', icon: FolderOpen },
                 { id: 'medications', name: 'Medications', icon: Pill },
-                { id: 'documents', name: 'Documents', icon: FolderOpen },
                 { id: 'appointments', name: 'Appointments', icon: Calendar },
                 { id: 'billing', name: 'Billing', icon: FileText }
               ].map((tab) => (
@@ -775,41 +793,184 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
             )}
 
-            {/* Medications Tab */}
-            {activeTab === 'medications' && <MedicationHistory patientId={patient.id} />}
+            {/* Medical Records Tab */}
+            {activeTab === 'reports-docs' && (
+              <div className="space-y-6">
+                <div className="border-b border-gray-100 flex gap-6 mb-4">
+                  <button 
+                    onClick={() => setActiveReportTab('generated')} 
+                    className={`pb-3 text-sm font-bold ${activeReportTab === 'generated' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}
+                  >
+                    LAB & RADIOLOGY
+                  </button>
+                  <button 
+                    onClick={() => setActiveReportTab('uploaded')} 
+                    className={`pb-3 text-sm font-bold ${activeReportTab === 'uploaded' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}
+                  >
+                    UPLOADED DOCUMENTS
+                  </button>
+                </div>
 
-            {/* Documents Tab */}
-            {activeTab === 'documents' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
-                  <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Upload className="text-blue-600" size={20} /> Upload Documents
-                  </h4>
-                  <DocumentUpload
-                    patientId={patient.id}
-                    uhid={patient.patient_id}
-                    category="medical-report"
-                    onUploadComplete={(doc) => {
-                      setDocumentRefreshTrigger(prev => prev + 1);
-                      // Add to temporary documents if it's a temp file
-                      if (doc.id && doc.id.startsWith('temp-')) {
-                        setTemporaryDocuments(prev => [...prev, doc]);
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-900 mb-4 px-2">Recent Files</h4>
-                  <EnhancedDocumentList 
-                    patientId={patient.id} 
-                    uhid={patient.patient_id}
-                    showDelete={true} 
-                    refreshTrigger={documentRefreshTrigger} 
-                    temporaryFiles={temporaryDocuments}
-                  />
-                </div>
+                {activeReportTab === 'generated' ? (
+                  <div className="space-y-8">
+                    {/* Lab Reports Section */}
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Microscope className="h-5 w-5 text-teal-600" />
+                        Laboratory Reports
+                      </h3>
+                      {labOrders.length > 0 ? (
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Test Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Doctor</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {labOrders.map((order) => (
+                                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {formatDateTime(order.created_at)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
+                                    <div className="text-xs text-gray-500">{order.test_catalog?.category}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                    Dr. {order.ordering_doctor?.name || 'Unknown'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                      ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                                        order.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
+                                        'bg-gray-100 text-gray-800'}`}>
+                                      {order.status ? order.status.replace(/_/g, ' ').toUpperCase() : 'PENDING'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <Link 
+                                      href={`/lab-xray/order/${order.id}`}
+                                      className="text-teal-600 hover:text-teal-900 font-bold flex items-center justify-end gap-1"
+                                    >
+                                      View <ChevronRight size={14} />
+                                    </Link>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
+                          <Microscope className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-gray-500">No lab reports found for this patient.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Radiology Reports Section */}
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Radiation className="h-5 w-5 text-cyan-600" />
+                        Radiology Reports
+                      </h3>
+                      {radiologyOrders.length > 0 ? (
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Procedure</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modality</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {radiologyOrders.map((order) => (
+                                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {formatDateTime(order.created_at)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Scan'}</div>
+                                    <div className="text-xs text-gray-500">{order.body_part || 'General'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                    <span className="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-600">
+                                      {order.test_catalog?.modality || 'X-RAY'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                      ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                                        order.status === 'report_pending' ? 'bg-amber-100 text-amber-800' : 
+                                        'bg-gray-100 text-gray-800'}`}>
+                                      {order.status ? order.status.replace(/_/g, ' ').toUpperCase() : 'PENDING'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <Link 
+                                      href={`/lab-xray/order/${order.id}`}
+                                      className="text-cyan-600 hover:text-cyan-900 font-bold flex items-center justify-end gap-1"
+                                    >
+                                      View <ChevronRight size={14} />
+                                    </Link>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
+                          <Radiation className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-gray-500">No radiology reports found for this patient.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
+                      <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Upload className="text-blue-600" size={20} /> Upload Documents
+                      </h4>
+                      <DocumentUpload
+                        patientId={patient.id}
+                        uhid={patient.patient_id}
+                        category="medical-report"
+                        onUploadComplete={(doc) => {
+                          setDocumentRefreshTrigger(prev => prev + 1);
+                          // Add to temporary documents if it's a temp file
+                          if (doc.id && doc.id.startsWith('temp-')) {
+                            setTemporaryDocuments(prev => [...prev, doc]);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-4 px-2">Recent Files</h4>
+                      <EnhancedDocumentList 
+                        patientId={patient.id} 
+                        uhid={patient.patient_id}
+                        showDelete={true} 
+                        refreshTrigger={documentRefreshTrigger} 
+                        temporaryFiles={temporaryDocuments}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* Medications Tab */}
+            {activeTab === 'medications' && <MedicationHistory patientId={patient.id} />}
 
             {/* Appointments Tab */}
             {activeTab === 'appointments' && (

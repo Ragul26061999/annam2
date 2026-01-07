@@ -40,6 +40,7 @@ import StaffSelect from '../../../src/components/StaffSelect';
 import UniversalPaymentModal from '../../../src/components/UniversalPaymentModal';
 import { getAllDoctorsSimple } from '../../../src/lib/doctorService';
 import { motion, AnimatePresence } from 'framer-motion';
+import LabXrayAttachments from '../../../src/components/LabXrayAttachments';
 
 interface TestSelection {
     testId: string;
@@ -325,6 +326,10 @@ export default function LabOrderPage() {
             setError('Please select an ordering doctor.');
             return;
         }
+        if (!staffId) {
+            setError('Please select the staff member processing this order.');
+            return;
+        }
         if (selectedTests.some(t => !t.testId)) {
             setError('Please select all tests or remove empty rows.');
             return;
@@ -354,9 +359,9 @@ export default function LabOrderPage() {
             const bill = await createLabTestBill(patientDetails.id, orders, staffId);
             setGeneratedBill(bill);
 
-            // Show payment modal
+            // Show payment modal first
             setShowPaymentModal(true);
-            setSuccess(true);
+            // Don't show success modal yet - wait for payment interaction
         } catch (err: any) {
             console.error('Submission error:', err);
             setError(err.message || 'Failed to create orders.');
@@ -366,10 +371,15 @@ export default function LabOrderPage() {
     };
 
     const handlePaymentSuccess = () => {
-        // Reset form and redirect
-        setTimeout(() => {
-            router.push('/lab-xray');
-        }, 1000);
+        // Close payment modal and show success modal
+        setShowPaymentModal(false);
+        setSuccess(true);
+    };
+
+    const handlePaymentClose = () => {
+        // Even if payment is cancelled/skipped, show success modal because orders were created
+        setShowPaymentModal(false);
+        setSuccess(true);
     };
 
     if (loading) {
@@ -664,16 +674,17 @@ export default function LabOrderPage() {
 
                                     <div className="flex flex-col justify-between">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Documentation</label>
-                                            <div className="border-2 border-dashed border-slate-200 rounded-3xl p-6 flex flex-col items-center justify-center gap-3 bg-slate-50 hover:bg-teal-50 hover:border-teal-200 transition-all cursor-pointer group">
-                                                <div className="p-3 bg-white rounded-2xl border border-slate-200 group-hover:border-teal-200 text-slate-400 group-hover:text-teal-600 transition-all">
-                                                    <Upload size={24} />
-                                                </div>
-                                                <div className="text-center">
-                                                    <p className="text-xs font-bold text-slate-700">Upload Clinical File</p>
-                                                    <p className="text-[10px] text-slate-400 mt-1">PDF, PNG or JPG max 10MB</p>
-                                                </div>
-                                            </div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Lab Test Attachments</label>
+                                            <LabXrayAttachments
+                                                patientId={patientDetails.id}
+                                                testType="lab"
+                                                testName={selectedTests.filter(t => t.testId).map(t => t.testName).join(', ')}
+                                                uploadedBy={undefined}
+                                                onAttachmentChange={() => {
+                                                    // Refresh attachments if needed
+                                                }}
+                                                showFileBrowser={true}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -775,7 +786,7 @@ export default function LabOrderPage() {
                                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
                                         <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
                                             <span>Invoice Ref</span>
-                                            <span className="text-slate-900">LAB-GEN-{Math.floor(Math.random() * 100000)}</span>
+                                            <span className="text-slate-900">{generatedBill?.bill_id || 'PENDING'}</span>
                                         </div>
                                         <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
                                             <span>Total Bill</span>
@@ -874,7 +885,7 @@ export default function LabOrderPage() {
             {generatedBill && (
                 <UniversalPaymentModal
                     isOpen={showPaymentModal}
-                    onClose={() => setShowPaymentModal(false)}
+                    onClose={handlePaymentClose}
                     bill={generatedBill}
                     onSuccess={handlePaymentSuccess}
                 />

@@ -27,13 +27,19 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   ChevronRight,
-  ArrowRight
+  ArrowRight,
+  Trash2
 } from 'lucide-react';
 import {
   getLabOrders,
   getRadiologyOrders,
-  getDiagnosticStats
+  getDiagnosticStats,
+  updateLabOrderStatus,
+  updateRadiologyOrder,
+  deleteLabOrder,
+  deleteRadiologyOrder
 } from '../../src/lib/labXrayService';
+import { supabase } from '../../src/lib/supabase';
 import {
   BarChart,
   Bar,
@@ -80,20 +86,23 @@ export default function LabXRayPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   useEffect(() => {
     loadData();
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
-      loadData();
+      loadData(true);
     }, 30000);
 
     return () => clearInterval(interval);
   }, [activeSubTab, statusFilter, urgencyFilter]);
 
-  const loadData = async () => {
+  const loadData = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
+      else setIsRefreshing(true);
 
       // Get stats
       const statsData = await getDiagnosticStats();
@@ -110,6 +119,57 @@ export default function LabXRayPage() {
 
     } catch (error) {
       console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleCancelOrder = async (order: any) => {
+    const ok = window.confirm('Are you sure you want to cancel this order?');
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      const nowIso = new Date().toISOString();
+      const updatePayload = {
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        cancellation_reason: 'Cancelled from dashboard'
+      };
+
+      if (activeSubTab === 'lab') {
+        await updateLabOrderStatus(order.id, 'cancelled', updatePayload);
+      } else {
+        await updateRadiologyOrder(order.id, updatePayload);
+      }
+
+      await loadData();
+    } catch (e) {
+      console.error('Error cancelling order:', e);
+      alert('Failed to cancel order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteOrder = async (order: any) => {
+    const ok = window.confirm('Are you sure you want to PERMANENTLY delete this order? This action cannot be undone.');
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      
+      if (activeSubTab === 'lab') {
+        await deleteLabOrder(order.id);
+      } else {
+        await deleteRadiologyOrder(order.id);
+      }
+
+      await loadData();
+    } catch (e) {
+      console.error('Error deleting order:', e);
+      alert('Failed to delete order');
     } finally {
       setLoading(false);
     }
@@ -260,6 +320,12 @@ export default function LabXRayPage() {
               <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse delay-75"></span>
               <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse delay-150"></span>
             </div>
+            {isRefreshing && (
+              <span className="ml-2 text-xs font-normal text-gray-400 flex items-center gap-1 animate-pulse">
+                <RefreshCw size={12} className="animate-spin" />
+                Updating...
+              </span>
+            )}
           </h1>
           <p className="text-gray-500 mt-2 text-lg">Real-time tracking and clinical analytics for all diagnostic services.</p>
         </div>
@@ -595,9 +661,28 @@ export default function LabXRayPage() {
                         <Link href={`/lab-xray/order/${order.id}`} className="flex-1">
                           <button className="w-full h-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-teal-50 text-gray-700 hover:text-teal-600 rounded-xl text-sm font-bold transition-all border border-transparent hover:border-teal-100">
                             <Eye size={16} />
-                            Review
+                            Review / Files
                           </button>
                         </Link>
+                        {String(order.status || '').toLowerCase() === 'cancelled' ? (
+                          <button
+                            onClick={() => handleDeleteOrder(order)}
+                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 hover:text-red-800 rounded-xl text-sm font-bold transition-all border border-red-100 hover:border-red-200"
+                            title="Permanently Delete Order"
+                          >
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleCancelOrder(order)}
+                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-xl text-sm font-bold transition-all border border-transparent hover:border-red-100"
+                            title="Cancel Order"
+                          >
+                            <XCircle size={16} />
+                            Cancel
+                          </button>
+                        )}
                         {order.status === 'completed' && (
                           <div className="flex gap-2">
                             <button className="flex-1 flex items-center justify-center p-2.5 bg-gray-50 hover:bg-emerald-50 text-gray-600 hover:text-emerald-600 rounded-xl transition-all" title="Download Results">

@@ -12,14 +12,9 @@ interface PaymentModalProps {
 }
 
 interface Payment {
-  method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'insurance' | 'cheque' | 'wallet';
+  method: 'cash' | 'card' | 'upi' | 'gpay' | 'ghpay' | 'insurance' | 'credit' | 'others';
   amount: number;
   transaction_reference?: string;
-  bank_name?: string;
-  card_last_four?: string;
-  upi_id?: string;
-  cheque_number?: string;
-  cheque_date?: string;
   notes?: string;
 }
 
@@ -73,20 +68,11 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
         method: p.method,
         amount: p.amount,
         transaction_reference: p.transaction_reference,
-        bank_name: p.bank_name,
-        card_last_four: p.card_last_four,
-        upi_id: p.upi_id,
-        cheque_number: p.cheque_number,
-        cheque_date: p.cheque_date,
         notes: p.notes
       }));
 
-      // Process split payments
-      await processSplitPayments(
-        bill.id,
-        paymentSplits,
-        'Front Desk Staff' // This should come from user context
-      );
+      // Process split payments (writes to billing_payments + updates billing header)
+      await processSplitPayments(bill.id, paymentSplits);
 
       setSuccess(true);
       onSuccess?.();
@@ -109,8 +95,11 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
       case 'cash': return <DollarSign className="w-4 h-4" />;
       case 'card': return <CreditCard className="w-4 h-4" />;
       case 'upi': return <Smartphone className="w-4 h-4" />;
-      case 'bank_transfer': return <Building className="w-4 h-4" />;
       case 'insurance': return <Building className="w-4 h-4" />;
+      case 'gpay': return <Smartphone className="w-4 h-4" />;
+      case 'ghpay': return <Smartphone className="w-4 h-4" />;
+      case 'credit': return <Building className="w-4 h-4" />;
+      case 'others': return <DollarSign className="w-4 h-4" />;
       default: return <DollarSign className="w-4 h-4" />;
     }
   };
@@ -182,8 +171,11 @@ export default function UniversalPaymentModal({ isOpen, onClose, bill, onSuccess
                           <option value="cash">Cash</option>
                           <option value="card">Card</option>
                           <option value="upi">UPI</option>
-                          <option value="bank_transfer">Bank Transfer</option>
+                          <option value="gpay">GPay</option>
+                          <option value="ghpay">GHPay</option>
                           <option value="insurance">Insurance</option>
+                          <option value="credit">Credit</option>
+                          <option value="others">Others</option>
                         </select>
                       </div>
 

@@ -1,5 +1,18 @@
 import { supabase } from './supabase';
 
+function supabaseErrorToString(err: unknown): string {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message;
+  const anyErr = err as any;
+  if (typeof anyErr?.message === 'string') return anyErr.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 export interface PaymentItem {
   id?: string;
   service_name: string;
@@ -25,14 +38,9 @@ export interface PaymentData {
 }
 
 export interface PaymentSplit {
-  method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'insurance' | 'cheque' | 'wallet';
+  method: 'cash' | 'card' | 'upi' | 'gpay' | 'ghpay' | 'insurance' | 'credit' | 'others';
   amount: number;
   transaction_reference?: string;
-  bank_name?: string;
-  card_last_four?: string;
-  upi_id?: string;
-  cheque_number?: string;
-  cheque_date?: string;
   notes?: string;
 }
 
@@ -86,48 +94,43 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
     const { data: billing, error: billingError } = await supabase
       .from('billing')
       .insert({
-        bill_id,
+        bill_no: bill_id,
+        bill_number: bill_id,
         patient_id: data.patient_id,
-        appointment_id: data.appointment_id,
         bed_allocation_id: data.bed_allocation_id,
-        bill_date: new Date().toISOString().split('T')[0],
-        items: data.items,
         subtotal: data.subtotal,
-        tax_amount: data.tax_amount,
-        discount_amount: data.discount_amount,
-        total_amount: data.total_amount,
+        discount: data.discount_amount,
+        tax: data.tax_amount,
         payment_status: 'pending',
         payment_method: data.payment_method,
-        created_by: data.created_by,
+        issued_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (billingError) {
       console.error('Error creating billing record:', billingError);
-      throw new Error(`Failed to create billing record: ${billingError.message}`);
+      throw new Error(`Failed to create billing record: ${supabaseErrorToString(billingError)}`);
     }
 
-    // Create individual billing items
-    const billingItems = data.items.map(item => ({
-      billing_summary_id: billing.id,
-      service_name: item.service_name,
-      quantity: item.quantity,
-      unit_rate: item.unit_rate,
-      total_amount: item.total_amount,
-      item_type: item.item_type,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('billing_items')
-      .insert(billingItems);
-
-    if (itemsError) {
-      console.error('Error creating billing items:', itemsError);
-      // Don't throw here as main bill is created
-    }
-
-    return billing;
+    // Map DB row to PaymentRecord shape expected by UI.
+    // Note: billing table in this project doesn't store item lines as JSON.
+    return {
+      id: billing.id,
+      bill_id: billing.bill_no ?? billing.bill_number ?? bill_id,
+      patient_id: billing.patient_id,
+      bill_date: (billing.issued_at ? String(billing.issued_at).split('T')[0] : new Date().toISOString().split('T')[0]),
+      items: data.items,
+      subtotal: Number(billing.subtotal ?? data.subtotal) || 0,
+      tax_amount: Number(billing.tax ?? data.tax_amount) || 0,
+      discount_amount: Number(billing.discount ?? data.discount_amount) || 0,
+      total_amount: Number(billing.total ?? ((Number(billing.subtotal ?? data.subtotal) || 0) - (Number(billing.discount ?? data.discount_amount) || 0) + (Number(billing.tax ?? data.tax_amount) || 0))) || 0,
+      payment_status: (billing.payment_status as any) || 'pending',
+      payment_method: billing.payment_method ?? data.payment_method,
+      payment_date: billing.issued_at ?? undefined,
+      created_at: billing.created_at ?? new Date().toISOString(),
+      updated_at: billing.updated_at ?? new Date().toISOString(),
+    };
   } catch (error) {
     console.error('Error in createUniversalBill:', error);
     throw error;
@@ -136,89 +139,88 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
 
 // Process split payments for existing bill
 export async function processSplitPayments(
-  billId: string, 
+  billId: string,
   payments: PaymentSplit[],
-  receivedBy: string,
   notes?: string
-): Promise<PaymentReceipt> {
+): Promise<void> {
   try {
-    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-    
-    // Get billing details
-    const { data: billing } = await supabase
+    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      throw new Error('User not authenticated. Please log in again.');
+    }
+    const authUserId = authData.user.id;
+
+    // Load bill
+    const { data: billing, error: billingFetchError } = await supabase
       .from('billing')
-      .select('*')
+      .select('id, subtotal, discount, tax, total, amount_paid, balance_due, payment_status')
       .eq('id', billId)
       .single();
 
-    if (!billing) {
-      throw new Error('Bill not found');
+    if (billingFetchError) {
+      throw new Error(`Failed to load bill: ${supabaseErrorToString(billingFetchError)}`);
+    }
+    if (!billing) throw new Error('Bill not found');
+
+    const billTotal = Number(billing.total) || 0;
+    if (Math.abs(totalPaid - billTotal) > 0.01) {
+      throw new Error('Payment amount must equal the total bill amount');
     }
 
-    // Generate receipt number
-    const { data: receiptData } = await supabase
-      .rpc('generate_receipt_number');
+    // Replace payments (simple + robust)
+    const { error: delError } = await supabase
+      .from('billing_payments')
+      .delete()
+      .eq('billing_id', billId);
 
-    const receiptNumber = receiptData;
+    if (delError) {
+      throw new Error(`Failed to clear old payments: ${supabaseErrorToString(delError)}`);
+    }
 
-    // Add each payment to payment history
-    for (const payment of payments) {
-      const paymentData = {
-        bill_id: billing.bill_id,
+    const rows = payments
+      .map(p => ({
         billing_id: billId,
-        payment_date: new Date().toISOString().split('T')[0],
-        payment_time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-        amount_paid: payment.amount,
-        payment_method: payment.method,
-        transaction_reference: payment.transaction_reference,
-        bank_name: payment.bank_name,
-        card_last_four: payment.card_last_four,
-        upi_id: payment.upi_id,
-        cheque_number: payment.cheque_number,
-        cheque_date: payment.cheque_date,
-        notes: payment.notes,
-        created_by: null // Will be set by RLS
-      };
+        amount: Number(p.amount) || 0,
+        method: p.method,
+        reference: p.transaction_reference || null,
+        paid_at: new Date().toISOString(),
+        received_by: authUserId,
+      }))
+      .filter(r => r.amount > 0);
 
-      const { error: historyError } = await supabase
-        .from('payment_history')
-        .insert(paymentData);
-
-      if (historyError) {
-        console.error('Error creating payment history:', historyError);
-        throw new Error(`Failed to record payment: ${historyError.message}`);
+    if (rows.length) {
+      const { error: insError } = await supabase
+        .from('billing_payments')
+        .insert(rows);
+      if (insError) {
+        throw new Error(`Failed to save payments: ${supabaseErrorToString(insError)}`);
       }
     }
 
-    // Create payment receipt
-    const receipt = {
-      receipt_number: receiptNumber,
-      bill_id: billing.bill_id,
-      billing_id: billId,
-      patient_id: billing.patient_id,
-      receipt_date: new Date().toISOString().split('T')[0],
-      receipt_time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-      total_amount: billing.total_amount,
-      amount_paid: totalPaid,
-      balance_amount: billing.total_amount - totalPaid,
-      payment_status: totalPaid >= billing.total_amount ? 'full' : 'partial',
-      payment_methods: payments,
-      received_by: receivedBy,
-      created_by: null // Will be set by RLS
-    };
+    const paid = totalPaid;
+    const balance = Math.max(0, billTotal - paid);
+    const paymentStatus = paid <= 0 ? 'pending' : (balance <= 0 ? 'completed' : 'partial');
 
-    const { data: receiptRecord, error: receiptError } = await supabase
-      .from('payment_receipts')
-      .insert(receipt)
-      .select()
-      .single();
+    // Derive payment_method for billing header
+    const nonZero = payments.filter(p => (Number(p.amount) || 0) > 0);
+    const derivedMethod = nonZero.length === 1 ? nonZero[0].method : (nonZero.length > 1 ? 'others' : null);
 
-    if (receiptError) {
-      console.error('Error creating payment receipt:', receiptError);
-      throw new Error(`Failed to create receipt: ${receiptError.message}`);
+    const { error: updError } = await supabase
+      .from('billing')
+      .update({
+        amount_paid: paid,
+        balance_due: balance,
+        payment_status: paymentStatus,
+        payment_method: derivedMethod,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', billId);
+
+    if (updError) {
+      throw new Error(`Failed to update bill totals: ${supabaseErrorToString(updError)}`);
     }
-
-    return receiptRecord;
   } catch (error) {
     console.error('Error in processSplitPayments:', error);
     throw error;
@@ -240,7 +242,7 @@ export async function processPayment(
     notes
   };
 
-  await processSplitPayments(billId, [payment], 'System', notes);
+  await processSplitPayments(billId, [payment], notes);
 }
 
 // Get bills by patient

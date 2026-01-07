@@ -305,6 +305,10 @@ export default function XrayOrderPage() {
             setError('Please select an ordering doctor.');
             return;
         }
+        if (!staffId) {
+            setError('Please select the staff member processing this order.');
+            return;
+        }
         if (selectedTests.some(t => !t.testId)) {
             setError('Please select all radiology scans or remove empty rows.');
             return;
@@ -763,7 +767,7 @@ export default function XrayOrderPage() {
                             <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-4 shadow-inner">
                                 <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
                                     <span>BILL ID</span>
-                                    <span className="text-slate-900 text-xs">RAD-{Math.floor(Date.now() / 10000)}</span>
+                                    <span className="text-slate-900 text-xs">{generatedBill?.bill_id || 'PENDING'}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Charged</span>

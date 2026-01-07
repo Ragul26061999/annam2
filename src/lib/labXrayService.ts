@@ -531,6 +531,28 @@ export async function updateLabOrderStatus(
   }
 }
 
+/**
+ * Delete lab order
+ */
+export async function deleteLabOrder(orderId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('lab_test_orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) {
+      console.error('Failed to delete lab order:', error);
+      throw new Error(`Failed to delete lab order: ${error.message}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteLabOrder:', error);
+    throw error;
+  }
+}
+
 // ============================================
 // LAB RESULTS FUNCTIONS
 // ============================================
@@ -582,6 +604,52 @@ export async function getLabOrderResults(orderId: string): Promise<LabTestResult
   } catch (error) {
     console.error('Error in getLabOrderResults:', error);
     return [];
+  }
+}
+
+/**
+ * Update a lab test result
+ */
+export async function updateLabTestResult(resultId: string, updates: Partial<LabTestResult>): Promise<any> {
+  try {
+    const { data, error } = await supabase
+      .from('lab_test_results')
+      .update(updates)
+      .eq('id', resultId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Failed to update lab result:', error);
+      throw new Error(`Failed to update lab result: ${error.message}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in updateLabTestResult:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a lab test result
+ */
+export async function deleteLabTestResult(resultId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('lab_test_results')
+      .delete()
+      .eq('id', resultId);
+
+    if (error) {
+      console.error('Failed to delete lab result:', error);
+      throw new Error(`Failed to delete lab result: ${error.message}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteLabTestResult:', error);
+    throw error;
   }
 }
 
@@ -877,6 +945,28 @@ export async function updateRadiologyOrder(
     return order;
   } catch (error) {
     console.error('Error in updateRadiologyOrder:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete radiology order
+ */
+export async function deleteRadiologyOrder(orderId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('radiology_test_orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) {
+      console.error('Failed to delete radiology order:', error);
+      throw new Error(`Failed to delete radiology order: ${error.message}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteRadiologyOrder:', error);
     throw error;
   }
 }
