@@ -52,8 +52,10 @@ export default function OutpatientTransactionsPage() {
       );
       
       // Filter only outpatient records
+      console.log('All records returned:', result.records.length, result.records);
       const outpatientRecords = result.records.filter(record => record.source === 'outpatient');
       console.log('Outpatient records found:', outpatientRecords.length, outpatientRecords);
+      console.log('Sources found:', result.records.map(r => r.source));
       setRecords(outpatientRecords);
       setTotalRecords(outpatientRecords.length);
     } catch (error) {

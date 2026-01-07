@@ -178,6 +178,9 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const radiologyData = radiologyResult.data || [];
     const diagnosticData = diagnosticResult.data || [];
     const outpatientData = outpatientResult.data || [];
+    
+    console.log('Outpatient query result:', outpatientResult);
+    console.log('Outpatient data length:', outpatientData.length);
 
     // Calculate revenue by source using correct column names
     const billingRevenue = billingData.reduce((sum: number, b: any) => sum + (Number(b.total) || 0), 0);
@@ -305,6 +308,9 @@ export async function getBillingRecords(
     ]);
 
     // Transform and combine all records with correct field mapping
+    console.log('getBillingRecords - Outpatient result:', outpatientResult);
+    console.log('getBillingRecords - Outpatient data:', outpatientResult.data);
+    
     const billingRecords = (billingResult.data || []).map((b: any) => ({
       id: b.id,
       bill_id: b.bill_number || b.bill_no || `BILL-${b.id.substring(0, 8)}`,
@@ -389,26 +395,30 @@ export async function getBillingRecords(
       }
     }));
 
-    const outpatientRecords = (outpatientResult.data || []).map((p: any) => ({
-      id: p.id,
-      bill_id: `OP-${p.patient_id}`,
-      patient_id: p.id,
-      bill_date: p.created_at,
-      total_amount: Number(p.total_amount) || 0,
-      subtotal: Number(p.consultation_fee) || 0,
-      tax_amount: 0,
-      discount_amount: Number(p.op_card_amount) || 0,
-      payment_status: 'paid', // Outpatient records are typically paid
-      payment_method: p.payment_mode || 'cash',
-      created_at: p.created_at,
-      updated_at: p.updated_at || p.created_at,
-      source: 'outpatient' as const,
-      patient: {
-        name: p.name || 'Unknown Patient',
-        patient_id: p.patient_id || 'N/A',
-        phone: p.phone || ''
-      }
-    }));
+    const outpatientRecords = (outpatientResult.data || []).map((p: any) => {
+      console.log('Transforming outpatient record:', p);
+      return {
+        id: p.id,
+        bill_id: `OP-${p.patient_id}`,
+        patient_id: p.id,
+        bill_date: p.created_at,
+        total_amount: Number(p.total_amount) || 0,
+        subtotal: Number(p.consultation_fee) || 0,
+        tax_amount: 0,
+        discount_amount: Number(p.op_card_amount) || 0,
+        payment_status: 'paid', // Outpatient records are typically paid
+        payment_method: p.payment_mode || 'cash',
+        created_at: p.created_at,
+        updated_at: p.updated_at || p.created_at,
+        source: 'outpatient' as const,
+        patient: {
+          name: p.name || 'Unknown Patient',
+          patient_id: p.patient_id || 'N/A',
+          phone: p.phone || ''
+        }
+      };
+    });
+    console.log('Transformed outpatient records:', outpatientRecords);
 
     // Combine all records
     let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords];
