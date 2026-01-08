@@ -7,7 +7,7 @@ import {
   RefreshCw, ArrowLeft, Eye, LogOut, Clock, Calendar,
   Filter, Hash, Stethoscope, Building, ChevronRight,
   Heart, TrendingUp, CheckCircle, XCircle, Loader2,
-  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X, ClipboardList
+  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X, ClipboardList, FileText
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
 import { deletePatient } from '../../src/lib/patientService';
@@ -488,6 +488,18 @@ export default function InpatientPage() {
                           >
                             <Eye size={14} />
                             View Summary
+                          </button>
+                        </Link>
+                      )}
+
+                      {(allocation.status === 'active' || allocation.status === 'allocated') && (
+                        <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&subtab=discharge`}>
+                          <button
+                            className="text-xs px-3 py-1.5 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 transition-colors flex items-center gap-1"
+                            title="Discharge Summary 2.0"
+                          >
+                            <FileText size={14} />
+                            Discharge Summary 2.0
                           </button>
                         </Link>
                       )}

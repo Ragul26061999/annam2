@@ -1,0 +1,1 @@
+ALTER TABLE ip_discharge_summaries ADD COLUMN IF NOT EXISTS surgery_date TIMESTAMP WITH TIME ZONE;

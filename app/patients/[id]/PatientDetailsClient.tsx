@@ -161,8 +161,13 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   useEffect(() => {
     if (searchParams) {
       const tab = searchParams.get('tab');
+      const subtab = searchParams.get('subtab');
+      
       if (tab === 'clinical-records') {
         setShowClinicalRecordsModal(true);
+        if (subtab) {
+          setClinicalRecordsSubTab(subtab as any);
+        }
       } else if (tab) {
         setActiveTab(tab);
       }
@@ -183,6 +188,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
   const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
   const [showClinicalRecordsModal, setShowClinicalRecordsModal] = useState(false);
+  const [clinicalRecordsSubTab, setClinicalRecordsSubTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge'>('overview');
 
   const [ipAllocation, setIpAllocation] = useState<any | null>(null);
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
@@ -1439,6 +1445,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           onClose={() => setShowClinicalRecordsModal(false)}
           allocation={ipAllocation}
           patient={patient}
+          defaultTab={clinicalRecordsSubTab}
         />
       )}
       {showVitalsForm && (

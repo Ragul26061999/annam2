@@ -8,6 +8,7 @@ import { getIPClinicalTimeline, ClinicalEvent } from '../../lib/ipClinicalServic
 import DoctorOrders from './DoctorOrders';
 import NurseRecords from './NurseRecords';
 import CaseSheet from './CaseSheet';
+import DischargeSummary from './DischargeSummary';
 
 interface ClinicalDiaryProps {
   bedAllocationId: string;
@@ -15,9 +16,11 @@ interface ClinicalDiaryProps {
   patientName: string;
   admissionDate: string;
   dischargeDate?: string;
+  ipNumber?: string;
+  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge';
 }
 
-export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate, dischargeDate }: ClinicalDiaryProps) {
+export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate, dischargeDate, ipNumber, defaultTab = 'overview' }: ClinicalDiaryProps) {
   // Helper to get local date string YYYY-MM-DD
   const getLocalDateString = (d: Date = new Date()) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -31,7 +34,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
     if (dischargeDate) return getLocalDateString(new Date(dischargeDate));
     return getLocalDateString();
   });
-  const [activeTab, setActiveTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge'>(defaultTab);
 
   useEffect(() => {
     loadTimeline();
@@ -112,12 +115,15 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
     { id: 'doctor', label: "Doctor's Notes", icon: Stethoscope },
     { id: 'nurse', label: "Nurse's Record", icon: User },
     { id: 'casesheet', label: 'Case Sheet', icon: FileText },
+    { id: 'discharge', label: 'Discharge Summary', icon: ClipboardList },
   ];
+
+  const isDischarge = activeTab === 'discharge';
 
   return (
     <div className="flex h-full bg-gray-50 overflow-hidden">
       {/* Sidebar - Timeline Navigation */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0">
+      <div className={`w-64 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0 ${isDischarge ? 'hidden' : ''}`}>
         <div className="p-4 border-b border-gray-100 bg-gray-50/50">
           <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wide">Timeline</h3>
         </div>
@@ -160,17 +166,19 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
         {/* Header & Tabs */}
         <div className="border-b border-gray-200">
-          <div className="px-6 py-4 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-gray-500" />
-              {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </h2>
-            <div className="text-sm text-gray-500">
-              Viewing records for <span className="font-semibold text-gray-900">Day {getDayNumber(selectedDate)}</span>
+          {!isDischarge && (
+            <div className="px-6 py-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-gray-500" />
+                {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </h2>
+              <div className="text-sm text-gray-500">
+                Viewing records for <span className="font-semibold text-gray-900">Day {getDayNumber(selectedDate)}</span>
+              </div>
             </div>
-          </div>
+          )}
           
-          <div className="flex px-6 pb-4 gap-2">
+          <div className={`flex px-6 gap-2 ${isDischarge ? 'pt-4 pb-4' : 'pb-4'}`}>
             {tabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -302,6 +310,14 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                 </div>
                 <CaseSheet bedAllocationId={bedAllocationId} patientId={patientId} />
               </div>
+            )}
+
+            {activeTab === 'discharge' && (
+              <DischargeSummary 
+                bedAllocationId={bedAllocationId}
+                patient={{ name: patientName }}
+                bedAllocation={{ admission_date: admissionDate, ip_number: ipNumber || 'N/A' }} 
+              />
             )}
 
           </div>

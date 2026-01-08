@@ -7,9 +7,10 @@ interface ClinicalRecordsModalProps {
   onClose: () => void;
   allocation: any;
   patient: any;
+  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge';
 }
 
-export default function ClinicalRecordsModal({ isOpen, onClose, allocation, patient }: ClinicalRecordsModalProps) {
+export default function ClinicalRecordsModal({ isOpen, onClose, allocation, patient, defaultTab }: ClinicalRecordsModalProps) {
   if (!isOpen || !allocation) return null;
 
   return (
@@ -45,6 +46,8 @@ export default function ClinicalRecordsModal({ isOpen, onClose, allocation, pati
             patientName={patient.name}
             admissionDate={allocation.admission_date}
             dischargeDate={allocation.discharge_date}
+            ipNumber={allocation.ip_number}
+            defaultTab={defaultTab}
           />
         </div>
       </div>

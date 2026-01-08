@@ -8,9 +8,10 @@ import DischargeSummary from './DischargeSummary';
 interface IPClinicalRecordsProps {
   allocations: any[];
   patient: any;
+  defaultTab?: 'case_sheet' | 'doctor_orders' | 'nurse_records' | 'discharge_summary';
 }
 
-export default function IPClinicalRecords({ allocations, patient }: IPClinicalRecordsProps) {
+export default function IPClinicalRecords({ allocations, patient, defaultTab = 'case_sheet' }: IPClinicalRecordsProps) {
   // Sort allocations by admission date descending (latest first)
   const sortedAllocations = [...allocations].sort((a, b) => 
     new Date(b.admission_date || 0).getTime() - new Date(a.admission_date || 0).getTime()
@@ -19,7 +20,7 @@ export default function IPClinicalRecords({ allocations, patient }: IPClinicalRe
   const [selectedAllocationId, setSelectedAllocationId] = useState<string>(
     sortedAllocations.length > 0 ? sortedAllocations[0].id : ''
   );
-  const [activeTab, setActiveTab] = useState<'case_sheet' | 'doctor_orders' | 'nurse_records' | 'discharge_summary'>('case_sheet');
+  const [activeTab, setActiveTab] = useState<'case_sheet' | 'doctor_orders' | 'nurse_records' | 'discharge_summary'>(defaultTab);
 
   if (allocations.length === 0) {
     return (

@@ -77,6 +77,7 @@ export interface IPDischargeSummary {
   consultant_name?: string;
   admission_date?: string;
   discharge_date?: string;
+  surgery_date?: string;
   presenting_complaint?: string;
   physical_findings?: string;
   investigations?: string;
