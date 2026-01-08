@@ -7,7 +7,7 @@ import {
   RefreshCw, ArrowLeft, Eye, LogOut, Clock, Calendar,
   Filter, Hash, Stethoscope, Building, ChevronRight,
   Heart, TrendingUp, CheckCircle, XCircle, Loader2,
-  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X
+  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X, ClipboardList
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
 import { deletePatient } from '../../src/lib/patientService';
@@ -63,13 +63,6 @@ export default function InpatientPage() {
 
   useEffect(() => {
     loadInpatientData();
-
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadInpatientData();
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, [statusFilter]);
 
   const loadInpatientData = async () => {
@@ -156,12 +149,17 @@ export default function InpatientPage() {
   //   }
   // };
 
-  const calculateDaysAdmitted = (admissionDate: string) => {
+  const calculateDaysAdmitted = (admissionDate: string, dischargeDate?: string | null, status?: string) => {
     const admission = new Date(admissionDate);
-    const today = new Date();
-    const diffTime = Math.abs(today.getTime() - admission.getTime());
+    const end = (status === 'discharged' && dischargeDate) ? new Date(dischargeDate) : new Date();
+    
+    // Calculate difference in milliseconds
+    const diffTime = Math.abs(end.getTime() - admission.getTime());
+    // Convert to days (rounding up to count partial days as a day)
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    
+    // Ensure at least 1 day is shown if less than 24 hours
+    return Math.max(1, diffDays);
   };
 
   const handleDeleteClick = (allocation: any) => {
@@ -398,7 +396,7 @@ export default function InpatientPage() {
               const bedNumber = allocation.bed?.bed_number || 'N/A';
               const bedType = allocation.bed?.bed_type || 'General';
               const doctorName = (allocation.doctor?.name && typeof allocation.doctor.name === 'string') ? allocation.doctor.name.trim() || 'Not Assigned' : 'Not Assigned';
-              const daysAdmitted = calculateDaysAdmitted(allocation.admission_date);
+              const daysAdmitted = calculateDaysAdmitted(allocation.admission_date, allocation.discharge_date, allocation.status);
 
               return (
                 <div key={allocation.id} className="p-4 hover:bg-gray-50 transition-colors">
@@ -495,6 +493,18 @@ export default function InpatientPage() {
                       )}
 
                       {(allocation.status === 'active' || allocation.status === 'allocated') && (
+                        <Link href={`/patients/${allocation.patient_id}?tab=clinical-records`}>
+                          <button
+                            className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                            title="Clinical Records"
+                          >
+                            <ClipboardList size={14} />
+                            Clinical Records
+                          </button>
+                        </Link>
+                      )}
+
+                      {(allocation.status === 'active' || allocation.status === 'allocated') && (
                         <Link href={`/inpatient/discharge/${allocation.id}`}>
                           <button
                             className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
@@ -532,7 +542,7 @@ export default function InpatientPage() {
                   onChange={(e) => setSelectedPatientForPharmacy(e.target.value)}
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  {allocations.map((allocation) => (
+                  {Array.from(new Map(allocations.map(a => [a.patient_id, a])).values()).map((allocation) => (
                     <option key={allocation.patient_id} value={allocation.patient_id}>
                       {allocation.patient?.name || 'Unknown'} ({allocation.patient?.uhid || 'N/A'})
                     </option>

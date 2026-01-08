@@ -48,9 +48,10 @@ import { getCurrentUser, getCurrentUserProfile } from '../../../src/lib/supabase
 import { supabase } from '../../../src/lib/supabase';
 import PrescriptionForm from '../../../src/components/PrescriptionForm';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DocumentUpload from '../../../src/components/DocumentUpload';
 import EnhancedDocumentList from '../../../src/components/EnhancedDocumentList';
+import ClinicalRecordsModal from '../../../src/components/ip-clinical/ClinicalRecordsModal';
 
 interface Patient {
   id: string;
@@ -151,10 +152,23 @@ interface PatientDetailsClientProps {
 
 export default function PatientDetailsClient({ params }: PatientDetailsClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (searchParams) {
+      const tab = searchParams.get('tab');
+      if (tab === 'clinical-records') {
+        setShowClinicalRecordsModal(true);
+      } else if (tab) {
+        setActiveTab(tab);
+      }
+    }
+  }, [searchParams]);
+
   const [activeSubTab, setActiveSubTab] = useState('appointments');
   const [activeReportTab, setActiveReportTab] = useState('generated');
   const [vitals, setVitals] = useState<any[]>([]);
@@ -168,6 +182,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
   const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
+  const [showClinicalRecordsModal, setShowClinicalRecordsModal] = useState(false);
 
   const [ipAllocation, setIpAllocation] = useState<any | null>(null);
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
@@ -591,6 +606,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               {[
                 { id: 'overview', name: 'Overview', icon: Eye },
                 { id: 'vitals', name: 'Vitals', icon: Activity },
+                { id: 'clinical-records', name: 'Clinical Records', icon: ClipboardList },
                 { id: 'medical-history', name: 'Medical History', icon: Heart },
                 { id: 'reports-docs', name: 'Medical Records', icon: FolderOpen },
                 { id: 'medications', name: 'Medications', icon: Pill },
@@ -759,6 +775,91 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     ))
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Clinical Records Tab */}
+            {activeTab === 'clinical-records' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Inpatient Clinical Records</h3>
+                    <p className="text-sm text-gray-500">View daily progress notes, doctor orders, and nurse records for IP admissions.</p>
+                  </div>
+                </div>
+
+                {(!patient.bed_allocations || patient.bed_allocations.length === 0) ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                    <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <h4 className="text-gray-900 font-medium">No IP Admissions Found</h4>
+                    <p className="text-gray-500 text-sm mt-1">Clinical records are available only for inpatient admissions.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {patient.bed_allocations.map((alloc: any) => (
+                      <div key={alloc.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:border-blue-300 transition-colors">
+                        <div className="p-6">
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                            <div className="flex items-center gap-4">
+                              <div className={`p-3 rounded-xl ${alloc.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                                <Bed size={24} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-gray-900 text-lg">
+                                    {alloc.ip_number || 'IP Admission'}
+                                  </h4>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                    alloc.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {alloc.status}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                  {alloc.bed?.room_number ? `Room ${alloc.bed.room_number}` : 'No Room'} • Bed {alloc.bed?.bed_number || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <button
+                              onClick={() => {
+                                setIpAllocation(alloc);
+                                setShowClinicalRecordsModal(true);
+                              }}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium"
+                            >
+                              <ClipboardList size={18} />
+                              Open Clinical Diary
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <div>
+                              <p className="text-xs font-bold text-gray-400 uppercase mb-1">Admission Date</p>
+                              <p className="font-semibold text-gray-900 flex items-center gap-2">
+                                <Calendar size={14} className="text-gray-400" />
+                                {formatDateTime(alloc.admission_date)}
+                              </p>
+                            </div>
+                            {alloc.discharge_date && (
+                              <div>
+                                <p className="text-xs font-bold text-gray-400 uppercase mb-1">Discharge Date</p>
+                                <p className="font-semibold text-gray-900 flex items-center gap-2">
+                                  <CheckCircle size={14} className="text-gray-400" />
+                                  {formatDateTime(alloc.discharge_date)}
+                                </p>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs font-bold text-gray-400 uppercase mb-1">Department</p>
+                              <p className="font-semibold text-gray-900">{alloc.bed?.department_name || 'General'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1332,6 +1433,14 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       </div>
 
       {/* Forms Modals */}
+      {showClinicalRecordsModal && ipAllocation && (
+        <ClinicalRecordsModal
+          isOpen={showClinicalRecordsModal}
+          onClose={() => setShowClinicalRecordsModal(false)}
+          allocation={ipAllocation}
+          patient={patient}
+        />
+      )}
       {showVitalsForm && (
         <VitalsForm
           patientId={patient.patient_id}
