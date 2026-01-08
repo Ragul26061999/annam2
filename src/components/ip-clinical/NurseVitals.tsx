@@ -7,9 +7,10 @@ import { getIPVitals, createIPVital, IPVital } from '../../lib/ipClinicalService
 
 interface NurseVitalsProps {
   bedAllocationId: string;
+  date?: string; // YYYY-MM-DD
 }
 
-export default function NurseVitals({ bedAllocationId }: NurseVitalsProps) {
+export default function NurseVitals({ bedAllocationId, date }: NurseVitalsProps) {
   const [vitals, setVitals] = useState<IPVital[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -29,12 +30,12 @@ export default function NurseVitals({ bedAllocationId }: NurseVitalsProps) {
 
   useEffect(() => {
     loadVitals();
-  }, [bedAllocationId]);
+  }, [bedAllocationId, date]);
 
   const loadVitals = async () => {
     setLoading(true);
     try {
-      const data = await getIPVitals(bedAllocationId);
+      const data = await getIPVitals(bedAllocationId, date);
       setVitals(data || []);
     } catch (err) {
       console.error('Failed to load vitals', err);
@@ -47,9 +48,28 @@ export default function NurseVitals({ bedAllocationId }: NurseVitalsProps) {
     e.preventDefault();
     setSaving(true);
     try {
+      // Use the passed date for the record timestamp if it's today, otherwise use current time?
+      // Requirement says "entry only that days records".
+      // If user adds a record while viewing a past date, should it be backdated?
+      // Usually clinical systems default to NOW, but allow backdating.
+      // For simplicity here, let's use NOW if date is today/undefined, or set to noon of that date if it's in the past?
+      // Or just use NOW and let the filter hide it if it doesn't match?
+      // Better: If date is provided and != today, use that date + current time (or 12:00).
+      // Let's stick to simple: Use NOW. If it doesn't appear in the list because of filter, so be it (or warn user).
+      // Actually, if I am in "Day 1" view (past), and I add a vital, I probably want it to be for Day 1.
+      
+      let recordedAt = new Date().toISOString();
+      if (date) {
+        const today = new Date().toISOString().split('T')[0];
+        if (date !== today) {
+           const d = new Date();
+           recordedAt = `${date}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+        }
+      }
+
       await createIPVital(bedAllocationId, {
         ...formData,
-        recorded_at: new Date().toISOString()
+        recorded_at: recordedAt
       });
       setShowAddForm(false);
       setFormData({

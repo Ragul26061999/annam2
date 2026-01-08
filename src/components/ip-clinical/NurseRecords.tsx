@@ -5,26 +5,29 @@ import NurseVitals from './NurseVitals';
 
 interface NurseRecordsProps {
   bedAllocationId: string;
+  date?: string;
 }
 
-export default function NurseRecords({ bedAllocationId }: NurseRecordsProps) {
+export default function NurseRecords({ bedAllocationId, date }: NurseRecordsProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'vitals' | 'notes'>('vitals');
   const [records, setRecords] = useState<IPNurseRecord[]>([]);
   const [doctorOrders, setDoctorOrders] = useState<IPDoctorOrder[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Use date prop if provided, else default to today (but we should prefer prop)
+  const displayDate = date || new Date().toISOString().split('T')[0];
+  
   const [newRemark, setNewRemark] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, [bedAllocationId, selectedDate]);
+  }, [bedAllocationId, displayDate]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [nurseData, ordersData] = await Promise.all([
-        getIPNurseRecords(bedAllocationId, selectedDate),
+        getIPNurseRecords(bedAllocationId, displayDate),
         getIPDoctorOrders(bedAllocationId) // Fetch all orders, filter client side for summary
       ]);
       setRecords(nurseData || []);
@@ -40,18 +43,13 @@ export default function NurseRecords({ bedAllocationId }: NurseRecordsProps) {
     if (!newRemark.trim()) return;
     setSubmitting(true);
     try {
-      const now = new Date();
       // Use current time but force date to selected date if it's not today?
-      // User likely wants to log for the selected date.
-      // Construct timestamp: Selected Date + Current Time (or just 12:00 if past)
-      // For now, let's just use current timestamp if selected date is today, 
-      // otherwise use selected date at current time (to preserve ordering roughly).
       let entryTime = new Date().toISOString();
       const today = new Date().toISOString().split('T')[0];
       
-      if (selectedDate !== today) {
+      if (displayDate !== today) {
         const d = new Date();
-        entryTime = `${selectedDate}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+        entryTime = `${displayDate}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
       }
 
       const record = await createIPNurseRecord(bedAllocationId, newRemark, entryTime);
@@ -65,14 +63,8 @@ export default function NurseRecords({ bedAllocationId }: NurseRecordsProps) {
     }
   };
 
-  const changeDate = (days: number) => {
-    const date = new Date(selectedDate);
-    date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split('T')[0]);
-  };
-
   // Filter doctor orders for selected date
-  const todaysOrders = doctorOrders.filter(o => o.order_date.startsWith(selectedDate));
+  const todaysOrders = doctorOrders.filter(o => o.order_date.startsWith(displayDate));
 
   if (loading) {
     return <div className="p-8 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-500" /></div>;
@@ -83,16 +75,11 @@ export default function NurseRecords({ bedAllocationId }: NurseRecordsProps) {
       {/* Date Navigation & Sub-tabs */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex items-center gap-2">
-          <button onClick={() => changeDate(-1)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2 font-semibold text-gray-800 w-48 justify-center">
+          {/* Removed date navigation buttons as they are handled by parent */}
+          <div className="flex items-center gap-2 font-semibold text-gray-800">
             <Calendar className="h-5 w-5 text-blue-600" />
-            {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            {new Date(displayDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
           </div>
-          <button onClick={() => changeDate(1)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
-            <ChevronRight className="h-5 w-5" />
-          </button>
         </div>
 
         <div className="flex p-1 bg-gray-100 rounded-lg">
@@ -146,7 +133,7 @@ export default function NurseRecords({ bedAllocationId }: NurseRecordsProps) {
         <div className="lg:col-span-2 space-y-6">
           
           {activeTab === 'vitals' ? (
-            <NurseVitals bedAllocationId={bedAllocationId} />
+            <NurseVitals bedAllocationId={bedAllocationId} date={displayDate} />
           ) : (
             <>
               {/* Add Remark Form */}

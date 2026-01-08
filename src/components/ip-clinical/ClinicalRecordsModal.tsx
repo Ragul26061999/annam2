@@ -44,6 +44,7 @@ export default function ClinicalRecordsModal({ isOpen, onClose, allocation, pati
             patientId={patient.id}
             patientName={patient.name}
             admissionDate={allocation.admission_date}
+            dischargeDate={allocation.discharge_date}
           />
         </div>
       </div>

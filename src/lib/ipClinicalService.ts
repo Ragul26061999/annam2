@@ -261,8 +261,8 @@ export async function createIPNurseRecord(
 }
 
 // 4.1 IP Vitals
-export async function getIPVitals(bedAllocationId: string) {
-  const { data, error } = await supabase
+export async function getIPVitals(bedAllocationId: string, dateFilter?: string) {
+  let query = supabase
     .from('ip_vitals')
     .select(`
       *,
@@ -271,6 +271,13 @@ export async function getIPVitals(bedAllocationId: string) {
     .eq('bed_allocation_id', bedAllocationId)
     .order('recorded_at', { ascending: false });
 
+  if (dateFilter) {
+    const start = `${dateFilter}T00:00:00`;
+    const end = `${dateFilter}T23:59:59`;
+    query = query.gte('recorded_at', start).lte('recorded_at', end);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data as IPVital[];
 }

@@ -14,18 +14,23 @@ interface ClinicalDiaryProps {
   patientId: string;
   patientName: string;
   admissionDate: string;
+  dischargeDate?: string;
 }
 
-export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate }: ClinicalDiaryProps) {
+export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate, dischargeDate }: ClinicalDiaryProps) {
   // Helper to get local date string YYYY-MM-DD
-  const getLocalDateString = () => {
-    const d = new Date();
+  const getLocalDateString = (d: Date = new Date()) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
   const [loading, setLoading] = useState(true);
   const [timeline, setTimeline] = useState<Record<string, ClinicalEvent[]>>({});
-  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
+  // Default selected date: discharge date if exists, else today (but not after today if admission active?)
+  // Actually, default to today or discharge date is reasonable.
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    if (dischargeDate) return getLocalDateString(new Date(dischargeDate));
+    return getLocalDateString();
+  });
   const [activeTab, setActiveTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet'>('overview');
 
   useEffect(() => {
@@ -59,9 +64,37 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
     return Math.max(1, diffDays + 1); // Ensure at least Day 1
   };
 
-  const sortedDates = Object.keys(timeline).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  
-  // Ensure we include selectedDate in the list if it has events or is today
+  // Generate full range of dates from admission to discharge (or today)
+  const generateDateRange = () => {
+    if (!admissionDate) return [];
+    
+    const start = new Date(admissionDate);
+    start.setHours(0,0,0,0);
+    
+    const end = dischargeDate ? new Date(dischargeDate) : new Date();
+    end.setHours(0,0,0,0);
+    
+    // Safety check: if start > end (future admission?), just show start
+    if (start > end) return [getLocalDateString(start)];
+
+    const dates = [];
+    const current = new Date(start);
+    
+    while (current <= end) {
+      dates.push(getLocalDateString(current));
+      current.setDate(current.getDate() + 1);
+    }
+    
+    // Ensure today is included if active and not already there (e.g. edge case)
+    const today = getLocalDateString();
+    if (!dischargeDate && !dates.includes(today) && new Date(today) >= start) {
+       dates.push(today);
+    }
+
+    return dates.reverse(); // Newest first
+  };
+
+  const sortedDates = generateDateRange();
   const todayStr = getLocalDateString();
   
   const currentEvents = timeline[selectedDate] || [];
@@ -237,7 +270,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                     <Stethoscope className="h-6 w-6 text-teal-600" />
                   </div>
                 </div>
-                <DoctorOrders bedAllocationId={bedAllocationId} />
+                <DoctorOrders bedAllocationId={bedAllocationId} date={selectedDate} />
               </div>
             )}
 
@@ -252,7 +285,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                     <User className="h-6 w-6 text-purple-600" />
                   </div>
                 </div>
-                <NurseRecords bedAllocationId={bedAllocationId} />
+                <NurseRecords bedAllocationId={bedAllocationId} date={selectedDate} />
               </div>
             )}
 

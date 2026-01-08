@@ -4,14 +4,18 @@ import { getIPDoctorOrders, createIPDoctorOrder, IPDoctorOrder } from '../../lib
 
 interface DoctorOrdersProps {
   bedAllocationId: string;
+  date?: string;
 }
 
-export default function DoctorOrders({ bedAllocationId }: DoctorOrdersProps) {
+export default function DoctorOrders({ bedAllocationId, date }: DoctorOrdersProps) {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<IPDoctorOrder[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
+  // Use prop date or default to today
+  const displayDate = date || new Date().toISOString().split('T')[0];
+
   const [newOrder, setNewOrder] = useState({
     assessment: '',
     treatment_instructions: '',
@@ -20,13 +24,16 @@ export default function DoctorOrders({ bedAllocationId }: DoctorOrdersProps) {
 
   useEffect(() => {
     loadData();
-  }, [bedAllocationId]);
+  }, [bedAllocationId, displayDate]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await getIPDoctorOrders(bedAllocationId);
-      setOrders(data || []);
+      // Filter by date client side (or implement date filtering in getIPDoctorOrders if preferred, but client side is fine for now as per requirement)
+      // Actually, user wants "only that days records alone". So filtering is necessary.
+      const filtered = (data || []).filter(o => o.order_date.startsWith(displayDate));
+      setOrders(filtered);
     } catch (err) {
       console.error('Failed to load doctor orders', err);
     } finally {
@@ -40,9 +47,19 @@ export default function DoctorOrders({ bedAllocationId }: DoctorOrdersProps) {
 
     setSubmitting(true);
     try {
+      // Determine correct order date
+      let orderDate = new Date().toISOString();
+      const today = new Date().toISOString().split('T')[0];
+      
+      if (displayDate !== today) {
+        const d = new Date();
+        // If backdating, set to noon or preserve current time
+        orderDate = `${displayDate}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+      }
+
       const order = await createIPDoctorOrder(bedAllocationId, {
         ...newOrder,
-        order_date: new Date().toISOString()
+        order_date: orderDate
       });
       setOrders(prev => [order, ...prev]);
       setNewOrder({
