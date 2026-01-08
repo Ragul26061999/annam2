@@ -29,6 +29,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
+import { SearchableSelect } from '../../../src/components/ui/SearchableSelect';
 import {
     getLabTestCatalog,
     createLabTestOrder,
@@ -601,16 +602,17 @@ export default function LabOrderPage() {
 
                                                 <div className="md:col-span-5 space-y-2">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Test Name</label>
-                                                    <select
+                                                    <SearchableSelect
                                                         value={test.testId}
-                                                        onChange={(e) => handleTestChange(index, e.target.value)}
-                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none appearance-none cursor-pointer"
-                                                    >
-                                                        <option value="">Select Test...</option>
-                                                        {labCatalog.map(item => (
-                                                            <option key={item.id} value={item.id}>{item.test_name}</option>
-                                                        ))}
-                                                    </select>
+                                                        onChange={(value: string) => handleTestChange(index, value)}
+                                                        options={labCatalog.map(item => ({
+                                                            value: item.id,
+                                                            label: item.test_name,
+                                                            group: item.category,
+                                                            subLabel: `₹${item.test_cost}`
+                                                        }))}
+                                                        placeholder="Search & Select Test..."
+                                                    />
                                                 </div>
 
                                                 <div className="md:col-span-4 space-y-2">

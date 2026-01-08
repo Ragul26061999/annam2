@@ -28,6 +28,7 @@ import {
     Save
 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
+import { SearchableSelect } from '../../../src/components/ui/SearchableSelect';
 import {
     getRadiologyTestCatalog,
     createRadiologyTestOrder,
@@ -541,19 +542,17 @@ export default function XrayOrderPage() {
                                         >
                                             <div className="md:col-span-5 space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Procedure Name</label>
-                                                <div className="relative">
-                                                    <select
-                                                        value={test.testId}
-                                                        onChange={(e) => handleTestChange(index, e.target.value)}
-                                                        className="w-full pl-4 pr-10 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-black text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none appearance-none cursor-pointer tracking-tight"
-                                                    >
-                                                        <option value="">CHOOSE SCAN...</option>
-                                                        {radCatalog.map(item => (
-                                                            <option key={item.id} value={item.id}>{item.test_name}</option>
-                                                        ))}
-                                                    </select>
-                                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={16} />
-                                                </div>
+                                                <SearchableSelect
+                                                    value={test.testId}
+                                                    onChange={(value: string) => handleTestChange(index, value)}
+                                                    options={radCatalog.map(item => ({
+                                                        value: item.id,
+                                                        label: item.test_name,
+                                                        group: item.modality,
+                                                        subLabel: `₹${item.test_cost}`
+                                                    }))}
+                                                    placeholder="CHOOSE SCAN..."
+                                                />
                                             </div>
 
                                             <div className="md:col-span-3 space-y-2">
