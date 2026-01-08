@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity, RotateCcw, Building2, Wallet } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -580,6 +580,50 @@ export default function PharmacyPage() {
             Add Medicine
           </button>
         </div>
+      </div>
+
+      {/* Quick Access Cards - All Pharmacy Modules */}
+      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3">
+        <Link href="/pharmacy/purchase" className="bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg p-3 text-center transition-colors">
+          <ShoppingCart className="w-6 h-6 mx-auto text-blue-600 mb-1" />
+          <div className="text-xs font-medium text-blue-800">Drug Purchase</div>
+        </Link>
+        <Link href="/pharmacy/purchase-return" className="bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg p-3 text-center transition-colors">
+          <RotateCcw className="w-6 h-6 mx-auto text-orange-600 mb-1" />
+          <div className="text-xs font-medium text-orange-800">Purchase Return</div>
+        </Link>
+        <Link href="/pharmacy/department-issue" className="bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg p-3 text-center transition-colors">
+          <Building2 className="w-6 h-6 mx-auto text-purple-600 mb-1" />
+          <div className="text-xs font-medium text-purple-800">Dept Issue</div>
+        </Link>
+        <Link href="/pharmacy/newbilling" className="bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg p-3 text-center transition-colors">
+          <Receipt className="w-6 h-6 mx-auto text-green-600 mb-1" />
+          <div className="text-xs font-medium text-green-800">Drug Sales</div>
+        </Link>
+        <Link href="/pharmacy/sales-return-v2" className="bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg p-3 text-center transition-colors">
+          <RotateCcw className="w-6 h-6 mx-auto text-red-600 mb-1" />
+          <div className="text-xs font-medium text-red-800">Sales Return</div>
+        </Link>
+        <Link href="/pharmacy/drug-broken" className="bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg p-3 text-center transition-colors">
+          <AlertTriangle className="w-6 h-6 mx-auto text-amber-600 mb-1" />
+          <div className="text-xs font-medium text-amber-800">Drug Broken</div>
+        </Link>
+        <Link href="/pharmacy/reports" className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg p-3 text-center transition-colors">
+          <FileText className="w-6 h-6 mx-auto text-indigo-600 mb-1" />
+          <div className="text-xs font-medium text-indigo-800">Medical Report</div>
+        </Link>
+        <Link href="/pharmacy/reports?tab=gst" className="bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg p-3 text-center transition-colors">
+          <IndianRupee className="w-6 h-6 mx-auto text-teal-600 mb-1" />
+          <div className="text-xs font-medium text-teal-800">GST Report</div>
+        </Link>
+        <Link href="/pharmacy/reports?tab=stock" className="bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg p-3 text-center transition-colors">
+          <Package className="w-6 h-6 mx-auto text-cyan-600 mb-1" />
+          <div className="text-xs font-medium text-cyan-800">Stock Report</div>
+        </Link>
+        <Link href="/pharmacy/cash-collection" className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg p-3 text-center transition-colors">
+          <Wallet className="w-6 h-6 mx-auto text-emerald-600 mb-1" />
+          <div className="text-xs font-medium text-emerald-800">Cash Collection</div>
+        </Link>
       </div>
 
       {/* Tab Navigation */}
