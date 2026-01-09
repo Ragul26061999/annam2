@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, RefreshCcw } from 'lucide-react';
+import { X, Edit, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
-import { createStaffMember, generateNextEmployeeId } from '@/src/lib/staffService';
+import { updateStaffMember, generateNextEmployeeId } from '@/src/lib/staffService';
+import { StaffMember } from '@/src/lib/staffService';
 
-interface AddStaffModalProps {
+interface EditStaffModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
+    staff: StaffMember;
 }
 
 interface Department {
@@ -16,45 +18,51 @@ interface Department {
     name: string;
 }
 
-export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffModalProps) {
+export default function EditStaffModal({ isOpen, onClose, onSuccess, staff }: EditStaffModalProps) {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
-    // Form state
+    // Form state initialized with staff data
     const [formData, setFormData] = useState({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        role: 'Staff',
-        employee_id: '',
-        department_id: '',
-        hire_date: new Date().toISOString().split('T')[0],
-        specialization: '',
-        pf_number: '',
-        esic_number: '',
-        is_active: true
+        first_name: staff.first_name || '',
+        last_name: staff.last_name || '',
+        email: staff.email || '',
+        phone: staff.phone || '',
+        role: staff.role || 'Staff',
+        employee_id: staff.employee_id || '',
+        department_id: staff.department_id || '',
+        hire_date: staff.hire_date || new Date().toISOString().split('T')[0],
+        specialization: staff.specialization || '',
+        pf_number: staff.pf_number || '',
+        esic_number: staff.esic_number || '',
+        is_active: staff.is_active ?? true
     });
 
     useEffect(() => {
         if (isOpen) {
             fetchDepartments();
-            resetForm();
-            generateAndSetId();
+            // Reset form with current staff data
+            setFormData({
+                first_name: staff.first_name || '',
+                last_name: staff.last_name || '',
+                email: staff.email || '',
+                phone: staff.phone || '',
+                role: staff.role || 'Staff',
+                employee_id: staff.employee_id || '',
+                department_id: staff.department_id || '',
+                hire_date: staff.hire_date || new Date().toISOString().split('T')[0],
+                specialization: staff.specialization || '',
+                pf_number: staff.pf_number || '',
+                esic_number: staff.esic_number || '',
+                is_active: staff.is_active ?? true
+            });
+            setError(null);
+            setSuccess(false);
         }
-    }, [isOpen]);
-
-    const generateAndSetId = async () => {
-        try {
-            const nextId = await generateNextEmployeeId();
-            setFormData(prev => ({ ...prev, employee_id: nextId }));
-        } catch (err) {
-            console.error('Error generating employee ID:', err);
-        }
-    };
+    }, [isOpen, staff]);
 
     const fetchDepartments = async () => {
         try {
@@ -68,34 +76,12 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             if (error) throw error;
 
             setDepartments(data || []);
-            if (data && data.length > 0 && !formData.department_id) {
-                setFormData(prev => ({ ...prev, department_id: data[0].id }));
-            }
         } catch (err) {
             console.error('Error fetching departments:', err);
             setError('Failed to load departments');
         } finally {
             setLoading(false);
         }
-    };
-
-    const resetForm = () => {
-        setFormData({
-            first_name: '',
-            last_name: '',
-            email: '',
-            phone: '',
-            role: 'Staff',
-            employee_id: '',
-            department_id: departments.length > 0 ? departments[0].id : '',
-            hire_date: new Date().toISOString().split('T')[0],
-            specialization: '',
-            pf_number: '',
-            esic_number: '',
-            is_active: true
-        });
-        setError(null);
-        setSuccess(false);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -126,7 +112,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             setSubmitting(true);
             setError(null);
 
-            await createStaffMember({
+            await updateStaffMember(staff.id, {
                 first_name: formData.first_name,
                 last_name: formData.last_name,
                 email: formData.email || undefined,
@@ -147,12 +133,8 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                 onClose();
             }, 1500);
         } catch (err: any) {
-            console.error('Error creating staff member:', err);
-            if (err.code === '42P01' || err.message?.includes('does not exist')) {
-                setError('The "staff" table does not exist. Please run the SQL migration script to create it.');
-            } else {
-                setError(err.message || 'Failed to create staff member. Please try again.');
-            }
+            console.error('Error updating staff member:', err);
+            setError(err.message || 'Failed to update staff member. Please try again.');
         } finally {
             setSubmitting(false);
         }
@@ -164,14 +146,14 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
                 {/* Header */}
-                <div className="flex items-center justify-between p-8 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white">
+                <div className="flex items-center justify-between p-8 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white">
                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-orange-100 rounded-2xl">
-                            <UserPlus className="h-6 w-6 text-orange-600" />
+                        <div className="p-3 bg-blue-100 rounded-2xl">
+                            <Edit className="h-6 w-6 text-blue-600" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-gray-900">Add New Staff</h2>
-                            <p className="text-sm text-gray-500">Register a new member to your hospital team</p>
+                            <h2 className="text-2xl font-bold text-gray-900">Edit Staff Member</h2>
+                            <p className="text-sm text-gray-500">Update staff information and details</p>
                         </div>
                     </div>
                     <button
@@ -199,7 +181,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                         value={formData.first_name}
                                         onChange={handleChange}
                                         placeholder="e.g. John"
-                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                         disabled={submitting}
                                         required
                                     />
@@ -218,7 +200,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                         value={formData.last_name}
                                         onChange={handleChange}
                                         placeholder="e.g. Doe"
-                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                         disabled={submitting}
                                         required
                                     />
@@ -236,7 +218,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     value={formData.email}
                                     onChange={handleChange}
                                     placeholder="john.doe@example.com"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
@@ -252,7 +234,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     value={formData.phone}
                                     onChange={handleChange}
                                     placeholder="+1 (555) 000-0000"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
@@ -266,7 +248,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     name="role"
                                     value={formData.role}
                                     onChange={handleChange}
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none appearance-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none appearance-none"
                                     disabled={submitting}
                                     required
                                 >
@@ -291,7 +273,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                         name="department_id"
                                         value={formData.department_id}
                                         onChange={handleChange}
-                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none appearance-none"
+                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none appearance-none"
                                         disabled={submitting}
                                     >
                                         <option value="">Select Department</option>
@@ -307,27 +289,15 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                 <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                                     <IdCard size={16} /> Employee ID
                                 </label>
-                                <div className="relative group">
-                                    <input
-                                        type="text"
-                                        name="employee_id"
-                                        value={formData.employee_id}
-                                        onChange={handleChange}
-                                        placeholder="EMP-001"
-                                        className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none font-mono"
-                                        disabled={submitting}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={generateAndSetId}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all"
-                                        title="Regenerate ID"
-                                        disabled={submitting}
-                                    >
-                                        <RefreshCcw size={16} className={submitting ? 'animate-spin' : ''} />
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-gray-400 pl-2 italic">Automatically generated. Click refresh icon to update.</p>
+                                <input
+                                    type="text"
+                                    name="employee_id"
+                                    value={formData.employee_id}
+                                    onChange={handleChange}
+                                    placeholder="EMP-001"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none font-mono"
+                                    disabled={submitting}
+                                />
                             </div>
 
                             {/* Hire Date */}
@@ -340,7 +310,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     name="hire_date"
                                     value={formData.hire_date}
                                     onChange={handleChange}
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
@@ -356,7 +326,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     value={formData.specialization}
                                     onChange={handleChange}
                                     placeholder="e.g. Cardiology, Pediatrics"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
@@ -372,7 +342,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     value={formData.pf_number}
                                     onChange={handleChange}
                                     placeholder="e.g. PF123456789"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
@@ -388,20 +358,20 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                     value={formData.esic_number}
                                     onChange={handleChange}
                                     placeholder="e.g. ESIC987654321"
-                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                                     disabled={submitting}
                                 />
                             </div>
 
                             {/* Status */}
-                            <div className="md:col-span-2 flex items-center gap-3 p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
+                            <div className="md:col-span-2 flex items-center gap-3 p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
                                 <input
                                     type="checkbox"
                                     id="is_active"
                                     name="is_active"
                                     checked={formData.is_active}
                                     onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                                    className="w-5 h-5 accent-orange-500 rounded cursor-pointer"
+                                    className="w-5 h-5 accent-blue-500 rounded cursor-pointer"
                                     disabled={submitting}
                                 />
                                 <label htmlFor="is_active" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
@@ -422,7 +392,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                         {success && (
                             <div className="p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 animate-in fade-in zoom-in-95">
                                 <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                                <p className="text-sm text-green-700 font-medium">Staff member registered successfully!</p>
+                                <p className="text-sm text-green-700 font-medium">Staff member updated successfully!</p>
                             </div>
                         )}
 
@@ -438,18 +408,18 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                             </button>
                             <button
                                 type="submit"
-                                className="px-8 py-3 bg-orange-500 text-white font-bold rounded-2xl hover:bg-orange-600 shadow-lg shadow-orange-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                className="px-8 py-3 bg-blue-500 text-white font-bold rounded-2xl hover:bg-blue-600 shadow-lg shadow-blue-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                 disabled={submitting}
                             >
                                 {submitting ? (
                                     <>
                                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        Registering...
+                                        Updating...
                                     </>
                                 ) : (
                                     <>
-                                        <UserPlus size={18} />
-                                        Register Staff
+                                        <Edit size={18} />
+                                        Update Staff
                                     </>
                                 )}
                             </button>

@@ -12,6 +12,8 @@ export interface StaffMember {
   is_active: boolean;
   hire_date?: string;
   specialization?: string;
+  pf_number?: string;
+  esic_number?: string;
   image?: string;
   created_at?: string;
   updated_at?: string;

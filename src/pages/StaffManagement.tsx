@@ -10,6 +10,8 @@ import {
   bulkDeleteStaff,
   StaffMember
 } from '../lib/staffService';
+import AddStaffModal from '../components/AddStaffModal';
+import EditStaffModal from '../components/EditStaffModal';
 
 const StaffManagement: React.FC = () => {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
@@ -22,6 +24,7 @@ const StaffManagement: React.FC = () => {
   const [roles, setRoles] = useState<string[]>([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -65,6 +68,11 @@ const StaffManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditStaff = (staff: StaffMember) => {
+    setSelectedStaff(staff);
+    setShowEditModal(true);
   };
 
   const handleDeleteStaff = async (id: string) => {
@@ -303,7 +311,10 @@ const StaffManagement: React.FC = () => {
                       >
                         <Calendar size={18} />
                       </button>
-                      <button className="text-gray-400 hover:text-orange-400">
+                      <button 
+                        className="text-gray-400 hover:text-orange-400"
+                        onClick={() => handleEditStaff(staff)}
+                      >
                         <Edit size={18} />
                       </button>
                       <button
@@ -323,115 +334,27 @@ const StaffManagement: React.FC = () => {
 
       {/* Add Staff Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" onClick={() => setShowAddModal(false)}>
-              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
-            </div>
+        <AddStaffModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            loadStaffMembers();
+          }}
+        />
+      )}
 
-            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div className="bg-white px-6 pt-5 pb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Add New Staff Member</h3>
-                  <button
-                    className="text-gray-400 hover:text-gray-500"
-                    onClick={() => setShowAddModal(false)}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                <form className="space-y-4">
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <div className="h-24 w-24 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Plus size={24} className="text-gray-400" />
-                      </div>
-                      <button className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-orange-200 flex items-center justify-center">
-                        <Edit size={14} className="text-gray-700" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">First Name</label>
-                      <input type="text" className="input-field mt-1" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Last Name</label>
-                      <input type="text" className="input-field mt-1" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
-                    <input type="email" className="input-field mt-1" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Phone</label>
-                    <input type="tel" className="input-field mt-1" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Role</label>
-                    <select className="input-field mt-1">
-                      <option>Select Role</option>
-                      <option>Nurse</option>
-                      <option>Lab Technician</option>
-                      <option>Pharmacist</option>
-                      <option>Administrative Staff</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Department</label>
-                    <select className="input-field mt-1">
-                      <option>Select Department</option>
-                      <option>ICU</option>
-                      <option>Emergency</option>
-                      <option>Laboratory</option>
-                      <option>Pharmacy</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Shift</label>
-                    <select className="input-field mt-1">
-                      <option>Select Shift</option>
-                      <option>Morning (6:00 AM - 2:00 PM)</option>
-                      <option>Evening (2:00 PM - 10:00 PM)</option>
-                      <option>Night (10:00 PM - 6:00 AM)</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center">
-                    <input type="checkbox" className="h-4 w-4 text-orange-300 rounded border-gray-300" />
-                    <label className="ml-2 text-sm text-gray-700">Send email notification</label>
-                  </div>
-                </form>
-              </div>
-
-              <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Add Staff Member
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Edit Staff Modal */}
+      {showEditModal && selectedStaff && (
+        <EditStaffModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false);
+            loadStaffMembers();
+          }}
+          staff={selectedStaff}
+        />
       )}
 
       {/* Schedule Modal */}

@@ -25,11 +25,14 @@ import {
   Building,
   Activity,
   UserMinus,
+  Edit,
   X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { StaffMember, getStaffMembers, deleteStaffMember } from '@/src/lib/staffService';
 import AddStaffModal from '@/src/components/AddStaffModal';
+import EditStaffModal from '@/src/components/EditStaffModal';
+import ViewStaffModal from '@/src/components/ViewStaffModal';
 
 interface StaffStats {
   totalStaff: number;
@@ -52,6 +55,9 @@ export default function StaffPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
   useEffect(() => {
     fetchStaffData();
@@ -125,6 +131,16 @@ export default function StaffPage() {
       console.error('Error deleting staff member:', error);
       alert('Failed to delete staff member. Please try again.');
     }
+  };
+
+  const handleEditStaff = (staff: StaffMember) => {
+    setSelectedStaff(staff);
+    setIsEditModalOpen(true);
+  };
+
+  const handleViewStaff = (staff: StaffMember) => {
+    setSelectedStaff(staff);
+    setIsViewModalOpen(true);
   };
 
   if (loading && staffMembers.length === 0) {
@@ -281,11 +297,25 @@ export default function StaffPage() {
                     </td>
                     <td className="px-8 py-6 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-orange-500 transition-all">
+                        <button 
+                          className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-orange-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewStaff(staff);
+                          }}
+                          title="View Staff Details"
+                        >
                           <Eye size={18} />
                         </button>
-                        <button className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-blue-500 transition-all">
-                          <ArrowUpDown size={18} />
+                        <button 
+                          className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-blue-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditStaff(staff);
+                          }}
+                          title="Edit Staff"
+                        >
+                          <Edit size={18} />
                         </button>
                         <button 
                           className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-red-500 transition-all"
@@ -331,6 +361,31 @@ export default function StaffPage() {
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={fetchStaffData}
       />
+
+      {/* Edit Staff Modal */}
+      {selectedStaff && (
+        <EditStaffModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          onSuccess={fetchStaffData}
+          staff={selectedStaff}
+        />
+      )}
+
+      {/* View Staff Modal */}
+      {selectedStaff && (
+        <ViewStaffModal
+          isOpen={isViewModalOpen}
+          onClose={() => {
+            setIsViewModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          staff={selectedStaff}
+        />
+      )}
 
       {/* Error Toast (if any) */}
       {error && (
