@@ -221,17 +221,32 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
       // Resolve active/latest IP allocation
       const allocations = Array.isArray(patientData?.bed_allocations) ? patientData.bed_allocations : [];
-      const activeAlloc = allocations.find((a: any) => a?.status === 'active') || null;
-      const latestAlloc = allocations.length
-        ? allocations
-          .slice()
-          .sort((a: any, b: any) => {
-            const ad = a?.admission_date ? new Date(a.admission_date).getTime() : 0;
-            const bd = b?.admission_date ? new Date(b.admission_date).getTime() : 0;
-            return bd - ad;
-          })[0]
-        : null;
-      const allocForBilling = activeAlloc || latestAlloc;
+      
+      // Check if a specific allocation ID is provided in URL params
+      const allocationId = searchParams?.get('allocation');
+      let selectedAllocation = null;
+      
+      if (allocationId) {
+        // Find the specific allocation requested
+        selectedAllocation = allocations.find((a: any) => a?.id === allocationId) || null;
+      }
+      
+      // If no specific allocation found or not provided, fall back to default logic
+      if (!selectedAllocation) {
+        const activeAlloc = allocations.find((a: any) => a?.status === 'active') || null;
+        const latestAlloc = allocations.length
+          ? allocations
+            .slice()
+            .sort((a: any, b: any) => {
+              const ad = a?.admission_date ? new Date(a.admission_date).getTime() : 0;
+              const bd = b?.admission_date ? new Date(b.admission_date).getTime() : 0;
+              return bd - ad;
+            })[0]
+          : null;
+        selectedAllocation = activeAlloc || latestAlloc;
+      }
+      
+      const allocForBilling = selectedAllocation;
       setIpAllocation(allocForBilling || null);
 
       // Fetch IP billing ledger by bed_allocation_id (if any)

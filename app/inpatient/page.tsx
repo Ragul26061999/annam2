@@ -504,7 +504,7 @@ export default function InpatientPage() {
                         </Link>
                       )}
 
-                      <Link href={`/patients/${allocation.patient_id}?tab=clinical-records`}>
+                      <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&allocation=${allocation.id}`}>
                         <button
                           className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
                           title="Clinical Records"
