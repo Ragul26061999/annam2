@@ -87,12 +87,6 @@ const Sidebar: React.FC = () => {
       color: 'text-blue-600'
     },
     {
-      href: '/workstation',
-      label: 'Workstation',
-      icon: <Activity size={18} />,
-      color: 'text-cyan-600'
-    },
-    {
       href: '/pharmacy',
       label: 'Pharmacy',
       icon: <Pill size={18} />,
