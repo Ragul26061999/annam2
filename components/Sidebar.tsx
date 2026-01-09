@@ -12,7 +12,6 @@ import {
   Bed,
   Settings,
   LogOut,
-  UserCog,
   UsersRound,
   ChevronLeft,
   ChevronRight,
@@ -49,12 +48,6 @@ const Sidebar: React.FC = () => {
       label: 'Doctors',
       icon: <Stethoscope size={18} />,
       color: 'text-purple-600'
-    },
-    {
-      href: '/doctor-management',
-      label: 'Doctor Management',
-      icon: <UserCog size={18} />,
-      color: 'text-indigo-600'
     },
     {
       href: '/staff',
