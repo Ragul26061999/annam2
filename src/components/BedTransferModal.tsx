@@ -122,8 +122,8 @@ export default function BedTransferModal({ isOpen, onClose, currentBed, onSucces
         .from('bed_allocations')
         .update({
           status: 'transferred',
-          discharge_date: new Date().toISOString().split('T')[0],
-          discharge_summary: `Transferred to bed ${selectedBed.bed_number}. Reason: ${reason}`
+          discharge_date: new Date().toISOString(),
+          reason: `Transferred to bed ${selectedBed.bed_number}. Reason: ${reason}`
         })
         .eq('id', currentAllocation.id);
 
@@ -140,12 +140,9 @@ export default function BedTransferModal({ isOpen, onClose, currentBed, onSucces
           patient_id: currentAllocation.patient_id,
           bed_id: selectedBed.id,
           doctor_id: currentAllocation.doctor_id,
-          admission_date: new Date().toISOString().split('T')[0],
-          admission_type: 'transfer',
+          admission_date: new Date().toISOString(),
           reason: `Transfer from bed ${currentBed.bed_number}. Reason: ${reason}`,
-          status: 'active',
-          daily_charges: selectedBed.daily_rate || 0,
-          total_charges: 0
+          status: 'active'
         });
 
       if (newAllocationError) {
