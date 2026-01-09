@@ -836,6 +836,42 @@ export async function deleteBed(bedId: string): Promise<void> {
 }
 
 /**
+ * Update bed information
+ */
+export async function updateBed(bedId: string, bedData: {
+  bed_number?: string;
+  room_number?: string;
+  floor_number?: number;
+  bed_type?: string;
+  daily_rate?: number;
+  department_id?: string;
+  features?: string[];
+  status?: string;
+}): Promise<Bed> {
+  try {
+    const { data, error } = await supabase
+      .from('beds')
+      .update({
+        ...bedData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', bedId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating bed:', error);
+      throw new Error(`Failed to update bed: ${error.message}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error updating bed:', error);
+    throw error;
+  }
+}
+
+/**
  * Create a new bed
  */
 export async function createBed(bedData: {

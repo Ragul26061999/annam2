@@ -20,12 +20,14 @@ import {
   ArrowRightLeft,
   AlertTriangle,
   X,
-  Trash2
+  Trash2,
+  Edit
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { deleteBed } from '@/src/lib/bedAllocationService';
 import BedTransferModal from '@/src/components/BedTransferModal';
 import AddBedModal from '@/src/components/AddBedModal';
+import EditBedModal from '@/src/components/EditBedModal';
 
 interface BedData {
   id: string;
@@ -37,6 +39,7 @@ interface BedData {
   features: string[];
   daily_rate: string;
   department_name: string;
+  department_id: string;
   patient_id: string | null;
   patient_name: string | null;
   patient_hospital_id: string | null;
@@ -76,7 +79,9 @@ export default function BedsPage() {
   const [showDischargeModal, setShowDischargeModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showAddBedModal, setShowAddBedModal] = useState(false);
+  const [showEditBedModal, setShowEditBedModal] = useState(false);
   const [selectedBed, setSelectedBed] = useState<BedData | null>(null);
+  const [viewMode, setViewMode] = useState<'beds' | 'rooms'>('beds');
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -167,6 +172,7 @@ export default function BedsPage() {
           features: Array.isArray(bed?.features) ? bed.features : [],
           daily_rate: bed?.daily_rate?.toString() || '0',
           department_name: bed?.departments?.name || 'Unknown',
+          department_id: bed?.department_id || '',
           patient_id: activeAllocation?.patients?.id || null,
           patient_name: activeAllocation?.patients?.name || null,
           patient_hospital_id: activeAllocation?.patients?.patient_id || null,
@@ -239,6 +245,11 @@ export default function BedsPage() {
   const handleTransferBed = (bed: BedData) => {
     setSelectedBed(bed);
     setShowTransferModal(true);
+  };
+
+  const handleEditBed = (bed: BedData) => {
+    setSelectedBed(bed);
+    setShowEditBedModal(true);
   };
 
   const handleDeleteBed = (bed: BedData) => {
@@ -329,6 +340,36 @@ export default function BedsPage() {
         >
           <Plus size={16} className="mr-2" />
           Add New Bed
+        </button>
+      </div>
+
+      {/* View Mode Tabs */}
+      <div className="bg-white rounded-2xl p-2 shadow-sm border border-gray-100 inline-flex">
+        <button
+          onClick={() => setViewMode('beds')}
+          className={`px-6 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+            viewMode === 'beds'
+              ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Bed size={16} />
+            View Beds
+          </div>
+        </button>
+        <button
+          onClick={() => setViewMode('rooms')}
+          className={`px-6 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+            viewMode === 'rooms'
+              ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Building size={16} />
+            View Rooms
+          </div>
         </button>
       </div>
 
@@ -446,8 +487,9 @@ export default function BedsPage() {
       </div>
 
       {/* Beds Grid - Dynamic rendering based on actual data */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredBeds.map((bed) => (
+      {viewMode === 'beds' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredBeds.map((bed) => (
           <div key={bed.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center">
@@ -484,6 +526,16 @@ export default function BedsPage() {
                         >
                           <UserPlus size={14} />
                           Assign Patient
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleEditBed(bed);
+                            setOpenDropdownId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <Edit size={14} />
+                          Edit Bed
                         </button>
                         <button
                           onClick={() => {
@@ -627,6 +679,115 @@ export default function BedsPage() {
           </div>
         ))}
       </div>
+      ) : (
+        /* Rooms View */
+        <div className="space-y-6">
+          {(() => {
+            // Group beds by room
+            const roomsMap = filteredBeds.reduce((acc, bed) => {
+              const roomKey = `${bed.room_number} (Floor ${bed.floor_number})`;
+              if (!acc[roomKey]) {
+                acc[roomKey] = [];
+              }
+              acc[roomKey].push(bed);
+              return acc;
+            }, {} as Record<string, BedData[]>);
+
+            return Object.entries(roomsMap).map(([roomKey, roomBeds]) => (
+              <div key={roomKey} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-50 to-white p-6 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{roomKey}</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {roomBeds.length} bed{roomBeds.length !== 1 ? 's' : ''} • {roomBeds[0]?.department_name || 'Unknown Department'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {roomBeds.filter(b => b.status === 'available').length}
+                        </p>
+                        <p className="text-xs text-gray-500">Available</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-red-600">
+                          {roomBeds.filter(b => b.status === 'occupied').length}
+                        </p>
+                        <p className="text-xs text-gray-500">Occupied</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {roomBeds.map((bed) => (
+                      <div key={bed.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 ${getBedGradient(bed.bed_type)} rounded-lg flex items-center justify-center text-white font-bold text-xs`}>
+                              {bed.bed_number}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900 text-sm">{bed.bed_type}</p>
+                              <p className="text-xs text-gray-500">Bed {bed.bed_number}</p>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getBedStatusColor(bed.status)}`}>
+                            {bed.status.charAt(0).toUpperCase() + bed.status.slice(1)}
+                          </span>
+                        </div>
+                        
+                        {bed.status === 'occupied' && bed.patient_name ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                                {bed.patient_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{bed.patient_name}</p>
+                                <p className="text-xs text-gray-500">{bed.patient_hospital_id}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => handleTransferBed(bed)}
+                                className="flex-1 flex items-center justify-center bg-purple-50 text-purple-700 py-1 px-2 rounded-lg text-xs font-medium hover:bg-purple-100 transition-colors"
+                              >
+                                Transfer
+                              </button>
+                              <button 
+                                onClick={() => handleDischargeBed(bed)}
+                                className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-1 px-2 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
+                              >
+                                Discharge
+                              </button>
+                            </div>
+                          </div>
+                        ) : bed.status === 'available' ? (
+                          <button 
+                            onClick={() => handleAssignBed(bed)}
+                            className="w-full flex items-center justify-center bg-blue-50 text-blue-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
+                          >
+                            Assign Patient
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center py-2">
+                            <span className="text-xs text-gray-500">
+                              {bed.status === 'maintenance' ? 'Under Maintenance' : 'Cleaning in Progress'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       {/* Load More */}
       <div className="flex justify-center">
@@ -670,6 +831,33 @@ export default function BedsPage() {
           setShowAddBedModal(false);
         }}
       />
+
+      {/* Edit Bed Modal */}
+      {selectedBed && (
+        <EditBedModal
+          isOpen={showEditBedModal}
+          onClose={() => {
+            setShowEditBedModal(false);
+            setSelectedBed(null);
+          }}
+          onSuccess={() => {
+            fetchBedData();
+            setShowEditBedModal(false);
+            setSelectedBed(null);
+          }}
+          bed={{
+            id: selectedBed.id,
+            bed_number: selectedBed.bed_number,
+            room_number: selectedBed.room_number,
+            floor_number: selectedBed.floor_number,
+            bed_type: selectedBed.bed_type,
+            daily_rate: parseFloat(selectedBed.daily_rate),
+            department_id: selectedBed.department_id || '',
+            features: selectedBed.features,
+            status: selectedBed.status
+          }}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmOpen && bedToDelete && (
