@@ -504,17 +504,15 @@ export default function InpatientPage() {
                         </Link>
                       )}
 
-                      {(allocation.status === 'active' || allocation.status === 'allocated') && (
-                        <Link href={`/patients/${allocation.patient_id}?tab=clinical-records`}>
-                          <button
-                            className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
-                            title="Clinical Records"
-                          >
-                            <ClipboardList size={14} />
-                            Clinical Records
-                          </button>
-                        </Link>
-                      )}
+                      <Link href={`/patients/${allocation.patient_id}?tab=clinical-records`}>
+                        <button
+                          className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                          title="Clinical Records"
+                        >
+                          <ClipboardList size={14} />
+                          Clinical Records
+                        </button>
+                      </Link>
 
                       {(allocation.status === 'active' || allocation.status === 'allocated') && (
                         <Link href={`/inpatient/discharge/${allocation.id}`}>
