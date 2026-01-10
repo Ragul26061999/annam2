@@ -129,6 +129,7 @@ export default function PharmacyPage() {
     return () => clearInterval(interval)
   }, [activeTab])
 
+  // Only refresh the badge on Prescribed List tab, not the whole page
   useEffect(() => {
     if (activeTab !== 'prescribed') return
 
