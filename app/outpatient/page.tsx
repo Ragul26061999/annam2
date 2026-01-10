@@ -8,7 +8,7 @@ import {
   UserPlus, RefreshCw, Eye, CheckCircle, XCircle,
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
-  MoreVertical, Edit3, Trash2
+  MoreVertical, Edit3, Trash2, Printer, FileText
 } from 'lucide-react';
 import { getDashboardStats } from '../../src/lib/dashboardService';
 import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
@@ -304,6 +304,94 @@ function OutpatientPageContent() {
     return patientName.includes(searchTerm.toLowerCase()) ||
       doctorName.includes(searchTerm.toLowerCase());
   });
+
+  const handlePrintBill = (patient: any) => {
+    // Create a new window with bill details
+    const billWindow = window.open('', '_blank', 'width=800,height=600');
+    if (billWindow) {
+      billWindow.document.write(`
+        <html>
+          <head>
+            <title>Bill - ${patient.name}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .patient-info { margin-bottom: 20px; }
+              .bill-details { margin-bottom: 20px; }
+              .footer { margin-top: 50px; text-align: center; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+              @media print { body { padding: 10px; } }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Annam Multispeciality Hospital</h1>
+              <h2>OP Bill</h2>
+            </div>
+            <div class="patient-info">
+              <h3>Patient Information</h3>
+              <p><strong>Name:</strong> ${patient.name}</p>
+              <p><strong>UHID:</strong> ${patient.patient_id}</p>
+              <p><strong>Age/Gender:</strong> ${patient.age || calculateAge(patient.date_of_birth)} | ${patient.gender}</p>
+              <p><strong>Phone:</strong> ${patient.phone || 'N/A'}</p>
+              ${patient.consulting_doctor_name ? `<p><strong>Doctor:</strong> Dr. ${patient.consulting_doctor_name}</p>` : ''}
+            </div>
+            <div class="bill-details">
+              <h3>Bill Details</h3>
+              <table>
+                <tr>
+                  <th>Description</th>
+                  <th>Amount</th>
+                </tr>
+                <tr>
+                  <td>Consultation Fee</td>
+                  <td>₹${patient.consultation_fee || patient.total_amount || '0'}</td>
+                </tr>
+                ${patient.op_card_amount ? `
+                <tr>
+                  <td>OP Card</td>
+                  <td>₹${patient.op_card_amount}</td>
+                </tr>` : ''}
+                <tr>
+                  <td><strong>Total</strong></td>
+                  <td><strong>₹${patient.total_amount || '0'}</strong></td>
+                </tr>
+              </table>
+            </div>
+            <div class="footer">
+              <p>Thank you for visiting Annam Multispeciality Hospital</p>
+              <p>Generated on: ${new Date().toLocaleString()}</p>
+            </div>
+          </body>
+        </html>
+      `);
+      billWindow.document.close();
+      billWindow.print();
+    }
+  };
+
+  const handleBillUHID = (patient: any) => {
+    // Copy UHID to clipboard
+    const uhid = patient.patient_id;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(uhid).then(() => {
+        // Show success message
+        alert(`UHID ${uhid} copied to clipboard!`);
+      }).catch(err => {
+        console.error('Failed to copy UHID:', err);
+        // Fallback: select text
+        const textArea = document.createElement('textarea');
+        textArea.value = uhid;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert(`UHID ${uhid} copied to clipboard!`);
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -746,6 +834,22 @@ function OutpatientPageContent() {
                       View Patient Case File
                       <ArrowRight size={12} />
                     </Link>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => handlePrintBill(patient)}
+                        className="flex-1 text-green-600 hover:text-green-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
+                      >
+                        <Printer size={12} />
+                        Print Bill
+                      </button>
+                      <button
+                        onClick={() => handleBillUHID(patient)}
+                        className="flex-1 text-purple-600 hover:text-purple-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-purple-50 hover:bg-purple-100 transition-colors"
+                      >
+                        <FileText size={12} />
+                        Bill UHID
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -856,11 +960,27 @@ function OutpatientPageContent() {
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <Link
                     href={`/patients/${patient.id}`}
-                    className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center gap-1 w-full py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
+                    className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center gap-1 w-full py-1.5 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
                   >
                     View Patient Case File
                     <ArrowRight size={12} />
                   </Link>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handlePrintBill(patient)}
+                      className="flex-1 text-green-600 hover:text-green-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
+                    >
+                      <Printer size={12} />
+                      Print Bill
+                    </button>
+                    <button
+                      onClick={() => handleBillUHID(patient)}
+                      className="flex-1 text-purple-600 hover:text-purple-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-purple-50 hover:bg-purple-100 transition-colors"
+                    >
+                      <FileText size={12} />
+                      Bill UHID
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

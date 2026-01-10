@@ -33,7 +33,8 @@ export default function AppointmentBookingModal({ isOpen, onClose, onSuccess }: 
     type: 'consultation',
     symptoms: '',
     chiefComplaint: '',
-    notes: ''
+    notes: '',
+    bookingMethod: 'walk_in'
   });
   
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -145,7 +146,8 @@ export default function AppointmentBookingModal({ isOpen, onClose, onSuccess }: 
       type: 'consultation',
       symptoms: '',
       chiefComplaint: '',
-      notes: ''
+      notes: '',
+      bookingMethod: 'walk_in'
     });
     setValidationErrors([]);
     setValidationWarnings([]);
@@ -353,6 +355,22 @@ export default function AppointmentBookingModal({ isOpen, onClose, onSuccess }: 
               </select>
             </div>
 
+            {/* Booking Method */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Booking Method *
+              </label>
+              <select
+                value={formData.bookingMethod}
+                onChange={(e) => handleInputChange('bookingMethod', e.target.value as 'call' | 'walk_in')}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                required
+              >
+                <option value="walk_in">Walk In</option>
+                <option value="call">Phone Call</option>
+              </select>
+            </div>
+
             {/* Appointment Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -367,7 +385,6 @@ export default function AppointmentBookingModal({ isOpen, onClose, onSuccess }: 
                 <option value="follow_up">Follow-up</option>
                 <option value="routine_checkup">Routine Checkup</option>
                 <option value="emergency">Emergency</option>
-                <option value="new_patient">New Patient</option>
               </select>
             </div>
           </div>

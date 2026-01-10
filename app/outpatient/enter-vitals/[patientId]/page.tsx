@@ -312,7 +312,8 @@ export default function EnterVitalsPage() {
             durationMinutes: 30,
             type: 'consultation',
             isEmergency: false,
-            chiefComplaint: vitalsData.diagnosis || 'General consultation'
+            chiefComplaint: vitalsData.diagnosis || 'General consultation',
+            bookingMethod: 'walk_in' // Default to walk_in for vitals entry appointments
           };
 
           const appointment = await createAppointment(appointmentData, vitalsData.staffId);

@@ -282,12 +282,13 @@ export default function RestructuredPatientRegistrationForm({
         appointmentDate: formData.appointmentDate,
         appointmentTime: formData.appointmentTime,
         durationMinutes: 30,
-        type: 'new_patient' as const,
+        type: 'consultation' as const,
         chiefComplaint: formData.primaryComplaint,
         symptoms: formData.primaryComplaint,
         notes: '',
         isEmergency: false,
-        sessionType: formData.appointmentSession as 'morning' | 'afternoon' | 'evening'
+        sessionType: formData.appointmentSession as 'morning' | 'afternoon' | 'evening',
+        bookingMethod: 'walk_in' as const
       };
 
       await createAppointment(appointmentData);

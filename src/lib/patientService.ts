@@ -753,7 +753,8 @@ export async function registerNewPatient(
             durationMinutes: 30,
             type: 'consultation',
             isEmergency: false,
-            chiefComplaint: registrationData.primaryComplaint || 'General consultation'
+            chiefComplaint: registrationData.primaryComplaint || 'General consultation',
+            bookingMethod: 'walk_in'
           };
           const appointment = await createAppointment(appointmentData);
           console.log('Created outpatient appointment:', appointment.id);

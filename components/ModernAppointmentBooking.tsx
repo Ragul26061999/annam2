@@ -87,7 +87,8 @@ const ModernAppointmentBooking: React.FC<ModernAppointmentBookingProps> = ({
     symptoms: '',
     chiefComplaint: '',
     notes: '',
-    isEmergency: false
+    isEmergency: false,
+    bookingMethod: 'walk_in'
   });
 
   // Data states
@@ -338,7 +339,8 @@ const fetchFullDates = async (doctorId: string) => {
       symptoms: '',
       chiefComplaint: '',
       notes: '',
-      isEmergency: false
+      isEmergency: false,
+      bookingMethod: 'walk_in'
     });
     setSelectedDoctor(null);
     setSelectedPatient(null);

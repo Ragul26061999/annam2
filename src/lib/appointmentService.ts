@@ -327,12 +327,13 @@ export interface AppointmentData {
   appointmentDate: string;
   appointmentTime: string;
   durationMinutes?: number;
-  type: 'new_patient' | 'follow_up' | 'emergency' | 'routine_checkup' | 'consultation';
+  type: 'follow_up' | 'emergency' | 'routine_checkup' | 'consultation';
   symptoms?: string;
   chiefComplaint?: string;
   notes?: string;
   isEmergency?: boolean;
   sessionType?: 'morning' | 'afternoon' | 'evening' | 'emergency';
+  bookingMethod: 'call' | 'walk_in';
 }
 
 export interface Appointment {
@@ -353,6 +354,7 @@ export interface Appointment {
   next_appointment_date?: string;
   follow_up_instructions?: string;
   notes?: string;
+  booking_method?: 'call' | 'walk_in';
   created_by?: string;
   created_at: string;
   updated_at: string;
@@ -547,7 +549,8 @@ export async function createAppointment(
       encounter_id: encounter.id,
       scheduled_at: scheduledAt,
       duration_minutes: appointmentData.durationMinutes || 30,
-      status_id: statusId // Can be null if ref_code doesn't exist
+      status_id: statusId, // Can be null if ref_code doesn't exist
+      booking_method: appointmentData.bookingMethod
       // Note: Only using columns that actually exist in the appointment table
       // notes column is not available in current schema
     };
@@ -571,6 +574,7 @@ export async function createAppointment(
       doctor_id: appointmentData.doctorId,
       appointment_date: appointmentData.appointmentDate,
       appointment_time: appointmentData.appointmentTime,
+      booking_method: appointmentData.bookingMethod
     };
   } catch (error) {
     console.error('Error creating appointment:', error);
@@ -658,24 +662,31 @@ export async function getAppointments(options: {
                 id,
                 specialization,
                 qualification,
-                user:users(name, phone, email)
+                user_id
               `)
               .eq('id', apt.encounter.clinician_id)
               .single();
 
-            if (doctor && doctor.user) {
-              const userArray = Array.isArray(doctor.user) ? doctor.user : [doctor.user];
-              const firstUser = userArray[0];
-              doctorData = {
-                id: doctor.id,
-                specialization: doctor.specialization,
-                qualification: doctor.qualification,
-                user: {
-                  name: firstUser?.name || '',
-                  phone: firstUser?.phone || '',
-                  email: firstUser?.email || ''
-                }
-              };
+            if (doctor && doctor.user_id) {
+              const { data: user } = await supabase
+                .from('public.users')
+                .select('name, phone, email')
+                .eq('id', doctor.user_id)
+                .single();
+
+              if (user) {
+                doctorData = {
+                  id: doctor.id,
+                  specialization: doctor.specialization || '',
+                  qualification: doctor.qualification || '',
+                  department: '',
+                  user: {
+                    name: user.name || '',
+                    phone: user.phone || '',
+                    email: user.email || ''
+                  }
+                };
+              }
             }
           }
 
@@ -697,6 +708,7 @@ export async function getAppointments(options: {
             next_appointment_date: undefined,
             follow_up_instructions: undefined,
             notes: apt.notes,
+            booking_method: apt.booking_method,
             created_by: undefined,
             created_at: apt.created_at,
             updated_at: apt.updated_at,
@@ -781,6 +793,7 @@ export async function getAppointments(options: {
         next_appointment_date: apt.next_appointment_date,
         follow_up_instructions: apt.follow_up_instructions,
         notes: apt.notes,
+        booking_method: apt.booking_method || 'walk_in',
         created_by: apt.created_by,
         created_at: apt.created_at,
         updated_at: apt.updated_at,
@@ -1005,6 +1018,48 @@ export async function updateAppointmentStatus(
     return appointment;
   } catch (error) {
     console.error('Error updating appointment status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete appointment
+ */
+export async function deleteAppointment(appointmentId: string): Promise<void> {
+  try {
+    // First try to delete from the appointments table (legacy)
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('appointment_id', appointmentId);
+
+      if (!error) {
+        console.log('Appointment deleted from appointments table:', appointmentId);
+        return;
+      }
+    } catch (appointmentsError) {
+      console.warn('Error deleting from appointments table:', appointmentsError);
+    }
+
+    // Try to delete from the encounter table (where OP appointments are stored)
+    try {
+      const { error } = await supabase
+        .from('encounter')
+        .delete()
+        .eq('id', appointmentId);
+
+      if (!error) {
+        console.log('Appointment deleted from encounter table:', appointmentId);
+        return;
+      }
+    } catch (encounterError) {
+      console.warn('Error deleting from encounter table:', encounterError);
+    }
+
+    throw new Error(`Failed to delete appointment: Appointment not found in either appointments or encounter table`);
+  } catch (error) {
+    console.error('Error deleting appointment:', error);
     throw error;
   }
 }
@@ -1307,7 +1362,8 @@ export async function rescheduleAppointment(
       type: currentAppointment.type as any,
       symptoms: currentAppointment.symptoms,
       chiefComplaint: currentAppointment.chief_complaint,
-      notes: currentAppointment.notes
+      notes: currentAppointment.notes,
+      bookingMethod: currentAppointment.booking_method || 'walk_in'
     };
 
     // Validate the new appointment time (exclude current appointment from conflict check)

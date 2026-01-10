@@ -65,7 +65,8 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
     symptoms: '',
     notes: '',
     isEmergency: false,
-    sessionType: 'morning'
+    sessionType: 'morning',
+    bookingMethod: 'walk_in'
   });
 
   // Data states
@@ -187,7 +188,8 @@ const AppointmentBookingForm: React.FC<AppointmentBookingFormProps> = ({
       symptoms: '',
       notes: '',
       isEmergency: false,
-      sessionType: 'morning'
+      sessionType: 'morning',
+      bookingMethod: 'walk_in'
     });
     setError('');
     setSuccess('');

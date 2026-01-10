@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Phone, Search, Calendar, Clock, Stethoscope, CheckCircle, ArrowRight, ArrowLeft,
-  UserPlus, X, Hash, Heart, Activity, Thermometer, Droplet, Wind, Weight, Ruler
+  UserPlus, X, Hash
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../src/lib/supabase';
@@ -20,27 +20,15 @@ interface Patient {
   allergies?: string;
 }
 
-interface VitalsData {
-  temperature: string;
-  bloodPressureSystolic: string;
-  bloodPressureDiastolic: string;
-  heartRate: string;
-  respiratoryRate: string;
-  oxygenSaturation: string;
-  weight: string;
-  height: string;
-  notes: string;
-}
-
 interface AppointmentFormData {
   patient: Patient | null;
   doctor: Doctor | null;
-  appointmentType: 'new_patient' | 'follow_up' | 'consultation' | 'emergency' | '';
+  appointmentType: 'follow_up' | 'consultation' | 'emergency' | '';
   date: string;
   time: string;
   session: 'morning' | 'afternoon' | 'evening' | '';
   primaryComplaint: string;
-  vitals: VitalsData;
+  bookingMethod: 'call' | 'walk_in';
 }
 
 interface NewAppointmentBookingFormProps {
@@ -74,17 +62,7 @@ export default function NewAppointmentBookingForm({
     time: '',
     session: '',
     primaryComplaint: '',
-    vitals: {
-      temperature: '',
-      bloodPressureSystolic: '',
-      bloodPressureDiastolic: '',
-      heartRate: '',
-      respiratoryRate: '',
-      oxygenSaturation: '',
-      weight: '',
-      height: '',
-      notes: ''
-    }
+    bookingMethod: 'walk_in'
   });
 
   useEffect(() => {
@@ -141,18 +119,11 @@ export default function NewAppointmentBookingForm({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleVitalsChange = (field: keyof VitalsData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      vitals: { ...prev.vitals, [field]: value }
-    }));
-  };
-
   const handleNext = () => setCurrentStep(prev => prev + 1);
   const handlePrevious = () => setCurrentStep(prev => prev - 1);
 
   const handleFinalSubmit = async () => {
-    if (!formData.patient || !formData.doctor || !formData.date || !formData.time || !formData.appointmentType) {
+    if (!formData.patient || !formData.doctor || !formData.date || !formData.appointmentType) {
       alert('Please complete all required fields');
       return;
     }
@@ -163,39 +134,18 @@ export default function NewAppointmentBookingForm({
         patientId: formData.patient.id,
         doctorId: formData.doctor.id,
         appointmentDate: formData.date,
-        appointmentTime: formData.time,
+        appointmentTime: formData.time || '09:00:00', // Default to 9 AM if no time selected
         durationMinutes: 30,
-        type: formData.appointmentType as 'new_patient' | 'follow_up' | 'emergency' | 'routine_checkup' | 'consultation',
+        type: formData.appointmentType as 'follow_up' | 'emergency' | 'routine_checkup' | 'consultation',
         chiefComplaint: formData.primaryComplaint,
         symptoms: formData.primaryComplaint,
         notes: '',
         isEmergency: formData.appointmentType === 'emergency',
-        sessionType: formData.session === '' ? undefined : formData.session as 'morning' | 'afternoon' | 'evening' | 'emergency'
+        sessionType: formData.session === '' ? undefined : formData.session as 'morning' | 'afternoon' | 'evening' | 'emergency',
+        bookingMethod: formData.bookingMethod
       };
 
       const result = await createAppointment(appointmentData);
-      
-      // Record vitals if provided
-      if (formData.vitals.temperature || formData.vitals.bloodPressureSystolic) {
-        const { data: userData } = await supabase.auth.getUser();
-        
-        await supabase.from('vitals').insert({
-          patient_id: formData.patient.id,
-          encounter_id: result.encounter?.id,
-          appointment_id: result.id,
-          recorded_by: userData?.user?.id,
-          temperature: formData.vitals.temperature ? parseFloat(formData.vitals.temperature) : null,
-          blood_pressure_systolic: formData.vitals.bloodPressureSystolic ? parseInt(formData.vitals.bloodPressureSystolic) : null,
-          blood_pressure_diastolic: formData.vitals.bloodPressureDiastolic ? parseInt(formData.vitals.bloodPressureDiastolic) : null,
-          heart_rate: formData.vitals.heartRate ? parseInt(formData.vitals.heartRate) : null,
-          respiratory_rate: formData.vitals.respiratoryRate ? parseInt(formData.vitals.respiratoryRate) : null,
-          oxygen_saturation: formData.vitals.oxygenSaturation ? parseInt(formData.vitals.oxygenSaturation) : null,
-          weight: formData.vitals.weight ? parseFloat(formData.vitals.weight) : null,
-          height: formData.vitals.height ? parseFloat(formData.vitals.height) : null,
-          notes: formData.vitals.notes || null,
-          taken_at: new Date().toISOString()
-        });
-      }
 
       onComplete({
         appointmentId: result.id,
@@ -218,7 +168,7 @@ export default function NewAppointmentBookingForm({
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center mb-8">
-      {[1, 2, 3, 4].map((step) => (
+      {[1, 2, 3].map((step) => (
         <React.Fragment key={step}>
           <div className={`flex flex-col items-center ${step <= currentStep ? 'opacity-100' : 'opacity-40'}`}>
             <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
@@ -231,11 +181,10 @@ export default function NewAppointmentBookingForm({
             <p className="text-xs mt-1 text-gray-600">
               {step === 1 && 'Patient'}
               {step === 2 && 'Appointment'}
-              {step === 3 && 'Vitals'}
-              {step === 4 && 'Review'}
+              {step === 3 && 'Review'}
             </p>
           </div>
-          {step < 4 && (
+          {step < 3 && (
             <div className={`w-16 h-0.5 mx-2 ${
               step < currentStep ? 'bg-orange-500' : 'bg-gray-300'
             }`} />
@@ -415,9 +364,8 @@ export default function NewAppointmentBookingForm({
         {/* Appointment Type */}
         <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
           <h4 className="font-medium text-purple-900 mb-4">Appointment Type</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
-              { value: 'new_patient', label: 'New Patient', color: 'green' },
               { value: 'follow_up', label: 'Follow-up', color: 'blue' },
               { value: 'consultation', label: 'Consultation', color: 'orange' },
               { value: 'emergency', label: 'Emergency', color: 'red' }
@@ -432,6 +380,29 @@ export default function NewAppointmentBookingForm({
                 }`}
               >
                 {type.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Booking Method */}
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-900 mb-4">Booking Method</h4>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { value: 'walk_in', label: 'Walk In', color: 'green' },
+              { value: 'call', label: 'Phone Call', color: 'blue' }
+            ].map((method) => (
+              <button
+                key={method.value}
+                onClick={() => handleInputChange('bookingMethod', method.value)}
+                className={`p-3 rounded-lg border-2 transition-all text-sm font-medium ${
+                  formData.bookingMethod === method.value
+                    ? `border-${method.color}-500 bg-${method.color}-50 text-${method.color}-700`
+                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                }`}
+              >
+                {method.label}
               </button>
             ))}
           </div>
@@ -595,188 +566,18 @@ export default function NewAppointmentBookingForm({
           </button>
           <button 
             onClick={handleNext}
-            disabled={!formData.doctor || !formData.appointmentType || !formData.date || !formData.time || !formData.primaryComplaint}
+            disabled={!formData.doctor || !formData.appointmentType || !formData.date || !formData.primaryComplaint || !formData.bookingMethod}
             className="btn-primary"
           >
-            Continue to Vitals
+            Continue to Review
           </button>
         </div>
       </div>
     );
   };
 
-  // Step 3: Vitals Recording (Optional)
-  const renderStep3 = () => (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-purple-100 rounded-lg">
-          <Heart className="h-5 w-5 text-purple-600" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Step 3: Patient Vitals (Optional)</h3>
-          <p className="text-sm text-gray-500">Record vital signs and measurements if available</p>
-        </div>
-      </div>
-
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <h4 className="font-medium text-gray-900 mb-4">Vital Signs</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Thermometer className="w-4 h-4 inline mr-1" />
-              Temperature (°F)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={formData.vitals.temperature}
-              onChange={(e) => handleVitalsChange('temperature', e.target.value)}
-              className="input-field"
-              placeholder="98.6"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Heart className="w-4 h-4 inline mr-1" />
-              Heart Rate (bpm)
-            </label>
-            <input
-              type="number"
-              value={formData.vitals.heartRate}
-              onChange={(e) => handleVitalsChange('heartRate', e.target.value)}
-              className="input-field"
-              placeholder="72"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Droplet className="w-4 h-4 inline mr-1" />
-              BP Systolic (mmHg)
-            </label>
-            <input
-              type="number"
-              value={formData.vitals.bloodPressureSystolic}
-              onChange={(e) => handleVitalsChange('bloodPressureSystolic', e.target.value)}
-              className="input-field"
-              placeholder="120"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Droplet className="w-4 h-4 inline mr-1" />
-              BP Diastolic (mmHg)
-            </label>
-            <input
-              type="number"
-              value={formData.vitals.bloodPressureDiastolic}
-              onChange={(e) => handleVitalsChange('bloodPressureDiastolic', e.target.value)}
-              className="input-field"
-              placeholder="80"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Wind className="w-4 h-4 inline mr-1" />
-              Respiratory Rate
-            </label>
-            <input
-              type="number"
-              value={formData.vitals.respiratoryRate}
-              onChange={(e) => handleVitalsChange('respiratoryRate', e.target.value)}
-              className="input-field"
-              placeholder="16"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Activity className="w-4 h-4 inline mr-1" />
-              SpO2 (%)
-            </label>
-            <input
-              type="number"
-              value={formData.vitals.oxygenSaturation}
-              onChange={(e) => handleVitalsChange('oxygenSaturation', e.target.value)}
-              className="input-field"
-              placeholder="98"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Weight className="w-4 h-4 inline mr-1" />
-              Weight (kg)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={formData.vitals.weight}
-              onChange={(e) => handleVitalsChange('weight', e.target.value)}
-              className="input-field"
-              placeholder="70"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Ruler className="w-4 h-4 inline mr-1" />
-              Height (cm)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={formData.vitals.height}
-              onChange={(e) => handleVitalsChange('height', e.target.value)}
-              className="input-field"
-              placeholder="170"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Notes
-          </label>
-          <textarea
-            value={formData.vitals.notes}
-            onChange={(e) => handleVitalsChange('notes', e.target.value)}
-            rows={3}
-            placeholder="Additional observations..."
-            className="input-field"
-          />
-        </div>
-
-        {formData.vitals.weight && formData.vitals.height && (
-          <div className="mt-4">
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-900">
-                <strong>BMI:</strong> {(parseFloat(formData.vitals.weight) / Math.pow(parseFloat(formData.vitals.height) / 100, 2)).toFixed(2)}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-between pt-4">
-        <button onClick={handlePrevious} className="btn-secondary">
-          Previous
-        </button>
-        <button 
-          onClick={handleNext}
-          className="btn-primary"
-        >
-          Continue to Review
-        </button>
-      </div>
-    </div>
-  );
-
-  // Step 4: Review & Confirm
-  const renderStep4 = () => {
+  // Step 3: Review & Confirm
+  const renderStep3 = () => {
     const selectedDoctor = doctors.find(d => d.id === formData.doctor?.id);
     
     return (
@@ -786,7 +587,7 @@ export default function NewAppointmentBookingForm({
             <CheckCircle className="h-5 w-5 text-green-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Step 4: Review & Confirm</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Step 3: Review & Confirm</h3>
             <p className="text-sm text-gray-500">Review all details before confirming appointment</p>
           </div>
         </div>
@@ -819,7 +620,7 @@ export default function NewAppointmentBookingForm({
               month: 'long',
               day: 'numeric'
             })}</p>
-            <p><strong>Time:</strong> {formData.time} ({formData.session})</p>
+            <p><strong>Time:</strong> {formData.time || 'To be scheduled'} ({formData.session || 'General'})</p>
             {selectedDoctor?.consultation_fee && (
               <p><strong>Consultation Fee:</strong> ₹{selectedDoctor.consultation_fee}</p>
             )}
@@ -832,50 +633,11 @@ export default function NewAppointmentBookingForm({
           <p className="text-sm text-gray-700">{formData.primaryComplaint}</p>
         </div>
 
-        {/* Vitals Summary */}
-        {(formData.vitals.temperature || formData.vitals.bloodPressureSystolic) && (
-          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-            <h4 className="font-medium text-purple-900 mb-3">Vital Signs</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              {formData.vitals.temperature && (
-                <div>
-                  <p className="text-gray-600">Temperature</p>
-                  <p className="font-semibold">{formData.vitals.temperature}°F</p>
-                </div>
-              )}
-              {formData.vitals.bloodPressureSystolic && formData.vitals.bloodPressureDiastolic && (
-                <div>
-                  <p className="text-gray-600">Blood Pressure</p>
-                  <p className="font-semibold">{formData.vitals.bloodPressureSystolic}/{formData.vitals.bloodPressureDiastolic} mmHg</p>
-                </div>
-              )}
-              {formData.vitals.heartRate && (
-                <div>
-                  <p className="text-gray-600">Heart Rate</p>
-                  <p className="font-semibold">{formData.vitals.heartRate} bpm</p>
-                </div>
-              )}
-              {formData.vitals.oxygenSaturation && (
-                <div>
-                  <p className="text-gray-600">SpO2</p>
-                  <p className="font-semibold">{formData.vitals.oxygenSaturation}%</p>
-                </div>
-              )}
-              {formData.vitals.weight && (
-                <div>
-                  <p className="text-gray-600">Weight</p>
-                  <p className="font-semibold">{formData.vitals.weight} kg</p>
-                </div>
-              )}
-              {formData.vitals.height && (
-                <div>
-                  <p className="text-gray-600">Height</p>
-                  <p className="font-semibold">{formData.vitals.height} cm</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Booking Method */}
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-900 mb-3">Booking Method</h4>
+          <p className="text-sm text-gray-700 capitalize">{formData.bookingMethod.replace('_', ' ')}</p>
+        </div>
 
         <div className="flex justify-between pt-4">
           <button onClick={handlePrevious} className="btn-secondary">
@@ -917,7 +679,6 @@ export default function NewAppointmentBookingForm({
         {currentStep === 1 && renderStep1()}
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
-        {currentStep === 4 && renderStep4()}
       </div>
     </div>
   );

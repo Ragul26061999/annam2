@@ -19,13 +19,14 @@ import {
   Loader2,
   Hash,
   FileText,
-  DollarSign
+  DollarSign,
+  Trash2
 } from 'lucide-react';
 import NewAppointmentBookingForm from '../../components/NewAppointmentBookingForm';
 import AppointmentSuccessPage from '../../components/AppointmentSuccessPage';
 import ClinicalEntryForm from '../../components/ClinicalEntryForm';
 import AppointmentDetailsModal from '../../components/AppointmentDetailsModal';
-import { getAppointments, updateAppointmentStatus, getAppointmentStats, type Appointment } from '../../src/lib/appointmentService';
+import { getAppointments, updateAppointmentStatus, deleteAppointment, getAppointmentStats, type Appointment } from '../../src/lib/appointmentService';
 import { createAppointmentBill } from '../../src/lib/billingService';
 
 interface AppointmentStats {
@@ -64,6 +65,7 @@ export default function AppointmentsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [completingAppointment, setCompletingAppointment] = useState<string | null>(null);
+  const [deletingAppointment, setDeletingAppointment] = useState<string | null>(null);
 
   const handleAppointmentSuccess = (result: { appointmentId: string; patientName: string; uhid: string }) => {
     console.log('Appointment created:', result);
@@ -120,6 +122,24 @@ export default function AppointmentsPage() {
       setError(`Failed to update appointment status. Please try again.`);
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  const handleDeleteAppointment = async (appointmentId: string) => {
+    if (!window.confirm('Are you sure you want to delete this appointment? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeletingAppointment(appointmentId);
+      await deleteAppointment(appointmentId);
+      await fetchAppointments();
+      await fetchStats();
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      setError(`Failed to delete appointment. Please try again.`);
+    } finally {
+      setDeletingAppointment(null);
     }
   };
 
@@ -471,13 +491,27 @@ export default function AppointmentsPage() {
                           </button>
                           <button
                             onClick={() => handleStatusUpdate(appointment.id, 'cancelled')}
-                            disabled={updatingStatus === appointment.id}
+                            disabled={updatingStatus === appointment.id || deletingAppointment === appointment.id}
                             className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
                           >
                             {updatingStatus === appointment.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               'Cancel'
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAppointment(appointment.id)}
+                            disabled={deletingAppointment === appointment.id || updatingStatus === appointment.id}
+                            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                          >
+                            {deletingAppointment === appointment.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <Trash2 size={14} />
+                                <span>Delete</span>
+                              </>
                             )}
                           </button>
                         </>
