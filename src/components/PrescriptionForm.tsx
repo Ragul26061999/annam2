@@ -25,8 +25,9 @@ interface Medication {
   category: string;
   dosage_form: string;
   strength: string;
-  unit_price: number;
-  stock_quantity: number;
+  selling_price: number;
+  available_stock: number;
+  is_active: boolean;
 }
 
 interface PrescriptionItem {
@@ -64,9 +65,6 @@ export default function PrescriptionForm({
   const [medications, setMedications] = useState<Medication[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([]);
-  const [diagnosis, setDiagnosis] = useState('');
-  const [notes, setNotes] = useState('');
-  const [followUpDate, setFollowUpDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Medication[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
@@ -79,11 +77,15 @@ export default function PrescriptionForm({
     try {
       const { data, error } = await supabase
         .from('medications')
-        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, unit_price, stock_quantity')
-        .gt('stock_quantity', 0)
+        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, selling_price, available_stock, is_active')
+        .eq('is_active', true)
+        .gt('available_stock', 0)
         .order('name', { ascending: true });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching medications:', error);
+        throw error;
+      }
       setMedications(data || []);
     } catch (error) {
       console.error('Error fetching medications:', error);
@@ -98,8 +100,8 @@ export default function PrescriptionForm({
     
     const filtered = medications.filter(med => 
       med.name.toLowerCase().includes(term.toLowerCase()) ||
-      med.generic_name.toLowerCase().includes(term.toLowerCase()) ||
-      med.category.toLowerCase().includes(term.toLowerCase())
+      (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase())) ||
+      (med.category && med.category.toLowerCase().includes(term.toLowerCase()))
     );
     setSearchResults(filtered);
   };
@@ -117,9 +119,9 @@ export default function PrescriptionForm({
       instructions: '',
       quantity: 1,
       auto_calculate_quantity: true,
-      unit_price: medication.unit_price,
-      total_price: medication.unit_price,
-      stock_quantity: medication.stock_quantity
+      unit_price: medication.selling_price || 0,
+      total_price: medication.selling_price || 0,
+      stock_quantity: medication.available_stock || 0
     };
     
     setPrescriptionItems([...prescriptionItems, newItem]);
@@ -161,6 +163,16 @@ export default function PrescriptionForm({
     return prescriptionItems.reduce((total, item) => total + item.total_price, 0);
   };
 
+  const generatePrescriptionId = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `RX${year}${month}${day}${timestamp}${random}`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (prescriptionItems.length === 0) {
@@ -170,51 +182,121 @@ export default function PrescriptionForm({
 
     setLoading(true);
     try {
-      // Create prescription record
+      // Convert patient_id (like AH2601-0003) to actual UUID
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('patient_id', patientId)
+        .single();
+
+      if (patientError || !patientData) {
+        throw new Error('Patient not found in database');
+      }
+
+      const patientUuid = patientData.id;
+
+      // Generate unique prescription ID
+      const prescriptionId = generatePrescriptionId();
+
+      // Check if current user is a valid doctor
+      let doctorId = null;
+      if (currentUser?.id) {
+        const { data: doctorData, error: doctorError } = await supabase
+          .from('doctors')
+          .select('id')
+          .eq('id', currentUser.id)
+          .single();
+        
+        if (!doctorError && doctorData) {
+          doctorId = currentUser.id;
+        }
+      }
+
+      // Create a new encounter record first
+      const { data: encounterData, error: encounterError } = await supabase
+        .from('encounter')
+        .insert({
+          patient_id: patientUuid,
+          clinician_id: doctorId, // Use valid doctor ID or null
+          start_at: new Date().toISOString(),
+          status_id: null, // Can be null
+          type_id: null,  // Can be null
+          department_id: null // Can be null
+        })
+        .select()
+        .single();
+
+      if (encounterError) {
+        console.error('Error creating encounter:', encounterError);
+        throw encounterError;
+      }
+
+      const encounterId = encounterData.id;
+
+      // Create prescription record with correct schema
       const { data: prescriptionData, error: prescriptionError } = await supabase
         .from('prescriptions')
         .insert({
-          patient_id: patientId,
-          doctor_id: currentUser?.id || 'unknown',
-          doctor_name: currentUser?.name || 'Dr. Unknown',
-          diagnosis: diagnosis,
-          notes: notes,
-          follow_up_date: followUpDate || null,
-          total_amount: calculateTotalAmount(),
+          prescription_id: prescriptionId,
+          patient_id: patientUuid, // Use the actual UUID
+          doctor_id: doctorId, // Use valid doctor ID or null
+          encounter_id: encounterId, // Use the real encounter ID
+          issue_date: new Date().toISOString().split('T')[0],
+          instructions: 'Prescription created by doctor',
           status: 'active'
         })
         .select()
         .single();
 
-      if (prescriptionError) throw prescriptionError;
+      if (prescriptionError) {
+        console.error('Prescription error:', prescriptionError);
+        throw prescriptionError;
+      }
 
-      const prescriptionId = prescriptionData.id;
+      const dbPrescriptionId = prescriptionData.id;
 
-      // Create prescription items
+      // Create prescription items with proper frequency formatting
       for (const item of prescriptionItems) {
+        const frequencyText = item.frequency_times.length > 0 
+          ? `${item.frequency_times.join(', ')} (${item.frequency_times.length}x daily)` 
+          : 'As directed';
+        
+        const durationText = `${item.duration_days} days`;
+        
+        const fullInstructions = [
+          item.instructions,
+          item.meal_timing ? `Meal timing: ${item.meal_timing.replace('_', ' ')}` : '',
+          `Frequency: ${frequencyText}`
+        ].filter(Boolean).join(' | ');
+
         const { error: itemError } = await supabase
           .from('prescription_items')
           .insert({
-            prescription_id: prescriptionId,
+            prescription_id: dbPrescriptionId,
             medication_id: item.medication_id,
-            medication_name: item.medication_name,
             dosage: item.dosage,
-            frequency: item.frequency,
-            duration: item.duration,
-            instructions: item.instructions,
+            frequency: frequencyText,
+            duration: durationText,
+            instructions: fullInstructions,
             quantity: item.quantity,
             unit_price: item.unit_price,
-            total_price: item.total_price
+            status: 'pending'
           });
 
-        if (itemError) throw itemError;
+        if (itemError) {
+          console.error('Prescription item error - Details:', JSON.stringify(itemError, null, 2));
+          console.error('Prescription item error - Message:', (itemError as any)?.message);
+          throw itemError;
+        }
       }
 
+      alert('Prescription created successfully!');
       onPrescriptionCreated();
       onClose();
-    } catch (error) {
-      console.error('Error creating prescription:', error);
-      alert('Error creating prescription. Please try again.');
+    } catch (error: any) {
+      console.error('Error creating prescription - Details:', JSON.stringify(error, null, 2));
+      console.error('Error creating prescription - Message:', error?.message);
+      alert(`Error creating prescription: ${error?.message || 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -249,53 +331,7 @@ export default function PrescriptionForm({
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Diagnosis and Notes */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Stethoscope className="h-4 w-4 inline mr-2" />
-                  Diagnosis *
-                </label>
-                <textarea
-                  value={diagnosis}
-                  onChange={(e) => setDiagnosis(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  rows={3}
-                  placeholder="Enter patient diagnosis..."
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <FileText className="h-4 w-4 inline mr-2" />
-                  Additional Notes
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  rows={3}
-                  placeholder="Additional instructions or notes..."
-                />
-              </div>
-            </div>
 
-            {/* Follow-up Date */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Calendar className="h-4 w-4 inline mr-2" />
-                  Follow-up Date
-                </label>
-                <input
-                  type="date"
-                  value={followUpDate}
-                  onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-            </div>
 
             {/* Medication Search */}
             <div>
@@ -344,8 +380,8 @@ export default function PrescriptionForm({
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="font-medium text-green-600">₹{medication.unit_price}</p>
-                              <p className="text-xs text-gray-500">Stock: {medication.stock_quantity}</p>
+                              <p className="font-medium text-green-600">₹{medication.selling_price || 0}</p>
+                              <p className="text-xs text-gray-500">Stock: {medication.available_stock || 0}</p>
                             </div>
                           </div>
                         </div>
@@ -387,7 +423,7 @@ export default function PrescriptionForm({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Dosage from Inventory *</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Dosage *</label>
                         <input
                           type="text"
                           value={item.dosage}

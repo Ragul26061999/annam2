@@ -149,12 +149,7 @@ export default function InventoryPage() {
   useEffect(() => {
     loadMedicines()
 
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadMedicines()
-    }, 30000)
 
-    return () => clearInterval(interval)
   }, [])
 
   // Consume deferred action from dashboard (view/edit medicine)

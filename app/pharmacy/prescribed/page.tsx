@@ -2,38 +2,42 @@
 
 import React, { useState, useEffect } from 'react'
 import { Search, Plus, FileText, User, Calendar, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { supabase } from '../../../src/lib/supabase'
 
 interface Prescription {
   id: string
+  prescription_id: string
   patient_id: string
   patient_name: string
   doctor_id: string
   doctor_name: string
   prescription_date: string
-  status: 'pending' | 'partially_dispensed' | 'completed'
+  status: 'active' | 'dispensed' | 'expired'
+  instructions: string
   items: PrescriptionItem[]
 }
 
 interface PrescriptionItem {
   id: string
-  medicine_id: string
-  medicine_name: string
+  medication_id: string
+  medication_name: string
   dosage: string
   frequency: string
   duration: string
-  quantity_prescribed: number
-  quantity_dispensed: number
+  quantity: number
+  dispensed_quantity: number
   instructions: string
+  unit_price: number
+  total_price: number
+  status: 'pending' | 'dispensed' | 'cancelled'
 }
 
 interface Medicine {
   id: string
   name: string
   category: string
-  stock_quantity: number
-  unit_price: number
-  batch_number: string
-  expiry_date: string
+  available_stock: number
+  selling_price: number
 }
 
 export default function PrescribedListPage() {
@@ -54,34 +58,79 @@ export default function PrescribedListPage() {
   const loadPrescriptions = async () => {
     try {
       setLoading(true)
-      // Mock data for now - replace with actual API call
-      const mockPrescriptions: Prescription[] = [
-        {
-          id: '1',
-          patient_id: 'p1',
-          patient_name: 'John Doe',
-          doctor_id: 'd1',
-          doctor_name: 'Dr. Smith',
-          prescription_date: '2024-01-15',
-          status: 'pending',
-          items: [
-            {
-              id: 'pi1',
-              medicine_id: 'm1',
-              medicine_name: 'Paracetamol 500mg',
-              dosage: '500mg',
-              frequency: 'Twice daily',
-              duration: '5 days',
-              quantity_prescribed: 10,
-              quantity_dispensed: 0,
-              instructions: 'Take after meals'
-            }
-          ]
+      setError(null)
+      
+      // Fetch prescriptions with related patient, doctor, and items (with medication)
+      const { data, error: prescError } = await supabase
+        .from('prescriptions')
+        .select(`
+          id,
+          prescription_id,
+          patient_id,
+          doctor_id,
+          issue_date,
+          instructions,
+          status,
+          created_at,
+          patient:patients(id, patient_id, name),
+          doctor:users(id, name),
+          prescription_items(
+            id,
+            medication_id,
+            dosage,
+            frequency,
+            duration,
+            quantity,
+            dispensed_quantity,
+            instructions,
+            unit_price,
+            total_price,
+            status,
+            medication:medications(id, name, generic_name, strength)
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(200)
+
+      if (prescError) {
+        console.error('Error fetching prescriptions - Details:', JSON.stringify(prescError, null, 2))
+        throw prescError
+      }
+
+      const prescriptionsWithItems: Prescription[] = (data || []).map((prescription: any) => {
+        const items: PrescriptionItem[] = (prescription.prescription_items || []).map((item: any) => ({
+          id: item.id,
+          medication_id: item.medication_id,
+          medication_name: item.medication?.name || 'Unknown Medication',
+          dosage: item.dosage,
+          frequency: item.frequency,
+          duration: item.duration,
+          quantity: item.quantity,
+          dispensed_quantity: item.dispensed_quantity || 0,
+          instructions: item.instructions || '',
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+          status: (item.status || 'pending') as 'pending' | 'dispensed' | 'cancelled'
+        }))
+
+        return {
+          id: prescription.id,
+          prescription_id: prescription.prescription_id,
+          patient_id: prescription.patient_id,
+          patient_name: prescription.patient?.name || 'Unknown Patient',
+          doctor_id: prescription.doctor_id,
+          doctor_name: prescription.doctor?.name || 'Unknown Doctor',
+          prescription_date: prescription.issue_date || prescription.created_at?.split('T')[0] || '',
+          status: (prescription.status || 'active') as 'active' | 'dispensed' | 'expired',
+          instructions: prescription.instructions || '',
+          items
         }
-      ]
-      setPrescriptions(mockPrescriptions)
-    } catch (err) {
-      setError('Failed to load prescriptions')
+      })
+
+      setPrescriptions(prescriptionsWithItems)
+    } catch (err: any) {
+      console.error('Error loading prescriptions:', err)
+      setError(err.message || 'Failed to load prescriptions')
     } finally {
       setLoading(false)
     }
@@ -89,19 +138,21 @@ export default function PrescribedListPage() {
 
   const loadMedicines = async () => {
     try {
-      // Mock data for now - replace with actual API call
-      const mockMedicines: Medicine[] = [
-        {
-          id: 'm1',
-          name: 'Paracetamol 500mg',
-          category: 'Analgesic',
-          stock_quantity: 100,
-          unit_price: 5.00,
-          batch_number: 'B001',
-          expiry_date: '2025-12-31'
-        }
-      ]
-      setMedicines(mockMedicines)
+      const { data, error } = await supabase
+        .from('medications')
+        .select('id, name, category, available_stock, selling_price')
+        .eq('is_active', true)
+        .gt('available_stock', 0)
+
+      if (error) throw error
+      
+      setMedicines((data || []).map((med: any) => ({
+        id: med.id,
+        name: med.name,
+        category: med.category || 'General',
+        available_stock: med.available_stock || 0,
+        selling_price: med.selling_price || 0
+      })))
     } catch (err) {
       console.error('Failed to load medicines:', err)
     }
@@ -110,18 +161,18 @@ export default function PrescribedListPage() {
   const filteredPrescriptions = prescriptions.filter(prescription => {
     const matchesSearch = prescription.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          prescription.doctor_name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || prescription.status === statusFilter
+    const matchesStatus = statusFilter === 'all' || prescription.items.some(i => i.status === statusFilter)
     return matchesSearch && matchesStatus
   })
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'pending':
+      case 'active':
         return 'bg-yellow-100 text-yellow-800'
-      case 'partially_dispensed':
-        return 'bg-blue-100 text-blue-800'
-      case 'completed':
+      case 'dispensed':
         return 'bg-green-100 text-green-800'
+      case 'expired':
+        return 'bg-gray-200 text-gray-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -129,12 +180,12 @@ export default function PrescribedListPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending':
+      case 'active':
         return <Clock className="w-4 h-4" />
-      case 'partially_dispensed':
-        return <AlertCircle className="w-4 h-4" />
-      case 'completed':
+      case 'dispensed':
         return <CheckCircle className="w-4 h-4" />
+      case 'expired':
+        return <AlertCircle className="w-4 h-4" />
       default:
         return <FileText className="w-4 h-4" />
     }
@@ -185,8 +236,8 @@ export default function PrescribedListPage() {
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
-            <option value="partially_dispensed">Partially Dispensed</option>
-            <option value="completed">Completed</option>
+            <option value="dispensed">Dispensed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>
@@ -214,7 +265,7 @@ export default function PrescribedListPage() {
                     <h3 className="text-lg font-semibold">{prescription.patient_name}</h3>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusBadge(prescription.status)}`}>
                       {getStatusIcon(prescription.status)}
-                      {prescription.status.replace('_', ' ')}
+                      {prescription.status}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
@@ -236,9 +287,13 @@ export default function PrescribedListPage() {
                   <button
                     onClick={() => handleDispense(prescription)}
                     className="btn-primary text-sm"
-                    disabled={prescription.status === 'completed'}
+                    disabled={prescription.status !== 'active' || !prescription.items.some(i => i.status === 'pending')}
                   >
-                    {prescription.status === 'completed' ? 'Completed' : 'Dispense'}
+                    {prescription.status !== 'active'
+                      ? 'Not Active'
+                      : !prescription.items.some(i => i.status === 'pending')
+                        ? 'No Pending'
+                        : 'Dispense'}
                   </button>
                 </div>
               </div>
@@ -250,7 +305,7 @@ export default function PrescribedListPage() {
                   {prescription.items.map((item) => (
                     <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                       <div className="flex-1">
-                        <div className="font-medium">{item.medicine_name}</div>
+                        <div className="font-medium">{item.medication_name}</div>
                         <div className="text-sm text-gray-600">
                           {item.dosage} • {item.frequency} • {item.duration}
                         </div>
@@ -260,7 +315,7 @@ export default function PrescribedListPage() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium">
-                          {item.quantity_dispensed}/{item.quantity_prescribed}
+                          {item.dispensed_quantity}/{item.quantity}
                         </div>
                         <div className="text-sm text-gray-600">dispensed</div>
                       </div>
