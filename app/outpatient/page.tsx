@@ -14,6 +14,8 @@ import { getDashboardStats } from '../../src/lib/dashboardService';
 import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
 import { getPatientByUHID, registerNewPatient, getAllPatients } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
+import VitalsQueueCard from '../../components/VitalsQueueCard';
+import { getQueueStats } from '../../src/lib/outpatientQueueService';
 
 interface OutpatientStats {
   totalPatients: number;
@@ -99,6 +101,9 @@ function OutpatientPageContent() {
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(false);
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  // Tab state for queue management
+  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients'>('queue');
+  const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
 
   // Check for registration success parameter
   useEffect(() => {
@@ -112,18 +117,46 @@ function OutpatientPageContent() {
       }, 5000);
       return () => clearTimeout(timer);
     }
+    
+    // Check for tab parameter
+    const tab = searchParams?.get('tab');
+    if (tab === 'queue' || tab === 'appointments' || tab === 'patients') {
+      setActiveTab(tab);
+    }
+    
+    // Check for vitals completed notification
+    if (searchParams?.get('vitals') === 'completed') {
+      setShowRegistrationSuccess(true);
+      setTimeout(() => {
+        setShowRegistrationSuccess(false);
+        window.history.replaceState({}, document.title, '/outpatient');
+      }, 5000);
+    }
   }, [searchParams]);
   useEffect(() => {
     loadOutpatientData();
+    loadQueueStats();
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       loadOutpatientData();
+      loadQueueStats();
     }, 30000);
 
     return () => clearInterval(interval);
   }, [selectedDate, statusFilter]);
 
+
+  const loadQueueStats = async () => {
+    try {
+      const result = await getQueueStats(selectedDate);
+      if (result.success && result.stats) {
+        setQueueStats(result.stats);
+      }
+    } catch (err) {
+      console.error('Error loading queue stats:', err);
+    }
+  };
 
   const loadOutpatientData = async () => {
     try {
@@ -289,10 +322,16 @@ function OutpatientPageContent() {
           <p className="text-gray-600 mt-2">Manage outpatient appointments and patient visits</p>
         </div>
         <div className="flex gap-3">
+          <Link href="/outpatient/quick-register">
+            <button className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors shadow-sm">
+              <UserPlus className="h-4 w-4" />
+              Quick Register
+            </button>
+          </Link>
           <Link href="/outpatient/create-outpatient">
             <button className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
               <UserPlus className="h-4 w-4" />
-              Register Outpatient
+              Full Registration
             </button>
           </Link>
         </div>
@@ -350,13 +389,13 @@ function OutpatientPageContent() {
           </div>
         </div>
 
-        {/* Waiting */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        {/* Waiting for Vitals */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('queue')}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Waiting</p>
-              <p className="text-2xl font-bold text-orange-600 mt-1">{stats.waitingPatients}</p>
-              <p className="text-xs text-gray-500 mt-1">In queue</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Waiting Vitals</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">{queueStats.totalWaiting}</p>
+              <p className="text-xs text-gray-500 mt-1">Pending entry</p>
             </div>
             <div className="p-3 bg-orange-100 rounded-xl">
               <Clock className="h-5 w-5 text-orange-600" />
@@ -413,6 +452,98 @@ function OutpatientPageContent() {
               View All Patients
             </button>
           </Link>
+        </div>
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="border-b border-gray-200">
+          <div className="flex gap-1 p-2">
+            <button
+              onClick={() => setActiveTab('queue')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
+                activeTab === 'queue'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Clock className="h-4 w-4" />
+              Waiting for Vitals ({queueStats.totalWaiting})
+            </button>
+            <button
+              onClick={() => setActiveTab('appointments')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
+                activeTab === 'appointments'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              Today's Queue
+            </button>
+            <button
+              onClick={() => setActiveTab('patients')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
+                activeTab === 'patients'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Recent Patients
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {activeTab === 'queue' && (
+            <VitalsQueueCard 
+              selectedDate={selectedDate} 
+              onRefresh={() => {
+                loadOutpatientData();
+                loadQueueStats();
+              }}
+            />
+          )}
+
+          {activeTab === 'appointments' && (
+            <div>
+              {/* Existing appointments section will go here */}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Today's Appointment Queue</h3>
+                <div className="flex gap-3">
+                  <div className="flex items-center px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <Calendar size={14} className="mr-2 text-gray-400" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="bg-transparent focus:outline-none"
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="scheduled">Waiting</option>
+                    <option value="in_progress">In Consultation</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+              {/* Appointments list will be rendered below */}
+            </div>
+          )}
+
+          {activeTab === 'patients' && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recently Registered Outpatients</h3>
+              {/* Patients list will be rendered below */}
+            </div>
+          )}
         </div>
       </div>
 
@@ -496,8 +627,140 @@ function OutpatientPageContent() {
         </div>
       )}
 
-      {/* Outpatient Display Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+      {/* Render appointments in the tab if appointments tab is active */}
+      {activeTab === 'appointments' && filteredAppointments.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mt-6">
+          <div className="divide-y divide-gray-100">
+            {filteredAppointments.map((appointment, index) => {
+              const patientName = appointment.patient?.name || 'Unknown Patient';
+              const doctorName = appointment.doctor?.user?.name || 'Unknown Doctor';
+
+              return (
+                <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-orange-500 rounded-lg flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">{index + 1}</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h3 className="font-semibold text-gray-900">{patientName}</h3>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(appointment.status)}`}>
+                            {getStatusIcon(appointment.status)}
+                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} />
+                            {appointment.appointment_time}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Stethoscope size={12} />
+                            Dr. {doctorName}
+                          </span>
+                          {appointment.chief_complaint && (
+                            <span className="text-gray-500">• {appointment.chief_complaint}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/patients/${appointment.patient_id}`}>
+                        <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
+                          <Eye size={18} />
+                        </button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Render patients in the tab if patients tab is active */}
+      {activeTab === 'patients' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
+          {patients.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {patients.slice(0, 6).map((patient) => (
+                <div
+                  key={patient.id}
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-bold text-gray-900">{patient.name}</h3>
+                      <p className="text-gray-500 text-sm font-mono">{patient.patient_id}</p>
+                    </div>
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Outpatient
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-blue-500" />
+                      <span className="font-medium">
+                        Age: {patient.age || calculateAge(patient.date_of_birth)} | {patient.gender}
+                      </span>
+                    </div>
+
+                    {patient.consulting_doctor_name && (
+                      <div className="flex items-center gap-2">
+                        <Stethoscope className="h-4 w-4 text-purple-500" />
+                        <span className="text-purple-700 font-medium">Dr. {patient.consulting_doctor_name}</span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {patient.bmi && (
+                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-100 text-[10px] font-bold">
+                          BMI: {patient.bmi}
+                        </span>
+                      )}
+                      {patient.bp_systolic && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 text-[10px] font-bold">
+                          BP: {patient.bp_systolic}/{patient.bp_diastolic}
+                        </span>
+                      )}
+                    </div>
+
+                    {patient.diagnosis && (
+                      <div className="flex items-start gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                        <AlertCircle className="h-4 w-4 mt-0.5 text-orange-500" />
+                        <span className="text-xs line-clamp-2" title={patient.diagnosis}>
+                          {patient.diagnosis}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <Link
+                      href={`/patients/${patient.id}`}
+                      className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center gap-1 w-full py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
+                    >
+                      View Patient Case File
+                      <ArrowRight size={12} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <User className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">No recent outpatients found</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Outpatient Display Section - HIDDEN, replaced by tabs */}
+      <div className="hidden bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Outpatient Overview</h2>
