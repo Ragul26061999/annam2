@@ -118,28 +118,6 @@ export default function PharmacyPage() {
     loadPendingPrescriptionCount()
   }, [])
 
-  useEffect(() => {
-    if (activeTab !== 'dashboard') return
-
-    const interval = setInterval(() => {
-      loadDataSilent()
-      loadAnalytics()
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [activeTab])
-
-  // Only refresh the badge on Prescribed List tab, not the whole page
-  useEffect(() => {
-    if (activeTab !== 'prescribed') return
-
-    const interval = setInterval(() => {
-      loadPendingPrescriptionCount()
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [activeTab])
-
   const loadAnalytics = async () => {
     try {
       setAnalyticsLoading(true)
