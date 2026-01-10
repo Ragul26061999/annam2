@@ -14,7 +14,7 @@ import {
   CheckCircle,
   Stethoscope
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 interface Medication {
   id: string;
@@ -30,7 +30,7 @@ interface Medication {
   is_active: boolean;
 }
 
-interface PrescriptionItem {
+interface IPPrescriptionItem {
   medication_id: string;
   medication_name: string;
   dosage: string;
@@ -47,26 +47,31 @@ interface PrescriptionItem {
   stock_quantity: number;
 }
 
-interface PrescriptionFormProps {
+interface IPPrescriptionFormProps {
   patientId: string;
   patientName: string;
   onClose: () => void;
   onPrescriptionCreated: () => void;
   currentUser: any;
-  bedAllocationId?: string; // Add this for IP patients
+  bedAllocationId: string;
+  selectedDate?: string; // Add selected date from timeline
 }
 
-export default function PrescriptionForm({ 
+export default function IPPrescriptionForm({ 
   patientId, 
   patientName, 
   onClose, 
   onPrescriptionCreated, 
   currentUser,
-  bedAllocationId 
-}: PrescriptionFormProps) {
+  bedAllocationId,
+  selectedDate 
+}: IPPrescriptionFormProps) {
+  // Debug logging to see what props are being passed
+  console.log('IPPrescriptionForm props:', { patientId, patientName, bedAllocationId, currentUser });
+
   const [medications, setMedications] = useState<Medication[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([]);
+  const [prescriptionItems, setPrescriptionItems] = useState<IPPrescriptionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Medication[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
@@ -109,7 +114,7 @@ export default function PrescriptionForm({
   };
 
   const addMedicationToPrescription = (medication: Medication) => {
-    const newItem: PrescriptionItem = {
+    const newItem: IPPrescriptionItem = {
       medication_id: medication.id,
       medication_name: medication.name,
       dosage: '',
@@ -137,7 +142,7 @@ export default function PrescriptionForm({
     return timesPerDay * durationDays;
   };
 
-  const updatePrescriptionItem = (index: number, field: keyof PrescriptionItem, value: string | number | string[] | boolean) => {
+  const updatePrescriptionItem = (index: number, field: keyof IPPrescriptionItem, value: string | number | string[] | boolean) => {
     const updatedItems = [...prescriptionItems];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
     
@@ -184,15 +189,56 @@ export default function PrescriptionForm({
 
     setLoading(true);
     try {
-      // Convert patient_id (like AH2601-0003) to actual UUID
-      const { data: patientData, error: patientError } = await supabase
+      // Find patient using the correct column for ERPH database
+      let patientData;
+      
+      console.log('Debug - Looking up patient with:', { patientId, patientName });
+      
+      // First try by patient_id column
+      const { data: initialPatientData, error: patientError } = await supabase
         .from('patients')
-        .select('id')
+        .select('id, patient_id, name')
         .eq('patient_id', patientId)
         .single();
 
-      if (patientError || !patientData) {
-        throw new Error('Patient not found in database');
+      console.log('Debug - Patient lookup result:', { data: initialPatientData, error: patientError });
+
+      if (patientError || !initialPatientData) {
+        console.error('Patient lookup error:', patientError);
+        // Try alternative lookup by name if patient_id doesn't work
+        const { data: nameData, error: nameError } = await supabase
+          .from('patients')
+          .select('id, patient_id, name')
+          .eq('name', patientName)
+          .single();
+        
+        console.log('Debug - Name lookup result:', { data: nameData, error: nameError });
+        
+        if (nameError || !nameData) {
+          // Try by UUID if patientId looks like a UUID
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(patientId)) {
+            const { data: uuidData, error: uuidError } = await supabase
+              .from('patients')
+              .select('id, patient_id, name')
+              .eq('id', patientId)
+              .single();
+            
+            console.log('Debug - UUID lookup result:', { data: uuidData, error: uuidError });
+            
+            if (!uuidError && uuidData) {
+              patientData = uuidData;
+            } else {
+              throw new Error(`Patient not found. Tried ID: ${patientId}, Name: ${patientName}, UUID lookup failed`);
+            }
+          } else {
+            throw new Error(`Patient not found. Tried ID: ${patientId}, Name: ${patientName}`);
+          }
+        } else {
+          patientData = nameData;
+        }
+      } else {
+        patientData = initialPatientData;
       }
 
       const patientUuid = patientData.id;
@@ -219,11 +265,11 @@ export default function PrescriptionForm({
         .from('encounter')
         .insert({
           patient_id: patientUuid,
-          clinician_id: doctorId, // Use valid doctor ID or null
+          clinician_id: doctorId,
           start_at: new Date().toISOString(),
-          status_id: null, // Can be null
-          type_id: null,  // Can be null
-          department_id: null // Can be null
+          status_id: null,
+          type_id: null,
+          department_id: null
         })
         .select()
         .single();
@@ -240,11 +286,11 @@ export default function PrescriptionForm({
         .from('prescriptions')
         .insert({
           prescription_id: prescriptionId,
-          patient_id: patientUuid, // Use the actual UUID
-          doctor_id: doctorId, // Use valid doctor ID or null
-          encounter_id: encounterId, // Use the real encounter ID
+          patient_id: patientUuid,
+          doctor_id: doctorId,
+          encounter_id: encounterId,
           issue_date: new Date().toISOString().split('T')[0],
-          instructions: 'Prescription created by doctor',
+          instructions: 'IP Prescription created by doctor',
           status: 'active'
         })
         .select()
@@ -294,26 +340,73 @@ export default function PrescriptionForm({
 
       // If this is an IP patient, create administration schedule
       if (bedAllocationId) {
+        // First, update the existing schedule records with proper frequency times
+        for (const item of prescriptionItems) {
+          const frequencyText = item.frequency_times.length > 0 
+            ? `${item.frequency_times.join(', ')} (${item.frequency_times.length}x daily)` 
+            : 'As directed';
+          
+          // Update prescription item with proper frequency text
+          const { error: updateError } = await supabase
+            .from('prescription_items')
+            .update({
+              frequency: frequencyText,
+              instructions: [
+                item.instructions,
+                item.meal_timing ? `Meal timing: ${item.meal_timing.replace('_', ' ')}` : '',
+                `Frequency: ${frequencyText}`
+              ].filter(Boolean).join(' | ')
+            })
+            .eq('prescription_id', dbPrescriptionId)
+            .eq('medication_id', item.medication_id);
+
+          if (updateError) {
+            console.error('Error updating prescription item frequency:', updateError);
+          }
+        }
+
+        // Use selected date or today as start date
+        const prescriptionStartDate = selectedDate || new Date().toISOString().split('T')[0];
+        
         const { error: scheduleError } = await supabase
-          .rpc('create_prescription_schedule', {
+          .rpc('create_prescription_schedule_with_date', {
             p_bed_allocation_id: bedAllocationId,
             p_prescription_id: dbPrescriptionId,
-            p_patient_id: patientUuid
+            p_patient_id: patientUuid,
+            p_start_date: prescriptionStartDate
           });
 
         if (scheduleError) {
           console.error('Error creating prescription schedule:', scheduleError);
-          // Don't fail the prescription creation if schedule fails
+          // Fallback to original function if new function doesn't exist
+          const { error: fallbackError } = await supabase
+            .rpc('create_prescription_schedule', {
+              p_bed_allocation_id: bedAllocationId,
+              p_prescription_id: dbPrescriptionId,
+              p_patient_id: patientUuid
+            });
+
+          if (fallbackError) {
+            console.error('Fallback schedule creation also failed:', fallbackError);
+          }
+        } else {
+          // Refresh the materialized view after creating schedule
+          try {
+            await supabase.rpc('refresh_nurse_medication_checklist');
+            console.log('Materialized view refreshed successfully');
+          } catch (refreshError) {
+            console.error('Error refreshing materialized view:', refreshError);
+          }
         }
       }
 
-      alert('Prescription created successfully!');
+      alert('IP Prescription created successfully!');
       onPrescriptionCreated();
       onClose();
     } catch (error: any) {
-      console.error('Error creating prescription - Details:', JSON.stringify(error, null, 2));
-      console.error('Error creating prescription - Message:', error?.message);
-      alert(`Error creating prescription: ${error?.message || 'Please try again.'}`);
+      console.error('Error creating IP prescription - Details:', JSON.stringify(error, null, 2));
+      console.error('Error creating IP prescription - Message:', error?.message);
+      alert(`Error creating IP prescription: ${error?.message || 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -330,9 +423,9 @@ export default function PrescriptionForm({
                 <Pill className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">New Prescription</h2>
+                <h2 className="text-xl font-semibold text-gray-900">New IP Prescription</h2>
                 <p className="text-gray-600 text-sm">
-                  Patient: {patientName} • ID: {patientId}
+                  Patient: {patientName} • ID: {patientId} • IP: {bedAllocationId}
                 </p>
               </div>
             </div>
@@ -348,7 +441,6 @@ export default function PrescriptionForm({
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-
 
             {/* Medication Search */}
             <div>
@@ -533,20 +625,6 @@ export default function PrescriptionForm({
                       </div>
                       
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Random Quantity</label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const randomQty = Math.floor(Math.random() * Math.min(item.stock_quantity, 30)) + 1;
-                            updatePrescriptionItem(index, 'quantity', randomQty);
-                            updatePrescriptionItem(index, 'auto_calculate_quantity', false);
-                          }}
-                          className="w-full px-3 py-2 text-sm bg-purple-100 text-purple-700 border border-purple-300 rounded hover:bg-purple-200 transition-colors"
-                        >
-                          Generate Random
-                        </button>
-                      
-                      <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
                         <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded font-medium text-green-600">
                           ₹{item.total_price.toFixed(2)}
@@ -573,7 +651,6 @@ export default function PrescriptionForm({
                           Times: {item.frequency_times.join(', ')} ({item.frequency_times.length} times daily)
                         </p>
                       )}
-                    </div>
                     </div>
                   </div>
                 ))}
@@ -620,7 +697,7 @@ export default function PrescriptionForm({
               ) : (
                 <>
                   <CheckCircle className="h-4 w-4" />
-                  Create Prescription
+                  Create IP Prescription
                 </>
               )}
             </button>

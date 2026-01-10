@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Plus, Calendar, Clock, User, ClipboardList, ChevronLeft, ChevronRight, Activity, FileText } from 'lucide-react';
+import { Loader2, Plus, Calendar, Clock, User, ClipboardList, ChevronLeft, ChevronRight, Activity, FileText, Pill } from 'lucide-react';
 import { getIPNurseRecords, createIPNurseRecord, getIPDoctorOrders, IPNurseRecord, IPDoctorOrder } from '../../lib/ipClinicalService';
 import NurseVitals from './NurseVitals';
+import MedicationChecklist from './MedicationChecklist';
 
 interface NurseRecordsProps {
   bedAllocationId: string;
   date?: string;
+  currentUser?: any;
 }
 
-export default function NurseRecords({ bedAllocationId, date }: NurseRecordsProps) {
+export default function NurseRecords({ bedAllocationId, date, currentUser }: NurseRecordsProps) {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'vitals' | 'notes'>('vitals');
+  const [activeTab, setActiveTab] = useState<'vitals' | 'notes' | 'medications'>('vitals');
   const [records, setRecords] = useState<IPNurseRecord[]>([]);
   const [doctorOrders, setDoctorOrders] = useState<IPDoctorOrder[]>([]);
   // Use date prop if provided, else default to today (but we should prefer prop)
@@ -94,6 +96,16 @@ export default function NurseRecords({ bedAllocationId, date }: NurseRecordsProp
             <Activity size={16} /> Vitals
           </button>
           <button
+            onClick={() => setActiveTab('medications')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'medications' 
+                ? 'bg-white text-green-600 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Pill size={16} /> Medications
+          </button>
+          <button
             onClick={() => setActiveTab('notes')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === 'notes' 
@@ -132,7 +144,13 @@ export default function NurseRecords({ bedAllocationId, date }: NurseRecordsProp
         {/* Right Column: Vitals or Notes */}
         <div className="lg:col-span-2 space-y-6">
           
-          {activeTab === 'vitals' ? (
+          {activeTab === 'medications' ? (
+            <MedicationChecklist 
+              bedAllocationId={bedAllocationId} 
+              date={displayDate}
+              currentUser={currentUser}
+            />
+          ) : activeTab === 'vitals' ? (
             <NurseVitals bedAllocationId={bedAllocationId} date={displayDate} />
           ) : (
             <>

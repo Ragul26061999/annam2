@@ -21,6 +21,9 @@ interface ClinicalDiaryProps {
 }
 
 export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate, dischargeDate, ipNumber, defaultTab = 'overview' }: ClinicalDiaryProps) {
+  // Debug logging to see what patient data is being passed
+  console.log('ClinicalDiary received:', { bedAllocationId, patientId, patientName });
+
   // Helper to get local date string YYYY-MM-DD
   const getLocalDateString = (d: Date = new Date()) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -278,7 +281,14 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                     <Stethoscope className="h-6 w-6 text-teal-600" />
                   </div>
                 </div>
-                <DoctorOrders bedAllocationId={bedAllocationId} date={selectedDate} />
+                <DoctorOrders 
+                  bedAllocationId={bedAllocationId} 
+                  date={selectedDate} 
+                  patientId={patientId}
+                  patientName={patientName}
+                  currentUser={{ id: null }} // Pass current user if available
+                  selectedTimelineDate={selectedDate} // Pass selected date for prescription start
+                />
               </div>
             )}
 
@@ -293,7 +303,11 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                     <User className="h-6 w-6 text-purple-600" />
                   </div>
                 </div>
-                <NurseRecords bedAllocationId={bedAllocationId} date={selectedDate} />
+                <NurseRecords 
+                  bedAllocationId={bedAllocationId} 
+                  date={selectedDate} 
+                  currentUser={{ id: null }} // Pass current user if available
+                />
               </div>
             )}
 

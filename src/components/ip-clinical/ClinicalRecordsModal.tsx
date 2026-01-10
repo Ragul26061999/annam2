@@ -42,7 +42,7 @@ export default function ClinicalRecordsModal({ isOpen, onClose, allocation, pati
         <div className="flex-1 overflow-hidden">
           <ClinicalDiary 
             bedAllocationId={allocation.id} 
-            patientId={patient.id}
+            patientId={patient.patient_id || patient.id} // Use patient_id if available, fallback to UUID
             patientName={patient.name}
             admissionDate={allocation.admission_date}
             dischargeDate={allocation.discharge_date}

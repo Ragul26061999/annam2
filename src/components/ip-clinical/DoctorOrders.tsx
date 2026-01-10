@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Plus, Calendar, Activity, Pill, Microscope, Stethoscope } from 'lucide-react';
 import { getIPDoctorOrders, createIPDoctorOrder, IPDoctorOrder } from '../../lib/ipClinicalService';
+import IPPrescriptionForm from './IPPrescriptionForm';
 
 interface DoctorOrdersProps {
   bedAllocationId: string;
   date?: string;
+  patientId?: string;
+  patientName?: string;
+  currentUser?: any;
+  selectedTimelineDate?: string; // Add selected date from timeline
 }
 
-export default function DoctorOrders({ bedAllocationId, date }: DoctorOrdersProps) {
+export default function DoctorOrders({ bedAllocationId, date, patientId, patientName, currentUser, selectedTimelineDate }: DoctorOrdersProps) {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<IPDoctorOrder[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
   // Use prop date or default to today
@@ -75,6 +81,11 @@ export default function DoctorOrders({ bedAllocationId, date }: DoctorOrdersProp
     }
   };
 
+  const handlePrescriptionCreated = () => {
+    // Refresh the orders list to show new prescriptions
+    loadData();
+  };
+
   if (loading) {
     return <div className="p-8 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-500" /></div>;
   }
@@ -86,13 +97,36 @@ export default function DoctorOrders({ bedAllocationId, date }: DoctorOrdersProp
           <Stethoscope className="h-5 w-5 text-teal-600" />
           Doctor's Orders
         </h3>
+        <div className="flex gap-2">
         <button
           onClick={() => setShowForm(!showForm)}
           className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2 text-sm"
         >
           {showForm ? 'Cancel' : <><Plus className="h-4 w-4" /> New Order</>}
         </button>
+        {patientId && patientName && (
+          <button
+            onClick={() => setShowPrescriptionForm(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+          >
+            <Pill className="h-4 w-4" />
+            New Prescription
+          </button>
+        )}
       </div>
+      </div>
+
+      {showPrescriptionForm && patientId && patientName && (
+        <IPPrescriptionForm
+          patientId={patientId}
+          patientName={patientName}
+          onClose={() => setShowPrescriptionForm(false)}
+          onPrescriptionCreated={handlePrescriptionCreated}
+          currentUser={currentUser}
+          bedAllocationId={bedAllocationId}
+          selectedDate={selectedTimelineDate || date} // Pass selected timeline date
+        />
+      )}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-teal-200 shadow-sm space-y-4 animate-in slide-in-from-top-4 duration-200">
