@@ -122,7 +122,7 @@ export default function PharmacyPage() {
     if (activeTab !== 'dashboard') return
 
     const interval = setInterval(() => {
-      loadData()
+      loadDataSilent()
       loadAnalytics()
     }, 30000)
 
@@ -538,29 +538,38 @@ export default function PharmacyPage() {
         getPharmacyBills()
       ])
 
-      // Map dashboard data to match our interface
       setStats({
-        totalMedications: dashboardData.totalMedications || 0,
-        lowStockCount: dashboardData.lowStockCount || 0,
-        todaysSales: dashboardData.todaySales || 0,
-        pendingOrders: dashboardData.pendingBills || 0
-      })
-
-      // Map bills data
-      const mappedBills = billsData.map((bill: any) => ({
-        id: bill.id,
-        bill_number: bill.bill_number,
-        patient_id: bill.patient_id,
-        total_amount: bill.total_amount,
-        payment_status: bill.payment_status,
-        created_at: bill.created_at
-      }))
-      setBills(mappedBills)
-    } catch (err) {
-      setError('Failed to load pharmacy data')
-      console.error('Error loading pharmacy data:', err)
+        totalMedications: dashboardData.totalMedications,
+        lowStockCount: dashboardData.lowStockCount,
+        todaysSales: dashboardData.todaySales,
+        pendingOrders: dashboardData.pendingBills
+      });
+      setBills(billsData);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      setError('Failed to load dashboard data');
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadDataSilent = async () => {
+    try {
+      const [dashboardData, billsData] = await Promise.all([
+        getPharmacyDashboardStats(),
+        getPharmacyBills()
+      ])
+
+      setStats({
+        totalMedications: dashboardData.totalMedications,
+        lowStockCount: dashboardData.lowStockCount,
+        todaysSales: dashboardData.todaySales,
+        pendingOrders: dashboardData.pendingBills
+      });
+      setBills(billsData);
+    } catch (error) {
+      console.error('Error loading dashboard data (silent):', error);
+      // Do not show error during silent refresh to avoid UI disturbance
     }
   }
 
