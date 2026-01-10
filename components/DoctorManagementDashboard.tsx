@@ -59,7 +59,6 @@ const getTableButtonColors = (doctorId: string | undefined) => {
 interface SessionTiming {
   startTime: string;
   endTime: string;
-  maxPatients: number;
 }
 
 interface DoctorFormData {
@@ -119,9 +118,9 @@ const DoctorManagementDashboard: React.FC = () => {
     floorNumber: 1,
     emergencyAvailable: false,
     sessions: {
-      morning: { startTime: '09:00', endTime: '12:00', maxPatients: 15 },
-      afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 15 },
-      evening: { startTime: '18:00', endTime: '21:00', maxPatients: 10 }
+      morning: { startTime: '09:00', endTime: '12:00' },
+      afternoon: { startTime: '14:00', endTime: '17:00' },
+      evening: { startTime: '18:00', endTime: '21:00' }
     },
     availableSessions: []
   });
@@ -280,9 +279,9 @@ const DoctorManagementDashboard: React.FC = () => {
       floorNumber: 1,
       emergencyAvailable: false,
       sessions: {
-        morning: { startTime: '09:00', endTime: '12:00', maxPatients: 15 },
-        afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 15 },
-        evening: { startTime: '18:00', endTime: '21:00', maxPatients: 10 }
+        morning: { startTime: '09:00', endTime: '12:00' },
+        afternoon: { startTime: '14:00', endTime: '17:00' },
+        evening: { startTime: '18:00', endTime: '21:00' }
       },
       availableSessions: []
     });
@@ -308,9 +307,9 @@ const DoctorManagementDashboard: React.FC = () => {
       floorNumber: doctor.floor_number || 1,
       emergencyAvailable: doctor.emergency_available || false,
       sessions: {
-        morning: { startTime: '09:00', endTime: '12:00', maxPatients: 15 },
-        afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 15 },
-        evening: { startTime: '18:00', endTime: '21:00', maxPatients: 10 }
+        morning: { startTime: '09:00', endTime: '12:00' },
+        afternoon: { startTime: '14:00', endTime: '17:00' },
+        evening: { startTime: '18:00', endTime: '21:00' }
       },
       availableSessions: []
     });
@@ -941,26 +940,6 @@ const DoctorManagementDashboard: React.FC = () => {
                                       [sessionKey]: {
                                         ...formData.sessions[sessionKey as keyof typeof formData.sessions],
                                         endTime: e.target.value
-                                      }
-                                    }
-                                  })}
-                                  className="w-full px-3 py-2 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white/90 backdrop-blur-sm"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Max Patients</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="30"
-                                  value={formData.sessions[sessionKey as keyof typeof formData.sessions].maxPatients}
-                                  onChange={(e) => setFormData({
-                                    ...formData,
-                                    sessions: {
-                                      ...formData.sessions,
-                                      [sessionKey]: {
-                                        ...formData.sessions[sessionKey as keyof typeof formData.sessions],
-                                        maxPatients: parseInt(e.target.value) || 1
                                       }
                                     }
                                   })}

@@ -1237,14 +1237,12 @@ export async function getAvailableSlots(
 
       const startHour = parseInt(session.startTime?.split(':')[0] || sessionTime.start.split(':')[0]);
       const endHour = parseInt(session.endTime?.split(':')[0] || sessionTime.end.split(':')[0]);
-      const maxPatients = session.maxPatients || 8;
       const slotDuration = 30; // 30 minutes per slot
       const slotsPerSession = Math.floor((endHour - startHour) * 60 / slotDuration);
-      const maxSlotsForSession = Math.min(slotsPerSession, maxPatients);
 
       let slotsGenerated = 0;
-      for (let hour = startHour; hour < endHour && slotsGenerated < maxSlotsForSession; hour++) {
-        for (let minute = 0; minute < 60 && slotsGenerated < maxSlotsForSession; minute += slotDuration) {
+      for (let hour = startHour; hour < endHour && slotsGenerated < slotsPerSession; hour++) {
+        for (let minute = 0; minute < 60 && slotsGenerated < slotsPerSession; minute += slotDuration) {
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
           // Check if slot is available

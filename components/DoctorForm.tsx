@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { User, Stethoscope, Clock, Save, X, Plus, Check } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { User, Stethoscope, Clock, Save, X, Plus, Check, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface SessionTiming {
   startTime: string;
   endTime: string;
-  maxPatients: number;
 }
 
 export interface DoctorFormData {
@@ -38,7 +37,7 @@ export interface DoctorFormData {
 interface DoctorFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: () => Promise<void>;
   formData: DoctorFormData;
   setFormData: (data: DoctorFormData) => void;
   specializations: string[];
@@ -47,6 +46,107 @@ interface DoctorFormProps {
   title?: string;
   onAddDepartment?: (name: string) => Promise<void>;
 }
+
+interface ValidationErrors {
+  [key: string]: string;
+}
+
+interface ErrorDialogProps {
+  show: boolean;
+  title: string;
+  message: string;
+  onClose: () => void;
+}
+
+const ErrorDialog: React.FC<ErrorDialogProps> = ({ show, title, message, onClose }) => {
+  if (!show) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gradient-to-r from-red-500 to-red-600 p-4">
+            <div className="flex items-center text-white">
+              <AlertCircle size={24} className="mr-3" />
+              <h3 className="text-lg font-semibold">{title}</h3>
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-gray-700 leading-relaxed">{message}</p>
+          </div>
+          <div className="bg-gray-50 px-6 py-4 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-medium"
+            >
+              OK
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+interface SuccessDialogProps {
+  show: boolean;
+  message: string;
+  onClose: () => void;
+}
+
+const SuccessDialog: React.FC<SuccessDialogProps> = ({ show, message, onClose }) => {
+  if (!show) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gradient-to-r from-green-500 to-green-600 p-4">
+            <div className="flex items-center text-white">
+              <CheckCircle2 size={24} className="mr-3" />
+              <h3 className="text-lg font-semibold">Success</h3>
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-gray-700 leading-relaxed">{message}</p>
+          </div>
+          <div className="bg-gray-50 px-6 py-4 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 font-medium"
+            >
+              OK
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
 
 const DoctorForm: React.FC<DoctorFormProps> = ({
   isOpen,
@@ -63,8 +163,133 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
   const [isAddingDepartment, setIsAddingDepartment] = useState(false);
   const [newDeptName, setNewDeptName] = useState('');
   const [isSubmittingDept, setIsSubmittingDept] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorDialogContent, setErrorDialogContent] = useState({ title: '', message: '' });
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   if (!isOpen) return null;
+
+  const validateForm = (): boolean => {
+    const errors: ValidationErrors = {};
+
+    // Name validation
+    if (!formData.name.trim()) {
+      errors.name = 'Full name is required';
+    } else if (formData.name.trim().length < 3) {
+      errors.name = 'Name must be at least 3 characters';
+    }
+
+    // Email validation
+    if (!formData.email.trim()) {
+      errors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    // Phone validation (optional)
+    if (formData.phone.trim() && !/^[+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,9}$/.test(formData.phone.replace(/\s/g, ''))) {
+      errors.phone = 'Please enter a valid phone number';
+    }
+
+    // Specialization validation
+    if (!formData.specialization) {
+      errors.specialization = 'Specialization is required';
+    }
+
+    // Qualification validation (optional)
+    // No validation required - qualification is optional
+
+    // Experience validation
+    if (formData.experienceYears < 0) {
+      errors.experienceYears = 'Experience cannot be negative';
+    }
+
+    // Consultation fee validation
+    if (formData.consultationFee < 0) {
+      errors.consultationFee = 'Consultation fee cannot be negative';
+    }
+
+    // Working days validation (optional)
+    // No validation required - working days are optional
+
+    // Available sessions validation (optional)
+    // No validation required - sessions are optional
+
+    // Session timing validation
+    for (const sessionKey of formData.availableSessions) {
+      const session = formData.sessions[sessionKey as keyof typeof formData.sessions];
+      if (session.startTime >= session.endTime) {
+        errors[`session_${sessionKey}`] = `${sessionKey} session: Start time must be before end time`;
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    // Clear previous errors
+    setValidationErrors({});
+
+    // Validate form
+    if (!validateForm()) {
+      setErrorDialogContent({
+        title: 'Validation Error',
+        message: 'Please fill in all required fields correctly before submitting.'
+      });
+      setShowErrorDialog(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit();
+      setSuccessMessage(isEditing ? 'Doctor updated successfully!' : 'Doctor created successfully!');
+      setShowSuccessDialog(true);
+      
+      // Close form after short delay
+      setTimeout(() => {
+        setShowSuccessDialog(false);
+        onClose();
+      }, 1500);
+    } catch (error: any) {
+      console.error('Error submitting doctor form:', error);
+      
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      let errorTitle = 'Error';
+
+      if (error.message) {
+        const msg = error.message.toLowerCase();
+        
+        if (msg.includes('email') && (msg.includes('already exists') || msg.includes('already registered') || msg.includes('duplicate'))) {
+          errorTitle = 'Email Already Exists';
+          errorMessage = `A doctor with the email "${formData.email}" already exists in the system. Please use a different email address or contact the administrator.`;
+        } else if (msg.includes('phone') && msg.includes('duplicate')) {
+          errorTitle = 'Phone Number Already Exists';
+          errorMessage = 'This phone number is already registered in the system. Please use a different phone number.';
+        } else if (msg.includes('license') && msg.includes('duplicate')) {
+          errorTitle = 'License Number Already Exists';
+          errorMessage = 'This license number is already registered. Please verify the license number.';
+        } else if (msg.includes('network') || msg.includes('fetch')) {
+          errorTitle = 'Network Error';
+          errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
+        } else if (msg.includes('permission') || msg.includes('unauthorized')) {
+          errorTitle = 'Permission Denied';
+          errorMessage = 'You do not have permission to perform this action. Please contact your administrator.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      setErrorDialogContent({ title: errorTitle, message: errorMessage });
+      setShowErrorDialog(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleAddDept = async () => {
     if (!newDeptName.trim() || !onAddDepartment) return;
@@ -75,12 +300,24 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
       setFormData({ ...formData, department: newDeptName.trim() });
       setNewDeptName('');
       setIsAddingDepartment(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding department:', error);
-      alert('Failed to add department. It might already exist.');
+      setErrorDialogContent({
+        title: 'Error Adding Department',
+        message: error.message || 'Failed to add department. It might already exist.'
+      });
+      setShowErrorDialog(true);
     } finally {
       setIsSubmittingDept(false);
     }
+  };
+
+  const getFieldError = (fieldName: string): string | undefined => {
+    return validationErrors[fieldName];
+  };
+
+  const hasFieldError = (fieldName: string): boolean => {
+    return !!validationErrors[fieldName];
   };
 
   return (
@@ -119,34 +356,95 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                      onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        if (hasFieldError('name')) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.name;
+                          setValidationErrors(newErrors);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                        hasFieldError('name')
+                          ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:ring-blue-300'
+                      }`}
                       placeholder="Dr. John Doe"
                     />
+                    {hasFieldError('name') && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle size={14} className="mr-1" />
+                        {getFieldError('name')}
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                      onChange={(e) => {
+                        setFormData({ ...formData, email: e.target.value });
+                        if (hasFieldError('email')) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.email;
+                          setValidationErrors(newErrors);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                        hasFieldError('email')
+                          ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:ring-blue-300'
+                      }`}
                       placeholder="doctor@hospital.com"
+                      disabled={isEditing}
                     />
+                    {hasFieldError('email') && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle size={14} className="mr-1" />
+                        {getFieldError('email')}
+                      </p>
+                    )}
+                    {isEditing && (
+                      <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
                     <input
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                      onChange={(e) => {
+                        setFormData({ ...formData, phone: e.target.value });
+                        if (hasFieldError('phone')) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.phone;
+                          setValidationErrors(newErrors);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                        hasFieldError('phone')
+                          ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:ring-blue-300'
+                      }`}
                       placeholder="+91 9876543210"
                     />
+                    {hasFieldError('phone') && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle size={14} className="mr-1" />
+                        {getFieldError('phone')}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">License Number</label>
@@ -179,7 +477,9 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Specialization *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Specialization <span className="text-red-500">*</span>
+                    </label>
                     <select
                       value={formData.specialization}
                       onChange={(e) => {
@@ -187,10 +487,19 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                         setFormData({
                           ...formData, 
                           specialization: selectedSpec,
-                          department: selectedSpec // Auto-fill department with same value
+                          department: selectedSpec
                         });
+                        if (hasFieldError('specialization')) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.specialization;
+                          setValidationErrors(newErrors);
+                        }
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                        hasFieldError('specialization')
+                          ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:ring-blue-300'
+                      }`}
                       required
                     >
                       <option value="">Select Specialization</option>
@@ -198,6 +507,12 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                         <option key={spec} value={spec}>{spec}</option>
                       ))}
                     </select>
+                    {hasFieldError('specialization') && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle size={14} className="mr-1" />
+                        {getFieldError('specialization')}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
@@ -269,14 +584,33 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Qualification</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Qualification
+                    </label>
                     <input
                       type="text"
                       value={formData.qualification}
-                      onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                      onChange={(e) => {
+                        setFormData({ ...formData, qualification: e.target.value });
+                        if (hasFieldError('qualification')) {
+                          const newErrors = { ...validationErrors };
+                          delete newErrors.qualification;
+                          setValidationErrors(newErrors);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                        hasFieldError('qualification')
+                          ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:ring-blue-300'
+                      }`}
                       placeholder="MD, Cardiology"
                     />
+                    {hasFieldError('qualification') && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle size={14} className="mr-1" />
+                        {getFieldError('qualification')}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Experience (Years)</label>
@@ -320,7 +654,9 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
 
                 {/* Session Selection */}
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Available Sessions</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Available Sessions
+                  </label>
                   <div className="grid grid-cols-3 gap-4">
                     {[
                       { key: 'morning', label: 'Morning', icon: '🌅', time: '9:00 AM - 12:00 PM' },
@@ -404,33 +740,15 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                           className="w-full px-3 py-2 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white/90 backdrop-blur-sm"
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Max Patients</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="30"
-                          value={formData.sessions[sessionKey as keyof typeof formData.sessions].maxPatients}
-                          onChange={(e) => setFormData({
-                            ...formData,
-                            sessions: {
-                              ...formData.sessions,
-                              [sessionKey]: {
-                                ...formData.sessions[sessionKey as keyof typeof formData.sessions],
-                                maxPatients: parseInt(e.target.value) || 1
-                              }
-                            }
-                          })}
-                          className="w-full px-3 py-2 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white/90 backdrop-blur-sm"
-                        />
-                      </div>
                     </div>
                   </div>
                 ))}
 
                 {/* Working Days */}
                 <div className="mt-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Working Days</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Working Days
+                  </label>
                   <div className="grid grid-cols-7 gap-2">
                     {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
                       <button
@@ -478,17 +796,50 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
               Cancel
             </button>
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 flex items-center"
-              onClick={onSubmit}
+              whileHover={{ scale: isSubmitting ? 1 : 1.05 }}
+              whileTap={{ scale: isSubmitting ? 1 : 0.95 }}
+              className={`px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 flex items-center ${
+                isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
             >
-              <Save size={16} className="mr-2" />
-              {isEditing ? 'Update Doctor' : 'Add Doctor'}
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {isEditing ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                <>
+                  <Save size={16} className="mr-2" />
+                  {isEditing ? 'Update Doctor' : 'Add Doctor'}
+                </>
+              )}
             </motion.button>
           </div>
         </motion.div>
       </div>
+
+      {/* Error Dialog */}
+      <ErrorDialog
+        show={showErrorDialog}
+        title={errorDialogContent.title}
+        message={errorDialogContent.message}
+        onClose={() => setShowErrorDialog(false)}
+      />
+
+      {/* Success Dialog */}
+      <SuccessDialog
+        show={showSuccessDialog}
+        message={successMessage}
+        onClose={() => {
+          setShowSuccessDialog(false);
+          onClose();
+        }}
+      />
     </motion.div>
   );
 };

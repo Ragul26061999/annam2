@@ -4,7 +4,6 @@ import { supabase } from './supabase';
 export interface SessionTiming {
   startTime: string;
   endTime: string;
-  maxPatients: number;
 }
 
 export interface DoctorRegistrationData {
@@ -78,60 +77,38 @@ export interface Doctor {
 
 /**
  * Generate a unique doctor ID
- * Format: DR{Year}{Month}{Sequential}
- * Example: DR2025010001
+ * Uses timestamp + random suffix to prevent race conditions
+ * Format: DR{Year}{Month}{Day}{Timestamp}{Random}
+ * Example: DR26011012345678
  */
 export async function generateDoctorId(): Promise<string> {
   const now = new Date();
   const year = now.getFullYear().toString().slice(-2);
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0'); // Random 2 digits
 
-  try {
-    // Get count of existing doctors for this month
-    const { count, error } = await supabase
-      .from('doctors')
-      .select('id', { count: 'exact', head: true })
-      .like('license_number', `DR${year}${month}%`);
-
-    if (error) {
-      console.error('Error getting doctor count:', error);
-      throw new Error('Failed to generate doctor ID');
-    }
-
-    const sequence = ((count || 0) + 1).toString().padStart(4, '0');
-    return `DR${year}${month}${sequence}`;
-  } catch (error) {
-    console.error('Error generating doctor ID:', error);
-    throw error;
-  }
+  // Format: DR + Year(2) + Month(2) + Day(2) + Timestamp(6) + Random(2)
+  // Example: DR2601101234567890
+  return `DR${year}${month}${day}${timestamp}${random}`;
 }
 
 /**
  * Generate a unique employee ID to avoid conflicts
+ * Uses timestamp + random suffix to prevent race conditions
  */
 export async function generateEmployeeId(): Promise<string> {
   const now = new Date();
   const year = now.getFullYear().toString().slice(-2);
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0'); // Random 2 digits
 
-  try {
-    // Get count of existing users for this month
-    const { count, error } = await supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .like('employee_id', `EMP${year}${month}%`);
-
-    if (error) {
-      console.error('Error getting employee count:', error);
-      throw new Error('Failed to generate employee ID');
-    }
-
-    const sequence = ((count || 0) + 1).toString().padStart(4, '0');
-    return `EMP${year}${month}${sequence}`;
-  } catch (error) {
-    console.error('Error generating employee ID:', error);
-    throw error;
-  }
+  // Format: EMP + Year(2) + Month(2) + Day(2) + Timestamp(6) + Random(2)
+  // Example: EMP2601101234567890
+  return `EMP${year}${month}${day}${timestamp}${random}`;
 }
 
 /**
@@ -159,7 +136,18 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
     let user = null;
 
     if (existingUser) {
-      // User already exists, use existing auth_id
+      // User already exists - check if they're already a doctor
+      const { data: existingDoctor, error: doctorCheckError } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('user_id', existingUser.id)
+        .maybeSingle();
+
+      if (existingDoctor) {
+        throw new Error(`A doctor with email ${doctorData.email} already exists in the system. Please use a different email address.`);
+      }
+
+      // User exists but not as a doctor, we can reuse the user record
       console.log('User already exists, using existing record');
       authUserId = existingUser.auth_id;
       user = existingUser;
@@ -232,6 +220,17 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
         if (userError) {
           console.error('Error creating user record:', userError);
+          
+          // Check for duplicate email constraint violation
+          if (userError.message.includes('duplicate') && userError.message.includes('email')) {
+            throw new Error(`A user with email ${doctorData.email} already exists in the system. Please use a different email address.`);
+          }
+          
+          // Check for duplicate phone constraint violation
+          if (userError.message.includes('duplicate') && userError.message.includes('phone')) {
+            throw new Error(`A user with phone number ${doctorData.phone} already exists in the system. Please use a different phone number.`);
+          }
+          
           throw new Error(`Failed to create user record: ${userError.message}`);
         }
 
@@ -281,6 +280,17 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
     if (doctorError) {
       console.error('Error creating doctor record:', doctorError);
+      
+      // Check for duplicate license number constraint violation
+      if (doctorError.message.includes('duplicate') && doctorError.message.includes('license')) {
+        throw new Error(`A doctor with this license number already exists. Please verify the license number.`);
+      }
+      
+      // Check for foreign key constraint violation
+      if (doctorError.message.includes('foreign key') || doctorError.message.includes('violates')) {
+        throw new Error(`Invalid user reference. Please try again or contact support.`);
+      }
+      
       throw new Error(`Failed to create doctor record: ${doctorError.message}`);
     }
 
@@ -723,9 +733,9 @@ export async function getDoctorAvailableSlots(
     // Generate available slots based on doctor's availability_hours
     const availabilityHours = doctor.availability_hours || {
       sessions: {
-        morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
-        afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 10 },
-        evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
+        morning: { startTime: '09:00', endTime: '12:00' },
+        afternoon: { startTime: '14:00', endTime: '17:00' },
+        evening: { startTime: '18:00', endTime: '21:00' }
       },
       availableSessions: ['morning', 'afternoon', 'evening']
     };
@@ -743,14 +753,12 @@ export async function getDoctorAvailableSlots(
 
       const startTime = sessionConfig.startTime;
       const endTime = sessionConfig.endTime;
-      const maxPatients = sessionConfig.maxPatients;
 
       const sessionSlots = generateTimeSlots(startTime, endTime, 30); // 30-minute intervals
 
-      // Filter out booked slots and limit by maxPatients
+      // Filter out booked slots
       const availableSlots = sessionSlots
-        .filter(slot => !bookedSlots.has(slot))
-        .slice(0, maxPatients);
+        .filter(slot => !bookedSlots.has(slot));
 
       slots[session as keyof typeof slots] = availableSlots;
     }

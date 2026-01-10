@@ -200,8 +200,7 @@ const getSessionTimings = (doctor: Doctor) => {
       if (session) {
         return {
           name: sessionName.charAt(0).toUpperCase() + sessionName.slice(1),
-          time: `${session.startTime || '00:00'} - ${session.endTime || '00:00'}`,
-          maxPatients: session.maxPatients || 0
+          time: `${session.startTime || '00:00'} - ${session.endTime || '00:00'}`
         };
       }
       return null;
@@ -249,9 +248,9 @@ export default function DoctorsPage() {
     floorNumber: 1,
     emergencyAvailable: false,
     sessions: {
-      morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
-      afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 10 },
-      evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
+      morning: { startTime: '09:00', endTime: '12:00' },
+      afternoon: { startTime: '14:00', endTime: '17:00' },
+      evening: { startTime: '18:00', endTime: '21:00' }
     },
     availableSessions: []
   });
@@ -416,9 +415,9 @@ export default function DoctorsPage() {
       floorNumber: 1,
       emergencyAvailable: false,
       sessions: {
-        morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
-        afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 10 },
-        evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
+        morning: { startTime: '09:00', endTime: '12:00' },
+        afternoon: { startTime: '14:00', endTime: '17:00' },
+        evening: { startTime: '18:00', endTime: '21:00' }
       },
       availableSessions: []
     });
@@ -443,9 +442,9 @@ export default function DoctorsPage() {
 
     // Parse availability_hours to get sessions and available sessions
     let sessions = {
-      morning: { startTime: '09:00', endTime: '12:00', maxPatients: 10 },
-      afternoon: { startTime: '14:00', endTime: '17:00', maxPatients: 10 },
-      evening: { startTime: '18:00', endTime: '21:00', maxPatients: 8 }
+      morning: { startTime: '09:00', endTime: '12:00' },
+      afternoon: { startTime: '14:00', endTime: '17:00' },
+      evening: { startTime: '18:00', endTime: '21:00' }
     };
     let availableSessions: string[] = [];
 
@@ -672,10 +671,9 @@ export default function DoctorsPage() {
                   {getSessionTimings(doctor).length > 0 && (
                     <div className="text-xs text-gray-600">
                       <p className="font-medium mb-1">Sessions:</p>
-                      {getSessionTimings(doctor).map((session: { name: string; time: string; maxPatients: number }, index: number) => (
+                      {getSessionTimings(doctor).map((session: { name: string; time: string }, index: number) => (
                         <div key={index} className="flex justify-between items-center">
                           <span>{session.name}: {session.time}</span>
-                          <span className="text-gray-500">({session.maxPatients} max)</span>
                         </div>
                       ))}
                     </div>
