@@ -1344,6 +1344,32 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
 }
 
 // =====================================================
+// PRESCRIPTION COUNT UTILITIES
+// =====================================================
+
+export async function getPendingPrescriptionCount(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('prescriptions')
+      .select('id')
+      .eq('status', 'active')
+      .in('id', (
+        await supabase
+          .from('prescription_items')
+          .select('prescription_id')
+          .eq('status', 'pending')
+      ).data?.map((r: any) => r.prescription_id) || [])
+      ;
+
+    if (error) throw error;
+    return data?.length || 0;
+  } catch (err) {
+    console.error('Error fetching pending prescription count:', err);
+    return 0;
+  }
+}
+
+// =====================================================
 // BATCH PURCHASE HISTORY (by batch_number)
 // =====================================================
 

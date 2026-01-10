@@ -31,7 +31,8 @@ import {
   getMedicationStockRobust,
   getBatchStockRobust,
   getComprehensiveMedicineData,
-  getInventoryAnalytics
+  getInventoryAnalytics,
+  getPendingPrescriptionCount
 } from '@/src/lib/pharmacyService'
 import MedicineEntryForm from '@/src/components/MedicineEntryForm'
 import { supabase } from '@/src/lib/supabase'
@@ -101,6 +102,9 @@ export default function PharmacyPage() {
   const [inventoryAnalytics, setInventoryAnalytics] = useState<any | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
+  // Pending prescription count for badge
+  const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0)
+
   // Interactive modals state
   const [showExpiryModal, setShowExpiryModal] = useState(false)
   const [showStockAlertsModal, setShowStockAlertsModal] = useState(false)
@@ -111,6 +115,7 @@ export default function PharmacyPage() {
   useEffect(() => {
     loadData()
     loadAnalytics()
+    loadPendingPrescriptionCount()
   }, [])
 
   useEffect(() => {
@@ -119,6 +124,16 @@ export default function PharmacyPage() {
     const interval = setInterval(() => {
       loadData()
       loadAnalytics()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'prescribed') return
+
+    const interval = setInterval(() => {
+      loadPendingPrescriptionCount()
     }, 30000)
 
     return () => clearInterval(interval)
@@ -133,6 +148,15 @@ export default function PharmacyPage() {
       console.error('Error loading analytics:', error)
     } finally {
       setAnalyticsLoading(false)
+    }
+  }
+
+  const loadPendingPrescriptionCount = async () => {
+    try {
+      const count = await getPendingPrescriptionCount()
+      setPendingPrescriptionCount(count)
+    } catch (error) {
+      console.error('Error loading pending prescription count:', error)
     }
   }
 
@@ -631,58 +655,83 @@ export default function PharmacyPage() {
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <div className="flex items-center justify-between">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              <BarChart3 className="w-4 h-4 inline mr-2" />
+              Dashboard
+            </button>
+            <button
+              onClick={() => router.push('/pharmacy/prescribed')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === 'prescribed'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              <FileText className="w-4 h-4" />
+              Prescribed List
+              {pendingPrescriptionCount > 0 && (
+                <span className="inline-flex items-center rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">
+                  {pendingPrescriptionCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('newbilling')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'newbilling'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              <Receipt className="w-4 h-4 inline mr-2" />
+              New Billing
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'inventory'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              <Package className="w-4 h-4 inline mr-2" />
+              Inventory
+            </button>
+            <button
+              onClick={() => setActiveTab('billing')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'billing'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              <IndianRupee className="w-4 h-4 inline mr-2" />
+              Billing History
+            </button>
+          </nav>
           <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+            onClick={() => {
+              if (activeTab === 'dashboard') {
+                loadData()
+                loadAnalytics()
+              } else if (activeTab === 'prescribed') {
+                loadPendingPrescriptionCount()
+              } else {
+                // For other tabs, you can add specific refresh logic if needed
+                loadPendingPrescriptionCount()
+              }
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Refresh current tab data"
           >
-            <BarChart3 className="w-4 h-4 inline mr-2" />
-            Dashboard
+            <RefreshCw className="w-4 h-4" />
+            Refresh
           </button>
-          <button
-            onClick={() => router.push('/pharmacy/prescribed')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'prescribed'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            <FileText className="w-4 h-4 inline mr-2" />
-            Prescribed List
-          </button>
-          <button
-            onClick={() => setActiveTab('newbilling')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'newbilling'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            <Receipt className="w-4 h-4 inline mr-2" />
-            New Billing
-          </button>
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'inventory'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            <Package className="w-4 h-4 inline mr-2" />
-            Inventory
-          </button>
-          <button
-            onClick={() => setActiveTab('billing')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'billing'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            <IndianRupee className="w-4 h-4 inline mr-2" />
-            Billing History
-          </button>
-        </nav>
+        </div>
       </div>
 
       {/* Tab Content */}
