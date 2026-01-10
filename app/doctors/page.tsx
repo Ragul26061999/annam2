@@ -425,7 +425,7 @@ export default function DoctorsPage() {
   };
 
   const handleDeleteDoctor = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete doctor "${name}"? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to deactivate doctor "${name}"? The doctor will be hidden from lists and cannot be scheduled, but existing patient records will remain intact.`)) {
       return;
     }
 
@@ -434,7 +434,7 @@ export default function DoctorsPage() {
       loadDoctors();
     } catch (error) {
       console.error('Error deleting doctor:', error);
-      alert('Failed to delete doctor. Please try again.');
+      alert('Failed to deactivate doctor. Please try again.');
     }
   };
 

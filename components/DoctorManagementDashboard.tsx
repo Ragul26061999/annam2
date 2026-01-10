@@ -248,7 +248,7 @@ const DoctorManagementDashboard: React.FC = () => {
   };
 
   const handleDeleteDoctor = async (doctorId: string) => {
-    if (!window.confirm('Are you sure you want to delete this doctor? This action cannot be undone and will permanently remove the doctor and associated records from the system.')) {
+    if (!window.confirm('Are you sure you want to deactivate this doctor? The doctor will be hidden from lists and cannot be scheduled, but existing patient records will remain intact.')) {
       return;
     }
 
@@ -257,7 +257,7 @@ const DoctorManagementDashboard: React.FC = () => {
       await loadDoctors();
     } catch (error) {
       console.error('Error deleting doctor:', error);
-      alert('Failed to delete doctor. Please try again.');
+      alert('Failed to deactivate doctor. Please try again.');
     }
   };
 

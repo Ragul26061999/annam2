@@ -849,6 +849,27 @@ export async function updateBed(bedId: string, bedData: {
   status?: string;
 }): Promise<Bed> {
   try {
+    if (bedData.bed_number) {
+      const bedNumber = bedData.bed_number.trim();
+      const { data: existingBed, error: existingBedError } = await supabase
+        .from('beds')
+        .select('id')
+        .eq('bed_number', bedNumber)
+        .neq('id', bedId)
+        .maybeSingle();
+
+      if (existingBedError) {
+        console.error('Error checking bed number uniqueness:', existingBedError);
+        throw new Error(`Failed to validate bed number: ${existingBedError.message}`);
+      }
+
+      if (existingBed) {
+        throw new Error('Bed number already exists. Please use a different bed number.');
+      }
+
+      bedData = { ...bedData, bed_number: bedNumber };
+    }
+
     const { data, error } = await supabase
       .from('beds')
       .update({
@@ -861,6 +882,9 @@ export async function updateBed(bedId: string, bedData: {
 
     if (error) {
       console.error('Error updating bed:', error);
+      if (error.code === '23505' || (typeof error.message === 'string' && error.message.includes('beds_bed_number_key'))) {
+        throw new Error('Bed number already exists. Please use a different bed number.');
+      }
       throw new Error(`Failed to update bed: ${error.message}`);
     }
 
@@ -884,10 +908,26 @@ export async function createBed(bedData: {
   features?: string[];
 }): Promise<Bed> {
   try {
+    const bedNumber = bedData.bed_number.trim();
+    const { data: existingBed, error: existingBedError } = await supabase
+      .from('beds')
+      .select('id')
+      .eq('bed_number', bedNumber)
+      .maybeSingle();
+
+    if (existingBedError) {
+      console.error('Error checking bed number uniqueness:', existingBedError);
+      throw new Error(`Failed to validate bed number: ${existingBedError.message}`);
+    }
+
+    if (existingBed) {
+      throw new Error('Bed number already exists. Please use a different bed number.');
+    }
+
     const { data, error } = await supabase
       .from('beds')
       .insert([{
-        bed_number: bedData.bed_number,
+        bed_number: bedNumber,
         room_number: bedData.room_number,
         floor_number: bedData.floor_number,
         bed_type: bedData.bed_type,
@@ -901,6 +941,9 @@ export async function createBed(bedData: {
 
     if (error) {
       console.error('Error creating bed:', error);
+      if (error.code === '23505' || (typeof error.message === 'string' && error.message.includes('beds_bed_number_key'))) {
+        throw new Error('Bed number already exists. Please use a different bed number.');
+      }
       throw new Error(`Failed to create bed: ${error.message}`);
     }
 

@@ -722,6 +722,8 @@ export async function registerNewPatient(
         const { data: doctors } = await supabase
           .from('doctors')
           .select('id')
+          .eq('status', 'active')
+          .is('deleted_at', null)
           .limit(1);
 
         const now = new Date();

@@ -320,6 +320,9 @@ export async function getAllDoctors(options: {
         user:users(id, name, email, phone, address)
       `, { count: 'exact' });
 
+    // Exclude soft-deleted doctors
+    query = query.is('deleted_at', null);
+
     // Apply filters for regular doctors
     if (specialization) {
       query = query.eq('specialization', specialization);
@@ -405,6 +408,7 @@ export async function getAllDoctorsSimple(): Promise<Doctor[]> {
         )
       `)
       .eq('status', 'active')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -595,6 +599,7 @@ export async function getDoctorsBySpecialization(specialization: string): Promis
       `)
       .eq('specialization', specialization)
       .eq('status', 'active')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false }); // Changed from user.name since it might cause issues
 
     if (error) {
@@ -640,6 +645,8 @@ export async function getAvailableDoctors(
       `)
       .eq('availability_status', 'available')
       .eq('status', 'active');
+
+    query = query.is('deleted_at', null);
 
     if (specialization) {
       query = query.eq('specialization', specialization);
@@ -1089,10 +1096,10 @@ export async function deleteDoctor(doctorId: string): Promise<void> {
       throw new Error(`Failed to fetch doctor: ${fetchError.message}`);
     }
 
-    // Delete the doctor record
+    // Soft delete the doctor record to avoid breaking foreign key references from patients
     const { error: doctorError } = await supabase
       .from('doctors')
-      .delete()
+      .update({ deleted_at: new Date().toISOString(), status: 'inactive' })
       .eq('id', doctorId);
 
     if (doctorError) {
@@ -1100,11 +1107,11 @@ export async function deleteDoctor(doctorId: string): Promise<void> {
       throw new Error(`Failed to delete doctor: ${doctorError.message}`);
     }
 
-    // Delete the associated user record
+    // Deactivate the associated user record (do not hard delete)
     if (doctor.user_id) {
       const { error: userError } = await supabase
         .from('users')
-        .delete()
+        .update({ status: 'inactive' })
         .eq('id', doctor.user_id);
 
       if (userError) {
