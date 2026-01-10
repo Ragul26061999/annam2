@@ -116,6 +116,42 @@ export async function generateEmployeeId(): Promise<string> {
  */
 export async function createDoctor(doctorData: DoctorRegistrationData): Promise<Doctor> {
   try {
+    const normalizeEmailBase = (name: string) => {
+      const first = (name || '').trim().split(/\s+/)[0] || 'doctor';
+      const base = first.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return base || 'doctor';
+    };
+
+    const generateUniqueEmail = async (name: string) => {
+      const base = normalizeEmailBase(name);
+      const domain = 'annam.com';
+      const { data, error } = await supabase
+        .from('users')
+        .select('email')
+        .ilike('email', `${base}%@${domain}`)
+        .limit(200);
+
+      if (error) {
+        console.error('Error checking existing emails:', error);
+      }
+
+      const used = (data || []).map((r: any) => String(r.email || '').toLowerCase());
+      let maxSuffix = 0;
+      for (const e of used) {
+        const m = e.match(new RegExp(`^${base}(\\d{4})@${domain.replace('.', '\\.')}$`));
+        if (!m) continue;
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > maxSuffix) maxSuffix = n;
+      }
+
+      const next = (maxSuffix + 1).toString().padStart(4, '0');
+      return `${base}${next}@${domain}`;
+    };
+
+    const emailToUse = doctorData.email?.trim()
+      ? doctorData.email.trim()
+      : await generateUniqueEmail(doctorData.name);
+
     // Generate unique IDs
     const uniqueDoctorId = await generateDoctorId();
     const uniqueEmployeeId = await generateEmployeeId();
@@ -124,7 +160,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
     const { data: existingUser, error: checkError } = await supabase
       .from('users')
       .select('id, email, auth_id')
-      .eq('email', doctorData.email)
+      .eq('email', emailToUse)
       .maybeSingle();
 
     if (checkError) {
@@ -144,7 +180,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
         .maybeSingle();
 
       if (existingDoctor) {
-        throw new Error(`A doctor with email ${doctorData.email} already exists in the system. Please use a different email address.`);
+        throw new Error(`A doctor with email ${emailToUse} already exists in the system. Please use a different email address.`);
       }
 
       // User exists but not as a doctor, we can reuse the user record
@@ -154,7 +190,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
     } else {
       // Try to create new auth user
       const { data: authUser, error: authError } = await supabase.auth.signUp({
-        email: doctorData.email,
+        email: emailToUse,
         password: 'Doctor@123', // Default password, should be changed on first login
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
@@ -173,7 +209,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
           
           // Try to sign in to get the existing auth user ID
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: doctorData.email,
+            email: emailToUse,
             password: 'Doctor@123'
           });
           
@@ -183,7 +219,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
           } else {
             // If we can't sign in, we need to handle this differently
             // For now, we'll throw an error with a more helpful message
-            throw new Error(`Doctor with email ${doctorData.email} already exists in the system. Please use a different email or contact the administrator to reset the password.`);
+            throw new Error(`Doctor with email ${emailToUse} already exists in the system. Please use a different email or contact the administrator to reset the password.`);
           }
         } else {
           console.error('Error creating doctor auth user:', authError);
@@ -199,7 +235,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
           auth_id: authUserId,
           employee_id: uniqueEmployeeId,
           name: doctorData.name,
-          email: doctorData.email,
+          email: emailToUse,
           phone: doctorData.phone,
           address: doctorData.address,
           role: 'doctor',
@@ -223,7 +259,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
           
           // Check for duplicate email constraint violation
           if (userError.message.includes('duplicate') && userError.message.includes('email')) {
-            throw new Error(`A user with email ${doctorData.email} already exists in the system. Please use a different email address.`);
+            throw new Error(`A user with email ${emailToUse} already exists in the system. Please use a different email address.`);
           }
           
           // Check for duplicate phone constraint violation
