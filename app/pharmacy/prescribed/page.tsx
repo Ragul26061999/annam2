@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Search, Plus, FileText, User, Calendar, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 
 interface Prescription {
@@ -32,27 +33,16 @@ interface PrescriptionItem {
   status: 'pending' | 'dispensed' | 'cancelled'
 }
 
-interface Medicine {
-  id: string
-  name: string
-  category: string
-  available_stock: number
-  selling_price: number
-}
-
 export default function PrescribedListPage() {
+  const router = useRouter()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
-  const [medicines, setMedicines] = useState<Medicine[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null)
-  const [showDispenseModal, setShowDispenseModal] = useState(false)
 
   useEffect(() => {
     loadPrescriptions()
-    loadMedicines()
   }, [])
 
   const loadPrescriptions = async () => {
@@ -136,28 +126,6 @@ export default function PrescribedListPage() {
     }
   }
 
-  const loadMedicines = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('medications')
-        .select('id, name, category, available_stock, selling_price')
-        .eq('is_active', true)
-        .gt('available_stock', 0)
-
-      if (error) throw error
-      
-      setMedicines((data || []).map((med: any) => ({
-        id: med.id,
-        name: med.name,
-        category: med.category || 'General',
-        available_stock: med.available_stock || 0,
-        selling_price: med.selling_price || 0
-      })))
-    } catch (err) {
-      console.error('Failed to load medicines:', err)
-    }
-  }
-
   const filteredPrescriptions = prescriptions.filter(prescription => {
     const matchesSearch = prescription.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          prescription.doctor_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -191,9 +159,37 @@ export default function PrescribedListPage() {
     }
   }
 
-  const handleDispense = (prescription: Prescription) => {
-    setSelectedPrescription(prescription)
-    setShowDispenseModal(true)
+  const handleCreateBill = (prescription: Prescription) => {
+    router.push(`/pharmacy/newbilling?prescriptionId=${encodeURIComponent(prescription.id)}`)
+  }
+
+  const handleDeletePrescription = async (prescription: Prescription) => {
+    const ok = window.confirm(`Delete prescription ${prescription.prescription_id} for ${prescription.patient_name}?`)
+    if (!ok) return
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const { error: itemsError } = await supabase
+        .from('prescription_items')
+        .delete()
+        .eq('prescription_id', prescription.id)
+      if (itemsError) throw itemsError
+
+      const { error: prescError } = await supabase
+        .from('prescriptions')
+        .delete()
+        .eq('id', prescription.id)
+      if (prescError) throw prescError
+
+      await loadPrescriptions()
+    } catch (err: any) {
+      console.error('Error deleting prescription - Details:', JSON.stringify(err, null, 2))
+      setError(err?.message || 'Failed to delete prescription')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) {
@@ -285,15 +281,19 @@ export default function PrescribedListPage() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleDispense(prescription)}
-                    className="btn-primary text-sm"
+                    onClick={() => handleCreateBill(prescription)}
+                    className="btn-primary text-sm flex items-center gap-2"
                     disabled={prescription.status !== 'active' || !prescription.items.some(i => i.status === 'pending')}
                   >
-                    {prescription.status !== 'active'
-                      ? 'Not Active'
-                      : !prescription.items.some(i => i.status === 'pending')
-                        ? 'No Pending'
-                        : 'Dispense'}
+                    <Receipt className="w-4 h-4" />
+                    Create Bill
+                  </button>
+                  <button
+                    onClick={() => handleDeletePrescription(prescription)}
+                    className="btn-secondary text-sm flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
                   </button>
                 </div>
               </div>
@@ -327,35 +327,6 @@ export default function PrescribedListPage() {
           ))
         )}
       </div>
-
-      {/* Dispense Modal - Placeholder */}
-      {showDispenseModal && selectedPrescription && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
-            <h2 className="text-xl font-bold mb-4">Dispense Medicines</h2>
-            <p className="text-gray-600 mb-4">
-              Dispensing medicines for {selectedPrescription.patient_name}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowDispenseModal(false)}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  // Handle dispensing logic here
-                  setShowDispenseModal(false)
-                }}
-                className="btn-primary"
-              >
-                Dispense
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

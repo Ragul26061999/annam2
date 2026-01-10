@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase';
 import {
   Search,
@@ -75,7 +76,9 @@ interface Payment {
   reference?: string;
 }
 
-export default function NewBillingPage() {
+function NewBillingPageInner() {
+  const searchParams = useSearchParams();
+  const prescriptionIdFromUrl = searchParams?.get('prescriptionId') || null;
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [billItems, setBillItems] = useState<BillItem[]>([]);
@@ -197,6 +200,8 @@ export default function NewBillingPage() {
   const [patientSearch, setPatientSearch] = useState('');
   const [patientResults, setPatientResults] = useState<any[]>([]);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const [linkedPrescriptionId, setLinkedPrescriptionId] = useState<string | null>(null);
+  const [linkedPrescriptionItems, setLinkedPrescriptionItems] = useState<Array<{ prescription_item_id: string; medication_id: string; quantity: number; dispensed_quantity: number }>>([]);
   // Hospital details for receipt (persisted)
   const [hospitalDetails, setHospitalDetails] = useState({
     name: 'ANNAM PHARMACY',
@@ -363,6 +368,106 @@ export default function NewBillingPage() {
   useEffect(() => {
     loadMedicines();
   }, []);
+
+  useEffect(() => {
+    const loadFromPrescription = async () => {
+      if (!prescriptionIdFromUrl) return;
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data, error } = await supabase
+          .from('prescriptions')
+          .select(`
+            id,
+            patient_id,
+            status,
+            patient:patients(id, patient_id, name, phone),
+            prescription_items(
+              id,
+              medication_id,
+              quantity,
+              dispensed_quantity,
+              status
+            )
+          `)
+          .eq('id', prescriptionIdFromUrl)
+          .single();
+
+        if (error) throw error;
+
+        setLinkedPrescriptionId(data.id);
+        setLinkedPrescriptionItems((data.prescription_items || []).map((it: any) => ({
+          prescription_item_id: it.id,
+          medication_id: it.medication_id,
+          quantity: Number(it.quantity) || 0,
+          dispensed_quantity: Number(it.dispensed_quantity) || 0
+        })));
+
+        const patientRow = Array.isArray((data as any).patient)
+          ? ((data as any).patient[0] || null)
+          : ((data as any).patient || null);
+
+        const patientName = patientRow?.name || '';
+        const patientPhone = patientRow?.phone || '';
+        const patientUhid = patientRow?.patient_id || '';
+
+        setCustomer({
+          type: 'patient',
+          name: patientName,
+          phone: patientPhone,
+          patient_id: data.patient_id
+        });
+        setPatientSearch(patientUhid && patientName ? `${patientName} · ${patientUhid}` : patientName);
+
+        const pendingItems = (data.prescription_items || []).filter((it: any) => (it.status || 'pending') === 'pending');
+        if (pendingItems.length === 0) return;
+
+        const bestBatchForMedicine = (m: Medicine): MedicineBatch | null => {
+          const batches = Array.isArray(m.batches) ? m.batches : [];
+          const viable = batches
+            .filter(b => (Number(b.current_quantity) || 0) > 0)
+            .filter(b => {
+              const exp = new Date(b.expiry_date);
+              return !Number.isNaN(exp.getTime()) && exp >= new Date();
+            })
+            .sort((a, b) => {
+              const ea = new Date(a.expiry_date).getTime();
+              const eb = new Date(b.expiry_date).getTime();
+              return eb - ea;
+            });
+          return viable[0] || null;
+        };
+
+        const initialBillItems: BillItem[] = [];
+        for (const it of pendingItems) {
+          const medicine = medicines.find(m => m.id === it.medication_id);
+          if (!medicine) continue;
+          const batch = bestBatchForMedicine(medicine);
+          if (!batch) continue;
+          const remainingQty = Math.max((Number(it.quantity) || 0) - (Number(it.dispensed_quantity) || 0), 0);
+          const qty = remainingQty > 0 ? remainingQty : (Number(it.quantity) || 1);
+          if (qty <= 0) continue;
+          if (qty > batch.current_quantity) continue;
+          initialBillItems.push({
+            medicine,
+            batch,
+            quantity: qty,
+            total: qty * batch.selling_price
+          });
+        }
+
+        if (initialBillItems.length > 0) setBillItems(initialBillItems);
+      } catch (e: any) {
+        console.error('Error preloading from prescription - Details:', JSON.stringify(e, null, 2));
+        setError(e?.message || 'Failed to load prescription for billing');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFromPrescription();
+  }, [prescriptionIdFromUrl, medicines]);
 
   // Load hospital details from Supabase (fallback to localStorage)
   useEffect(() => {
@@ -702,6 +807,46 @@ export default function NewBillingPage() {
       setShowBillSuccess(true);
       setShowPaymentModal(false);
 
+      if (linkedPrescriptionId) {
+        try {
+          // Mark prescription items dispensed based on billed medicines
+          for (const bi of billItems) {
+            const matched = linkedPrescriptionItems.find(li => li.medication_id === bi.medicine.id);
+            if (!matched) continue;
+
+            const nextDispensedQty = Math.min(
+              Number(matched.quantity) || 0,
+              (Number(matched.dispensed_quantity) || 0) + (Number(bi.quantity) || 0)
+            );
+            const { error: itemUpdErr } = await supabase
+              .from('prescription_items')
+              .update({
+                status: 'dispensed',
+                dispensed_quantity: nextDispensedQty
+              })
+              .eq('id', matched.prescription_item_id);
+            if (itemUpdErr) throw itemUpdErr;
+          }
+
+          // If all items are dispensed, update prescription header
+          const { data: remaining, error: remErr } = await supabase
+            .from('prescription_items')
+            .select('id, status')
+            .eq('prescription_id', linkedPrescriptionId);
+          if (remErr) throw remErr;
+          const allDispensed = (remaining || []).length > 0 && (remaining || []).every((r: any) => r.status === 'dispensed');
+          if (allDispensed) {
+            const { error: prescUpdErr } = await supabase
+              .from('prescriptions')
+              .update({ status: 'dispensed' })
+              .eq('id', linkedPrescriptionId);
+            if (prescUpdErr) throw prescUpdErr;
+          }
+        } catch (statusErr: any) {
+          console.error('Failed to update prescription status after billing - Details:', JSON.stringify(statusErr, null, 2));
+        }
+      }
+
       // Reset form
       setBillItems([]);
       setCustomer({ type: 'walk_in', name: '', phone: '' });
@@ -834,8 +979,8 @@ export default function NewBillingPage() {
                     }}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="walk_in">Out Patient</option>
-                    <option value="patient">In Patient</option>
+                    <option value="patient">Patient</option>
+                    <option value="walk_in">Walk-in</option>
                   </select>
                 </div>
                 {customer.type === 'patient' ? (
@@ -1894,5 +2039,13 @@ export default function NewBillingPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function NewBillingPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewBillingPageInner />
+    </Suspense>
   );
 }
