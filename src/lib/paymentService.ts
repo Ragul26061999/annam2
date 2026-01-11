@@ -38,6 +38,12 @@ export async function recordBillingPayment(paymentData: PaymentData) {
     }
     console.log('User authenticated:', user.id);
 
+    // For non-inpatient bills, use other_bill_payments table instead
+    if (paymentData.source !== 'billing') {
+      console.log('Non-inpatient bill, using recordOtherBillPayment instead');
+      return await recordOtherBillPayment(paymentData);
+    }
+
     // Record each payment split
     const paymentRecords = [];
     
@@ -48,6 +54,11 @@ export async function recordBillingPayment(paymentData: PaymentData) {
       const patientId = paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null;
       
       console.log('Mapped IDs - bed_allocation_id:', bedAllocationId, 'patient_id:', patientId);
+      
+      // For inpatient billing, bed_allocation_id is required
+      if (!bedAllocationId) {
+        throw new Error(`No bed allocation found for inpatient bill ${paymentData.billId}. Payment recording failed.`);
+      }
       
       const paymentRecord = {
         bed_allocation_id: bedAllocationId,
@@ -219,41 +230,49 @@ async function getPatientIdFromId(patientId: string): Promise<string | null> {
  */
 async function updateBillingPaymentStatus(billId: string, paymentAmount: number, source: string) {
   try {
-    // Get current billing record
-    const { data: currentBill } = await supabase
-      .from('billing')
-      .select('total_amount, amount_paid')
-      .eq('id', billId)
-      .single();
+    console.log('Updating billing status for billId:', billId, 'amount:', paymentAmount, 'source:', source);
     
-    if (!currentBill) {
-      console.warn('Billing record not found:', billId);
-      return;
-    }
+    if (source === 'billing') {
+      // Update main billing table
+      const { data: currentBill } = await supabase
+        .from('billing')
+        .select('total_amount, amount_paid')
+        .eq('id', billId)
+        .single();
+      
+      if (!currentBill) {
+        console.warn('Billing record not found:', billId);
+        return;
+      }
 
-    const newPaidAmount = (currentBill.amount_paid || 0) + paymentAmount;
-    const remainingAmount = currentBill.total_amount - newPaidAmount;
-    
-    let paymentStatus = 'partial';
-    if (remainingAmount <= 0) {
-      paymentStatus = 'paid';
-    } else if (newPaidAmount === 0) {
-      paymentStatus = 'pending';
-    }
+      const newPaidAmount = (currentBill.amount_paid || 0) + paymentAmount;
+      const remainingAmount = currentBill.total_amount - newPaidAmount;
+      
+      let paymentStatus = 'partial';
+      if (remainingAmount <= 0) {
+        paymentStatus = 'paid';
+      } else if (newPaidAmount === 0) {
+        paymentStatus = 'pending';
+      }
 
-    // Update billing record
-    const { error } = await supabase
-      .from('billing')
-      .update({
-        amount_paid: newPaidAmount,
-        payment_status: paymentStatus,
-        payment_date: new Date().toISOString()
-      })
-      .eq('id', billId);
+      console.log('Updating billing record with status:', paymentStatus, 'paid:', newPaidAmount);
+      
+      const { error } = await supabase
+        .from('billing')
+        .update({
+          amount_paid: newPaidAmount,
+          payment_status: paymentStatus,
+          payment_date: new Date().toISOString()
+        })
+        .eq('id', billId);
 
-    if (error) {
-      console.error('Error updating billing status:', error);
-      throw error;
+      if (error) {
+        console.error('Error updating billing status:', error);
+        throw error;
+      }
+    } else {
+      // For other bill types, update other_bills table
+      await updateOtherBillPaymentStatus(billId, paymentAmount);
     }
   } catch (error) {
     console.error('Error in updateBillingPaymentStatus:', error);
@@ -266,6 +285,8 @@ async function updateBillingPaymentStatus(billId: string, paymentAmount: number,
  */
 async function updateOtherBillPaymentStatus(billId: string, paymentAmount: number) {
   try {
+    console.log('Updating other bill status for billId:', billId, 'amount:', paymentAmount);
+    
     // Get current other bill record
     const { data: currentBill } = await supabase
       .from('other_bills')
@@ -288,6 +309,8 @@ async function updateOtherBillPaymentStatus(billId: string, paymentAmount: numbe
       paymentStatus = 'pending';
     }
 
+    console.log('Updating other bill record with status:', paymentStatus, 'paid:', newPaidAmount, 'remaining:', remainingAmount);
+    
     // Update other bill record
     const { error } = await supabase
       .from('other_bills')
