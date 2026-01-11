@@ -1,15 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { IPComprehensiveBilling } from '../lib/ipBillingService';
 
 interface PatientBillingPrintProps {
   billing: IPComprehensiveBilling;
   patient: any;
+  onClose?: () => void;
 }
 
-export function PatientBillingPrint({ billing, patient }: PatientBillingPrintProps) {
+export function PatientBillingPrint({ billing, patient, onClose }: PatientBillingPrintProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -50,6 +51,26 @@ export function PatientBillingPrint({ billing, patient }: PatientBillingPrintPro
     }
     return result + ' Only';
   };
+
+  // Trigger print dialog when component mounts
+  useEffect(() => {
+    // Small delay to ensure content is rendered
+    const timer = setTimeout(() => {
+      window.print();
+      
+      // Close the modal after printing (with a small delay to ensure print dialog is handled)
+      const afterPrintTimer = setTimeout(() => {
+        if (onClose) {
+          onClose();
+        }
+      }, 1000);
+      
+      return () => clearTimeout(afterPrintTimer);
+    }, 500);
+
+    // Cleanup function
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
   const printContent = (
     <div className="print-portal-root" style={{ fontFamily: 'Arial, sans-serif', fontSize: '12px', lineHeight: '1.4' }}>

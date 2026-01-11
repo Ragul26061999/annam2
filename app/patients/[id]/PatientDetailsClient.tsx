@@ -1599,10 +1599,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           <PatientBillingPrint 
             billing={comprehensiveBilling} 
             patient={patient} 
-          />
-          <div 
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200]" 
-            onClick={() => setShowPrintModal(false)}
+            onClose={() => setShowPrintModal(false)}
           />
         </>
       )}
