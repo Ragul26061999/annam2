@@ -13,10 +13,12 @@ import {
   Award,
   Activity,
   CheckCircle,
-  Edit
+  Edit,
+  Phone,
+  X
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, deleteDoctor, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
+import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 
@@ -118,7 +120,7 @@ const getAvailabilityStatus = (doctor: Doctor) => {
   try {
     const availabilityData = doctor.availability_hours;
     if (!availabilityData || !availabilityData.availableSessions || availabilityData.availableSessions.length === 0) {
-      return { status: 'No sessions', color: 'bg-gray-100 text-gray-700' };
+      return { status: 'No sessions', color: 'bg-gray-100 text-gray-700', type: 'unavailable' };
     }
 
     const now = new Date();
@@ -129,7 +131,12 @@ const getAvailabilityStatus = (doctor: Doctor) => {
     const sessions = availabilityData.sessions;
 
     if (doctor.status !== 'active') {
-      return { status: 'Inactive', color: 'bg-red-100 text-red-700' };
+      return { status: 'Inactive', color: 'bg-red-100 text-red-700', type: 'unavailable' };
+    }
+
+    // Check if doctor is on call
+    if (availabilityData.onCall) {
+      return { status: 'On Call', color: 'bg-orange-100 text-orange-700', type: 'on_call' };
     }
 
     // Helper function to parse time string to minutes
@@ -162,10 +169,10 @@ const getAvailabilityStatus = (doctor: Doctor) => {
       }
 
       if (hasUpcomingSessions) {
-        return { status: 'Available Today', color: 'bg-green-100 text-green-700' };
+        return { status: 'Available Today', color: 'bg-green-100 text-green-700', type: 'available' };
       } else if (!allSessionsOver) {
         // Sessions exist but all are over for today
-        return { status: 'Duty Over', color: 'bg-orange-100 text-orange-700' };
+        return { status: 'Duty Over', color: 'bg-orange-100 text-orange-700', type: 'available' };
       }
     }
 
@@ -174,13 +181,13 @@ const getAvailabilityStatus = (doctor: Doctor) => {
       const nextDay = (currentDay + i) % 7;
       if (workingDays.includes(nextDay)) {
         const dayName = i === 1 ? 'Tomorrow' : getDayName(nextDay);
-        return { status: `Next: ${dayName}`, color: 'bg-blue-100 text-blue-700' };
+        return { status: `Next: ${dayName}`, color: 'bg-blue-100 text-blue-700', type: 'available' };
       }
     }
 
-    return { status: 'No schedule', color: 'bg-gray-100 text-gray-700' };
+    return { status: 'No schedule', color: 'bg-gray-100 text-gray-700', type: 'unavailable' };
   } catch {
-    return { status: 'Check schedule', color: 'bg-yellow-100 text-yellow-700' };
+    return { status: 'Check schedule', color: 'bg-yellow-100 text-yellow-700', type: 'unavailable' };
   }
 };
 
@@ -220,6 +227,7 @@ export default function DoctorsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -487,6 +495,22 @@ export default function DoctorsPage() {
     setShowEditModal(true);
   };
 
+  const openScheduleModal = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowScheduleModal(true);
+  };
+
+  const handleAvailabilityToggle = async (doctor: Doctor, status: 'available' | 'on_call' | 'unavailable') => {
+    try {
+      // Update doctor availability status
+      await updateDoctorAvailability(doctor.id, status);
+      loadDoctors(); // Refresh the list
+    } catch (error) {
+      console.error('Error updating doctor availability:', error);
+      alert('Failed to update doctor availability. Please try again.');
+    }
+  };
+
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
@@ -693,8 +717,47 @@ export default function DoctorsPage() {
                 </div>
               </div>
 
+              <div className="flex gap-2 mb-3">
+                <button
+                  onClick={() => handleAvailabilityToggle(doctor, 'available')}
+                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
+                    getAvailabilityStatus(doctor).type === 'available' 
+                      ? 'bg-green-100 text-green-700 border border-green-200' 
+                      : 'bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 border border-gray-200'
+                  }`}
+                >
+                  <CheckCircle size={12} className="mr-1" />
+                  Available
+                </button>
+                <button
+                  onClick={() => handleAvailabilityToggle(doctor, 'on_call')}
+                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
+                    getAvailabilityStatus(doctor).type === 'on_call' 
+                      ? 'bg-orange-100 text-orange-700 border border-orange-200' 
+                      : 'bg-gray-50 text-gray-600 hover:bg-orange-50 hover:text-orange-600 border border-gray-200'
+                  }`}
+                >
+                  <Phone size={12} className="mr-1" />
+                  On Call
+                </button>
+                <button
+                  onClick={() => handleAvailabilityToggle(doctor, 'unavailable')}
+                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
+                    getAvailabilityStatus(doctor).type === 'unavailable' 
+                      ? 'bg-red-100 text-red-700 border border-red-200' 
+                      : 'bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600 border border-gray-200'
+                  }`}
+                >
+                  <Clock size={12} className="mr-1" />
+                  Unavailable
+                </button>
+              </div>
+
               <div className="flex gap-2">
-                <button className={`flex-1 flex items-center justify-center ${buttonColors.schedule} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}>
+                <button 
+                  onClick={() => openScheduleModal(doctor)}
+                  className={`flex-1 flex items-center justify-center ${buttonColors.schedule} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}
+                >
                   <Calendar size={14} className="mr-1" />
                   Schedule
                 </button>
@@ -756,6 +819,79 @@ export default function DoctorsPage() {
         title="Edit Doctor"
         onAddDepartment={handleCreateDepartment}
       />
+
+      {/* Schedule Modal */}
+      {showScheduleModal && selectedDoctor && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" onClick={() => setShowScheduleModal(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+              <div className="bg-white px-6 pt-5 pb-6">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center">
+                    <div className={`w-10 h-10 ${getCardGradient(selectedDoctor.id)} rounded-xl flex items-center justify-center text-white font-bold text-sm mr-3`}>
+                      {getInitials(selectedDoctor.user?.name || 'Unknown')}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">{selectedDoctor.user?.name}</h3>
+                      <p className="text-sm text-gray-500">{selectedDoctor.specialization}</p>
+                    </div>
+                  </div>
+                  <button 
+                    className="text-gray-400 hover:text-gray-500"
+                    onClick={() => setShowScheduleModal(false)}
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-4">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                    <div key={day} className="text-center">
+                      <div className="font-medium text-gray-900 mb-2">{day}</div>
+                      <div className="space-y-2">
+                        {Array.from({ length: 8 }, (_, i) => (
+                          <div 
+                            key={i}
+                            className={`p-2 rounded-lg text-xs cursor-pointer ${
+                              Math.random() > 0.7 ? 'bg-orange-100 text-orange-600' :
+                              Math.random() > 0.5 ? 'bg-gray-100 text-gray-600' :
+                              'bg-white border border-gray-200 hover:border-orange-200'
+                            }`}
+                          >
+                            {`${9 + i}:00`}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center">
+                      <div className="h-4 w-4 bg-orange-100 rounded mr-2"></div>
+                      <span className="text-sm text-gray-600">Booked</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="h-4 w-4 bg-gray-100 rounded mr-2"></div>
+                      <span className="text-sm text-gray-600">Unavailable</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="h-4 w-4 bg-white border border-gray-200 rounded mr-2"></div>
+                      <span className="text-sm text-gray-600">Available</span>
+                    </div>
+                  </div>
+                  <button className="btn-primary">Save Schedule</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
