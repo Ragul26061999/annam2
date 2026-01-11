@@ -130,12 +130,14 @@ export interface FinanceStats {
   radiologyRevenue: number;
   diagnosticRevenue: number;
   outpatientRevenue: number;
+  otherBillsRevenue: number;
   billingCount: number;
   pharmacyCount: number;
   labCount: number;
   radiologyCount: number;
   diagnosticCount: number;
   outpatientCount: number;
+  otherBillsCount: number;
 }
 
 export interface RevenueBreakdown {
@@ -157,7 +159,7 @@ export interface PaymentMethodStats {
 export async function getFinanceStats(dateRange?: { from: string; to: string }): Promise<FinanceStats> {
   try {
     // Fetch data from all finance-related tables in parallel
-    const [billingResult, pharmacyResult, labResult, radiologyResult, diagnosticResult, outpatientResult] = await Promise.all([
+    const [billingResult, pharmacyResult, labResult, radiologyResult, diagnosticResult, outpatientResult, otherBillsResult] = await Promise.all([
       // Main billing table - uses 'total' not 'total_amount'
       supabase.from('billing').select('total, payment_status, created_at'),
       // Pharmacy bills - uses 'total_amount'
@@ -169,7 +171,9 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       // Diagnostic billing items
       supabase.from('diagnostic_billing_items').select('amount, billing_status, created_at'),
       // Outpatient billing from patients table
-      supabase.from('patients').select('total_amount, consultation_fee, op_card_amount, created_at').not('total_amount', 'is', null)
+      supabase.from('patients').select('total_amount, consultation_fee, op_card_amount, created_at').not('total_amount', 'is', null),
+      // Other bills
+      supabase.from('other_bills').select('total_amount, paid_amount, payment_status, created_at').eq('status', 'active')
     ]);
 
     const billingData = billingResult.data || [];
@@ -178,9 +182,11 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const radiologyData = radiologyResult.data || [];
     const diagnosticData = diagnosticResult.data || [];
     const outpatientData = outpatientResult.data || [];
+    const otherBillsData = otherBillsResult.data || [];
     
     console.log('Outpatient query result:', outpatientResult);
     console.log('Outpatient data length:', outpatientData.length);
+    console.log('Other bills data length:', otherBillsData.length);
 
     // Calculate revenue by source using correct column names
     const billingRevenue = billingData.reduce((sum: number, b: any) => sum + (Number(b.total) || 0), 0);
@@ -189,8 +195,9 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const radiologyRevenue = radiologyData.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
     const diagnosticRevenue = diagnosticData.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
     const outpatientRevenue = outpatientData.reduce((sum: number, p: any) => sum + (Number(p.total_amount) || 0), 0);
+    const otherBillsRevenue = otherBillsData.reduce((sum: number, b: any) => sum + (Number(b.total_amount) || 0), 0);
 
-    const totalRevenue = billingRevenue + pharmacyRevenue + labRevenue + radiologyRevenue + diagnosticRevenue + outpatientRevenue;
+    const totalRevenue = billingRevenue + pharmacyRevenue + labRevenue + radiologyRevenue + diagnosticRevenue + outpatientRevenue + otherBillsRevenue;
 
     // Calculate counts
     const billingCount = billingData.length;
@@ -199,7 +206,8 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const radiologyCount = radiologyData.length;
     const diagnosticCount = diagnosticData.length;
     const outpatientCount = outpatientData.length;
-    const totalTransactions = billingCount + pharmacyCount + labCount + radiologyCount + diagnosticCount + outpatientCount;
+    const otherBillsCount = otherBillsData.length;
+    const totalTransactions = billingCount + pharmacyCount + labCount + radiologyCount + diagnosticCount + outpatientCount + otherBillsCount;
 
     // Combine all records for status calculations
     const allRecords = [
@@ -207,7 +215,8 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       ...pharmacyData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.total_amount) || 0 })),
       ...labData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.amount) || 0 })),
       ...radiologyData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.amount) || 0 })),
-      ...diagnosticData.map((b: any) => ({ ...b, status: b.billing_status, amount: Number(b.amount) || 0 }))
+      ...diagnosticData.map((b: any) => ({ ...b, status: b.billing_status, amount: Number(b.amount) || 0 })),
+      ...otherBillsData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.total_amount) || 0 }))
     ];
 
     const paidTransactions = allRecords.filter((r: any) => r.status === 'paid').length;
@@ -221,7 +230,8 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       ...pharmacyData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.payment_status)),
       ...labData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.payment_status)),
       ...radiologyData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.payment_status)),
-      ...diagnosticData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.billing_status))
+      ...diagnosticData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.billing_status)),
+      ...otherBillsData.filter((b: any) => ['pending', 'partial', 'overdue'].includes(b.payment_status))
     ];
     const outstandingAmount = outstandingRecords.reduce((sum: number, r: any) => 
       sum + (Number(r.total) || Number(r.total_amount) || Number(r.amount) || 0), 0);
@@ -252,12 +262,14 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       radiologyRevenue,
       diagnosticRevenue,
       outpatientRevenue,
+      otherBillsRevenue,
       billingCount,
       pharmacyCount,
       labCount,
       radiologyCount,
       diagnosticCount,
-      outpatientCount
+      outpatientCount,
+      otherBillsCount,
     };
   } catch (error) {
     console.error('Error fetching finance stats:', error);
