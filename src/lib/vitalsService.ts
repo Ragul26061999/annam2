@@ -116,8 +116,22 @@ export async function recordVitals(vitalsData: VitalSigns): Promise<VitalRecord>
       console.log('User validated successfully:', user);
     }
 
+    // Get the current encounter for the patient
+    const { data: encounter, error: encounterError } = await supabase
+      .from('encounter')
+      .select('id')
+      .eq('patient_id', actualPatientId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (encounterError || !encounter) {
+      throw new Error(`No active encounter found for patient: ${vitalsData.patientId}`);
+    }
+
     const vitalRecord = {
       patient_id: actualPatientId,
+      encounter_id: encounter.id,
       recorded_by: vitalsData.recordedBy,
       blood_pressure_systolic: vitalsData.bloodPressureSystolic,
       blood_pressure_diastolic: vitalsData.bloodPressureDiastolic,
