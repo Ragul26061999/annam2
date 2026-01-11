@@ -39,6 +39,7 @@ import {
   type RevenueBreakdown,
   type PaymentMethodStats
 } from '../lib/financeService';
+import { recordBillingPayment, recordOtherBillPayment, type PaymentData } from '../lib/paymentService';
 import TransactionViewModal from './TransactionViewModal';
 import { BillingReceiptPrint } from './finance/BillingReceiptPrint';
 import PaymentEntryForm from './finance/PaymentEntryForm';
@@ -174,11 +175,31 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
     setShowPaymentForm(true);
   };
 
-  const handlePaymentSubmit = (paymentData: any) => {
-    // Here you would typically save the payment data to your backend
-    console.log('Payment data:', paymentData);
-    // You might want to refresh the billing records after successful payment
-    // fetchBillingRecords();
+  const handlePaymentSubmit = async (paymentData: PaymentData) => {
+    try {
+      // Show loading state
+      setLoading(true);
+      
+      // Determine payment service based on source
+      if (paymentData.source === 'other_bills') {
+        await recordOtherBillPayment(paymentData);
+      } else {
+        await recordBillingPayment(paymentData);
+      }
+      
+      // Show success message
+      alert('Payment recorded successfully!');
+      
+      // Refresh billing records to show updated payment status
+      const updatedRecords = await getBillingRecords(10);
+      setBillingRecords(updatedRecords.records);
+      
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      alert('Error recording payment. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCloseModal = () => {
@@ -675,6 +696,7 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
         patientId={selectedRecord?.patient_id}
         patientName={selectedRecord?.patient?.name}
         billId={selectedRecord?.bill_id}
+        source={selectedRecord?.source}
       />
     </div>
   );

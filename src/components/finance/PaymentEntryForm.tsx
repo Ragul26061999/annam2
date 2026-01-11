@@ -20,6 +20,7 @@ interface PaymentEntryFormProps {
   patientId?: string;
   patientName?: string;
   billId?: string;
+  source?: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic' | 'outpatient' | 'other_bills';
 }
 
 interface PaymentData {
@@ -30,6 +31,7 @@ interface PaymentData {
   patientId?: string;
   patientName?: string;
   billId?: string;
+  source?: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic' | 'outpatient' | 'other_bills';
 }
 
 const paymentModes = [
@@ -47,7 +49,8 @@ export default function PaymentEntryForm({
   totalAmount, 
   patientId, 
   patientName, 
-  billId 
+  billId,
+  source 
 }: PaymentEntryFormProps) {
   const [splits, setSplits] = useState<PaymentSplit[]>([
     { id: '1', mode: 'cash', amount: totalAmount }
@@ -108,7 +111,8 @@ export default function PaymentEntryForm({
       notes,
       patientId,
       patientName,
-      billId
+      billId,
+      source
     };
 
     onSubmit(paymentData);
