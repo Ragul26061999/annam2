@@ -35,7 +35,8 @@ import {
   Upload,
   FolderOpen,
   Microscope,
-  Radiation
+  Radiation,
+  Printer
 } from 'lucide-react';
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
@@ -53,6 +54,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import DocumentUpload from '../../../src/components/DocumentUpload';
 import EnhancedDocumentList from '../../../src/components/EnhancedDocumentList';
 import ClinicalRecordsModal from '../../../src/components/ip-clinical/ClinicalRecordsModal';
+import { PatientBillingPrint } from '../../../src/components/PatientBillingPrint';
 
 interface Patient {
   id: string;
@@ -197,6 +199,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [comprehensiveBilling, setComprehensiveBilling] = useState<IPComprehensiveBilling | null>(null);
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -1136,12 +1139,23 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               <div className="space-y-8">
                 {/* Consolidated Patient Billing Card */}
                 <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-8 rounded-3xl shadow-lg text-white">
-                  <h4 className="text-xl font-bold mb-8 flex items-center gap-3">
-                    <div className="p-2 bg-white/10 rounded-lg">
-                      <FileText className="text-white" size={24} />
-                    </div>
-                    CONSOLIDATED PATIENT BILLING
-                  </h4>
+                  <div className="flex justify-between items-center mb-8">
+                    <h4 className="text-xl font-bold flex items-center gap-3">
+                      <div className="p-2 bg-white/10 rounded-lg">
+                        <FileText className="text-white" size={24} />
+                      </div>
+                      CONSOLIDATED PATIENT BILLING
+                    </h4>
+                    {comprehensiveBilling && (
+                      <button
+                        onClick={() => setShowPrintModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 rounded-lg hover:bg-gray-100 transition-colors font-semibold"
+                      >
+                        <Printer className="h-4 w-4" />
+                        Print Bill
+                      </button>
+                    )}
+                  </div>
                   
                   {(() => {
                     // 1. Registration/OP Billing
@@ -1577,6 +1591,20 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           onClose={() => setShowMedicalHistoryForm(false)}
           onSuccess={fetchPatientData}
         />
+      )}
+      
+      {/* Print Modal */}
+      {showPrintModal && comprehensiveBilling && (
+        <>
+          <PatientBillingPrint 
+            billing={comprehensiveBilling} 
+            patient={patient} 
+          />
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200]" 
+            onClick={() => setShowPrintModal(false)}
+          />
+        </>
       )}
     </div>
   );
