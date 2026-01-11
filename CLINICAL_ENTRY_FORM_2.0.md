@@ -8,7 +8,7 @@
 ### 🎨 UI Design Philosophy
 Each section uses the **exact UI pattern** from its respective page:
 - **Clinical Notes** → IP Case Sheet style (blue theme)
-- **Lab Tests** → Lab Test Selection style (teal theme)
+- **Lab Tests** → Lab Test Selection style (teal theme)co
 - **X-Ray & Scans** → Radiological Procedures style (teal theme)
 - **Prescriptions** → New Prescription form style (green theme)
 - **Follow-up** → Simple appointment scheduling (blue theme)

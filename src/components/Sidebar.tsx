@@ -12,7 +12,8 @@ import {
   UserCog,
   UsersRound,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -114,6 +115,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
             <Bed className="text-yellow-500" size={20} />
           </div>
           {!isCollapsed && <span>Bed Management</span>}
+        </NavLink>
+        
+        <NavLink to="/other-bills" className={isActive('/other-bills') ? 'nav-link active' : 'nav-link'}>
+          <div className="neu-icon bg-cyan-100">
+            <FileText className="text-cyan-500" size={20} />
+          </div>
+          {!isCollapsed && <span>Other Bills</span>}
         </NavLink>
       </nav>
       

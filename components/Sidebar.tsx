@@ -21,7 +21,8 @@ import {
   BedDouble,
   Microscope,
   Radiation,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 
 interface NavItem {
@@ -109,6 +110,12 @@ const Sidebar: React.FC = () => {
       label: 'Finance',
       icon: <IndianRupee size={18} />,
       color: 'text-emerald-600'
+    },
+    {
+      href: '/other-bills',
+      label: 'Other Bills',
+      icon: <FileText size={18} />,
+      color: 'text-cyan-600'
     },
   ];
 

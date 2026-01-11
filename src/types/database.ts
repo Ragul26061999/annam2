@@ -429,6 +429,59 @@ export interface Database {
         Insert: Omit<PharmacyBills['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<PharmacyBills['Insert']>
       }
+      other_bills: {
+        Row: {
+          id: string
+          bill_number: string
+          bill_date: string
+          patient_id: string | null
+          patient_type: 'IP' | 'OP' | 'Emergency' | 'General'
+          patient_name: string
+          patient_phone: string | null
+          charge_category: 'nursing_charges' | 'attendant_charges' | 'medical_equipment' | 'ambulance_service' | 'special_procedures' | 'dietary_charges' | 'laundry_service' | 'accommodation_extra' | 'mortuary_charges' | 'certificate_charges' | 'photocopying' | 'misc_supplies' | 'other'
+          charge_description: string
+          quantity: number
+          unit_price: number
+          discount_percent: number
+          discount_amount: number
+          subtotal: number
+          tax_percent: number
+          tax_amount: number
+          total_amount: number
+          payment_status: 'pending' | 'partial' | 'paid' | 'cancelled'
+          paid_amount: number
+          balance_amount: number
+          reference_number: string | null
+          remarks: string | null
+          bed_allocation_id: string | null
+          encounter_id: string | null
+          created_by: string | null
+          created_at: string
+          updated_by: string | null
+          updated_at: string
+          status: 'active' | 'cancelled' | 'refunded'
+        }
+        Insert: Omit<Database['public']['Tables']['other_bills']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['other_bills']['Insert']>
+      }
+      other_bill_payments: {
+        Row: {
+          id: string
+          bill_id: string
+          payment_date: string
+          payment_method: 'cash' | 'card' | 'upi' | 'gpay' | 'phonepe' | 'paytm' | 'net_banking' | 'cheque' | 'insurance' | 'credit' | 'others'
+          payment_amount: number
+          transaction_reference: string | null
+          bank_name: string | null
+          cheque_number: string | null
+          cheque_date: string | null
+          notes: string | null
+          received_by: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['other_bill_payments']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['other_bill_payments']['Insert']>
+      }
     }
     Functions: {
       generate_purchase_number: { Args: Record<PropertyKey, never>; Returns: string }
@@ -437,6 +490,7 @@ export interface Database {
       generate_sales_return_number: { Args: Record<PropertyKey, never>; Returns: string }
       generate_drug_broken_number: { Args: Record<PropertyKey, never>; Returns: string }
       generate_cash_collection_number: { Args: Record<PropertyKey, never>; Returns: string }
+      generate_other_bill_number: { Args: Record<PropertyKey, never>; Returns: string }
     }
   }
 }
@@ -458,3 +512,5 @@ export type Medications = Database['public']['Tables']['medications']
 export type Departments = Database['public']['Tables']['departments']
 export type Users = Database['public']['Tables']['users']
 export type PharmacyBills = Database['public']['Tables']['pharmacy_bills']
+export type OtherBills = Database['public']['Tables']['other_bills']
+export type OtherBillPayments = Database['public']['Tables']['other_bill_payments']

@@ -67,7 +67,8 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
     lab: { color: 'text-purple-600', bgColor: 'bg-purple-100', icon: TestTube, label: 'Lab Test' },
     radiology: { color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Scan, label: 'Radiology' },
     diagnostic: { color: 'text-pink-600', bgColor: 'bg-pink-100', icon: FileText, label: 'Diagnostic' },
-    outpatient: { color: 'text-teal-600', bgColor: 'bg-teal-100', icon: User, label: 'Outpatient' }
+    outpatient: { color: 'text-teal-600', bgColor: 'bg-teal-100', icon: User, label: 'Outpatient' },
+    other_bills: { color: 'text-cyan-600', bgColor: 'bg-cyan-100', icon: Receipt, label: 'Other Bills' }
   };
 
   useEffect(() => {

@@ -65,6 +65,14 @@ export default function FinanceNavigation({ activePage = 'dashboard' }: FinanceN
       icon: FileText,
       color: 'text-gray-600',
       bgColor: 'bg-gray-100'
+    },
+    {
+      id: 'other-bills',
+      label: 'Other Bills',
+      href: '/other-bills',
+      icon: Receipt,
+      color: 'text-cyan-600',
+      bgColor: 'bg-cyan-100'
     }
   ];
 

@@ -14,7 +14,7 @@ export interface BillingRecord {
   payment_date?: string;
   created_at: string;
   updated_at: string;
-  source: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic' | 'outpatient';
+  source: 'billing' | 'pharmacy' | 'lab' | 'radiology' | 'diagnostic' | 'outpatient' | 'other_bills';
   patient: {
     name: string;
     patient_id: string;
