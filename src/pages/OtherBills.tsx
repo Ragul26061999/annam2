@@ -5,14 +5,13 @@ import { Plus, RefreshCw, Download, TrendingUp, DollarSign, FileText, AlertCircl
 import OtherBillsForm from '../components/OtherBillsForm';
 import OtherBillsList from '../components/OtherBillsList';
 import OtherBillPrintTemplate from '../components/OtherBillPrintTemplate';
-import UniversalPaymentModal from '../components/UniversalPaymentModal';
+import OtherBillsPaymentModal from '../components/OtherBillsPaymentModal';
 import { 
   getOtherBills, 
   getOtherBillsStats,
   CHARGE_CATEGORIES,
   type OtherBillWithPatient 
 } from '../lib/otherBillsService';
-import type { PaymentRecord } from '../lib/universalPaymentService';
 
 export default function OtherBills() {
   const [bills, setBills] = useState<OtherBillWithPatient[]>([]);
@@ -20,7 +19,7 @@ export default function OtherBills() {
   const [showForm, setShowForm] = useState(false);
   const [selectedBill, setSelectedBill] = useState<OtherBillWithPatient | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [billForPayment, setBillForPayment] = useState<PaymentRecord | null>(null);
+  const [billForPayment, setBillForPayment] = useState<OtherBillWithPatient | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
 
   const handlePrint = () => {
@@ -73,26 +72,7 @@ export default function OtherBills() {
   };
 
   const handlePaymentClick = (bill: OtherBillWithPatient) => {
-    setBillForPayment({
-      id: bill.id,
-      bill_id: bill.bill_number,
-      patient_id: bill.patient_id || '',
-      bill_date: bill.bill_date,
-      items: [{
-        service_name: bill.charge_description,
-        quantity: bill.quantity,
-        unit_rate: bill.unit_price,
-        total_amount: bill.total_amount,
-        item_type: 'service',
-      }],
-      subtotal: bill.subtotal,
-      tax_amount: bill.tax_amount,
-      discount_amount: bill.discount_amount,
-      total_amount: bill.total_amount,
-      payment_status: bill.payment_status as 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled',
-      created_at: bill.created_at,
-      updated_at: bill.updated_at,
-    });
+    setBillForPayment(bill);
     setShowPaymentModal(true);
   };
 
@@ -365,13 +345,19 @@ export default function OtherBills() {
       )}
 
       {showPaymentModal && billForPayment && (
-        <UniversalPaymentModal
+        <OtherBillsPaymentModal
           isOpen={showPaymentModal}
           onClose={() => {
             setShowPaymentModal(false);
             setBillForPayment(null);
           }}
-          bill={billForPayment}
+          bill={{
+            id: billForPayment.id,
+            bill_number: billForPayment.bill_number,
+            total_amount: billForPayment.total_amount,
+            balance_amount: billForPayment.balance_amount,
+            payment_status: billForPayment.payment_status,
+          }}
           onSuccess={() => {
             setShowPaymentModal(false);
             setBillForPayment(null);

@@ -10,8 +10,7 @@ import {
   CHARGE_CATEGORIES,
   cancelOtherBill
 } from '../lib/otherBillsService';
-import UniversalPaymentModal from './UniversalPaymentModal';
-import type { PaymentRecord } from '../lib/universalPaymentService';
+import OtherBillsPaymentModal from './OtherBillsPaymentModal';
 
 interface OtherBillsListProps {
   bills: OtherBillWithPatient[];
@@ -25,7 +24,7 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
   const [filterCategory, setFilterCategory] = useState<ChargeCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedBillForPayment, setSelectedBillForPayment] = useState<PaymentRecord | null>(null);
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState<OtherBillWithPatient | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const filteredBills = bills.filter((bill) => {
@@ -59,26 +58,7 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
   };
 
   const handlePaymentClick = (bill: OtherBillWithPatient) => {
-    setSelectedBillForPayment({
-      id: bill.id,
-      bill_id: bill.bill_number,
-      patient_id: bill.patient_id || '',
-      bill_date: bill.bill_date,
-      items: [{
-        service_name: bill.charge_description,
-        quantity: bill.quantity,
-        unit_rate: bill.unit_price,
-        total_amount: bill.total_amount,
-        item_type: 'service',
-      }],
-      subtotal: bill.subtotal,
-      tax_amount: bill.tax_amount,
-      discount_amount: bill.discount_amount,
-      total_amount: bill.total_amount,
-      payment_status: bill.payment_status as 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled',
-      created_at: bill.created_at,
-      updated_at: bill.updated_at,
-    });
+    setSelectedBillForPayment(bill);
     setShowPaymentModal(true);
   };
 
@@ -319,13 +299,19 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
       </div>
 
       {showPaymentModal && selectedBillForPayment && (
-        <UniversalPaymentModal
+        <OtherBillsPaymentModal
           isOpen={showPaymentModal}
           onClose={() => {
             setShowPaymentModal(false);
             setSelectedBillForPayment(null);
           }}
-          bill={selectedBillForPayment}
+          bill={{
+            id: selectedBillForPayment.id,
+            bill_number: selectedBillForPayment.bill_number,
+            total_amount: selectedBillForPayment.total_amount,
+            balance_amount: selectedBillForPayment.balance_amount,
+            payment_status: selectedBillForPayment.payment_status,
+          }}
           onSuccess={() => {
             setShowPaymentModal(false);
             setSelectedBillForPayment(null);
