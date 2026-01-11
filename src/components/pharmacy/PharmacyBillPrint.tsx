@@ -210,21 +210,13 @@ export function PharmacyBillPrint({ prescription, onClose }: PharmacyBillPrintPr
                 <span className="flex-1 uppercase border-b border-dotted border-gray-400 pb-1">{prescription.patient_name}</span>
               </div>
               <div className="flex items-baseline">
-                <span className="font-bold w-28 shrink-0">Patient ID:</span>
-                <span className="flex-1 uppercase font-bold border-b border-dotted border-gray-400 pb-1">{prescription.patient_id}</span>
-              </div>
-              <div className="flex items-baseline">
-                <span className="font-bold w-28 shrink-0">Prescription ID:</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{prescription.prescription_id}</span>
+                <span className="font-bold w-28 shrink-0">Doctor Name:</span>
+                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">Dr. {prescription.doctor_name}</span>
               </div>
             </div>
 
             {/* Right Column */}
             <div className="w-1/2 flex flex-col gap-3">
-              <div className="flex items-baseline">
-                <span className="font-bold w-28 shrink-0">Doctor Name:</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">Dr. {prescription.doctor_name}</span>
-              </div>
               <div className="flex items-baseline">
                 <span className="font-bold w-28 shrink-0">Prescription Date:</span>
                 <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{formatDate(prescription.prescription_date)}</span>
@@ -315,18 +307,7 @@ export function PharmacyBillPrint({ prescription, onClose }: PharmacyBillPrintPr
           </div>
         </div>
 
-        {/* Terms and Conditions */}
-        <div className="mt-4 mb-4 text-xs text-gray-600 no-break">
-          <p className="font-bold mb-2">Terms & Conditions:</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Medicines once sold cannot be returned or exchanged</li>
-            <li>Please check all medicines before leaving the pharmacy</li>
-            <li>Store medicines as per instructions</li>
-            <li>Complete the course as prescribed by the doctor</li>
-            <li>In case of any adverse reaction, consult the doctor immediately</li>
-          </ul>
-        </div>
-
+        
         {/* Signatures */}
         <div className="mt-6" style={{marginTop: '60px'}}>
           <table>
