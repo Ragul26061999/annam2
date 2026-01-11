@@ -25,6 +25,7 @@ import {
 import NewAppointmentBookingForm from '../../components/NewAppointmentBookingForm';
 import AppointmentSuccessPage from '../../components/AppointmentSuccessPage';
 import ClinicalEntryForm from '../../components/ClinicalEntryForm';
+import ClinicalEntryForm2 from '../../components/ClinicalEntryForm2';
 import AppointmentDetailsModal from '../../components/AppointmentDetailsModal';
 import { getAppointments, updateAppointmentStatus, deleteAppointment, getAppointmentStats, type Appointment } from '../../src/lib/appointmentService';
 import { createAppointmentBill } from '../../src/lib/billingService';
@@ -47,6 +48,7 @@ export default function AppointmentsPage() {
     uhid: string;
   } | null>(null);
   const [isClinicalFormOpen, setIsClinicalFormOpen] = useState(false);
+  const [isClinicalForm2Open, setIsClinicalForm2Open] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -178,8 +180,19 @@ export default function AppointmentsPage() {
     setIsClinicalFormOpen(true);
   };
 
+  const handleOpenClinicalForm2 = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setIsClinicalForm2Open(true);
+  };
+
   const handleClinicalFormSuccess = () => {
     setIsClinicalFormOpen(false);
+    setSelectedAppointment(null);
+    fetchAppointments();
+  };
+
+  const handleClinicalForm2Success = () => {
+    setIsClinicalForm2Open(false);
     setSelectedAppointment(null);
     fetchAppointments();
   };
@@ -475,6 +488,14 @@ export default function AppointmentsPage() {
                             <span>Entry Form</span>
                           </button>
                           <button
+                            onClick={() => handleOpenClinicalForm2(appointment)}
+                            className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-lg hover:bg-indigo-200 transition-colors"
+                            title="Open clinical entry form 2.0"
+                          >
+                            <Stethoscope size={14} />
+                            <span>Clinical 2.0</span>
+                          </button>
+                          <button
                             onClick={() => handleCompleteAppointment(appointment)}
                             disabled={completingAppointment === appointment.id}
                             className="flex items-center space-x-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
@@ -572,7 +593,26 @@ export default function AppointmentsPage() {
           patientId={selectedAppointment.patient_id}
           doctorId={selectedAppointment.doctor_id}
           patientName={selectedAppointment.patient?.name || 'Unknown Patient'}
+          patientUHID={(selectedAppointment.patient as any)?.patient_id || ''}
           onSuccess={handleClinicalFormSuccess}
+        />
+      )}
+
+      {/* Clinical Entry Form 2.0 */}
+      {isClinicalForm2Open && selectedAppointment && (
+        <ClinicalEntryForm2
+          isOpen={isClinicalForm2Open}
+          onClose={() => {
+            setIsClinicalForm2Open(false);
+            setSelectedAppointment(null);
+          }}
+          appointmentId={selectedAppointment.id}
+          encounterId={selectedAppointment.encounter?.id || ''}
+          patientId={selectedAppointment.patient_id}
+          doctorId={selectedAppointment.doctor_id}
+          patientName={selectedAppointment.patient?.name || 'Unknown Patient'}
+          patientUHID={(selectedAppointment.patient as any)?.patient_id || ''}
+          onSuccess={handleClinicalForm2Success}
         />
       )}
 

@@ -5,20 +5,16 @@ import {
   FileText,
   Scan,
   Pill,
-  Syringe,
   Calendar,
-  Scissors,
   Plus,
   Trash2,
   Save,
   Loader2,
   CheckCircle,
   AlertCircle,
-  Upload,
-  Eye
+  Activity
 } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
-import ScanDocumentUpload from './ScanDocumentUpload';
 
 interface ClinicalEntryFormProps {
   isOpen: boolean;
@@ -28,10 +24,11 @@ interface ClinicalEntryFormProps {
   patientId: string;
   doctorId: string;
   patientName: string;
+  patientUHID: string;
   onSuccess?: () => void;
 }
 
-type TabType = 'notes' | 'scans' | 'prescriptions' | 'injections' | 'followup' | 'surgery';
+type TabType = 'notes' | 'scans' | 'prescriptions' | 'followup';
 
 interface ScanOrder {
   id?: string;
@@ -44,32 +41,20 @@ interface ScanOrder {
 }
 
 interface PrescriptionOrder {
-  medication_id: string; // Link to medications table
+  medication_id: string;
   medication_name: string;
   generic_name: string;
   dosage: string;
   form: string;
   route: string;
-  frequency: string;
+  frequency_times: string[];
   duration: string;
   quantity: number;
   instructions: string;
   food_instructions: string;
 }
 
-interface InjectionOrder {
-  medication_name: string;
-  dosage: string;
-  route: string;
-  site: string;
-  frequency: string;
-  duration: string;
-  total_doses: number;
-  instructions: string;
-  urgency: 'routine' | 'urgent' | 'stat';
-}
-
-export default function ClinicalEntryForm({
+export default function ClinicalEntryFormNew({
   isOpen,
   onClose,
   appointmentId,
@@ -77,6 +62,7 @@ export default function ClinicalEntryForm({
   patientId,
   doctorId,
   patientName,
+  patientUHID,
   onSuccess
 }: ClinicalEntryFormProps) {
   const [activeTab, setActiveTab] = useState<TabType>('notes');
@@ -84,14 +70,14 @@ export default function ClinicalEntryForm({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Clinical Notes State - Optimized and consolidated
+  // Clinical Notes State
   const [clinicalNotes, setClinicalNotes] = useState({
     chief_complaint: '',
     history_of_present_illness: '',
     physical_examination: '',
     assessment: '',
-    plan: '', // Treatment plan
-    doctor_notes: '' // Main comprehensive notes
+    plan: '',
+    doctor_notes: ''
   });
 
   // Scans State
@@ -114,25 +100,11 @@ export default function ClinicalEntryForm({
     dosage: '',
     form: 'tablet',
     route: 'oral',
-    frequency: '',
+    frequency_times: [],
     duration: '',
-    quantity: 1,
+    quantity: 0,
     instructions: '',
     food_instructions: ''
-  });
-
-  // Injections State
-  const [injections, setInjections] = useState<InjectionOrder[]>([]);
-  const [currentInjection, setCurrentInjection] = useState<InjectionOrder>({
-    medication_name: '',
-    dosage: '',
-    route: 'IV',
-    site: '',
-    frequency: '',
-    duration: '',
-    total_doses: 1,
-    instructions: '',
-    urgency: 'routine'
   });
 
   // Follow-up State
@@ -144,23 +116,7 @@ export default function ClinicalEntryForm({
     priority: 'routine' as 'routine' | 'important' | 'urgent'
   });
 
-  // Surgery State
-  const [surgery, setSurgery] = useState({
-    surgery_name: '',
-    surgery_type: 'elective',
-    indication: '',
-    diagnosis: '',
-    anesthesia_type: '',
-    estimated_duration: '',
-    urgency: 'elective' as 'elective' | 'urgent' | 'emergency',
-    notes: ''
-  });
-
-  // Scan Upload State
-  const [showScanUpload, setShowScanUpload] = useState(false);
-  const [selectedScanForUpload, setSelectedScanForUpload] = useState<ScanOrder | null>(null);
-
-  // Medications list for prescription dropdown
+  // Medications list
   const [medications, setMedications] = useState<any[]>([]);
   const [loadingMedications, setLoadingMedications] = useState(false);
 
@@ -168,12 +124,9 @@ export default function ClinicalEntryForm({
     { id: 'notes' as TabType, label: 'Clinical Notes', icon: FileText },
     { id: 'scans' as TabType, label: 'Scans & Imaging', icon: Scan },
     { id: 'prescriptions' as TabType, label: 'Prescriptions', icon: Pill },
-    { id: 'injections' as TabType, label: 'Injections', icon: Syringe },
-    { id: 'followup' as TabType, label: 'Follow-up', icon: Calendar },
-    { id: 'surgery' as TabType, label: 'Surgery', icon: Scissors }
+    { id: 'followup' as TabType, label: 'Follow-up', icon: Calendar }
   ];
 
-  // Load medications on mount
   React.useEffect(() => {
     loadMedications();
   }, []);
@@ -212,7 +165,7 @@ export default function ClinicalEntryForm({
   };
 
   const handleAddPrescription = () => {
-    if (currentPrescription.medication_id && currentPrescription.dosage && currentPrescription.frequency) {
+    if (currentPrescription.medication_id && currentPrescription.dosage && currentPrescription.frequency_times.length > 0) {
       setPrescriptions([...prescriptions, currentPrescription]);
       setCurrentPrescription({
         medication_id: '',
@@ -221,9 +174,9 @@ export default function ClinicalEntryForm({
         dosage: '',
         form: 'tablet',
         route: 'oral',
-        frequency: '',
+        frequency_times: [],
         duration: '',
-        quantity: 1,
+        quantity: 0,
         instructions: '',
         food_instructions: ''
       });
@@ -243,26 +196,17 @@ export default function ClinicalEntryForm({
     }
   };
 
-  const handleUploadScanDocument = (scan: ScanOrder, index: number) => {
-    if (scan.id) {
-      setSelectedScanForUpload(scan as any);
-      setShowScanUpload(true);
-    }
-  };
-
-  const handleAddInjection = () => {
-    if (currentInjection.medication_name && currentInjection.dosage && currentInjection.route) {
-      setInjections([...injections, currentInjection]);
-      setCurrentInjection({
-        medication_name: '',
-        dosage: '',
-        route: 'IV',
-        site: '',
-        frequency: '',
-        duration: '',
-        total_doses: 1,
-        instructions: '',
-        urgency: 'routine'
+  const toggleFrequencyTime = (time: string) => {
+    const times = currentPrescription.frequency_times;
+    if (times.includes(time)) {
+      setCurrentPrescription({
+        ...currentPrescription,
+        frequency_times: times.filter(t => t !== time)
+      });
+    } else {
+      setCurrentPrescription({
+        ...currentPrescription,
+        frequency_times: [...times, time]
       });
     }
   };
@@ -287,7 +231,7 @@ export default function ClinicalEntryForm({
         if (notesError) throw notesError;
       }
 
-      // Save Scan Orders
+      // Save X-ray/Scan Orders
       if (scans.length > 0) {
         const scanRecords = scans.map(scan => ({
           encounter_id: encounterId,
@@ -298,7 +242,7 @@ export default function ClinicalEntryForm({
         }));
 
         const { error: scansError } = await supabase
-          .from('scan_orders')
+          .from('xray_orders')
           .insert(scanRecords);
 
         if (scansError) throw scansError;
@@ -311,6 +255,7 @@ export default function ClinicalEntryForm({
           appointment_id: appointmentId,
           patient_id: patientId,
           doctor_id: doctorId,
+          status: 'pending',
           ...prescription
         }));
 
@@ -319,23 +264,6 @@ export default function ClinicalEntryForm({
           .insert(prescriptionRecords);
 
         if (prescriptionsError) throw prescriptionsError;
-      }
-
-      // Save Injections
-      if (injections.length > 0) {
-        const injectionRecords = injections.map(injection => ({
-          encounter_id: encounterId,
-          appointment_id: appointmentId,
-          patient_id: patientId,
-          doctor_id: doctorId,
-          ...injection
-        }));
-
-        const { error: injectionsError } = await supabase
-          .from('injection_orders')
-          .insert(injectionRecords);
-
-        if (injectionsError) throw injectionsError;
       }
 
       // Save Follow-up
@@ -351,21 +279,6 @@ export default function ClinicalEntryForm({
           }]);
 
         if (followUpError) throw followUpError;
-      }
-
-      // Save Surgery Recommendation
-      if (surgery.surgery_name && surgery.indication) {
-        const { error: surgeryError } = await supabase
-          .from('surgery_recommendations')
-          .insert([{
-            encounter_id: encounterId,
-            appointment_id: appointmentId,
-            patient_id: patientId,
-            recommending_doctor_id: doctorId,
-            ...surgery
-          }]);
-
-        if (surgeryError) throw surgeryError;
       }
 
       setSuccess(true);
@@ -385,267 +298,287 @@ export default function ClinicalEntryForm({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Clinical Entry Form</h2>
-            <p className="text-sm text-gray-600 mt-1">Patient: {patientName}</p>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-cyan-50">
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-lg bg-teal-500 flex items-center justify-center">
+              <Activity className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Clinical Entry Form</h2>
+              <p className="text-sm text-gray-600">Patient: {patientName} • ID: {patientUHID}</p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <X size={24} className="text-gray-600" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 px-6 overflow-x-auto">
+        <div className="flex border-b border-gray-200 px-6 bg-gray-50">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-6 py-4 border-b-2 transition-all whitespace-nowrap ${
+                className={`flex items-center space-x-2 px-6 py-4 border-b-2 transition-all ${
                   activeTab === tab.id
-                    ? 'border-orange-500 text-orange-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    ? 'border-teal-500 text-teal-600 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <Icon size={18} />
-                <span>{tab.label}</span>
+                <span className="font-medium">{tab.label}</span>
               </button>
             );
           })}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {/* Doctor Notes Tab */}
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          {/* Clinical Notes Tab */}
           {activeTab === 'notes' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="grid grid-cols-1 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Chief Complaint
-                  </label>
-                  <input
-                    type="text"
-                    value={clinicalNotes.chief_complaint}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, chief_complaint: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Main reason for visit"
-                  />
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center space-x-2 mb-6">
+                  <FileText className="h-5 w-5 text-teal-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Clinical Assessment</h3>
+                  <p className="text-sm text-gray-500">Add required diagnostics for clinical analysis</p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    History of Present Illness
-                  </label>
-                  <textarea
-                    value={clinicalNotes.history_of_present_illness}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, history_of_present_illness: e.target.value })}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Detailed history of the current illness"
-                  />
-                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Chief Complaint
+                    </label>
+                    <input
+                      type="text"
+                      value={clinicalNotes.chief_complaint}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, chief_complaint: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Main reason for visit"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Physical Examination
-                  </label>
-                  <textarea
-                    value={clinicalNotes.physical_examination}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, physical_examination: e.target.value })}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Physical examination findings"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      History of Present Illness
+                    </label>
+                    <textarea
+                      value={clinicalNotes.history_of_present_illness}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, history_of_present_illness: e.target.value })}
+                      rows={4}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Detailed history of the current illness"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Assessment
-                  </label>
-                  <textarea
-                    value={clinicalNotes.assessment}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, assessment: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Clinical assessment"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Physical Examination
+                    </label>
+                    <textarea
+                      value={clinicalNotes.physical_examination}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, physical_examination: e.target.value })}
+                      rows={4}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Physical examination findings"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Treatment Plan
-                  </label>
-                  <textarea
-                    value={clinicalNotes.plan}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, plan: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Treatment plan and recommendations"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Assessment
+                    </label>
+                    <textarea
+                      value={clinicalNotes.assessment}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, assessment: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Clinical assessment"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Comprehensive Doctor Notes <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={clinicalNotes.doctor_notes}
-                    onChange={(e) => setClinicalNotes({ ...clinicalNotes, doctor_notes: e.target.value })}
-                    rows={6}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Detailed clinical notes including diagnosis, observations, and any additional information (required)"
-                    required
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Treatment Plan
+                    </label>
+                    <textarea
+                      value={clinicalNotes.plan}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, plan: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Treatment plan and recommendations"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Comprehensive Doctor Notes <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={clinicalNotes.doctor_notes}
+                      onChange={(e) => setClinicalNotes({ ...clinicalNotes, doctor_notes: e.target.value })}
+                      rows={6}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-colors"
+                      placeholder="Detailed clinical notes including diagnosis, observations, and any additional information (required)"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Scans Tab */}
+          {/* Scans & Imaging Tab */}
           {activeTab === 'scans' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Add Scan Order</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Scan Type</label>
-                    <select
-                      value={currentScan.scan_type}
-                      onChange={(e) => setCurrentScan({ ...currentScan, scan_type: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select type</option>
-                      <option value="X-Ray">X-Ray</option>
-                      <option value="CT Scan">CT Scan</option>
-                      <option value="MRI">MRI</option>
-                      <option value="Ultrasound">Ultrasound</option>
-                      <option value="PET Scan">PET Scan</option>
-                      <option value="Mammography">Mammography</option>
-                    </select>
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="h-5 w-5 text-teal-600" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Radiological Procedures</h3>
+                      <p className="text-sm text-gray-500">Select modality and body regions</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleAddScan}
+                    disabled={!currentScan.scan_type || !currentScan.scan_name || !currentScan.clinical_indication}
+                    className="flex items-center space-x-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={18} />
+                    <span>Add Scan</span>
+                  </button>
+                </div>
+
+                <div className="bg-teal-50 rounded-xl p-6 space-y-4 border border-teal-100">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                        Procedure Name
+                      </label>
+                      <input
+                        type="text"
+                        value={currentScan.scan_name}
+                        onChange={(e) => setCurrentScan({ ...currentScan, scan_name: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                        placeholder="Choose scan..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                        Modality
+                      </label>
+                      <select
+                        value={currentScan.scan_type}
+                        onChange={(e) => setCurrentScan({ ...currentScan, scan_type: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                      >
+                        <option value="">Select type</option>
+                        <option value="X-Ray">X-Ray</option>
+                        <option value="CT Scan">CT Scan</option>
+                        <option value="MRI">MRI</option>
+                        <option value="Ultrasound">Ultrasound</option>
+                        <option value="PET Scan">PET Scan</option>
+                        <option value="Mammography">Mammography</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                        Urgency
+                      </label>
+                      <select
+                        value={currentScan.urgency}
+                        onChange={(e) => setCurrentScan({ ...currentScan, urgency: e.target.value as any })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                      >
+                        <option value="routine">Routine</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="stat">STAT</option>
+                        <option value="emergency">Emergency</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Scan Name</label>
-                    <input
-                      type="text"
-                      value={currentScan.scan_name}
-                      onChange={(e) => setCurrentScan({ ...currentScan, scan_name: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Chest X-Ray"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Body Part</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                      Specific Region / View Details
+                    </label>
                     <input
                       type="text"
                       value={currentScan.body_part}
                       onChange={(e) => setCurrentScan({ ...currentScan, body_part: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Chest, Abdomen"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                      placeholder="E.g. AP & LATERAL, OBLIQUE VIEW, CONTRAST REQUIRED"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Urgency</label>
-                    <select
-                      value={currentScan.urgency}
-                      onChange={(e) => setCurrentScan({ ...currentScan, urgency: e.target.value as any })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="routine">Routine</option>
-                      <option value="urgent">Urgent</option>
-                      <option value="stat">STAT</option>
-                      <option value="emergency">Emergency</option>
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Clinical Indication</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Clinical Indication
+                    </label>
                     <textarea
                       value={currentScan.clinical_indication}
                       onChange={(e) => setCurrentScan({ ...currentScan, clinical_indication: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
                       placeholder="Reason for scan"
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Special Instructions</label>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Special Instructions
+                    </label>
                     <textarea
                       value={currentScan.special_instructions}
                       onChange={(e) => setCurrentScan({ ...currentScan, special_instructions: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
                       placeholder="Any special instructions"
                     />
                   </div>
                 </div>
-
-                <button
-                  onClick={handleAddScan}
-                  className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
-                >
-                  <Plus size={18} />
-                  <span>Add Scan</span>
-                </button>
               </div>
 
-              {/* Scan List */}
+              {/* Ordered Scans List */}
               {scans.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Ordered Scans</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Ordered Scans ({scans.length})</h3>
                   {scans.map((scan, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-gray-900">{scan.scan_name}</span>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              scan.urgency === 'emergency' ? 'bg-red-100 text-red-700' :
-                              scan.urgency === 'stat' ? 'bg-orange-100 text-orange-700' :
-                              scan.urgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-blue-100 text-blue-700'
-                            }`}>
-                              {scan.urgency}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{scan.scan_type} - {scan.body_part}</p>
-                          <p className="text-sm text-gray-500 mt-1">{scan.clinical_indication}</p>
+                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="font-semibold text-gray-900">{scan.scan_name}</span>
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700 uppercase">
+                            {scan.scan_type}
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            scan.urgency === 'emergency' ? 'bg-red-100 text-red-700' :
+                            scan.urgency === 'stat' ? 'bg-orange-100 text-orange-700' :
+                            scan.urgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {scan.urgency}
+                          </span>
                         </div>
-                        <button
-                          onClick={() => setScans(scans.filter((_, i) => i !== index))}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <p className="text-sm text-gray-600">{scan.body_part}</p>
+                        <p className="text-sm text-gray-500 mt-1">{scan.clinical_indication}</p>
                       </div>
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => scan.id && handleUploadScanDocument(scan, index)}
-                            disabled={!scan.id}
-                            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={!scan.id ? "Save clinical data first to upload documents" : "Upload scan documents"}
-                          >
-                            <Upload size={16} />
-                            <span>Upload Documents</span>
-                          </button>
-                          {!scan.id && (
-                            <span className="text-xs text-gray-500 italic">Save clinical data first</span>
-                          )}
-                        </div>
-                      </div>
+                      <button
+                        onClick={() => setScans(scans.filter((_, i) => i !== index))}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -655,22 +588,144 @@ export default function ClinicalEntryForm({
 
           {/* Prescriptions Tab */}
           {activeTab === 'prescriptions' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Add Prescription</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Select Medication <span className="text-red-500">*</span>
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Prescribed Medications</h3>
+                    <p className="text-sm text-gray-500">Patient: {patientName} • ID: {patientUHID}</p>
+                  </div>
+                  <button
+                    onClick={handleAddPrescription}
+                    disabled={!currentPrescription.medication_id || !currentPrescription.dosage || currentPrescription.frequency_times.length === 0}
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={18} />
+                    <span>Add Medication</span>
+                  </button>
+                </div>
+
+                {/* Current Medication Form */}
+                {currentPrescription.medication_id && (
+                  <div className="bg-gray-50 rounded-xl p-6 mb-6 border border-gray-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{currentPrescription.medication_name}</h4>
+                        {currentPrescription.generic_name && (
+                          <p className="text-sm text-gray-600">{currentPrescription.generic_name}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setCurrentPrescription({
+                          medication_id: '',
+                          medication_name: '',
+                          generic_name: '',
+                          dosage: '',
+                          form: 'tablet',
+                          route: 'oral',
+                          frequency_times: [],
+                          duration: '',
+                          quantity: 0,
+                          instructions: '',
+                          food_instructions: ''
+                        })}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Dosage *
+                        </label>
+                        <input
+                          type="text"
+                          value={currentPrescription.dosage}
+                          onChange={(e) => setCurrentPrescription({ ...currentPrescription, dosage: e.target.value })}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="e.g., 500mg, 1 tablet"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Duration (Days) *
+                        </label>
+                        <input
+                          type="text"
+                          value={currentPrescription.duration}
+                          onChange={(e) => setCurrentPrescription({ ...currentPrescription, duration: e.target.value })}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="e.g., 7"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Frequency Times *
+                      </label>
+                      <div className="grid grid-cols-4 gap-3">
+                        {['Morning', 'Afternoon', 'Evening', 'Night'].map((time) => (
+                          <label key={time} className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={currentPrescription.frequency_times.includes(time)}
+                              onChange={() => toggleFrequencyTime(time)}
+                              className="w-4 h-4 text-green-500 border-gray-300 rounded focus:ring-green-500"
+                            />
+                            <span className="text-sm text-gray-700">{time}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Meal Timing
+                      </label>
+                      <select
+                        value={currentPrescription.food_instructions}
+                        onChange={(e) => setCurrentPrescription({ ...currentPrescription, food_instructions: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      >
+                        <option value="">Select meal timing</option>
+                        <option value="before_food">Before Food</option>
+                        <option value="after_food">After Food</option>
+                        <option value="with_food">With Food</option>
+                        <option value="empty_stomach">Empty Stomach</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Instructions
+                      </label>
+                      <textarea
+                        value={currentPrescription.instructions}
+                        onChange={(e) => setCurrentPrescription({ ...currentPrescription, instructions: e.target.value })}
+                        rows={2}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="e.g., Take after meals, Avoid alcohol, Complete the full course"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Medication Selection */}
+                {!currentPrescription.medication_id && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Medication
                     </label>
                     <select
-                      value={currentPrescription.medication_id}
                       onChange={(e) => handleMedicationSelect(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       disabled={loadingMedications}
                     >
-                      <option value="">Select medication from inventory</option>
+                      <option value="">Search & Select Medication...</option>
                       {medications.map((med) => (
                         <option key={med.id} value={med.id}>
                           {med.name} ({med.generic_name}) - {med.strength} - {med.dosage_form}
@@ -680,309 +735,49 @@ export default function ClinicalEntryForm({
                     {loadingMedications && (
                       <p className="text-sm text-gray-500 mt-1">Loading medications...</p>
                     )}
-                    {currentPrescription.medication_id && (
-                      <div className="mt-2 p-3 bg-blue-50 rounded-lg">
-                        <p className="text-sm text-blue-900">
-                          <span className="font-semibold">Selected:</span> {currentPrescription.medication_name}
-                          {currentPrescription.generic_name && ` (${currentPrescription.generic_name})`}
-                        </p>
-                      </div>
-                    )}
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Dosage</label>
-                    <input
-                      type="text"
-                      value={currentPrescription.dosage}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, dosage: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., 500mg"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Form</label>
-                    <select
-                      value={currentPrescription.form}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, form: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="tablet">Tablet</option>
-                      <option value="capsule">Capsule</option>
-                      <option value="syrup">Syrup</option>
-                      <option value="injection">Injection</option>
-                      <option value="cream">Cream</option>
-                      <option value="drops">Drops</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Route</label>
-                    <select
-                      value={currentPrescription.route}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, route: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="oral">Oral</option>
-                      <option value="IV">IV</option>
-                      <option value="IM">IM</option>
-                      <option value="topical">Topical</option>
-                      <option value="sublingual">Sublingual</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Frequency</label>
-                    <input
-                      type="text"
-                      value={currentPrescription.frequency}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, frequency: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Twice daily"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
-                    <input
-                      type="text"
-                      value={currentPrescription.duration}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, duration: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., 7 days"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity</label>
-                    <input
-                      type="number"
-                      value={currentPrescription.quantity}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, quantity: parseInt(e.target.value) || 1 })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      min="1"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Food Instructions</label>
-                    <select
-                      value={currentPrescription.food_instructions}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, food_instructions: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select</option>
-                      <option value="before_food">Before Food</option>
-                      <option value="after_food">After Food</option>
-                      <option value="with_food">With Food</option>
-                      <option value="empty_stomach">Empty Stomach</option>
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Instructions</label>
-                    <textarea
-                      value={currentPrescription.instructions}
-                      onChange={(e) => setCurrentPrescription({ ...currentPrescription, instructions: e.target.value })}
-                      rows={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Detailed instructions"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAddPrescription}
-                  className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
-                >
-                  <Plus size={18} />
-                  <span>Add Prescription</span>
-                </button>
+                )}
               </div>
 
-              {/* Prescription List */}
+              {/* Prescribed Medications List */}
               {prescriptions.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Prescribed Medications</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Added Medications ({prescriptions.length})</h3>
                   {prescriptions.map((prescription, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{prescription.medication_name}</div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {prescription.dosage} - {prescription.form} - {prescription.route}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {prescription.frequency} for {prescription.duration} ({prescription.quantity} units)
-                        </p>
-                        {prescription.food_instructions && (
-                          <p className="text-sm text-gray-500 mt-1">{prescription.food_instructions.replace('_', ' ')}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setPrescriptions(prescriptions.filter((_, i) => i !== index))}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Injections Tab */}
-          {activeTab === 'injections' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Add Injection Order</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Medication Name</label>
-                    <input
-                      type="text"
-                      value={currentInjection.medication_name}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, medication_name: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Insulin"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Dosage</label>
-                    <input
-                      type="text"
-                      value={currentInjection.dosage}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, dosage: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., 10 units"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Route</label>
-                    <select
-                      value={currentInjection.route}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, route: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="IV">IV (Intravenous)</option>
-                      <option value="IM">IM (Intramuscular)</option>
-                      <option value="SC">SC (Subcutaneous)</option>
-                      <option value="Intradermal">Intradermal</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Site</label>
-                    <input
-                      type="text"
-                      value={currentInjection.site}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, site: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Left arm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Frequency</label>
-                    <input
-                      type="text"
-                      value={currentInjection.frequency}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, frequency: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Every 8 hours"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
-                    <input
-                      type="text"
-                      value={currentInjection.duration}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, duration: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., 3 days"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Total Doses</label>
-                    <input
-                      type="number"
-                      value={currentInjection.total_doses}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, total_doses: parseInt(e.target.value) || 1 })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      min="1"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Urgency</label>
-                    <select
-                      value={currentInjection.urgency}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, urgency: e.target.value as any })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="routine">Routine</option>
-                      <option value="urgent">Urgent</option>
-                      <option value="stat">STAT</option>
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Instructions</label>
-                    <textarea
-                      value={currentInjection.instructions}
-                      onChange={(e) => setCurrentInjection({ ...currentInjection, instructions: e.target.value })}
-                      rows={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Administration instructions"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAddInjection}
-                  className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
-                >
-                  <Plus size={18} />
-                  <span>Add Injection</span>
-                </button>
-              </div>
-
-              {/* Injection List */}
-              {injections.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Ordered Injections</h3>
-                  {injections.map((injection, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-semibold text-gray-900">{injection.medication_name}</span>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            injection.urgency === 'stat' ? 'bg-red-100 text-red-700' :
-                            injection.urgency === 'urgent' ? 'bg-orange-100 text-orange-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                            {injection.urgency}
-                          </span>
+                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900">{prescription.medication_name}</div>
+                          {prescription.generic_name && (
+                            <p className="text-sm text-gray-600">{prescription.generic_name}</p>
+                          )}
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm text-gray-700">
+                              <span className="font-medium">Dosage:</span> {prescription.dosage}
+                            </p>
+                            <p className="text-sm text-gray-700">
+                              <span className="font-medium">Frequency:</span> {prescription.frequency_times.join(', ')}
+                            </p>
+                            <p className="text-sm text-gray-700">
+                              <span className="font-medium">Duration:</span> {prescription.duration} days
+                            </p>
+                            {prescription.food_instructions && (
+                              <p className="text-sm text-gray-700">
+                                <span className="font-medium">Meal Timing:</span> {prescription.food_instructions.replace('_', ' ')}
+                              </p>
+                            )}
+                            {prescription.instructions && (
+                              <p className="text-sm text-gray-600 mt-2">{prescription.instructions}</p>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {injection.dosage} - {injection.route} - {injection.site}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {injection.frequency} for {injection.duration} ({injection.total_doses} doses)
-                        </p>
+                        <button
+                          onClick={() => setPrescriptions(prescriptions.filter((_, i) => i !== index))}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setInjections(injections.filter((_, i) => i !== index))}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -992,170 +787,78 @@ export default function ClinicalEntryForm({
 
           {/* Follow-up Tab */}
           {activeTab === 'followup' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Schedule Follow-up</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date</label>
-                    <input
-                      type="date"
-                      value={followUp.follow_up_date}
-                      onChange={(e) => setFollowUp({ ...followUp, follow_up_date: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    />
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center space-x-2 mb-6">
+                  <Calendar className="h-5 w-5 text-teal-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Schedule Follow-up Appointment</h3>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Follow-up Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={followUp.follow_up_date}
+                        onChange={(e) => setFollowUp({ ...followUp, follow_up_date: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Follow-up Time
+                      </label>
+                      <input
+                        type="time"
+                        value={followUp.follow_up_time}
+                        onChange={(e) => setFollowUp({ ...followUp, follow_up_time: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Priority
+                      </label>
+                      <select
+                        value={followUp.priority}
+                        onChange={(e) => setFollowUp({ ...followUp, priority: e.target.value as any })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      >
+                        <option value="routine">Routine</option>
+                        <option value="important">Important</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Time</label>
-                    <input
-                      type="time"
-                      value={followUp.follow_up_time}
-                      onChange={(e) => setFollowUp({ ...followUp, follow_up_time: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
-                    <select
-                      value={followUp.priority}
-                      onChange={(e) => setFollowUp({ ...followUp, priority: e.target.value as any })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="routine">Routine</option>
-                      <option value="important">Important</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Reason</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reason for Follow-up *
+                    </label>
                     <textarea
                       value={followUp.reason}
                       onChange={(e) => setFollowUp({ ...followUp, reason: e.target.value })}
                       rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Reason for follow-up"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="Reason for follow-up appointment"
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Instructions</label>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Instructions for Patient
+                    </label>
                     <textarea
                       value={followUp.instructions}
                       onChange={(e) => setFollowUp({ ...followUp, instructions: e.target.value })}
                       rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Instructions for patient"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Surgery Tab */}
-          {activeTab === 'surgery' && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Surgery Recommendation</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Surgery Name</label>
-                    <input
-                      type="text"
-                      value={surgery.surgery_name}
-                      onChange={(e) => setSurgery({ ...surgery, surgery_name: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., Appendectomy"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Surgery Type</label>
-                    <select
-                      value={surgery.surgery_type}
-                      onChange={(e) => setSurgery({ ...surgery, surgery_type: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="elective">Elective</option>
-                      <option value="emergency">Emergency</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Urgency</label>
-                    <select
-                      value={surgery.urgency}
-                      onChange={(e) => setSurgery({ ...surgery, urgency: e.target.value as any })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="elective">Elective</option>
-                      <option value="urgent">Urgent</option>
-                      <option value="emergency">Emergency</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Anesthesia Type</label>
-                    <select
-                      value={surgery.anesthesia_type}
-                      onChange={(e) => setSurgery({ ...surgery, anesthesia_type: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select type</option>
-                      <option value="general">General</option>
-                      <option value="local">Local</option>
-                      <option value="regional">Regional</option>
-                      <option value="spinal">Spinal</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Estimated Duration</label>
-                    <input
-                      type="text"
-                      value={surgery.estimated_duration}
-                      onChange={(e) => setSurgery({ ...surgery, estimated_duration: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="e.g., 2 hours"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Indication</label>
-                    <textarea
-                      value={surgery.indication}
-                      onChange={(e) => setSurgery({ ...surgery, indication: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Indication for surgery"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Diagnosis</label>
-                    <textarea
-                      value={surgery.diagnosis}
-                      onChange={(e) => setSurgery({ ...surgery, diagnosis: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Clinical diagnosis"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Additional Notes</label>
-                    <textarea
-                      value={surgery.notes}
-                      onChange={(e) => setSurgery({ ...surgery, notes: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
-                      placeholder="Additional notes or requirements"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="Instructions for patient before follow-up"
                     />
                   </div>
                 </div>
@@ -1165,17 +868,17 @@ export default function ClinicalEntryForm({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 p-6 bg-gray-50">
+        <div className="border-t border-gray-200 p-6 bg-white">
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center">
-              <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3 flex-shrink-0" />
               <p className="text-red-800 text-sm">{error}</p>
             </div>
           )}
 
           {success && (
             <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center">
-              <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+              <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0" />
               <p className="text-green-800 text-sm">Clinical data saved successfully!</p>
             </div>
           )}
@@ -1183,14 +886,14 @@ export default function ClinicalEntryForm({
           <div className="flex items-center justify-between">
             <button
               onClick={onClose}
-              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition-colors font-medium"
+              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={loading || !clinicalNotes.doctor_notes}
-              className="flex items-center space-x-2 px-6 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center space-x-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -1207,24 +910,6 @@ export default function ClinicalEntryForm({
           </div>
         </div>
       </div>
-
-      {/* Scan Document Upload Modal */}
-      {showScanUpload && selectedScanForUpload && selectedScanForUpload.id && (
-        <ScanDocumentUpload
-          isOpen={showScanUpload}
-          onClose={() => {
-            setShowScanUpload(false);
-            setSelectedScanForUpload(null);
-          }}
-          scanOrder={selectedScanForUpload as any}
-          patientId={patientId}
-          encounterId={encounterId}
-          onSuccess={() => {
-            setShowScanUpload(false);
-            setSelectedScanForUpload(null);
-          }}
-        />
-      )}
     </div>
   );
 }

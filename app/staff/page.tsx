@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users,
   Search,
@@ -42,16 +42,32 @@ interface StaffStats {
   nightShift: number;
 }
 
+// Simple cache to prevent refetch on navigation
+let staffDataCache: StaffMember[] | null = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export default function StaffPage() {
-  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
-  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>([]);
-  const [stats, setStats] = useState<StaffStats>({
-    totalStaff: 0,
-    activeStaff: 0,
-    onLeave: 0,
-    nightShift: 0
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(staffDataCache || []);
+  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>(staffDataCache || []);
+  const [stats, setStats] = useState<StaffStats>(() => {
+    if (staffDataCache) {
+      return {
+        totalStaff: staffDataCache.length,
+        activeStaff: staffDataCache.filter(staff => staff.is_active).length,
+        onLeave: 0,
+        nightShift: 0
+      };
+    }
+    return {
+      totalStaff: 0,
+      activeStaff: 0,
+      onLeave: 0,
+      nightShift: 0
+    };
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!staffDataCache);
+  const [isInitialLoad, setIsInitialLoad] = useState(!staffDataCache);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -61,20 +77,42 @@ export default function StaffPage() {
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
-  useEffect(() => {
-    fetchStaffData();
-  }, []);
-
-  useEffect(() => {
-    filterStaff();
-  }, [searchQuery, roleFilter, staffMembers]);
-
-  const fetchStaffData = async () => {
+  const fetchStaffData = useCallback(async (forceRefresh = false) => {
     try {
-      setLoading(true);
+      const now = Date.now();
+      const isCacheValid = staffDataCache && (now - lastFetchTime) < CACHE_DURATION;
+      
+      // Use cache if available and valid, unless force refresh is requested
+      if (isCacheValid && !forceRefresh && staffDataCache) {
+        setStaffMembers(staffDataCache);
+        
+        // Calculate stats from cached data
+        const totalStaff = staffDataCache.length;
+        const activeStaff = staffDataCache.filter(staff => staff.is_active).length;
+        
+        setStats({
+          totalStaff,
+          activeStaff,
+          onLeave: 0,
+          nightShift: 0
+        });
+        
+        setLoading(false);
+        setIsInitialLoad(false);
+        return;
+      }
+
+      if (!isInitialLoad) {
+        setLoading(true);
+      }
       setError(null);
 
       const data = (await getStaffMembers()).filter(s => s.role !== 'Doctor');
+      
+      // Update cache
+      staffDataCache = data;
+      lastFetchTime = now;
+      
       setStaffMembers(data);
 
       // Calculate stats
@@ -96,10 +134,11 @@ export default function StaffPage() {
       setError(`${errorMessage}. Please ensure the "staff" table exists in your database.`);
     } finally {
       setLoading(false);
+      setIsInitialLoad(false);
     }
-  };
+  }, [isInitialLoad]);
 
-  const filterStaff = () => {
+  const filterStaff = useCallback(() => {
     let filtered = [...staffMembers];
 
     if (searchQuery) {
@@ -117,9 +156,19 @@ export default function StaffPage() {
     }
 
     setFilteredStaff(filtered);
-  };
+  }, [searchQuery, roleFilter, staffMembers]);
 
-  const roles = ['All', ...new Set(staffMembers.map(s => s.role))].filter(role => role !== 'Doctor').sort();
+  useEffect(() => {
+    fetchStaffData();
+  }, [fetchStaffData]);
+
+  useEffect(() => {
+    filterStaff();
+  }, [filterStaff]);
+
+  const roles = useMemo(() => {
+    return ['All', ...new Set(staffMembers.map(s => s.role))].filter(role => role !== 'Doctor').sort();
+  }, [staffMembers]);
 
   const handleDeleteStaff = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to deactivate staff member "${name}"? They will be hidden from the active list but can be restored later.`)) {
@@ -128,7 +177,7 @@ export default function StaffPage() {
 
     try {
       await softDeleteStaffMember(id);
-      await fetchStaffData();
+      await fetchStaffData(true); // Force refresh after deletion
       alert('Staff member deactivated successfully.');
     } catch (error) {
       console.error('Error deactivating staff member:', error);
@@ -146,7 +195,7 @@ export default function StaffPage() {
     setIsViewModalOpen(true);
   };
 
-  if (loading && staffMembers.length === 0) {
+  if (isInitialLoad && staffMembers.length === 0) {
     return (
       <div className="space-y-6 p-8 bg-gray-50/50 min-h-screen">
         <div className="animate-pulse">
@@ -371,7 +420,7 @@ export default function StaffPage() {
       <AddStaffModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onSuccess={fetchStaffData}
+        onSuccess={() => fetchStaffData(true)}
       />
 
       {/* Edit Staff Modal */}
@@ -382,7 +431,7 @@ export default function StaffPage() {
             setIsEditModalOpen(false);
             setSelectedStaff(null);
           }}
-          onSuccess={fetchStaffData}
+          onSuccess={() => fetchStaffData(true)}
           staff={selectedStaff}
         />
       )}
@@ -404,7 +453,7 @@ export default function StaffPage() {
         isOpen={isAttendanceModalOpen}
         onClose={() => setIsAttendanceModalOpen(false)}
         staff={filteredStaff}
-        onSuccess={fetchStaffData}
+        onSuccess={() => fetchStaffData(true)}
       />
 
       {/* Error Toast (if any) */}

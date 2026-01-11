@@ -1,0 +1,1487 @@
+'use client';
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  FileText,
+  Activity,
+  Pill,
+  Calendar,
+  Plus,
+  Trash2,
+  Save,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Search,
+  Stethoscope,
+  Clock
+} from 'lucide-react';
+import { supabase } from '../src/lib/supabase';
+import { SearchableSelect } from '../src/components/ui/SearchableSelect';
+import {
+  getRadiologyTestCatalog,
+  createRadiologyTestCatalogEntry,
+  type RadiologyTestCatalog,
+  getLabTestCatalog,
+  createLabTestCatalogEntry,
+  type LabTestCatalog
+} from '../src/lib/labXrayService';
+
+interface ClinicalEntryForm2Props {
+  isOpen: boolean;
+  onClose: () => void;
+  appointmentId: string;
+  encounterId: string;
+  patientId: string;
+  doctorId: string;
+  patientName: string;
+  patientUHID: string;
+  onSuccess?: () => void;
+}
+
+type TabType = 'notes' | 'lab' | 'xray' | 'prescriptions' | 'followup';
+
+// Lab Test Interface
+interface LabTest {
+  lab_test_catalog_id?: string;
+  test_type: string;
+  test_name: string;
+  test_category: string;
+  urgency: 'routine' | 'urgent' | 'stat' | 'emergency';
+  clinical_indication: string;
+  special_instructions: string;
+}
+
+interface LabTestSelection {
+  testId: string;
+  testName: string;
+  groupName: string; // category
+  clinicalIndication: string;
+  specialInstructions: string;
+}
+
+// X-ray/Scan Interface
+interface XRayOrder {
+  radiology_test_catalog_id?: string;
+  scan_type: string;
+  scan_name: string;
+  body_part: string;
+  urgency: 'routine' | 'urgent' | 'stat' | 'emergency';
+  clinical_indication: string;
+  special_instructions: string;
+}
+
+interface XrayTestSelection {
+  testId: string;
+  testName: string;
+  groupName: string; // modality
+  bodyPart: string; // specific region / view details
+  clinicalIndication: string;
+  specialInstructions: string;
+}
+
+// Prescription Interface
+interface PrescriptionItem {
+  medication_id: string;
+  medication_name: string;
+  generic_name: string;
+  dosage: string;
+  frequency_times: string[];
+  meal_timing: string;
+  duration_days: number;
+  instructions: string;
+  quantity: number;
+  auto_calculate_quantity: boolean;
+  stock_quantity: number;
+}
+
+// Clinical Notes Interface
+interface ClinicalNotes {
+  present_complaints: string;
+  history_present_illness: string;
+  past_history: string;
+  family_history: string;
+  personal_history: string;
+  examination_notes: string;
+  provisional_diagnosis: string;
+  investigation_summary: string;
+  treatment_plan: string;
+}
+
+export default function ClinicalEntryForm2({
+  isOpen,
+  onClose,
+  appointmentId,
+  encounterId,
+  patientId,
+  doctorId,
+  patientName,
+  patientUHID,
+  onSuccess
+}: ClinicalEntryForm2Props) {
+  const [activeTab, setActiveTab] = useState<TabType>('notes');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Clinical Notes State
+  const [clinicalNotes, setClinicalNotes] = useState<ClinicalNotes>({
+    present_complaints: '',
+    history_present_illness: '',
+    past_history: '',
+    family_history: '',
+    personal_history: '',
+    examination_notes: '',
+    provisional_diagnosis: '',
+    investigation_summary: '',
+    treatment_plan: ''
+  });
+
+  // Lab Tests State
+  const [labCatalog, setLabCatalog] = useState<LabTestCatalog[]>([]);
+  const [selectedLabTests, setSelectedLabTests] = useState<LabTestSelection[]>([
+    { testId: '', testName: '', groupName: '', clinicalIndication: '', specialInstructions: '' }
+  ]);
+  const [labUrgency, setLabUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
+
+  // X-ray Orders State
+  const [radCatalog, setRadCatalog] = useState<RadiologyTestCatalog[]>([]);
+  const [selectedXrayTests, setSelectedXrayTests] = useState<XrayTestSelection[]>([
+    { testId: '', testName: '', groupName: '', bodyPart: '', clinicalIndication: '', specialInstructions: '' }
+  ]);
+  const [xrayUrgency, setXrayUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
+
+  // New Catalog UI (Lab + Xray)
+  const [showNewLabTestModal, setShowNewLabTestModal] = useState(false);
+  const [creatingLabTest, setCreatingLabTest] = useState(false);
+  const [newLabTestData, setNewLabTestData] = useState({
+    testName: '',
+    groupName: ''
+  });
+
+  const [showNewXrayTestModal, setShowNewXrayTestModal] = useState(false);
+  const [creatingXrayTest, setCreatingXrayTest] = useState(false);
+  const [newXrayTestData, setNewXrayTestData] = useState({
+    testName: '',
+    groupName: ''
+  });
+
+  // Prescriptions State
+  const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([]);
+  const [medications, setMedications] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showMedicationSearch, setShowMedicationSearch] = useState(false);
+
+  // Follow-up State
+  const [followUp, setFollowUp] = useState({
+    follow_up_date: '',
+    follow_up_time: '',
+    reason: '',
+    instructions: '',
+    priority: 'routine' as 'routine' | 'important' | 'urgent'
+  });
+
+  const tabs = [
+    { id: 'notes' as TabType, label: 'Clinical Notes', icon: FileText },
+    { id: 'lab' as TabType, label: 'Lab Tests', icon: Activity },
+    { id: 'xray' as TabType, label: 'X-Ray & Scans', icon: Activity },
+    { id: 'prescriptions' as TabType, label: 'Prescriptions', icon: Pill },
+    { id: 'followup' as TabType, label: 'Follow-up', icon: Calendar }
+  ];
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchMedications();
+      fetchRadiologyCatalog();
+      fetchLabCatalog();
+    }
+  }, [isOpen]);
+
+  const fetchMedications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('is_active', true)
+        .gt('available_stock', 0)
+        .order('name');
+      
+      if (!error && data) {
+        setMedications(data);
+      }
+    } catch (err) {
+      console.error('Error loading medications:', err);
+    }
+  };
+
+  const fetchRadiologyCatalog = async () => {
+    try {
+      const catalog = await getRadiologyTestCatalog();
+      setRadCatalog(catalog || []);
+    } catch (err) {
+      console.error('Error loading radiology catalog:', err);
+    }
+  };
+
+  const fetchLabCatalog = async () => {
+    try {
+      const catalog = await getLabTestCatalog();
+      setLabCatalog(catalog || []);
+    } catch (err) {
+      console.error('Error loading lab catalog:', err);
+    }
+  };
+
+  const searchMedications = (term: string) => {
+    if (!term.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const filtered = medications.filter(med => 
+      med.name.toLowerCase().includes(term.toLowerCase()) ||
+      (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase()))
+    );
+    setSearchResults(filtered);
+  };
+
+  const addMedicationToPrescription = (medication: any) => {
+    const newItem: PrescriptionItem = {
+      medication_id: medication.id,
+      medication_name: medication.name,
+      generic_name: medication.generic_name || '',
+      dosage: '',
+      frequency_times: [],
+      meal_timing: '',
+      duration_days: 1,
+      instructions: '',
+      quantity: 0,
+      auto_calculate_quantity: true,
+      stock_quantity: medication.available_stock || 0
+    };
+    
+    setPrescriptions([...prescriptions, newItem]);
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowMedicationSearch(false);
+  };
+
+  const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
+    return frequencyTimes.length * durationDays;
+  };
+
+  const updatePrescriptionItem = (index: number, field: keyof PrescriptionItem, value: any) => {
+    const updatedItems = [...prescriptions];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    
+    if (updatedItems[index].auto_calculate_quantity && 
+        (field === 'frequency_times' || field === 'duration_days')) {
+      const autoQuantity = calculateAutoQuantity(
+        updatedItems[index].frequency_times, 
+        updatedItems[index].duration_days
+      );
+      updatedItems[index].quantity = autoQuantity;
+    }
+    
+    setPrescriptions(updatedItems);
+  };
+
+  const addLabRow = () => {
+    setSelectedLabTests(prev => [...prev, { testId: '', testName: '', groupName: '', clinicalIndication: '', specialInstructions: '' }]);
+  };
+
+  const removeLabRow = (index: number) => {
+    setSelectedLabTests(prev => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const handleLabTestChange = (index: number, testId: string) => {
+    const test = labCatalog.find(t => t.id === testId);
+    if (!test) return;
+
+    setSelectedLabTests(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        testId: test.id,
+        testName: test.test_name,
+        groupName: test.category || 'N/A'
+      };
+      return next;
+    });
+  };
+
+  const handleLabRowFieldChange = (
+    index: number,
+    field: 'clinicalIndication' | 'specialInstructions',
+    value: string
+  ) => {
+    setSelectedLabTests(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleCreateNewLabTest = async () => {
+    if (!newLabTestData.testName || !newLabTestData.groupName) {
+      setError('Test name and group name are required.');
+      return;
+    }
+    try {
+      setCreatingLabTest(true);
+      const newEntry = await createLabTestCatalogEntry({
+        test_name: newLabTestData.testName,
+        category: newLabTestData.groupName,
+        test_cost: 0
+      });
+
+      setLabCatalog(prev => [...prev, newEntry]);
+
+      // Auto-select into first empty row
+      setSelectedLabTests(prev => {
+        const next = [...prev];
+        const emptyIndex = next.findIndex(t => !t.testId);
+        const selection = {
+          testId: newEntry.id,
+          testName: newEntry.test_name,
+          groupName: newEntry.category || 'N/A',
+          clinicalIndication: '',
+          specialInstructions: ''
+        };
+        if (emptyIndex !== -1) next[emptyIndex] = selection;
+        else next.push(selection);
+        return next;
+      });
+
+      setNewLabTestData({ testName: '', groupName: '' });
+      setShowNewLabTestModal(false);
+    } catch (err) {
+      console.error('Error creating lab test:', err);
+      setError('Failed to create new test catalog entry.');
+    } finally {
+      setCreatingLabTest(false);
+    }
+  };
+
+  const addXrayRow = () => {
+    setSelectedXrayTests(prev => [...prev, { testId: '', testName: '', groupName: '', bodyPart: '', clinicalIndication: '', specialInstructions: '' }]);
+  };
+
+  const removeXrayRow = (index: number) => {
+    setSelectedXrayTests(prev => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const handleXrayTestChange = (index: number, testId: string) => {
+    const test = radCatalog.find(t => t.id === testId);
+    if (!test) return;
+
+    setSelectedXrayTests(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        testId: test.id,
+        testName: test.test_name,
+        groupName: test.modality || 'X-Ray',
+        bodyPart: test.body_part || ''
+      };
+      return next;
+    });
+  };
+
+  const handleXrayBodyPartChange = (index: number, bodyPart: string) => {
+    setSelectedXrayTests(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], bodyPart };
+      return next;
+    });
+  };
+
+  const handleXrayRowFieldChange = (
+    index: number,
+    field: 'clinicalIndication' | 'specialInstructions',
+    value: string
+  ) => {
+    setSelectedXrayTests(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleCreateNewXrayTest = async () => {
+    if (!newXrayTestData.testName || !newXrayTestData.groupName) {
+      setError('Procedure name and modality are required.');
+      return;
+    }
+    try {
+      setCreatingXrayTest(true);
+      const newEntry = await createRadiologyTestCatalogEntry({
+        test_name: newXrayTestData.testName,
+        modality: newXrayTestData.groupName,
+        test_cost: 0
+      });
+
+      setRadCatalog(prev => [...prev, newEntry]);
+
+      // Auto-select into first empty row
+      setSelectedXrayTests(prev => {
+        const next = [...prev];
+        const emptyIndex = next.findIndex(t => !t.testId);
+        const selection = {
+          testId: newEntry.id,
+          testName: newEntry.test_name,
+          groupName: newEntry.modality || 'X-Ray',
+          bodyPart: newEntry.body_part || '',
+          clinicalIndication: '',
+          specialInstructions: ''
+        };
+        if (emptyIndex !== -1) next[emptyIndex] = selection;
+        else next.push(selection);
+        return next;
+      });
+
+      setNewXrayTestData({ testName: '', groupName: '' });
+      setShowNewXrayTestModal(false);
+    } catch (err) {
+      console.error('Error creating radiology test:', err);
+      setError('Failed to create new radiology catalog entry.');
+    } finally {
+      setCreatingXrayTest(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Save Clinical Notes
+      const notesData = {
+        ...clinicalNotes,
+        doctor_notes: Object.values(clinicalNotes).filter(v => v).join('\n\n')
+      };
+
+      if (notesData.doctor_notes) {
+        const { error: notesError } = await supabase
+          .from('clinical_notes')
+          .insert([{
+            encounter_id: encounterId,
+            appointment_id: appointmentId,
+            doctor_id: doctorId,
+            patient_id: patientId,
+            ...notesData
+          }]);
+
+        if (notesError) throw notesError;
+      }
+
+      // Save Lab Tests
+      const validLabRows = selectedLabTests.filter(t => t.testId);
+      if (validLabRows.length > 0) {
+        const labRecords = validLabRows.map(t => ({
+          encounter_id: encounterId,
+          appointment_id: appointmentId,
+          patient_id: patientId,
+          doctor_id: doctorId,
+          lab_test_catalog_id: t.testId,
+          test_type: 'LAB',
+          test_name: t.testName,
+          test_category: t.groupName,
+          urgency: labUrgency,
+          clinical_indication: t.clinicalIndication,
+          special_instructions: t.specialInstructions
+        }));
+
+        const { error: labError } = await supabase
+          .from('lab_orders')
+          .insert(labRecords);
+
+        if (labError) throw labError;
+      }
+
+      // Save X-ray Orders
+      const validXrayRows = selectedXrayTests.filter(t => t.testId);
+      if (validXrayRows.length > 0) {
+        const xrayRecords = validXrayRows.map(t => ({
+          encounter_id: encounterId,
+          appointment_id: appointmentId,
+          patient_id: patientId,
+          doctor_id: doctorId,
+          radiology_test_catalog_id: t.testId,
+          scan_type: t.groupName,
+          scan_name: t.testName,
+          body_part: t.bodyPart,
+          urgency: xrayUrgency,
+          clinical_indication: t.clinicalIndication,
+          special_instructions: t.specialInstructions
+        }));
+
+        const { error: xrayError } = await supabase
+          .from('xray_orders')
+          .insert(xrayRecords);
+
+        if (xrayError) throw xrayError;
+      }
+
+      // Save Prescriptions
+      if (prescriptions.length > 0) {
+        const prescriptionRecords = prescriptions.map(prescription => ({
+          encounter_id: encounterId,
+          appointment_id: appointmentId,
+          patient_id: patientId,
+          doctor_id: doctorId,
+          status: 'pending',
+          medication_id: prescription.medication_id,
+          medication_name: prescription.medication_name,
+          generic_name: prescription.generic_name,
+          dosage: prescription.dosage,
+          frequency_times: prescription.frequency_times,
+          meal_timing: prescription.meal_timing,
+          duration: `${prescription.duration_days} days`,
+          quantity: prescription.quantity,
+          instructions: prescription.instructions
+        }));
+
+        const { error: prescriptionsError } = await supabase
+          .from('prescription_orders')
+          .insert(prescriptionRecords);
+
+        if (prescriptionsError) throw prescriptionsError;
+      }
+
+      // Save Follow-up
+      if (followUp.follow_up_date && followUp.reason) {
+        const { error: followUpError } = await supabase
+          .from('follow_up_appointments')
+          .insert([{
+            encounter_id: encounterId,
+            appointment_id: appointmentId,
+            patient_id: patientId,
+            doctor_id: doctorId,
+            ...followUp
+          }]);
+
+        if (followUpError) throw followUpError;
+      }
+
+      setSuccess(true);
+      setTimeout(() => {
+        onSuccess?.();
+        onClose();
+      }, 1500);
+    } catch (err: any) {
+      console.error('Error saving clinical data:', err);
+      setError(err.message || 'Failed to save clinical data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const clinicalNotesSections = [
+    { key: 'present_complaints', label: 'Present Complaints', rows: 3 },
+    { key: 'history_present_illness', label: 'History of Present Illness', rows: 4 },
+    { key: 'past_history', label: 'Past History', rows: 3 },
+    { key: 'family_history', label: 'Family History', rows: 3 },
+    { key: 'personal_history', label: 'Personal History', rows: 3 },
+    { key: 'examination_notes', label: 'Physical Examination (General + Systemic)', rows: 6 },
+    { key: 'provisional_diagnosis', label: 'Provisional Diagnosis', rows: 2 },
+    { key: 'investigation_summary', label: 'Investigations (Summary)', rows: 3 },
+    { key: 'treatment_plan', label: 'Treatment Plan', rows: 3 },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-[95vh] flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Stethoscope className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Clinical Entry Form 2.0</h2>
+                <p className="text-gray-600 text-sm">
+                  Patient: {patientName} • ID: {patientUHID}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 px-6 bg-gray-50 overflow-x-auto">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center space-x-2 px-6 py-4 border-b-2 transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600 bg-white font-semibold'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <Icon size={18} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          {/* Clinical Notes Tab - IP Case Sheet Style */}
+          {activeTab === 'notes' && (
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-6">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-bold text-gray-800">Case Sheet</h3>
+                  <p className="text-sm text-gray-500 ml-auto">
+                    Date: {new Date().toLocaleDateString('en-IN', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  {clinicalNotesSections.map((section) => (
+                    <div key={section.key} className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {section.label}
+                      </label>
+                      <textarea
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+                        rows={section.rows}
+                        value={clinicalNotes[section.key as keyof ClinicalNotes]}
+                        onChange={(e) => setClinicalNotes({ 
+                          ...clinicalNotes, 
+                          [section.key]: e.target.value 
+                        })}
+                        placeholder={`Enter ${section.label.toLowerCase()}...`}
+                        data-allow-enter="true"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Lab Tests Tab - Lab Test Selection Style */}
+          {activeTab === 'lab' && (
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-teal-600" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Lab Test Selection</h3>
+                      <p className="text-sm text-gray-500">Add required diagnostics for clinical analysis</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewLabTestModal(true)}
+                      className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Catalog Entry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addLabRow}
+                      className="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Row
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-teal-50 rounded-xl p-6 space-y-4 border border-teal-100">
+                  {selectedLabTests.map((row, index) => {
+                    const options = labCatalog.map((t) => ({
+                      value: t.id,
+                      label: t.test_name,
+                      group: t.category || 'N/A'
+                    }));
+
+                    return (
+                      <div key={index} className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                              Test Name
+                            </label>
+                            <SearchableSelect
+                              options={options}
+                              value={row.testId}
+                              onChange={(val) => handleLabTestChange(index, val)}
+                              placeholder="Search & Select Test..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                              Group Name
+                            </label>
+                            <input
+                              type="text"
+                              value={row.groupName || 'N/A'}
+                              readOnly
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700"
+                            />
+                          </div>
+
+                          <div className="flex items-end gap-2">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                                Urgency
+                              </label>
+                              <select
+                                value={labUrgency}
+                                onChange={(e) => setLabUrgency(e.target.value as any)}
+                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              >
+                                <option value="routine">Routine</option>
+                                <option value="urgent">Urgent</option>
+                                <option value="stat">STAT</option>
+                                <option value="emergency">Emergency</option>
+                              </select>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeLabRow(index)}
+                              disabled={selectedLabTests.length === 1}
+                              className="h-[46px] w-[46px] flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Remove row"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Clinical Indication</label>
+                            <textarea
+                              value={row.clinicalIndication}
+                              onChange={(e) => handleLabRowFieldChange(index, 'clinicalIndication', e.target.value)}
+                              rows={3}
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              placeholder="Reason for this test..."
+                              data-allow-enter="true"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Special Instructions</label>
+                            <textarea
+                              value={row.specialInstructions}
+                              onChange={(e) => handleLabRowFieldChange(index, 'specialInstructions', e.target.value)}
+                              rows={3}
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              placeholder="Any special instructions"
+                              data-allow-enter="true"
+                            />
+                          </div>
+                        </div>
+
+                        {index !== selectedLabTests.length - 1 && (
+                          <div className="border-t border-teal-100" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Lab Tests List */}
+              {selectedLabTests.filter(t => t.testId).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold text-gray-900">Selected Lab Tests ({selectedLabTests.filter(t => t.testId).length})</h3>
+                  {selectedLabTests.filter(t => t.testId).map((test, index) => (
+                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="font-semibold text-gray-900">{test.testName}</span>
+                          {test.groupName && (
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700">
+                              {test.groupName}
+                            </span>
+                          )}
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            labUrgency === 'emergency' ? 'bg-red-100 text-red-700' :
+                            labUrgency === 'stat' ? 'bg-orange-100 text-orange-700' :
+                            labUrgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {labUrgency}
+                          </span>
+                        </div>
+                        {test.clinicalIndication && (
+                          <p className="text-sm text-gray-500">{test.clinicalIndication}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeLabRow(index)}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* X-Ray Tab - Radiological Procedures Style */}
+          {activeTab === 'xray' && (
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-teal-600" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Radiological Procedures</h3>
+                      <p className="text-sm text-gray-500">Select modality and body regions</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewXrayTestModal(true)}
+                      className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Catalog
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addXrayRow}
+                      className="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Row
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-teal-50 rounded-xl p-6 space-y-4 border border-teal-100">
+                  {selectedXrayTests.map((row, index) => {
+                    const options = radCatalog.map((t) => ({
+                      value: t.id,
+                      label: t.test_name,
+                      group: t.modality || 'X-Ray',
+                      subLabel: t.body_part || ''
+                    }));
+
+                    return (
+                      <div key={index} className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                              Procedure Name
+                            </label>
+                            <SearchableSelect
+                              options={options}
+                              value={row.testId}
+                              onChange={(val) => handleXrayTestChange(index, val)}
+                              placeholder="CHOOSE SCAN..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                              Modality
+                            </label>
+                            <input
+                              type="text"
+                              value={row.groupName || 'IMAGE'}
+                              readOnly
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700"
+                            />
+                          </div>
+
+                          <div className="flex items-end gap-2">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                                Priority / Scan
+                              </label>
+                              <select
+                                value={xrayUrgency}
+                                onChange={(e) => setXrayUrgency(e.target.value as any)}
+                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              >
+                                <option value="routine">Routine</option>
+                                <option value="urgent">Urgent</option>
+                                <option value="stat">STAT</option>
+                                <option value="emergency">Emergency</option>
+                              </select>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeXrayRow(index)}
+                              disabled={selectedXrayTests.length === 1}
+                              className="h-[46px] w-[46px] flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Remove row"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wide">
+                            Specific Region / View Details
+                          </label>
+                          <textarea
+                            value={row.bodyPart}
+                            onChange={(e) => handleXrayBodyPartChange(index, e.target.value)}
+                            rows={2}
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                            placeholder="E.g. AP & LATERAL, OBLIQUE VIEW, CONTRAST REQUIRED"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Clinical Instruction</label>
+                            <textarea
+                              value={row.clinicalIndication}
+                              onChange={(e) => handleXrayRowFieldChange(index, 'clinicalIndication', e.target.value)}
+                              rows={3}
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              placeholder="INDICATIONS FOR THIS SCAN..."
+                              data-allow-enter="true"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Radiation Safety / Consents</label>
+                            <textarea
+                              value={row.specialInstructions}
+                              onChange={(e) => handleXrayRowFieldChange(index, 'specialInstructions', e.target.value)}
+                              rows={3}
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              placeholder="Any special instructions / consent notes"
+                              data-allow-enter="true"
+                            />
+                          </div>
+                        </div>
+
+                        {index !== selectedXrayTests.length - 1 && (
+                          <div className="border-t border-teal-100" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* X-ray Orders List */}
+              {selectedXrayTests.filter(t => t.testId).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold text-gray-900">Selected Scans ({selectedXrayTests.filter(t => t.testId).length})</h3>
+                  {selectedXrayTests.filter(t => t.testId).map((xray, index) => (
+                    <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="font-semibold text-gray-900">{xray.testName}</span>
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700 uppercase">
+                            {xray.groupName || 'IMAGE'}
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            xrayUrgency === 'emergency' ? 'bg-red-100 text-red-700' :
+                            xrayUrgency === 'stat' ? 'bg-orange-100 text-orange-700' :
+                            xrayUrgency === 'urgent' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {xrayUrgency}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">{xray.bodyPart}</p>
+                        {xray.clinicalIndication && (
+                          <p className="text-sm text-gray-500 mt-1">{xray.clinicalIndication}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeXrayRow(index)}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Prescriptions Tab - Exact PrescriptionForm Style */}
+          {activeTab === 'prescriptions' && (
+            <div className="max-w-6xl mx-auto">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Prescribed Medications</h3>
+                  <button
+                    onClick={() => setShowMedicationSearch(!showMedicationSearch)}
+                    className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Medication
+                  </button>
+                </div>
+
+                {showMedicationSearch && (
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                    <div className="relative">
+                      <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          searchMedications(e.target.value);
+                        }}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="Search medications by name, generic name, or category..."
+                      />
+                    </div>
+                    
+                    {searchResults.length > 0 && (
+                      <div className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                        {searchResults.map((medication) => (
+                          <div
+                            key={medication.id}
+                            onClick={() => addMedicationToPrescription(medication)}
+                            className="p-3 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-medium text-gray-900">{medication.name}</p>
+                                <p className="text-sm text-gray-600">{medication.generic_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {medication.strength} • {medication.dosage_form}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">Stock: {medication.available_stock || 0}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Prescription Items */}
+                {prescriptions.length > 0 && (
+                  <div className="space-y-4">
+                    {prescriptions.map((item, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
+                            {item.generic_name && (
+                              <p className="text-sm text-gray-600">{item.generic_name}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setPrescriptions(prescriptions.filter((_, i) => i !== index))}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        
+                        {/* Stock Information */}
+                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-blue-800">Current Stock:</span>
+                            <span className={`text-sm font-bold ${item.stock_quantity > 10 ? 'text-green-600' : item.stock_quantity > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {item.stock_quantity} units available
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Dosage *</label>
+                            <input
+                              type="text"
+                              value={item.dosage}
+                              onChange={(e) => updatePrescriptionItem(index, 'dosage', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="e.g., 500mg, 1 tablet"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Duration (Days) *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.duration_days}
+                              onChange={(e) => updatePrescriptionItem(index, 'duration_days', parseInt(e.target.value) || 1)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Frequency Times */}
+                        <div className="mb-4">
+                          <label className="block text-xs font-medium text-gray-700 mb-2">Frequency Times *</label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {['Morning', 'Afternoon', 'Evening', 'Night'].map((time) => (
+                              <label key={time} className="flex items-center space-x-2 p-2 border border-gray-200 rounded hover:bg-gray-50">
+                                <input
+                                  type="checkbox"
+                                  checked={item.frequency_times.includes(time)}
+                                  onChange={(e) => {
+                                    const newTimes = e.target.checked
+                                      ? [...item.frequency_times, time]
+                                      : item.frequency_times.filter(t => t !== time);
+                                    updatePrescriptionItem(index, 'frequency_times', newTimes);
+                                  }}
+                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                />
+                                <span className="text-sm text-gray-700">{time}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Meal Timing */}
+                        <div className="mb-4">
+                          <label className="block text-xs font-medium text-gray-700 mb-2">Meal Timing</label>
+                          <select
+                            value={item.meal_timing}
+                            onChange={(e) => updatePrescriptionItem(index, 'meal_timing', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          >
+                            <option value="">Select meal timing</option>
+                            <option value="before_meal">Before Meal</option>
+                            <option value="after_meal">After Meal</option>
+                            <option value="with_meal">With Meal</option>
+                            <option value="empty_stomach">Empty Stomach</option>
+                          </select>
+                        </div>
+
+                        {/* Quantity Section */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="flex items-center space-x-2 mb-2">
+                              <input
+                                type="checkbox"
+                                checked={item.auto_calculate_quantity}
+                                onChange={(e) => updatePrescriptionItem(index, 'auto_calculate_quantity', e.target.checked)}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-xs font-medium text-gray-700">Auto Calculate Quantity</span>
+                            </label>
+                            {item.auto_calculate_quantity ? (
+                              <div className="px-3 py-2 text-sm bg-green-50 border border-green-300 rounded font-medium text-green-600">
+                                Auto: {calculateAutoQuantity(item.frequency_times, item.duration_days)} units
+                              </div>
+                            ) : (
+                              <input
+                                type="number"
+                                min="1"
+                                max={item.stock_quantity}
+                                value={item.quantity}
+                                onChange={(e) => updatePrescriptionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                placeholder="Custom quantity"
+                              />
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Instructions</label>
+                          <textarea
+                            value={item.instructions}
+                            onChange={(e) => updatePrescriptionItem(index, 'instructions', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                            placeholder="e.g., Take after meals, Avoid alcohol, Complete the full course"
+                            rows={2}
+                            data-allow-enter="true"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {prescriptions.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Pill className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>No medications added yet. Click "Add Medication" to start prescribing.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Follow-up Tab */}
+          {activeTab === 'followup' && (
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <Calendar className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Schedule Follow-up Appointment</h3>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Follow-up Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={followUp.follow_up_date}
+                        onChange={(e) => setFollowUp({ ...followUp, follow_up_date: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Follow-up Time
+                      </label>
+                      <input
+                        type="time"
+                        value={followUp.follow_up_time}
+                        onChange={(e) => setFollowUp({ ...followUp, follow_up_time: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Priority
+                      </label>
+                      <select
+                        value={followUp.priority}
+                        onChange={(e) => setFollowUp({ ...followUp, priority: e.target.value as any })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="routine">Routine</option>
+                        <option value="important">Important</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reason for Follow-up *
+                    </label>
+                    <textarea
+                      value={followUp.reason}
+                      onChange={(e) => setFollowUp({ ...followUp, reason: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Reason for follow-up appointment"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Instructions for Patient
+                    </label>
+                    <textarea
+                      value={followUp.instructions}
+                      onChange={(e) => setFollowUp({ ...followUp, instructions: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      placeholder="Instructions for patient before follow-up"
+                      data-allow-enter="true"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* New Lab Catalog Modal */}
+        {showNewLabTestModal && (
+          <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">New Lab Catalog Entry</div>
+                  <div className="text-xs text-slate-500">Create a new lab test for dropdown selection</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNewLabTestModal(false)}
+                  className="p-2 rounded-lg hover:bg-slate-50 text-slate-500"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Test Name</label>
+                  <input
+                    value={newLabTestData.testName}
+                    onChange={(e) => setNewLabTestData({ ...newLabTestData, testName: e.target.value })}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                    placeholder="e.g., CBC, LFT, RBS"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Group Name</label>
+                  <input
+                    value={newLabTestData.groupName}
+                    onChange={(e) => setNewLabTestData({ ...newLabTestData, groupName: e.target.value })}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                    placeholder="e.g., Hematology, Biochemistry"
+                  />
+                </div>
+              </div>
+              <div className="p-5 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewLabTestModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateNewLabTest}
+                  disabled={creatingLabTest}
+                  className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {creatingLabTest ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* New X-ray Catalog Modal */}
+        {showNewXrayTestModal && (
+          <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">New Radiology Catalog Entry</div>
+                  <div className="text-xs text-slate-500">Create a new procedure for dropdown selection</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNewXrayTestModal(false)}
+                  className="p-2 rounded-lg hover:bg-slate-50 text-slate-500"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Procedure Name</label>
+                  <input
+                    value={newXrayTestData.testName}
+                    onChange={(e) => setNewXrayTestData({ ...newXrayTestData, testName: e.target.value })}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                    placeholder="e.g., Chest X-Ray, USG Abdomen"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Modality</label>
+                  <input
+                    value={newXrayTestData.groupName}
+                    onChange={(e) => setNewXrayTestData({ ...newXrayTestData, groupName: e.target.value })}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                    placeholder="e.g., X-Ray, CT Scan, MRI"
+                  />
+                </div>
+              </div>
+              <div className="p-5 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewXrayTestModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateNewXrayTest}
+                  disabled={creatingXrayTest}
+                  className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {creatingXrayTest ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 p-6 bg-white">
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3 flex-shrink-0" />
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center">
+              <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0" />
+              <p className="text-green-800 text-sm">Clinical data saved successfully!</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={18} />
+                  <span>Save Clinical Data</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

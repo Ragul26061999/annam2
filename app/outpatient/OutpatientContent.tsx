@@ -103,11 +103,17 @@ export default function OutpatientContent() {
     loadOutpatientData();
 
     // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadOutpatientData();
-    }, 30000);
+    const intervalMs = 0;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    if (intervalMs > 0) {
+      interval = setInterval(() => {
+        loadOutpatientData();
+      }, intervalMs);
+    }
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [selectedDate, statusFilter]);
 
   const fetchAdmittedCount = async () => {

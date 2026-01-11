@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { Calendar, Clock, Plus, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, Plus, Filter, ChevronLeft, ChevronRight, FileText, Stethoscope } from 'lucide-react';
+import ClinicalEntryForm from '../../components/ClinicalEntryForm';
+import ClinicalEntryForm2 from '../../components/ClinicalEntryForm2';
 
 const appointments = [
   {
-    id: 1,
+    id: '1',
     patientName: 'Sarah Johnson',
+    patientUHID: 'AH2601-0001',
+    patientId: 'uuid-patient-1',
+    encounterId: 'uuid-encounter-1',
+    doctorId: 'uuid-doctor-1',
     type: 'Follow-up',
     doctor: 'Dr. Robert Chen',
     time: '10:00 AM',
@@ -13,8 +19,12 @@ const appointments = [
     image: 'https://images.pexels.com/photos/761963/pexels-photo-761963.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1'
   },
   {
-    id: 2,
+    id: '2',
     patientName: 'Michael Rodriguez',
+    patientUHID: 'AH2601-0002',
+    patientId: 'uuid-patient-2',
+    encounterId: 'uuid-encounter-2',
+    doctorId: 'uuid-doctor-1',
     type: 'Initial Consultation',
     doctor: 'Dr. Robert Chen',
     time: '11:30 AM',
@@ -23,8 +33,12 @@ const appointments = [
     image: 'https://images.pexels.com/photos/769745/pexels-photo-769745.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1'
   },
   {
-    id: 3,
+    id: '3',
     patientName: 'Emma Watson',
+    patientUHID: 'AH2601-0003',
+    patientId: 'uuid-patient-3',
+    encounterId: 'uuid-encounter-3',
+    doctorId: 'uuid-doctor-2',
     type: 'Check-up',
     doctor: 'Dr. Lisa Wong',
     time: '2:15 PM',
@@ -33,8 +47,12 @@ const appointments = [
     image: 'https://images.pexels.com/photos/4714992/pexels-photo-4714992.jpeg?auto=compress&cs=tinysrgb&w=30&h=30&dpr=1'
   },
   {
-    id: 4,
+    id: '4',
     patientName: 'David Kim',
+    patientUHID: 'AH2601-0004',
+    patientId: 'uuid-patient-4',
+    encounterId: 'uuid-encounter-4',
+    doctorId: 'uuid-doctor-3',
     type: 'Surgery Prep',
     doctor: 'Dr. James Wilson',
     time: '3:45 PM',
@@ -47,6 +65,24 @@ const appointments = [
 const Appointments: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showAddModal, setShowAddModal] = useState(false);
+  
+  // State for Clinical Entry Forms
+  const [showClinicalForm, setShowClinicalForm] = useState(false);
+  const [showClinicalForm2, setShowClinicalForm2] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+
+  const handleOpenClinicalForm = (appointment: any) => {
+    setSelectedAppointment(appointment);
+    setShowClinicalForm(true);
+  };
+
+  const handleOpenClinicalForm2 = (appointment: any) => {
+    setSelectedAppointment(appointment);
+    setShowClinicalForm2(true);
+  };
+
+  // Mock current user (in real app, this would come from auth context)
+  const currentUser = { id: 'uuid-doctor-1' };
 
   return (
     <div className="space-y-8">
@@ -136,7 +172,7 @@ const Appointments: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
                 <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
                   appointment.status === 'Scheduled' ? 'bg-blue-50 text-blue-600' :
                   appointment.status === 'In Progress' ? 'bg-orange-50 text-orange-600' :
@@ -144,6 +180,30 @@ const Appointments: React.FC = () => {
                 }`}>
                   {appointment.status}
                 </span>
+                
+                {/* Entry Form Button */}
+                <button
+                  onClick={() => handleOpenClinicalForm(appointment)}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center text-sm"
+                  title="Clinical Entry Form (Basic)"
+                >
+                  <FileText size={14} className="mr-1" />
+                  Entry Form
+                </button>
+
+                {/* Clinical 2.0 Button */}
+                <button
+                  onClick={() => handleOpenClinicalForm2(appointment)}
+                  className="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center text-sm relative"
+                  title="Clinical Entry Form 2.0 (Advanced)"
+                >
+                  <Stethoscope size={14} className="mr-1" />
+                  Clinical 2.0
+                  <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                    New
+                  </span>
+                </button>
+
                 <button className="text-gray-400 hover:text-orange-400">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
@@ -244,6 +304,52 @@ const Appointments: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Clinical Entry Form (Original) */}
+      {showClinicalForm && selectedAppointment && (
+        <ClinicalEntryForm
+          isOpen={showClinicalForm}
+          onClose={() => {
+            setShowClinicalForm(false);
+            setSelectedAppointment(null);
+          }}
+          appointmentId={selectedAppointment.id}
+          encounterId={selectedAppointment.encounterId}
+          patientId={selectedAppointment.patientId}
+          doctorId={selectedAppointment.doctorId}
+          patientName={selectedAppointment.patientName}
+          patientUHID={selectedAppointment.patientUHID}
+          onSuccess={() => {
+            setShowClinicalForm(false);
+            setSelectedAppointment(null);
+            // Refresh appointments if needed
+            // loadAppointments();
+          }}
+        />
+      )}
+
+      {/* Clinical Entry Form 2.0 (New) */}
+      {showClinicalForm2 && selectedAppointment && (
+        <ClinicalEntryForm2
+          isOpen={showClinicalForm2}
+          onClose={() => {
+            setShowClinicalForm2(false);
+            setSelectedAppointment(null);
+          }}
+          appointmentId={selectedAppointment.id}
+          encounterId={selectedAppointment.encounterId}
+          patientId={selectedAppointment.patientId}
+          doctorId={selectedAppointment.doctorId}
+          patientName={selectedAppointment.patientName}
+          patientUHID={selectedAppointment.patientUHID}
+          onSuccess={() => {
+            setShowClinicalForm2(false);
+            setSelectedAppointment(null);
+            // Refresh appointments if needed
+            // loadAppointments();
+          }}
+        />
       )}
     </div>
   );

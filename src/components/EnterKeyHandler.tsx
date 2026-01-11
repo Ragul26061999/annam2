@@ -21,6 +21,12 @@ export default function EnterKeyHandler() {
                 return;
             }
 
+            // Check if this textarea allows Enter for new lines (e.g., ClinicalEntryForm2)
+            if (activeElement.tagName === 'TEXTAREA' && activeElement.hasAttribute('data-allow-enter')) {
+                // This textarea allows Enter for new lines, don't intercept
+                return;
+            }
+
             // Identify if current element is a form input that should transition to next field
             // We target common text-based inputs and selects
             const isInput = activeElement.tagName === 'INPUT' &&

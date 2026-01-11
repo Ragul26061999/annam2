@@ -138,12 +138,18 @@ function OutpatientPageContent() {
     loadQueueStats();
 
     // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadOutpatientData();
-      loadQueueStats();
-    }, 30000);
+    const intervalMs = 0;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    if (intervalMs > 0) {
+      interval = setInterval(() => {
+        loadOutpatientData();
+        loadQueueStats();
+      }, intervalMs);
+    }
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [selectedDate, statusFilter]);
 
 
