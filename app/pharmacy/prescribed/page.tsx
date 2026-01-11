@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users } from 'lucide-react'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 
 interface Prescription {
@@ -178,6 +178,18 @@ export default function PrescribedListPage() {
 
   const handleCreateBill = (prescription: Prescription) => {
     router.push(`/pharmacy/newbilling?prescriptionId=${encodeURIComponent(prescription.id)}`)
+  }
+
+  const handleReturnBill = (prescription: Prescription) => {
+    router.push(`/pharmacy/sales-return?prescriptionId=${encodeURIComponent(prescription.id)}`)
+  }
+
+  const handlePrintBill = (prescription: Prescription) => {
+    // Find the bill associated with this prescription
+    const printWindow = window.open(`/pharmacy/billing/print?prescriptionId=${encodeURIComponent(prescription.id)}`, '_blank', 'width=800,height=600')
+    if (!printWindow) {
+      alert('Please allow popups to print the bill')
+    }
   }
 
   const handleDeletePrescription = async (prescription: Prescription) => {
@@ -379,21 +391,50 @@ export default function PrescribedListPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleCreateBill(prescription)}
-                    className="btn-primary text-sm flex items-center gap-2"
-                    disabled={prescription.status !== 'active' || !prescription.items.some(i => i.status === 'pending')}
-                  >
-                    <Receipt className="w-4 h-4" />
-                    Create Bill
-                  </button>
-                  <button
-                    onClick={() => handleDeletePrescription(prescription)}
-                    className="btn-secondary text-sm flex items-center gap-2"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete
-                  </button>
+                  {prescription.status === 'active' ? (
+                    <>
+                      <button
+                        onClick={() => handleCreateBill(prescription)}
+                        className="btn-primary text-sm flex items-center gap-2"
+                        disabled={!prescription.items.some(i => i.status === 'pending')}
+                      >
+                        <Receipt className="w-4 h-4" />
+                        Create Bill
+                      </button>
+                      <button
+                        onClick={() => handleDeletePrescription(prescription)}
+                        className="btn-secondary text-sm flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    </>
+                  ) : prescription.status === 'dispensed' ? (
+                    <>
+                      <button
+                        onClick={() => handlePrintBill(prescription)}
+                        className="btn-primary text-sm flex items-center gap-2"
+                      >
+                        <Printer className="w-4 h-4" />
+                        Print Bill
+                      </button>
+                      <button
+                        onClick={() => handleReturnBill(prescription)}
+                        className="btn-secondary text-sm flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Return
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleDeletePrescription(prescription)}
+                      className="btn-secondary text-sm flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 
