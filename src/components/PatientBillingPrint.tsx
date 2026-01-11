@@ -90,6 +90,10 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
           .force-break {
             break-before: page;
             page-break-before: always;
+            display: block !important;
+            height: 0 !important;
+            line-height: 0 !important;
+            font-size: 0 !important;
           }
 
           .page-break {
@@ -100,6 +104,21 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
 
           .no-break {
             page-break-inside: avoid;
+          }
+
+          /* Ensure first page doesn't overflow */
+          .first-page-break {
+            break-after: page;
+            page-break-after: always;
+          }
+
+          /* Hide elements that should not be in print */
+          .print-only {
+            display: block !important;
+          }
+
+          .screen-only {
+            display: none !important;
           }
         }
 
@@ -338,9 +357,14 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
         </p>
       </div>
 
+      {/* Explicit page break */}
+      <div className="first-page-break"></div>
+
       {/* PAGE 2: LAB TESTS DETAIL */}
       {billing?.lab_billing && billing.lab_billing.length > 0 && (
-        <div className="force-break">
+        <>
+          <div className="page-break"></div>
+          <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
             <div className="h-12 w-full flex items-center justify-center mb-1">
@@ -385,6 +409,7 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* PAGE 3: OTHER BILLS DETAIL */}
