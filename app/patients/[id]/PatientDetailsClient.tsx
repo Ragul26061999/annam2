@@ -1289,6 +1289,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                         <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Other Charges</p>
                         <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.other_charges_total || '0'}</p>
                       </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-purple-100">
+                        <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-1">Other Bills</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.other_bills_total || '0'}</p>
+                      </div>
                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-green-100">
                         <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Total Paid</p>
                         <p className="text-2xl font-black text-green-600">₹{comprehensiveBilling.summary.paid_total || '0'}</p>
@@ -1309,6 +1313,53 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                           <p className="font-bold text-blue-600 text-xl">₹{comprehensiveBilling.summary.advance_paid || '0'}</p>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Other Bills Details */}
+                {comprehensiveBilling?.other_bills && comprehensiveBilling.other_bills.length > 0 && (
+                  <div className="bg-purple-50/30 p-8 rounded-3xl border-2 border-purple-100 border-dashed">
+                    <h4 className="text-lg font-black text-purple-900 mb-6 flex items-center gap-2">
+                      <FileText className="text-purple-500" /> OTHER BILLS DETAILS
+                    </h4>
+                    <div className="space-y-4">
+                      {comprehensiveBilling.other_bills.map((bill: any, index: number) => (
+                        <div key={bill.id || index} className="bg-white p-6 rounded-2xl shadow-sm border border-purple-100">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Bill Number</p>
+                              <p className="font-bold text-gray-900">{bill.bill_number}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Category</p>
+                              <p className="font-bold text-gray-900 capitalize">{bill.charge_category}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Description</p>
+                              <p className="font-bold text-gray-900">{bill.charge_description}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Amount</p>
+                              <p className="font-bold text-purple-600">₹{Number(bill.total_amount).toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Payment Status</p>
+                              <p className="font-bold text-gray-900 capitalize">{bill.payment_status}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Paid Amount</p>
+                              <p className="font-bold text-green-600">₹{Number(bill.paid_amount || 0).toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-xs uppercase font-bold">Bill Date</p>
+                              <p className="font-bold text-gray-900">{new Date(bill.created_at).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

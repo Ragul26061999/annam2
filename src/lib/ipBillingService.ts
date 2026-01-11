@@ -123,6 +123,7 @@ export interface IPComprehensiveBilling {
   lab_billing: IPLabBilling[];
   radiology_billing: IPRadiologyBilling[];
   other_charges: IPBillingItem[];
+  other_bills: any[];
 
   // Payments
   payment_receipts: IPPaymentReceipt[];
@@ -137,6 +138,7 @@ export interface IPComprehensiveBilling {
     lab_total: number;
     radiology_total: number;
     other_charges_total: number;
+    other_bills_total: number;
     gross_total: number;
     // Legacy advance amount (from bed_allocation), kept for display
     advance_paid: number;
@@ -418,14 +420,32 @@ export async function getIPComprehensiveBilling(
       .eq('reference_id', bedAllocationId)
       .eq('reference_type', 'ip_admission');
 
-    const otherCharges: IPBillingItem[] = (otherItems || []).map((item: any) => ({
-      service_name: item.description,
-      rate: item.unit_amount,
-      quantity: item.qty,
-      amount: item.total_amount
-    }));
+    // 9. Get Other Bills for this patient during IP stay
+    const { data: otherBills } = await supabase
+      .from('other_bills')
+      .select('*')
+      .eq('patient_id', patient.id)
+      .eq('status', 'active')
+      .gte('created_at', admissionDate)
+      .lte('created_at', dischargeDate);
+
+    const otherCharges: IPBillingItem[] = [
+      ...(otherItems || []).map((item: any) => ({
+        service_name: item.description,
+        rate: item.unit_amount,
+        quantity: item.qty,
+        amount: item.total_amount
+      })),
+      ...(otherBills || []).map((bill: any) => ({
+        service_name: `${bill.charge_category}: ${bill.charge_description}`,
+        rate: Number(bill.unit_price),
+        quantity: Number(bill.quantity),
+        amount: Number(bill.total_amount)
+      }))
+    ];
 
     const otherChargesTotal = otherCharges.reduce((sum, item) => sum + item.amount, 0);
+    const otherBillsTotal = (otherBills || []).reduce((sum, bill) => sum + Number(bill.total_amount), 0);
 
     // 8. Calculate summary
     const doctorServicesTotal = doctorServices.reduce((sum, service) => sum + service.total_amount, 0);
@@ -486,6 +506,7 @@ export async function getIPComprehensiveBilling(
       lab_billing: labBilling,
       radiology_billing: radiologyBilling,
       other_charges: otherCharges,
+      other_bills: otherBills || [],
       payment_receipts,
       summary: {
         bed_charges_total: bedChargesTotal,
@@ -496,6 +517,7 @@ export async function getIPComprehensiveBilling(
         lab_total: labTotal,
         radiology_total: radiologyTotal,
         other_charges_total: otherChargesTotal,
+        other_bills_total: otherBillsTotal,
         gross_total: grossTotal,
         advance_paid: advancePaid,
         paid_total: paidTotal,
