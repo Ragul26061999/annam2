@@ -312,7 +312,7 @@ export async function getIPComprehensiveBilling(
       .from('lab_test_orders')
       .select(`
         *,
-        test:lab_test_catalog(test_name, test_cost)
+        lab_test_catalog(test_name, test_cost)
       `)
       .eq('patient_id', patient.id)
       .gte('created_at', admissionDate)
@@ -322,10 +322,10 @@ export async function getIPComprehensiveBilling(
       order_number: order.order_number,
       order_date: order.created_at,
       tests: [{
-        test_name: order.test?.[0]?.test_name || 'Lab Test',
-        test_cost: order.test?.[0]?.test_cost || 0
+        test_name: order.lab_test_catalog?.test_name || 'Lab Test',
+        test_cost: Number(order.lab_test_catalog?.test_cost) || 0
       }],
-      total_amount: order.test?.[0]?.test_cost || 0
+      total_amount: Number(order.lab_test_catalog?.test_cost) || 0
     }));
 
     const labTotal = labBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
@@ -335,7 +335,7 @@ export async function getIPComprehensiveBilling(
       .from('radiology_test_orders')
       .select(`
         *,
-        test:radiology_test_catalog(test_name, test_cost)
+        radiology_test_catalog(test_name, test_cost)
       `)
       .eq('patient_id', patient.id)
       .gte('created_at', admissionDate)
@@ -345,10 +345,10 @@ export async function getIPComprehensiveBilling(
       order_number: order.order_number,
       order_date: order.created_at,
       scans: [{
-        scan_name: order.test?.[0]?.test_name || 'Radiology Scan',
-        scan_cost: order.test?.[0]?.test_cost || 0
+        scan_name: order.radiology_test_catalog?.test_name || 'Radiology Scan',
+        scan_cost: Number(order.radiology_test_catalog?.test_cost) || 0
       }],
-      total_amount: order.test?.[0]?.test_cost || 0
+      total_amount: Number(order.radiology_test_catalog?.test_cost) || 0
     }));
 
     const radiologyTotal = radiologyBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
