@@ -54,12 +54,16 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
 
   // Trigger print dialog when component mounts
   useEffect(() => {
+    // Add print-active class to body
+    document.body.classList.add('print-active');
+    
     // Small delay to ensure content is rendered
     const timer = setTimeout(() => {
       window.print();
       
-      // Close the modal after printing (with a small delay to ensure print dialog is handled)
+      // Remove print-active class after print dialog closes
       const afterPrintTimer = setTimeout(() => {
+        document.body.classList.remove('print-active');
         if (onClose) {
           onClose();
         }
@@ -69,7 +73,10 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
     }, 500);
 
     // Cleanup function
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      document.body.classList.remove('print-active');
+    };
   }, [onClose]);
 
   const printContent = (
@@ -82,17 +89,22 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
           }
           
           /* Hide everything except print content */
-          body * {
+          body:not(.print-active) * {
+            visibility: visible;
+          }
+          
+          body.print-active * {
             visibility: hidden;
           }
           
           /* Show only the print content */
-          .print-portal-root, .print-portal-root * {
+          body.print-active .print-portal-root,
+          body.print-active .print-portal-root * {
             visibility: visible;
           }
           
           /* Ensure print content takes full page */
-          .print-portal-root {
+          body.print-active .print-portal-root {
             position: absolute;
             left: 0;
             top: 0;
