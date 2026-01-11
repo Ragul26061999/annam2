@@ -15,11 +15,29 @@ export interface StaffMember {
   pf_number?: string;
   esic_number?: string;
   image?: string;
+  deleted_at?: string;
   created_at?: string;
   updated_at?: string;
   // UI helper fields
   name?: string;
   department_name?: string;
+}
+
+export interface StaffAttendance {
+  id: string;
+  staff_id: string;
+  attendance_date: string;
+  time_in?: string;
+  time_out?: string;
+  status: 'present' | 'absent' | 'half_day' | 'leave' | 'holiday';
+  attendance_type: 'manual' | 'biometric' | 'system';
+  notes?: string;
+  marked_by?: string;
+  created_at?: string;
+  updated_at?: string;
+  // UI helper fields
+  staff_name?: string;
+  total_hours?: string;
 }
 
 export interface StaffRole {
@@ -59,12 +77,18 @@ export async function getStaffMembers(
     role?: string;
     is_active?: boolean;
     search?: string;
+    include_deleted?: boolean;
   }
 ): Promise<StaffMember[]> {
   try {
     let query = supabase
       .from('staff')
       .select('*');
+
+    // Exclude soft-deleted staff by default
+    if (!filters?.include_deleted) {
+      query = query.is('deleted_at', null);
+    }
 
     if (filters?.department_id) {
       query = query.eq('department_id', filters.department_id);
@@ -201,7 +225,47 @@ export async function updateStaffMember(id: string, updates: Partial<StaffMember
 }
 
 /**
- * Delete staff member
+ * Soft delete staff member
+ */
+export async function softDeleteStaffMember(id: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('staff')
+      .update({ deleted_at: new Date().toISOString(), is_active: false })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error soft deleting staff member:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in softDeleteStaffMember:', error);
+    throw error;
+  }
+}
+
+/**
+ * Restore soft deleted staff member
+ */
+export async function restoreStaffMember(id: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('staff')
+      .update({ deleted_at: null, is_active: true })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error restoring staff member:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in restoreStaffMember:', error);
+    throw error;
+  }
+}
+
+/**
+ * Hard delete staff member (permanent)
  */
 export async function deleteStaffMember(id: string): Promise<void> {
   try {
@@ -533,5 +597,188 @@ export async function generateNextEmployeeId(): Promise<string> {
   } catch (error) {
     console.error('Error in generateNextEmployeeId:', error);
     return 'EMP-001';
+  }
+}
+
+/**
+ * Mark staff attendance
+ */
+export async function markAttendance(attendanceData: {
+  staff_id: string;
+  attendance_date: string;
+  time_in?: string;
+  time_out?: string;
+  status: 'present' | 'absent' | 'half_day' | 'leave' | 'holiday';
+  notes?: string;
+  marked_by?: string;
+}): Promise<StaffAttendance> {
+  try {
+    const { data, error } = await supabase
+      .from('staff_attendance')
+      .upsert({
+        ...attendanceData,
+        attendance_type: 'manual',
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'staff_id,attendance_date'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error marking attendance:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in markAttendance:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get staff attendance for a date range
+ */
+export async function getStaffAttendance(filters?: {
+  staff_id?: string;
+  start_date?: string;
+  end_date?: string;
+  status?: string;
+}): Promise<StaffAttendance[]> {
+  try {
+    let query = supabase
+      .from('staff_attendance')
+      .select('*');
+
+    if (filters?.staff_id) {
+      query = query.eq('staff_id', filters.staff_id);
+    }
+
+    if (filters?.start_date) {
+      query = query.gte('attendance_date', filters.start_date);
+    }
+
+    if (filters?.end_date) {
+      query = query.lte('attendance_date', filters.end_date);
+    }
+
+    if (filters?.status) {
+      query = query.eq('status', filters.status);
+    }
+
+    const { data, error } = await query.order('attendance_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching attendance:', error);
+      throw error;
+    }
+
+    // Fetch staff info to add names
+    const { data: staff } = await supabase
+      .from('staff')
+      .select('id, first_name, last_name');
+    
+    const staffMap = Object.fromEntries(
+      staff?.map(s => [s.id, `${s.first_name} ${s.last_name}`]) || []
+    );
+
+    return (data || []).map(a => ({
+      ...a,
+      staff_name: staffMap[a.staff_id] || 'Unknown'
+    }));
+  } catch (error) {
+    console.error('Error in getStaffAttendance:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get today's attendance for all staff
+ */
+export async function getTodayAttendance(): Promise<StaffAttendance[]> {
+  const today = new Date().toISOString().split('T')[0];
+  return getStaffAttendance({ start_date: today, end_date: today });
+}
+
+/**
+ * Update attendance time in/out
+ */
+export async function updateAttendanceTime(
+  staff_id: string,
+  attendance_date: string,
+  updates: { time_in?: string; time_out?: string; notes?: string }
+): Promise<StaffAttendance> {
+  try {
+    const { data, error } = await supabase
+      .from('staff_attendance')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('staff_id', staff_id)
+      .eq('attendance_date', attendance_date)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating attendance time:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in updateAttendanceTime:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get attendance summary for a staff member
+ */
+export async function getStaffAttendanceSummary(staff_id: string, month?: string): Promise<{
+  total_days: number;
+  present_days: number;
+  absent_days: number;
+  half_days: number;
+  leave_days: number;
+  attendance_percentage: number;
+}> {
+  try {
+    const startDate = month ? `${month}-01` : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const endDate = month 
+      ? new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0]
+      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('staff_attendance')
+      .select('status')
+      .eq('staff_id', staff_id)
+      .gte('attendance_date', startDate)
+      .lte('attendance_date', endDate);
+
+    if (error) {
+      console.error('Error fetching attendance summary:', error);
+      throw error;
+    }
+
+    const total_days = data?.length || 0;
+    const present_days = data?.filter(a => a.status === 'present').length || 0;
+    const absent_days = data?.filter(a => a.status === 'absent').length || 0;
+    const half_days = data?.filter(a => a.status === 'half_day').length || 0;
+    const leave_days = data?.filter(a => a.status === 'leave').length || 0;
+    const attendance_percentage = total_days > 0 ? (present_days / total_days) * 100 : 0;
+
+    return {
+      total_days,
+      present_days,
+      absent_days,
+      half_days,
+      leave_days,
+      attendance_percentage: Math.round(attendance_percentage * 100) / 100
+    };
+  } catch (error) {
+    console.error('Error in getStaffAttendanceSummary:', error);
+    throw error;
   }
 }

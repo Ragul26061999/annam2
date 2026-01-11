@@ -29,10 +29,11 @@ import {
   X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
-import { StaffMember, getStaffMembers, deleteStaffMember } from '@/src/lib/staffService';
+import { StaffMember, getStaffMembers, softDeleteStaffMember, restoreStaffMember } from '@/src/lib/staffService';
 import AddStaffModal from '@/src/components/AddStaffModal';
 import EditStaffModal from '@/src/components/EditStaffModal';
 import ViewStaffModal from '@/src/components/ViewStaffModal';
+import StaffAttendanceModal from '@/src/components/StaffAttendanceModal';
 
 interface StaffStats {
   totalStaff: number;
@@ -57,6 +58,7 @@ export default function StaffPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
   useEffect(() => {
@@ -120,16 +122,17 @@ export default function StaffPage() {
   const roles = ['All', ...new Set(staffMembers.map(s => s.role))].filter(role => role !== 'Doctor').sort();
 
   const handleDeleteStaff = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete staff member "${name}"? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to deactivate staff member "${name}"? They will be hidden from the active list but can be restored later.`)) {
       return;
     }
 
     try {
-      await deleteStaffMember(id);
+      await softDeleteStaffMember(id);
       await fetchStaffData();
+      alert('Staff member deactivated successfully.');
     } catch (error) {
-      console.error('Error deleting staff member:', error);
-      alert('Failed to delete staff member. Please try again.');
+      console.error('Error deactivating staff member:', error);
+      alert('Failed to deactivate staff member. Please try again.');
     }
   };
 
@@ -178,13 +181,22 @@ export default function StaffPage() {
             Manage team members, roles, and department allocations
           </p>
         </div>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm transition-all duration-300 shadow-lg shadow-orange-100 hover:shadow-orange-200 active:scale-95 gap-2 group"
-        >
-          <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-          Add Staff Member
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsAttendanceModalOpen(true)}
+            className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm transition-all duration-300 shadow-lg shadow-blue-100 hover:shadow-blue-200 active:scale-95 gap-2 group"
+          >
+            <Calendar size={20} />
+            Mark Attendance
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm transition-all duration-300 shadow-lg shadow-orange-100 hover:shadow-orange-200 active:scale-95 gap-2 group"
+          >
+            <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+            Add Staff Member
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -386,6 +398,14 @@ export default function StaffPage() {
           staff={selectedStaff}
         />
       )}
+
+      {/* Attendance Modal */}
+      <StaffAttendanceModal
+        isOpen={isAttendanceModalOpen}
+        onClose={() => setIsAttendanceModalOpen(false)}
+        staff={filteredStaff}
+        onSuccess={fetchStaffData}
+      />
 
       {/* Error Toast (if any) */}
       {error && (
