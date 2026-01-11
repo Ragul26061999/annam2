@@ -41,6 +41,7 @@ import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
 import { getMedicalHistory, MedicalHistoryEvent } from '../../../src/lib/medicalHistoryService';
 import { getPatientLabOrders, getPatientRadiologyOrders } from '../../../src/lib/labXrayService';
+import { getIPComprehensiveBilling, IPComprehensiveBilling } from '../../../src/lib/ipBillingService';
 import MedicalHistoryForm from '../../../src/components/MedicalHistoryForm';
 import AddDummyMedicalHistory from '../../../src/components/AddDummyMedicalHistory';
 import MedicationHistory from '../../../src/components/MedicationHistory';
@@ -193,6 +194,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [ipAllocation, setIpAllocation] = useState<any | null>(null);
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
   const [ipBillingPayments, setIpBillingPayments] = useState<BillingPaymentRow[]>([]);
+  const [comprehensiveBilling, setComprehensiveBilling] = useState<IPComprehensiveBilling | null>(null);
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
 
@@ -249,47 +251,37 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       const allocForBilling = selectedAllocation;
       setIpAllocation(allocForBilling || null);
 
-      // Fetch IP billing ledger by bed_allocation_id (if any)
+      // Fetch comprehensive IP billing data
       try {
         if (allocForBilling?.id) {
-          const { data: ipBill, error: ipBillError } = await supabase
-            .from('billing')
-            .select('id, bill_no, bill_number, total, amount_paid, balance_due, payment_status, payment_method, issued_at, bed_allocation_id')
-            .eq('bed_allocation_id', allocForBilling.id)
-            .order('issued_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (ipBillError) {
-            console.warn('Failed to load IP billing ledger:', ipBillError);
-            setIpBilling(null);
-            setIpBillingPayments([]);
-          } else {
-            setIpBilling((ipBill as any) || null);
-
-            if (ipBill?.id) {
-              const { data: payRows, error: payErr } = await supabase
-                .from('billing_payments')
-                .select('method, amount, reference, received_at')
-                .eq('billing_id', ipBill.id)
-                .order('received_at', { ascending: true });
-
-              if (payErr) {
-                console.warn('Failed to load IP payment splits:', payErr);
-                setIpBillingPayments([]);
-              } else {
-                setIpBillingPayments((payRows as any) || []);
-              }
-            } else {
-              setIpBillingPayments([]);
-            }
-          }
+          const billingData = await getIPComprehensiveBilling(allocForBilling.id);
+          setComprehensiveBilling(billingData);
+          
+          // Set legacy ipBilling for compatibility
+          setIpBilling({
+            id: allocForBilling.id,
+            total: billingData.summary.gross_total,
+            amount_paid: billingData.summary.paid_total,
+            balance_due: billingData.summary.pending_amount,
+            payment_status: billingData.summary.pending_amount > 0 ? 'pending' : 'paid'
+          });
+          
+          // Set payment data from comprehensive billing
+          const paymentRows = billingData.payment_receipts.map(receipt => ({
+            method: receipt.payment_type,
+            amount: receipt.amount,
+            reference: receipt.reference_number,
+            received_at: receipt.payment_date
+          }));
+          setIpBillingPayments(paymentRows);
         } else {
+          setComprehensiveBilling(null);
           setIpBilling(null);
           setIpBillingPayments([]);
         }
       } catch (ipBillingErr) {
-        console.warn('Failed to load IP billing:', ipBillingErr);
+        console.warn('Failed to load comprehensive IP billing:', ipBillingErr);
+        setComprehensiveBilling(null);
         setIpBilling(null);
         setIpBillingPayments([]);
       }
@@ -1166,34 +1158,22 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     // Always calculate balance as Total - Paid for consistency in this view.
                     const regBalance = Math.max(0, regTotal - regPaid);
 
-                    // 2. IP Billing
-                    const ipTotal = Number(ipBilling?.total ?? ipAllocation?.total_charges ?? 0) || 0;
-                    const ipPaid = Number(ipBilling?.amount_paid ?? 0) || 0;
-                    const ipBalance = Number.isFinite(Number(ipBilling?.balance_due))
-                      ? Number(ipBilling?.balance_due)
-                      : Math.max(0, ipTotal - ipPaid);
+                    // 2. IP Billing (from comprehensive billing)
+                    const ipTotal = comprehensiveBilling?.summary.gross_total || 0;
+                    const ipPaid = comprehensiveBilling?.summary.paid_total || 0;
+                    const ipBalance = comprehensiveBilling?.summary.pending_amount || 0;
 
-                    // 3. Lab & Radiology Billing
-                    // We need to sum up costs. For 'paid' status, we check if payment_status === 'paid'.
-                    // Note: This logic assumes individual orders track their payment status.
-                    const labTotal = labOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
-                    const labPaid = labOrders
-                      .filter(order => order.payment_status === 'paid')
-                      .reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
-                    
-                    const radTotal = radiologyOrders.reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
-                    const radPaid = radiologyOrders
-                      .filter(order => order.payment_status === 'paid')
-                      .reduce((sum, order) => sum + (Number(order.test_catalog?.test_cost) || 0), 0);
-
+                    // 3. Lab & Radiology Billing (included in comprehensive billing)
+                    const labTotal = comprehensiveBilling?.summary.lab_total || 0;
+                    const radTotal = comprehensiveBilling?.summary.radiology_total || 0;
                     const diagTotal = labTotal + radTotal;
-                    const diagPaid = labPaid + radPaid;
-                    const diagBalance = diagTotal - diagPaid;
+                    const diagPaid = 0; // Included in IP billing payments
+                    const diagBalance = 0; // Included in IP billing balance
 
                     // Grand Totals
-                    const overallFee = regTotal + ipTotal + diagTotal;
-                    const totalPaid = regPaid + ipPaid + diagPaid;
-                    const totalRemaining = regBalance + ipBalance + diagBalance;
+                    const overallFee = regTotal + ipTotal;
+                    const totalPaid = regPaid + ipPaid;
+                    const totalRemaining = regBalance + ipBalance;
 
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1274,19 +1254,78 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   </div>
                 )}
 
+                {/* Comprehensive IP Billing Breakdown */}
+                {comprehensiveBilling && (
+                  <div className="bg-blue-50/30 p-8 rounded-3xl border-2 border-blue-100 border-dashed">
+                    <h4 className="text-lg font-black text-blue-900 mb-6 flex items-center gap-2">
+                      <FileText className="text-blue-500" /> COMPREHENSIVE IP BILLING BREAKDOWN
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Bed Charges</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.bed_charges_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Doctor Consultation</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.doctor_consultation_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Lab Tests</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.lab_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Radiology</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.radiology_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Pharmacy</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.pharmacy_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Doctor Services</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.doctor_services_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Other Charges</p>
+                        <p className="text-2xl font-black text-gray-900">₹{comprehensiveBilling.summary.other_charges_total || '0'}</p>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-green-100">
+                        <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Total Paid</p>
+                        <p className="text-2xl font-black text-green-600">₹{comprehensiveBilling.summary.paid_total || '0'}</p>
+                      </div>
+                    </div>
+                    <div className="mt-6 bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase font-bold">Gross Total</p>
+                          <p className="font-bold text-gray-900 text-xl">₹{comprehensiveBilling.summary.gross_total || '0'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase font-bold">Pending Amount</p>
+                          <p className="font-bold text-orange-600 text-xl">₹{comprehensiveBilling.summary.pending_amount || '0'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase font-bold">Advance Paid</p>
+                          <p className="font-bold text-blue-600 text-xl">₹{comprehensiveBilling.summary.advance_paid || '0'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                   <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase flex items-center gap-2">
-                    <Bed size={16} /> Inpatient (IP) Billing Summary
+                    <Bed size={16} /> Legacy IP Billing Summary
                   </h5>
 
                   {!ipAllocation ? (
                     <div className="text-sm text-gray-600">No IP admission found for this patient.</div>
                   ) : (() => {
-                    const totalCharge = Number(ipBilling?.total ?? ipAllocation?.total_charges ?? 0) || 0;
-                    const paid = Number(ipBilling?.amount_paid ?? 0) || 0;
-                    const pending = Number.isFinite(Number(ipBilling?.balance_due))
-                      ? Number(ipBilling?.balance_due)
-                      : Math.max(0, totalCharge - paid);
+                      const totalCharge = Number(ipBilling?.total ?? ipAllocation?.total_charges ?? 0) || 0;
+                      const paid = Number(ipBilling?.amount_paid ?? 0) || 0;
+                      const pending = Number.isFinite(Number(ipBilling?.balance_due))
+                        ? Number(ipBilling?.balance_due)
+                        : Math.max(0, totalCharge - paid);
 
                     const paymentStatus = (ipBilling?.payment_status || ipAllocation?.status || 'pending');
                     const paymentType = (ipBilling?.payment_method || (ipBillingPayments.length === 1 ? ipBillingPayments[0].method : (ipBillingPayments.length > 1 ? 'split' : '—')));
