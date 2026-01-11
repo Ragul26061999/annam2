@@ -139,6 +139,7 @@ export interface IPComprehensiveBilling {
     radiology_total: number;
     other_charges_total: number;
     other_bills_total: number;
+    other_bills_paid_total: number;
     gross_total: number;
     // Legacy advance amount (from bed_allocation), kept for display
     advance_paid: number;
@@ -457,12 +458,16 @@ export async function getIPComprehensiveBilling(
       pharmacyTotal + 
       labTotal + 
       radiologyTotal + 
-      otherChargesTotal;
+      otherChargesTotal + 
+      otherBillsTotal;
 
+    // Calculate paid amounts from Other Bills
+    const otherBillsPaidTotal = (otherBills || []).reduce((sum, bill) => sum + Number(bill.paid_amount || 0), 0);
+    
     const advancePaid = allocation.advance_amount || 0;
     const discount = 0; // Can be fetched from discharge_summaries if needed
     const receiptsTotal = payment_receipts.reduce((sum, r) => sum + (r.amount || 0), 0);
-    const paidTotal = advancePaid + receiptsTotal;
+    const paidTotal = advancePaid + receiptsTotal + otherBillsPaidTotal;
     const netPayable = grossTotal - advancePaid - discount;
     const pendingAmount = Math.max(0, grossTotal - discount - paidTotal);
 
@@ -518,6 +523,7 @@ export async function getIPComprehensiveBilling(
         radiology_total: radiologyTotal,
         other_charges_total: otherChargesTotal,
         other_bills_total: otherBillsTotal,
+        other_bills_paid_total: otherBillsPaidTotal,
         gross_total: grossTotal,
         advance_paid: advancePaid,
         paid_total: paidTotal,
