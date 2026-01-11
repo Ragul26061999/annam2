@@ -25,7 +25,8 @@ import {
   TestTube,
   Scan,
   Stethoscope,
-  User
+  User,
+  Printer
 } from 'lucide-react';
 import { 
   getFinanceStats, 
@@ -39,6 +40,8 @@ import {
   type PaymentMethodStats
 } from '../lib/financeService';
 import TransactionViewModal from './TransactionViewModal';
+import { BillingReceiptPrint } from './finance/BillingReceiptPrint';
+import PaymentEntryForm from './finance/PaymentEntryForm';
 
 interface FinanceDashboardProps {
   className?: string;
@@ -59,6 +62,9 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
   const [dateToFilter, setDateToFilter] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [printRecord, setPrintRecord] = useState<BillingRecord | null>(null);
 
   // Source colors and icons for different billing types
   const sourceConfig: Record<string, { color: string; bgColor: string; icon: any; label: string }> = {
@@ -156,6 +162,23 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
   const handleViewRecord = (record: BillingRecord) => {
     setSelectedRecord(record);
     setShowModal(true);
+  };
+
+  const handlePrintRecord = (record: BillingRecord) => {
+    setPrintRecord(record);
+    setShowPrintModal(true);
+  };
+
+  const handlePaymentEntry = (record: BillingRecord) => {
+    setSelectedRecord(record);
+    setShowPaymentForm(true);
+  };
+
+  const handlePaymentSubmit = (paymentData: any) => {
+    // Here you would typically save the payment data to your backend
+    console.log('Payment data:', paymentData);
+    // You might want to refresh the billing records after successful payment
+    // fetchBillingRecords();
   };
 
   const handleCloseModal = () => {
@@ -510,7 +533,7 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
                     <div className="text-right">
                       <p className="text-lg font-bold text-gray-900">{formatAmount(record.total_amount)}</p>
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(record.payment_status)}`}>
@@ -518,12 +541,31 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
                         <span className="ml-1">{record.payment_status?.charAt(0).toUpperCase() + record.payment_status?.slice(1)}</span>
                       </span>
                     </div>
-                    <button 
-                      onClick={() => handleViewRecord(record)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      <Eye size={16} />
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      <button 
+                        onClick={() => handlePrintRecord(record)}
+                        className="text-gray-600 hover:text-gray-900 p-1"
+                        title="Print Receipt"
+                      >
+                        <Printer size={14} />
+                      </button>
+                      {record.payment_status !== 'paid' && (
+                        <button 
+                          onClick={() => handlePaymentEntry(record)}
+                          className="text-green-600 hover:text-green-900 p-1"
+                          title="Record Payment"
+                        >
+                          <CreditCard size={14} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleViewRecord(record)}
+                        className="text-blue-600 hover:text-blue-900 p-1"
+                        title="View Details"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -614,6 +656,25 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
         record={selectedRecord}
         isOpen={showModal}
         onClose={handleCloseModal}
+      />
+
+      {/* Print Modal */}
+      {showPrintModal && printRecord && (
+        <BillingReceiptPrint 
+          record={printRecord} 
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
+
+      {/* Payment Entry Form */}
+      <PaymentEntryForm
+        isOpen={showPaymentForm}
+        onClose={() => setShowPaymentForm(false)}
+        onSubmit={handlePaymentSubmit}
+        totalAmount={selectedRecord?.total_amount || 0}
+        patientId={selectedRecord?.patient_id}
+        patientName={selectedRecord?.patient?.name}
+        billId={selectedRecord?.bill_id}
       />
     </div>
   );
