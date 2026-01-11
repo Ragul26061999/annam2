@@ -290,7 +290,7 @@ export async function getBillingRecords(
 ): Promise<{ records: BillingRecord[]; total: number }> {
   try {
     // Fetch from ALL finance tables and combine results using correct joins
-    const [billingResult, pharmacyResult, labResult, radiologyResult, outpatientResult] = await Promise.all([
+    const [billingResult, pharmacyResult, labResult, radiologyResult, outpatientResult, otherBillsResult] = await Promise.all([
       // Main billing - use correct column names and patient join
       supabase
         .from('billing')
@@ -316,6 +316,12 @@ export async function getBillingRecords(
         .from('patients')
         .select('*, total_amount, consultation_fee, op_card_amount, payment_mode', { count: 'exact' })
         .not('total_amount', 'is', null)
+        .order('created_at', { ascending: false }),
+      // Other bills
+      supabase
+        .from('other_bills')
+        .select('*, patients!patient_id(name, patient_id, phone)', { count: 'exact' })
+        .eq('status', 'active')
         .order('created_at', { ascending: false })
     ]);
 
@@ -421,7 +427,7 @@ export async function getBillingRecords(
       console.log('Transforming outpatient record:', p);
       return {
         id: p.id,
-        bill_id: `OP-${p.patient_id}`,
+        bill_id: `OP-${p.id}`,
         patient_id: p.id,
         bill_date: p.created_at,
         total_amount: Number(p.total_amount) || 0,
@@ -431,19 +437,37 @@ export async function getBillingRecords(
         payment_status: 'paid', // Outpatient records are typically paid
         payment_method: p.payment_mode || 'cash',
         created_at: p.created_at,
-        updated_at: p.updated_at || p.created_at,
+        updated_at: p.updated_at,
         source: 'outpatient' as const,
         patient: {
-          name: p.name || 'Unknown Patient',
-          patient_id: p.patient_id || 'N/A',
-          phone: p.phone || ''
-        }
+          id: p.id,
+          patient_id: p.patient_id,
+          name: p.name,
+          phone: p.phone,
+        },
       };
     });
     console.log('Transformed outpatient records:', outpatientRecords);
 
+    const otherBillsRecords = (otherBillsResult.data || []).map((o: any) => ({
+      id: o.id,
+      bill_id: o.bill_number,
+      patient_id: o.patient_id,
+      bill_date: o.bill_date,
+      total_amount: Number(o.total_amount) || 0,
+      subtotal: Number(o.subtotal) || 0,
+      tax_amount: Number(o.tax_amount) || 0,
+      discount_amount: Number(o.discount_amount) || 0,
+      payment_status: o.payment_status,
+      payment_method: 'other',
+      created_at: o.created_at,
+      updated_at: o.updated_at,
+      source: 'other_bills' as const,
+      patient: o.patients || null,
+    }));
+
     // Combine all records
-    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords];
+    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords, ...otherBillsRecords];
 
     // Sort by created_at descending
     allRecords.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
