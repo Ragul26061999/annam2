@@ -118,9 +118,19 @@ const getDayName = (dayIndex: number) => {
 
 const getAvailabilityStatus = (doctor: Doctor) => {
   try {
+    // Check the new availability_type field first
+    if (doctor.availability_type) {
+      if (doctor.availability_type === 'session_based') {
+        return { status: 'Session Based', color: 'bg-green-100 text-green-700', type: 'session_based' };
+      } else if (doctor.availability_type === 'on_call') {
+        return { status: 'On Call', color: 'bg-orange-100 text-orange-700', type: 'on_call' };
+      }
+    }
+
+    // Fallback to legacy logic for backward compatibility
     const availabilityData = doctor.availability_hours;
     if (!availabilityData || !availabilityData.availableSessions || availabilityData.availableSessions.length === 0) {
-      return { status: 'No sessions', color: 'bg-gray-100 text-gray-700', type: 'unavailable' };
+      return { status: 'Session Based', color: 'bg-green-100 text-green-700', type: 'session_based' };
     }
 
     const now = new Date();
@@ -130,64 +140,19 @@ const getAvailabilityStatus = (doctor: Doctor) => {
     const availableSessions = availabilityData.availableSessions;
     const sessions = availabilityData.sessions;
 
-    if (doctor.status !== 'active') {
-      return { status: 'Inactive', color: 'bg-red-100 text-red-700', type: 'unavailable' };
+    if (doctor.status !== 'active' && doctor.is_active !== true) {
+      return { status: 'Session Based', color: 'bg-green-100 text-green-700', type: 'session_based' };
     }
 
-    // Check if doctor is on call
-    if (availabilityData.onCall) {
+    // Check if doctor is on call from availability_hours
+    if (availabilityData.onCall || availabilityData.emergencyAvailable) {
       return { status: 'On Call', color: 'bg-orange-100 text-orange-700', type: 'on_call' };
     }
 
-    // Helper function to parse time string to minutes
-    const parseTimeToMinutes = (timeStr: string) => {
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
-
-    const isTodayWorkingDay = workingDays.includes(currentDay);
-
-    if (isTodayWorkingDay) {
-      // Check if there are any upcoming sessions today
-      let hasUpcomingSessions = false;
-      let allSessionsOver = true;
-
-      for (const sessionName of ['morning', 'afternoon', 'evening'] as const) {
-        if (availableSessions.includes(sessionName) && sessions[sessionName]) {
-          const session = sessions[sessionName];
-          if (session.startTime) {
-            const sessionStartMinutes = parseTimeToMinutes(session.startTime);
-            if (currentTime < sessionStartMinutes) {
-              hasUpcomingSessions = true;
-              allSessionsOver = false;
-              break;
-            }
-            // If we have session data, we know sessions exist for today
-            allSessionsOver = false;
-          }
-        }
-      }
-
-      if (hasUpcomingSessions) {
-        return { status: 'Available Today', color: 'bg-green-100 text-green-700', type: 'available' };
-      } else if (!allSessionsOver) {
-        // Sessions exist but all are over for today
-        return { status: 'Duty Over', color: 'bg-orange-100 text-orange-700', type: 'available' };
-      }
-    }
-
-    // Find next working day
-    for (let i = 1; i <= 7; i++) {
-      const nextDay = (currentDay + i) % 7;
-      if (workingDays.includes(nextDay)) {
-        const dayName = i === 1 ? 'Tomorrow' : getDayName(nextDay);
-        return { status: `Next: ${dayName}`, color: 'bg-blue-100 text-blue-700', type: 'available' };
-      }
-    }
-
-    return { status: 'No schedule', color: 'bg-gray-100 text-gray-700', type: 'unavailable' };
+    // Default to session based
+    return { status: 'Session Based', color: 'bg-green-100 text-green-700', type: 'session_based' };
   } catch {
-    return { status: 'Check schedule', color: 'bg-yellow-100 text-yellow-700', type: 'unavailable' };
+    return { status: 'Session Based', color: 'bg-green-100 text-green-700', type: 'session_based' };
   }
 };
 
@@ -500,10 +465,10 @@ export default function DoctorsPage() {
     setShowScheduleModal(true);
   };
 
-  const handleAvailabilityToggle = async (doctor: Doctor, status: 'available' | 'on_call' | 'unavailable') => {
+  const handleAvailabilityToggle = async (doctor: Doctor, availabilityType: 'session_based' | 'on_call') => {
     try {
       // Update doctor availability status
-      await updateDoctorAvailability(doctor.id, status);
+      await updateDoctorAvailability(doctor.id, availabilityType);
       loadDoctors(); // Refresh the list
     } catch (error) {
       console.error('Error updating doctor availability:', error);
@@ -719,15 +684,15 @@ export default function DoctorsPage() {
 
               <div className="flex gap-2 mb-3">
                 <button
-                  onClick={() => handleAvailabilityToggle(doctor, 'available')}
+                  onClick={() => handleAvailabilityToggle(doctor, 'session_based')}
                   className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
-                    getAvailabilityStatus(doctor).type === 'available' 
+                    getAvailabilityStatus(doctor).type === 'session_based' 
                       ? 'bg-green-100 text-green-700 border border-green-200' 
                       : 'bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 border border-gray-200'
                   }`}
                 >
                   <CheckCircle size={12} className="mr-1" />
-                  Available
+                  Session Based
                 </button>
                 <button
                   onClick={() => handleAvailabilityToggle(doctor, 'on_call')}
@@ -739,17 +704,6 @@ export default function DoctorsPage() {
                 >
                   <Phone size={12} className="mr-1" />
                   On Call
-                </button>
-                <button
-                  onClick={() => handleAvailabilityToggle(doctor, 'unavailable')}
-                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
-                    getAvailabilityStatus(doctor).type === 'unavailable' 
-                      ? 'bg-red-100 text-red-700 border border-red-200' 
-                      : 'bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600 border border-gray-200'
-                  }`}
-                >
-                  <Clock size={12} className="mr-1" />
-                  Unavailable
                 </button>
               </div>
 

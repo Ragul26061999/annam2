@@ -56,6 +56,10 @@ export interface Doctor {
   status: string;
   created_at: string;
   updated_at: string;
+  // New database fields
+  availability_type?: 'session_based' | 'on_call';
+  is_active?: boolean;
+  deleted_at?: string;
   user?: {
     id: string;
     name: string;
@@ -592,14 +596,18 @@ export async function getDoctorById(doctorId: string): Promise<Doctor> {
  */
 export async function updateDoctorAvailability(
   doctorId: string,
-  availabilityStatus: string
+  availabilityType: 'session_based' | 'on_call'
 ): Promise<Doctor> {
   try {
-    // Update status field instead of availability_status
+    // Update availability_type field in database
     const { data: doctor, error } = await supabase
       .from('doctors')
-      .update({ status: availabilityStatus === 'available' ? 'active' : 'inactive' })
-      .eq('id', doctorId) // Use id instead of license_number
+      .update({ 
+        availability_type: availabilityType,
+        // Also update status to match availability type
+        is_active: availabilityType === 'session_based'
+      })
+      .eq('id', doctorId)
       .select(`
         *,
         user:users(id, name, email, phone, address)
@@ -621,8 +629,8 @@ export async function updateDoctorAvailability(
       working_hours_end: '17:00',
       working_days: [1, 2, 3, 4, 5, 6],
       floor_number: 1,
-      availability_status: availabilityStatus,
-      emergency_available: false
+      availability_status: availabilityType === 'session_based' ? 'available' : 'on_call',
+      emergency_available: availabilityType === 'on_call'
     };
 
     return enhancedDoctor;

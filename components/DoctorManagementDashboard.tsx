@@ -237,9 +237,9 @@ const DoctorManagementDashboard: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (doctorId: string, status: string) => {
+  const handleStatusChange = async (doctorId: string, availabilityType: 'session_based' | 'on_call') => {
     try {
-      await updateDoctorAvailability(doctorId, status);
+      await updateDoctorAvailability(doctorId, availabilityType);
       await loadDoctors();
     } catch (error) {
       console.error('Error updating doctor status:', error);
