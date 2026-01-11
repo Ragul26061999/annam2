@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
+import { PharmacyBillPrint } from '../../../src/components/pharmacy/PharmacyBillPrint'
 
 interface Prescription {
   id: string
@@ -40,6 +41,8 @@ export default function PrescribedListPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState<'active' | 'dispensed' | 'all'>('all')
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null)
 
   // Calculate statistics
   const stats = {
@@ -185,11 +188,8 @@ export default function PrescribedListPage() {
   }
 
   const handlePrintBill = (prescription: Prescription) => {
-    // Find the bill associated with this prescription
-    const printWindow = window.open(`/pharmacy/billing/print?prescriptionId=${encodeURIComponent(prescription.id)}`, '_blank', 'width=800,height=600')
-    if (!printWindow) {
-      alert('Please allow popups to print the bill')
-    }
+    setSelectedPrescription(prescription)
+    setShowPrintModal(true)
   }
 
   const handleDeletePrescription = async (prescription: Prescription) => {
@@ -467,6 +467,17 @@ export default function PrescribedListPage() {
           ))
         )}
       </div>
+
+      {/* Print Modal */}
+      {showPrintModal && selectedPrescription && (
+        <PharmacyBillPrint
+          prescription={selectedPrescription}
+          onClose={() => {
+            setShowPrintModal(false)
+            setSelectedPrescription(null)
+          }}
+        />
+      )}
     </div>
   )
 }
