@@ -141,12 +141,8 @@ export async function createOtherBill(
       bed_allocation_id: formData.bed_allocation_id || null,
       encounter_id: formData.encounter_id || null,
       status: 'active',
+      // Remove created_by and updated_by to avoid foreign key constraints
     };
-
-    if (userId) {
-      billData.created_by = userId;
-      billData.updated_by = null;
-    }
 
     const { data, error } = await supabase
       .from('other_bills')
@@ -290,7 +286,7 @@ export async function updateOtherBill(
       tax_amount: amounts.tax_amount,
       total_amount: amounts.total_amount,
       balance_amount: amounts.total_amount - currentBill.paid_amount,
-      updated_by: userId || null,
+      // Remove updated_by to avoid foreign key constraints
     };
 
     const { data, error } = await supabase
@@ -331,7 +327,7 @@ export async function recordPayment(
       throw new Error('Bill not found');
     }
 
-    const paymentRecord: OtherBillPayments['Insert'] = {
+    const paymentRecord: any = {
       bill_id: billId,
       payment_date: new Date().toISOString(),
       payment_method: paymentData.payment_method,
@@ -341,7 +337,7 @@ export async function recordPayment(
       cheque_number: paymentData.cheque_number || null,
       cheque_date: paymentData.cheque_date || null,
       notes: paymentData.notes || null,
-      received_by: userId || null,
+      // Remove received_by to avoid foreign key constraints
     };
 
     const { error: paymentError } = await supabase
@@ -369,7 +365,7 @@ export async function recordPayment(
         paid_amount: newPaidAmount,
         balance_amount: Math.max(0, newBalanceAmount),
         payment_status: newPaymentStatus,
-        updated_by: userId || null,
+        // Remove updated_by to avoid foreign key constraints
       })
       .eq('id', billId);
 
@@ -413,7 +409,7 @@ export async function cancelOtherBill(billId: string, userId?: string): Promise<
       .update({
         status: 'cancelled',
         payment_status: 'cancelled',
-        updated_by: userId || null,
+        // Remove updated_by to avoid foreign key constraints
       })
       .eq('id', billId);
 
