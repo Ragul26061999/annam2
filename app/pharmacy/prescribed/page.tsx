@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt } from 'lucide-react'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 
 interface Prescription {
@@ -39,7 +39,17 @@ export default function PrescribedListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [activeTab, setActiveTab] = useState<'active' | 'dispensed' | 'all'>('all')
+
+  // Calculate statistics
+  const stats = {
+    total: prescriptions.length,
+    active: prescriptions.filter(p => p.status === 'active').length,
+    dispensed: prescriptions.filter(p => p.status === 'dispensed').length,
+    pendingItems: prescriptions.reduce((acc, p) => acc + p.items.filter(i => i.status === 'pending').length, 0),
+    totalPatients: new Set(prescriptions.map(p => p.patient_id)).size,
+    totalValue: prescriptions.reduce((acc, p) => acc + p.items.reduce((itemAcc, item) => itemAcc + item.total_price, 0), 0)
+  }
 
   useEffect(() => {
     loadPrescriptions()
@@ -129,8 +139,15 @@ export default function PrescribedListPage() {
   const filteredPrescriptions = prescriptions.filter(prescription => {
     const matchesSearch = prescription.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          prescription.doctor_name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || prescription.items.some(i => i.status === statusFilter)
-    return matchesSearch && matchesStatus
+    
+    let matchesTab = true
+    if (activeTab === 'active') {
+      matchesTab = prescription.status === 'active'
+    } else if (activeTab === 'dispensed') {
+      matchesTab = prescription.status === 'dispensed'
+    }
+    
+    return matchesSearch && matchesTab
   })
 
   const getStatusBadge = (status: string) => {
@@ -212,29 +229,104 @@ export default function PrescribedListPage() {
         </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Prescriptions</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
+            </div>
+            <div className="bg-blue-100 rounded-full p-3">
+              <FileText className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active Prescriptions</p>
+              <p className="text-2xl font-bold text-yellow-600 mt-1">{stats.active}</p>
+            </div>
+            <div className="bg-yellow-100 rounded-full p-3">
+              <Activity className="w-6 h-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Dispensed Prescriptions</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{stats.dispensed}</p>
+            </div>
+            <div className="bg-green-100 rounded-full p-3">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Value</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">₹{stats.totalValue.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="bg-purple-100 rounded-full p-3">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Tabs */}
+      <div className="flex flex-col space-y-4">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
             placeholder="Search by patient or doctor name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-10"
+            className="input pl-10 w-full"
           />
         </div>
-        <div className="flex gap-2">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="select"
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="dispensed">Dispensed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'all'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              All Prescriptions ({stats.total})
+            </button>
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'active'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Active ({stats.active})
+            </button>
+            <button
+              onClick={() => setActiveTab('dispensed')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'dispensed'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Dispensed ({stats.dispensed})
+            </button>
+          </nav>
         </div>
       </div>
 
@@ -249,8 +341,15 @@ export default function PrescribedListPage() {
         {filteredPrescriptions.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Prescriptions Found</h3>
-            <p className="text-gray-600">No prescriptions match your current filters.</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No {activeTab === 'all' ? '' : activeTab === 'active' ? 'Active' : 'Dispensed'} Prescriptions Found
+            </h3>
+            <p className="text-gray-600">
+              {searchTerm ? 'No prescriptions match your search criteria.' : 
+               activeTab === 'all' ? 'No prescriptions found in the system.' :
+               activeTab === 'active' ? 'No active prescriptions found.' :
+               'No dispensed prescriptions found.'}
+            </p>
           </div>
         ) : (
           filteredPrescriptions.map((prescription) => (

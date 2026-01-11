@@ -44,75 +44,37 @@ export async function recordBillingPayment(paymentData: PaymentData) {
       return await recordOtherBillPayment(paymentData);
     }
 
-    // Check if this is an IP billing record (has bed allocation) or general billing
-    const bedAllocationId = paymentData.billId ? await getBedAllocationIdFromBill(paymentData.billId) : null;
-    const patientId = paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null;
-    
-    console.log('Mapped IDs - bed_allocation_id:', bedAllocationId, 'patient_id:', patientId);
-    
     // Record each payment split
     const paymentRecords = [];
     
     for (const split of paymentData.splits) {
       console.log('Processing split:', split);
       
-      // If it has bed allocation, record to ip_payment_receipts
-      // If no bed allocation, record to other_bill_payments (general billing)
-      let paymentRecord;
-      let tableName;
+      const bedAllocationId = paymentData.billId ? await getBedAllocationIdFromBill(paymentData.billId) : null;
+      const patientId = paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null;
       
-      if (bedAllocationId) {
-        // IP billing - use ip_payment_receipts table
-        paymentRecord = {
-          bed_allocation_id: bedAllocationId,
-          patient_id: patientId,
-          payment_type: split.mode === 'bank_transfer' ? 'net_banking' : split.mode,
-          amount: split.amount,
-          reference_number: split.reference || null,
-          notes: paymentData.notes || null,
-          payment_date: paymentData.paymentDate,
-          created_by: user.id
-        };
-        tableName = 'ip_payment_receipts';
-      } else {
-        // General billing - create other_bills record if needed and use other_bill_payments table
-        let otherBillId = paymentData.billId;
-        
-        // If billId doesn't exist in other_bills table, create a record
-        try {
-          const { data: existingBill } = await supabase
-            .from('other_bills')
-            .select('id')
-            .eq('id', paymentData.billId)
-            .single();
-          
-          if (!existingBill) {
-            console.log('Creating other_bills record for general billing');
-            otherBillId = await createOtherBillRecord(paymentData);
-          }
-        } catch (error) {
-          console.log('Bill not found in other_bills, creating new record');
-          otherBillId = await createOtherBillRecord(paymentData);
-        }
-        
-        paymentRecord = {
-          bill_id: otherBillId,
-          payment_date: paymentData.paymentDate,
-          payment_method: split.mode === 'bank_transfer' ? 'net_banking' : split.mode,
-          payment_amount: split.amount,
-          transaction_reference: split.reference || null,
-          bank_name: split.bankName || null,
-          cheque_number: split.chequeNumber || null,
-          notes: paymentData.notes || null,
-          received_by: user.id
-        };
-        tableName = 'other_bill_payments';
+      console.log('Mapped IDs - bed_allocation_id:', bedAllocationId, 'patient_id:', patientId);
+      
+      // For inpatient billing, bed_allocation_id is required
+      if (!bedAllocationId) {
+        throw new Error(`No bed allocation found for inpatient bill ${paymentData.billId}. Payment recording failed.`);
       }
       
-      console.log(`Payment record to insert into ${tableName}:`, JSON.stringify(paymentRecord, null, 2));
+      const paymentRecord = {
+        bed_allocation_id: bedAllocationId,
+        patient_id: patientId,
+        payment_type: split.mode === 'bank_transfer' ? 'net_banking' : split.mode,
+        amount: split.amount,
+        reference_number: split.reference || null,
+        notes: paymentData.notes || null,
+        payment_date: paymentData.paymentDate,
+        created_by: user.id
+      };
+      
+      console.log('Payment record to insert:', JSON.stringify(paymentRecord, null, 2));
       
       const { data, error } = await supabase
-        .from(tableName)
+        .from('ip_payment_receipts')
         .insert([paymentRecord])
         .select();
         
@@ -132,13 +94,7 @@ export async function recordBillingPayment(paymentData: PaymentData) {
 
     // Update billing record payment status
     if (paymentData.billId && paymentData.source) {
-      if (bedAllocationId) {
-        // Update main billing table for IP billing
-        await updateBillingPaymentStatus(paymentData.billId, paymentData.totalAmount, paymentData.source);
-      } else {
-        // Update other_bills table for general billing
-        await updateOtherBillPaymentStatus(paymentData.billId, paymentData.totalAmount);
-      }
+      await updateBillingPaymentStatus(paymentData.billId, paymentData.totalAmount, paymentData.source);
     }
 
     return paymentRecords;
@@ -216,16 +172,26 @@ async function getBedAllocationIdFromBill(billId: string): Promise<string | null
     
     if (billingError) {
       console.log('Billing table query error:', billingError);
-      // If billing table doesn't have this record, check if it's a general billing record
-      // that should be treated as other_bills
-      console.log('Billing record not found, treating as general billing');
-      return null;
     } else if (billingData?.bed_allocation_id) {
       console.log('Found bed allocation ID from billing table:', billingData.bed_allocation_id);
       return billingData.bed_allocation_id;
     }
 
-    console.log('No bed allocation ID found for bill:', billId, 'treating as general billing');
+    // Try to get from other_bills table
+    const { data: otherBillData, error: otherBillError } = await supabase
+      .from('other_bills')
+      .select('bed_allocation_id')
+      .eq('id', billId)
+      .single();
+    
+    if (otherBillError) {
+      console.log('Other bills table query error:', otherBillError);
+    } else if (otherBillData?.bed_allocation_id) {
+      console.log('Found bed allocation ID from other bills table:', otherBillData.bed_allocation_id);
+      return otherBillData.bed_allocation_id;
+    }
+    
+    console.log('No bed allocation ID found for bill:', billId);
     return null;
   } catch (error) {
     console.error('Error getting bed allocation ID:', error);
@@ -256,58 +222,6 @@ async function getPatientIdFromId(patientId: string): Promise<string | null> {
   } catch (error) {
     console.error('Error getting patient ID:', error);
     return null;
-  }
-}
-
-/**
- * Create other_bills record for general billing if it doesn't exist
- */
-async function createOtherBillRecord(paymentData: PaymentData): Promise<string> {
-  try {
-    console.log('Creating other_bills record for bill:', paymentData.billId);
-    
-    const otherBillRecord = {
-      bill_number: paymentData.billId || `GB${Date.now()}`,
-      patient_id: paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null,
-      patient_name: paymentData.patientName || 'Unknown',
-      patient_phone: null,
-      charge_category: 'other',
-      charge_description: 'General Billing Services',
-      quantity: 1,
-      unit_price: paymentData.totalAmount,
-      discount_percent: 0,
-      discount_amount: 0,
-      subtotal: paymentData.totalAmount,
-      tax_percent: 0,
-      tax_amount: 0,
-      total_amount: paymentData.totalAmount,
-      payment_status: 'pending',
-      paid_amount: 0,
-      balance_amount: paymentData.totalAmount,
-      reference_number: null,
-      remarks: paymentData.notes || null,
-      bed_allocation_id: null,
-      encounter_id: null,
-      created_by: null,
-      status: 'active'
-    };
-    
-    const { data, error } = await supabase
-      .from('other_bills')
-      .insert([otherBillRecord])
-      .select('id')
-      .single();
-      
-    if (error) {
-      console.error('Error creating other_bills record:', error);
-      throw error;
-    }
-    
-    console.log('Created other_bills record with ID:', data.id);
-    return data.id;
-  } catch (error) {
-    console.error('Error in createOtherBillRecord:', error);
-    throw error;
   }
 }
 
