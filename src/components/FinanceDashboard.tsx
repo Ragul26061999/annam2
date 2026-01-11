@@ -177,13 +177,17 @@ export default function FinanceDashboard({ className }: FinanceDashboardProps) {
 
   const handlePaymentSubmit = async (paymentData: PaymentData) => {
     try {
+      console.log('handlePaymentSubmit called with data:', JSON.stringify(paymentData, null, 2));
+      
       // Show loading state
       setLoading(true);
       
       // Determine payment service based on source
       if (paymentData.source === 'other_bills') {
+        console.log('Using recordOtherBillPayment');
         await recordOtherBillPayment(paymentData);
       } else {
+        console.log('Using recordBillingPayment');
         await recordBillingPayment(paymentData);
       }
       

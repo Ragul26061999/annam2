@@ -25,19 +25,33 @@ export interface PaymentData {
  */
 export async function recordBillingPayment(paymentData: PaymentData) {
   try {
+    console.log('Starting recordBillingPayment with data:', JSON.stringify(paymentData, null, 2));
+    
     // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      console.error('Auth error:', authError);
+      throw new Error(`Authentication error: ${authError.message}`);
+    }
     if (!user) {
       throw new Error('User not authenticated');
     }
+    console.log('User authenticated:', user.id);
 
     // Record each payment split
     const paymentRecords = [];
     
     for (const split of paymentData.splits) {
+      console.log('Processing split:', split);
+      
+      const bedAllocationId = paymentData.billId ? await getBedAllocationIdFromBill(paymentData.billId) : null;
+      const patientId = paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null;
+      
+      console.log('Mapped IDs - bed_allocation_id:', bedAllocationId, 'patient_id:', patientId);
+      
       const paymentRecord = {
-        bed_allocation_id: paymentData.billId ? await getBedAllocationIdFromBill(paymentData.billId) : null,
-        patient_id: paymentData.patientId ? await getPatientIdFromId(paymentData.patientId) : null,
+        bed_allocation_id: bedAllocationId,
+        patient_id: patientId,
         payment_type: split.mode === 'bank_transfer' ? 'net_banking' : split.mode,
         amount: split.amount,
         reference_number: split.reference || null,
@@ -46,16 +60,24 @@ export async function recordBillingPayment(paymentData: PaymentData) {
         created_by: user.id
       };
       
+      console.log('Payment record to insert:', JSON.stringify(paymentRecord, null, 2));
+      
       const { data, error } = await supabase
         .from('ip_payment_receipts')
         .insert([paymentRecord])
         .select();
         
       if (error) {
-        console.error('Error recording payment split:', error);
-        throw error;
+        console.error('Supabase error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw new Error(`Database error: ${error.message}`);
       }
       
+      console.log('Payment recorded successfully:', data);
       paymentRecords.push(data[0]);
     }
 
@@ -128,25 +150,38 @@ export async function recordOtherBillPayment(paymentData: PaymentData) {
  */
 async function getBedAllocationIdFromBill(billId: string): Promise<string | null> {
   try {
+    console.log('Getting bed allocation ID for billId:', billId);
+    
     // Try to get from billing table first
-    const { data: billingData } = await supabase
+    const { data: billingData, error: billingError } = await supabase
       .from('billing')
       .select('bed_allocation_id')
       .eq('id', billId)
       .single();
     
-    if (billingData?.bed_allocation_id) {
+    if (billingError) {
+      console.log('Billing table query error:', billingError);
+    } else if (billingData?.bed_allocation_id) {
+      console.log('Found bed allocation ID from billing table:', billingData.bed_allocation_id);
       return billingData.bed_allocation_id;
     }
 
     // Try to get from other_bills table
-    const { data: otherBillData } = await supabase
+    const { data: otherBillData, error: otherBillError } = await supabase
       .from('other_bills')
       .select('bed_allocation_id')
       .eq('id', billId)
       .single();
     
-    return otherBillData?.bed_allocation_id || null;
+    if (otherBillError) {
+      console.log('Other bills table query error:', otherBillError);
+    } else if (otherBillData?.bed_allocation_id) {
+      console.log('Found bed allocation ID from other bills table:', otherBillData.bed_allocation_id);
+      return otherBillData.bed_allocation_id;
+    }
+    
+    console.log('No bed allocation ID found for bill:', billId);
+    return null;
   } catch (error) {
     console.error('Error getting bed allocation ID:', error);
     return null;
@@ -158,12 +193,20 @@ async function getBedAllocationIdFromBill(billId: string): Promise<string | null
  */
 async function getPatientIdFromId(patientId: string): Promise<string | null> {
   try {
-    const { data } = await supabase
+    console.log('Getting patient UUID for patientId:', patientId);
+    
+    const { data, error } = await supabase
       .from('patients')
       .select('id')
       .eq('patient_id', patientId)
       .single();
     
+    if (error) {
+      console.log('Patient query error:', error);
+      return null;
+    }
+    
+    console.log('Found patient UUID:', data?.id);
     return data?.id || null;
   } catch (error) {
     console.error('Error getting patient ID:', error);
