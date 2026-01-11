@@ -427,7 +427,7 @@ export default function SalesReturnPageV2() {
                         </div>
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            bill.payment_status === 'completed'
+                            bill.payment_status === 'paid'
                               ? 'bg-green-100 text-green-800'
                               : bill.payment_status === 'pending'
                                 ? 'bg-yellow-100 text-yellow-800'
@@ -472,7 +472,7 @@ export default function SalesReturnPageV2() {
                         </div>
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            bill.payment_status === 'completed'
+                            bill.payment_status === 'paid'
                               ? 'bg-green-100 text-green-800'
                               : bill.payment_status === 'pending'
                                 ? 'bg-yellow-100 text-yellow-800'

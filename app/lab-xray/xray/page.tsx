@@ -514,13 +514,6 @@ export default function XrayOrderPage() {
                                 </div>
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={addTest}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-700 transition-all shadow-lg shadow-cyan-100"
-                                    >
-                                        <Plus size={16} />
-                                        Add Procedure
-                                    </button>
-                                    <button
                                         onClick={() => setShowNewTestModal(true)}
                                         className="flex items-center gap-2 px-5 py-2.5 border-2 border-cyan-500 text-cyan-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-50 transition-all"
                                     >
@@ -540,7 +533,7 @@ export default function XrayOrderPage() {
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             className="relative grid grid-cols-1 md:grid-cols-12 gap-5 p-6 bg-slate-50 rounded-[1.5rem] border border-slate-100 hover:border-cyan-200 transition-all group shadow-sm"
                                         >
-                                            <div className="md:col-span-5 space-y-2">
+                                            <div className="md:col-span-4 space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Procedure Name</label>
                                                 <SearchableSelect
                                                     value={test.testId}
@@ -562,7 +555,7 @@ export default function XrayOrderPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="md:col-span-4 space-y-2">
+                                            <div className="md:col-span-3 space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Cost / Amount (₹)</label>
                                                 <div className="relative">
                                                     <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
@@ -573,6 +566,16 @@ export default function XrayOrderPage() {
                                                         className="w-full pl-10 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-black text-cyan-700 focus:ring-2 focus:ring-cyan-500 outline-none tracking-tighter"
                                                     />
                                                 </div>
+                                            </div>
+
+                                            <div className="md:col-span-2 flex justify-end items-end">
+                                                <button
+                                                    onClick={addTest}
+                                                    className="flex items-center gap-2 px-3 py-3.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-700 transition-all shadow-lg shadow-cyan-100"
+                                                    title="Add Procedure"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
                                             </div>
 
                                             {/* Region Input - Extra field for Xray */}
@@ -782,7 +785,10 @@ export default function XrayOrderPage() {
                                     Confirm & Close
                                 </button>
                                 <div className="flex gap-3">
-                                    <button className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">
+                                    <button 
+                                        onClick={() => window.print()}
+                                        className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                    >
                                         Print Slip
                                     </button>
                                     <button className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">

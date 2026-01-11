@@ -286,7 +286,7 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
     // Create doctor record with unique doctor ID
     const doctorRecord = {
       user_id: user.id,
-      license_number: uniqueDoctorId, // Use generated unique doctor ID
+      license_number: doctorData.licenseNumber, // Use user's entered license number
       specialization: doctorData.specialization,
       qualification: doctorData.qualification,
       years_of_experience: doctorData.experienceYears,

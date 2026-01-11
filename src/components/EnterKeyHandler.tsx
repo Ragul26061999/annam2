@@ -15,6 +15,12 @@ export default function EnterKeyHandler() {
             const activeElement = document.activeElement as HTMLElement;
             if (!activeElement) return;
 
+            // Check if this is a case sheet textarea - if so, let Enter work naturally for new lines
+            if (activeElement.tagName === 'TEXTAREA' && activeElement.hasAttribute('data-field-index')) {
+                // This is a case sheet textarea, don't intercept Enter - let it create new lines
+                return;
+            }
+
             // Identify if current element is a form input that should transition to next field
             // We target common text-based inputs and selects
             const isInput = activeElement.tagName === 'INPUT' &&
@@ -23,6 +29,7 @@ export default function EnterKeyHandler() {
             const isTextarea = activeElement.tagName === 'TEXTAREA';
 
             // Special case for textarea: Enter moves to next field, Shift+Enter adds new line
+            // (but NOT for case sheet textareas which are handled above)
             const shouldMoveFocus = isInput || isSelect || (isTextarea && !e.shiftKey);
 
             if (shouldMoveFocus) {

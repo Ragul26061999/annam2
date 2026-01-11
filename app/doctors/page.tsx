@@ -13,7 +13,6 @@ import {
   Award,
   Activity,
   CheckCircle,
-  MoreVertical,
   Edit
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -633,10 +632,7 @@ export default function DoctorsPage() {
                     <p className="text-sm text-gray-500">{doctor.license_number}</p>
                   </div>
                 </div>
-                <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                  <MoreVertical size={16} className="text-gray-500" />
-                </button>
-              </div>
+                              </div>
 
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">

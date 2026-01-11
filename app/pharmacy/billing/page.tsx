@@ -148,7 +148,7 @@ export default function PharmacyBillingPage() {
         tax: bill.tax || 0,
         total_amount: bill.total || 0,
         payment_method: bill.payment_method || 'cash',
-        payment_status: bill.payment_status || 'completed',
+        payment_status: bill.payment_status || 'paid',
         created_at: bill.created_at
       }))
       
@@ -160,11 +160,11 @@ export default function PharmacyBillingPage() {
       const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       
       const todaysCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'completed')
+        .filter(bill => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
       
       const monthlyCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'completed')
+        .filter(bill => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
       
       const pendingDue = mappedBills
@@ -172,7 +172,7 @@ export default function PharmacyBillingPage() {
         .reduce((sum, bill) => sum + bill.total_amount, 0)
       
       const totalPayments = mappedBills
-        .filter(bill => bill.payment_status === 'completed')
+        .filter(bill => bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
       
       setDashboardStats({
@@ -198,7 +198,7 @@ export default function PharmacyBillingPage() {
       setLoading(true)
       const { error } = await supabase
         .from('billing')
-        .update({ payment_status: 'completed' })
+        .update({ payment_status: 'paid' })
         .eq('id', billId)
 
       if (error) throw error
@@ -424,7 +424,7 @@ export default function PharmacyBillingPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'completed':
+      case 'paid':
         return 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium'
       case 'pending':
         return 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium'
@@ -554,7 +554,7 @@ export default function PharmacyBillingPage() {
             className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Status</option>
-            <option value="completed">Completed</option>
+            <option value="paid">Paid</option>
             <option value="pending">Pending</option>
             <option value="cancelled">Cancelled</option>
           </select>

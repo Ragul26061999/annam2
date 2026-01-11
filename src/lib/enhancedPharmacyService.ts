@@ -1801,7 +1801,7 @@ export async function getMedicalReport(filters: {
       .select('total_amount, created_at, payment_status')
       .gte('created_at', filters.from_date)
       .lte('created_at', filters.to_date)
-      .in('payment_status', ['paid', 'completed']);
+      .in('payment_status', ['paid']);
 
     // Get purchase data
     const { data: purchases } = await supabase

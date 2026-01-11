@@ -5,29 +5,32 @@ import { getIPCaseSheet, createOrUpdateIPCaseSheet, IPCaseSheet, getIPProgressNo
 interface CaseSheetProps {
   bedAllocationId: string;
   patientId: string;
+  selectedDate?: string;
 }
 
-export default function CaseSheet({ bedAllocationId, patientId }: CaseSheetProps) {
+export default function CaseSheet({ bedAllocationId, patientId, selectedDate }: CaseSheetProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [caseSheet, setCaseSheet] = useState<Partial<IPCaseSheet>>({});
+  const [hasChanges, setHasChanges] = useState(false);
   const [progressNotes, setProgressNotes] = useState<IPProgressNote[]>([]);
   const [newNote, setNewNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, [bedAllocationId]);
+  }, [bedAllocationId, selectedDate]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [sheetData, notesData] = await Promise.all([
-        getIPCaseSheet(bedAllocationId),
+        getIPCaseSheet(bedAllocationId, selectedDate),
         getIPProgressNotes(bedAllocationId)
       ]);
       setCaseSheet(sheetData || {});
       setProgressNotes(notesData || []);
+      setHasChanges(false); // Reset changes flag when loading new data
     } catch (err) {
       console.error('Failed to load case sheet data', err);
     } finally {
@@ -36,17 +39,42 @@ export default function CaseSheet({ bedAllocationId, patientId }: CaseSheetProps
   };
 
   const handleSaveField = async (field: keyof IPCaseSheet, value: string) => {
-    // Optimistic update
+    // Update local state and mark as changed
     setCaseSheet(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
   };
 
-  const handleBlurField = async (field: keyof IPCaseSheet, value: string) => {
-    if (!bedAllocationId) return;
+  const handleSaveAll = async () => {
+    if (!bedAllocationId || !hasChanges) {
+      console.log('Save aborted - missing data:', { bedAllocationId, hasChanges });
+      return;
+    }
+    
+    console.log('Current caseSheet state:', caseSheet);
+    console.log('Filtered caseSheet (only defined fields):', 
+      Object.fromEntries(
+        Object.entries(caseSheet).filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      )
+    );
+    
     setSaving(true);
     try {
-      await createOrUpdateIPCaseSheet(bedAllocationId, patientId, { [field]: value });
-    } catch (err) {
-      console.error(`Failed to save ${field}`, err);
+      console.log('Attempting to save case sheet:', { bedAllocationId, patientId, selectedDate, caseSheet });
+      await createOrUpdateIPCaseSheet(bedAllocationId, patientId, caseSheet, selectedDate);
+      setHasChanges(false);
+      console.log('Case sheet saved successfully');
+    } catch (err: any) {
+      console.error('Failed to save case sheet:', err);
+      console.error('Error details:', {
+        message: err?.message || 'Unknown error',
+        details: err?.details || null,
+        hint: err?.hint || null,
+        code: err?.code || null,
+        bedAllocationId,
+        patientId,
+        selectedDate,
+        caseSheetData: caseSheet
+      });
     } finally {
       setSaving(false);
     }
@@ -64,6 +92,23 @@ export default function CaseSheet({ bedAllocationId, patientId }: CaseSheetProps
     } finally {
       setNoteSaving(false);
     }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, fieldIndex: number, totalFields: number) => {
+    // ONLY handle Tab key, completely ignore Enter key
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      // Move to next field or wrap around to first
+      const nextFieldIndex = fieldIndex + 1 >= totalFields ? 0 : fieldIndex + 1;
+      const nextTextArea = document.querySelector(`textarea[data-field-index="${nextFieldIndex}"]`) as HTMLTextAreaElement;
+      if (nextTextArea) {
+        nextTextArea.focus();
+        // Position cursor at end of text
+        const len = nextTextArea.value.length;
+        nextTextArea.setSelectionRange(len, len);
+      }
+    }
+    // Completely ignore Enter key - let browser handle it naturally
   };
 
   if (loading) {
@@ -86,23 +131,53 @@ export default function CaseSheet({ bedAllocationId, patientId }: CaseSheetProps
     <div className="space-y-8">
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-600" />
-            Case Sheet
-          </h3>
-          {saving && <span className="text-xs text-green-600 flex items-center gap-1"><Save className="h-3 w-3" /> Saving...</span>}
+          <div>
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Case Sheet
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Date: {selectedDate ? new Date(selectedDate).toLocaleDateString('en-IN', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              }) : new Date().toLocaleDateString('en-IN', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {hasChanges && (
+              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">
+                Unsaved changes
+              </span>
+            )}
+            <button
+              onClick={handleSaveAll}
+              disabled={!hasChanges || saving}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save Case Sheet
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6">
-          {sections.map((section) => (
+          {sections.map((section, index) => (
             <div key={section.key} className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">{section.label}</label>
               <textarea
+                data-field-index={index}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 rows={section.rows}
                 value={(caseSheet[section.key as keyof IPCaseSheet] as string) || ''}
                 onChange={(e) => handleSaveField(section.key as keyof IPCaseSheet, e.target.value)}
-                onBlur={(e) => handleBlurField(section.key as keyof IPCaseSheet, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, index, sections.length)}
                 placeholder={`Enter ${section.label.toLowerCase()}...`}
               />
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Search, Filter, Plus, Edit, Trash2, Calendar, MoreVertical, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Trash2, Calendar, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
@@ -187,10 +187,7 @@ const DoctorsManagement: React.FC = () => {
                     <span className="text-sm text-gray-500">{doctor.specialty}</span>
                   </div>
                 </div>
-                <button className="text-gray-400 hover:text-gray-600">
-                  <MoreVertical size={20} />
-                </button>
-              </div>
+                              </div>
 
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">

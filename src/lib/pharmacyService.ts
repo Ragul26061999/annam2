@@ -517,7 +517,7 @@ export async function getPharmacyDashboardStats(): Promise<{
     const { data: todayPaymentsData } = await supabase
       .from('billing')
       .select('total_amount')
-      .eq('payment_status', 'completed')
+      .eq('payment_status', 'paid')
       .gte('updated_at', `${today}T00:00:00`)
       .lt('updated_at', `${today}T23:59:59`);
 
@@ -536,7 +536,7 @@ export async function getPharmacyDashboardStats(): Promise<{
     const { data: revenueData } = await supabase
       .from('billing')
       .select('total_amount')
-      .eq('payment_status', 'completed')
+      .eq('payment_status', 'paid')
       .gte('created_at', firstDayOfMonth);
 
     const totalRevenue = revenueData?.reduce((sum, bill) => sum + bill.total_amount, 0) || 0;
@@ -1492,9 +1492,9 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
         quantity: i.quantity,
         unit_price: i.unit_price,
         total_amount: i.total_amount,
-        // Normalize payment status for UI: show 'paid' for completed/paid, else pending/other as-is
+        // Normalize payment status for UI: show 'paid' for paid status, else pending/other as-is
         payment_status: bill?.payment_status
-          ? ((bill.payment_status === 'completed' || bill.payment_status === 'paid') ? 'paid' : bill.payment_status)
+          ? (bill.payment_status === 'paid' ? 'paid' : bill.payment_status)
           : 'pending'
       };
     });

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Filter, Plus, Edit, Trash2, Calendar, MoreVertical, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound, Clock, MapPin, Phone, Mail, Award, Stethoscope, Save, X, User, Building, AlertTriangle } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Trash2, Calendar, ChevronLeft, ChevronRight, Heart, Brain, Settings as Lungs, Baby, UserRound, Clock, MapPin, Phone, Mail, Award, Stethoscope, Save, X, User, Building, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAllDoctors, createDoctor, updateDoctor, getDoctorsBySpecialization, getAllSpecializations, getAllDepartments, addDepartment, updateDoctorAvailability, deleteDoctor, type Doctor, type DoctorRegistrationData } from '../src/lib/doctorService';
 import { Check } from 'lucide-react';
@@ -504,10 +504,7 @@ const DoctorManagementDashboard: React.FC = () => {
                           <p className="text-sm text-gray-600">{doctor.specialization}</p>
                         </div>
                       </div>
-                      <button className="text-gray-400 hover:text-gray-600 transition-colors">
-                        <MoreVertical size={20} />
-                      </button>
-                    </div>
+                                          </div>
 
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-sm">

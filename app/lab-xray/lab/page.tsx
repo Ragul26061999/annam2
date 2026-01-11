@@ -564,13 +564,6 @@ export default function LabOrderPage() {
                                 </div>
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={addTest}
-                                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all shadow-md shadow-teal-100"
-                                    >
-                                        <Plus size={18} />
-                                        Add Test
-                                    </button>
-                                    <button
                                         onClick={() => setShowNewTestModal(true)}
                                         className="flex items-center gap-2 px-4 py-2 border-2 border-teal-600 text-teal-600 rounded-xl text-sm font-bold hover:bg-teal-50 transition-all"
                                     >
@@ -622,7 +615,7 @@ export default function LabOrderPage() {
                                                     </div>
                                                 </div>
 
-                                                <div className="md:col-span-3 space-y-2">
+                                                <div className="md:col-span-2 space-y-2">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Amount (₹)</label>
                                                     <div className="relative">
                                                         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -633,6 +626,16 @@ export default function LabOrderPage() {
                                                             className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-teal-700 focus:ring-2 focus:ring-teal-500 outline-none"
                                                         />
                                                     </div>
+                                                </div>
+
+                                                <div className="md:col-span-1 flex justify-end">
+                                                    <button
+                                                        onClick={addTest}
+                                                        className="flex items-center gap-2 px-3 py-3 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all shadow-md shadow-teal-100"
+                                                        title="Add Test"
+                                                    >
+                                                        <Plus size={16} />
+                                                    </button>
                                                 </div>
                                             </motion.div>
                                         ))}
@@ -799,7 +802,11 @@ export default function LabOrderPage() {
                                         <button onClick={() => router.push('/lab-xray')} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:scale-[1.02] active:scale-[0.98] transition-all">
                                             Dashboard
                                         </button>
-                                        <button className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all">
+                                        <button 
+                                            onClick={() => window.print()}
+                                            className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all"
+                                            title="Print Bill"
+                                        >
                                             <Printer size={20} />
                                         </button>
                                     </div>

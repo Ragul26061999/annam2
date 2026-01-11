@@ -203,7 +203,7 @@ export async function processSplitPayments(
 
     const paid = totalPaid;
     const balance = Math.max(0, billTotal - paid);
-    const paymentStatus = paid <= 0 ? 'pending' : (balance <= 0 ? 'completed' : 'partial');
+    const paymentStatus = paid <= 0 ? 'pending' : (balance <= 0 ? 'paid' : 'partial');
 
     // Derive payment_method for billing header
     const nonZero = payments.filter(p => (Number(p.amount) || 0) > 0);

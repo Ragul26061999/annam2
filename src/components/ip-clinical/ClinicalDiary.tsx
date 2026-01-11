@@ -41,12 +41,12 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
 
   useEffect(() => {
     loadTimeline();
-  }, [bedAllocationId]);
+  }, [bedAllocationId, patientId]);
 
   const loadTimeline = async () => {
     setLoading(true);
     try {
-      const data = await getIPClinicalTimeline(bedAllocationId);
+      const data = await getIPClinicalTimeline(bedAllocationId, patientId);
       setTimeline(data);
     } catch (err) {
       console.error('Failed to load timeline', err);
@@ -225,6 +225,8 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                           <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm
                             ${event.type === 'doctor_order' ? 'bg-teal-500' : 
                               event.type === 'nurse_record' ? 'bg-purple-500' : 
+                              event.type === 'case_sheet' ? 'bg-orange-500' :
+                              event.type === 'prescription' ? 'bg-green-500' :
                               'bg-blue-500'}`}></div>
                           
                           <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -233,6 +235,8 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                                 <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded
                                   ${event.type === 'doctor_order' ? 'bg-teal-50 text-teal-700' : 
                                     event.type === 'nurse_record' ? 'bg-purple-50 text-purple-700' : 
+                                    event.type === 'case_sheet' ? 'bg-orange-50 text-orange-700' :
+                                    event.type === 'prescription' ? 'bg-green-50 text-green-700' :
                                     'bg-blue-50 text-blue-700'}`}>
                                   {event.title}
                                 </span>
@@ -245,7 +249,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                             </div>
                             <p className="text-gray-800 text-sm whitespace-pre-wrap">{event.content}</p>
                             
-                            {event.metadata && (event.metadata.treatment || event.metadata.investigation) && (
+                            {event.metadata && (event.metadata.treatment || event.metadata.investigation || event.metadata.present_complaints || event.metadata.provisional_diagnosis) && (
                               <div className="mt-3 pt-3 border-t border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                                 {event.metadata.treatment && (
                                   <div>
@@ -257,6 +261,18 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                                   <div>
                                     <span className="font-bold text-gray-500 block mb-1">Investigation</span>
                                     <p className="text-gray-700 bg-gray-50 p-2 rounded">{event.metadata.investigation}</p>
+                                  </div>
+                                )}
+                                {event.metadata.present_complaints && (
+                                  <div>
+                                    <span className="font-bold text-gray-500 block mb-1">Present Complaints</span>
+                                    <p className="text-gray-700 bg-gray-50 p-2 rounded">{event.metadata.present_complaints}</p>
+                                  </div>
+                                )}
+                                {event.metadata.provisional_diagnosis && (
+                                  <div>
+                                    <span className="font-bold text-gray-500 block mb-1">Diagnosis</span>
+                                    <p className="text-gray-700 bg-gray-50 p-2 rounded">{event.metadata.provisional_diagnosis}</p>
                                   </div>
                                 )}
                               </div>
@@ -322,7 +338,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                     <FileText className="h-6 w-6 text-blue-600" />
                   </div>
                 </div>
-                <CaseSheet bedAllocationId={bedAllocationId} patientId={patientId} />
+                <CaseSheet bedAllocationId={bedAllocationId} patientId={patientId} selectedDate={selectedDate} />
               </div>
             )}
 
