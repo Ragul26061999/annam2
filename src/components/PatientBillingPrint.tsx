@@ -11,6 +11,10 @@ interface PatientBillingPrintProps {
 }
 
 export function PatientBillingPrint({ billing, patient, onClose }: PatientBillingPrintProps) {
+  // Debug: Log the data being passed
+  console.log('PatientBillingPrint - patient data:', patient);
+  console.log('PatientBillingPrint - billing data:', billing);
+  
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
