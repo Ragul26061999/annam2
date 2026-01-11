@@ -395,10 +395,8 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
       <div className="first-page-break"></div>
 
       {/* PAGE 2: LAB TESTS DETAIL */}
-      {billing?.lab_billing && billing.lab_billing.length > 0 && (
-        <>
-          <div className="page-break"></div>
-          <div className="force-break">
+      <div className="page-break"></div>
+      <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
             <div className="h-12 w-full flex items-center justify-center mb-1">
@@ -443,12 +441,10 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
             </table>
           </div>
         </div>
-        </>
-      )}
 
       {/* PAGE 3: OTHER BILLS DETAIL */}
-      {billing?.other_bills && billing.other_bills.length > 0 && (
-        <div className="force-break">
+      <div className="page-break"></div>
+      <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
             <div className="h-12 w-full flex items-center justify-center mb-1">
@@ -499,11 +495,10 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
             </table>
           </div>
         </div>
-      )}
 
       {/* PAGE 4: PAYMENT TRANSACTIONS */}
-      {billing?.payment_receipts && billing.payment_receipts.length > 0 && (
-        <div className="force-break">
+      <div className="page-break"></div>
+      <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
             <div className="h-12 w-full flex items-center justify-center mb-1">
@@ -578,7 +573,6 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
             </table>
           </div>
         </div>
-      )}
     </div>
   );
 
