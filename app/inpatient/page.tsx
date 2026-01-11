@@ -7,7 +7,7 @@ import {
   RefreshCw, ArrowLeft, Eye, LogOut, Clock, Calendar,
   Filter, Hash, Stethoscope, Building, ChevronRight,
   Heart, TrendingUp, CheckCircle, XCircle, Loader2,
-  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X, ClipboardList, FileText
+  UserPlus, AlertCircle, Phone, MoreVertical, Trash2, X, ClipboardList, FileText, Receipt
 } from 'lucide-react';
 import { getDashboardStats, type DashboardStats } from '../../src/lib/dashboardService';
 import { deletePatient } from '../../src/lib/patientService';
@@ -45,16 +45,20 @@ export default function InpatientPage() {
     pendingDischarges: 0
   });
   const [allocations, setAllocations] = useState<BedAllocation[]>([]);
+  const [allAllocations, setAllAllocations] = useState<BedAllocation[]>([]); // For billing tab - all records
   const [dischargeSummaryByAllocation, setDischargeSummaryByAllocation] = useState<Record<string, string>>({});
   const [availableBedsList, setAvailableBedsList] = useState<BedType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [billingSearchTerm, setBillingSearchTerm] = useState('');
+  const [billingStatusFilter, setBillingStatusFilter] = useState('all');
   // admissionTypeFilter is removed since admission_type column doesn't exist in the database
   // const [admissionTypeFilter, setAdmissionTypeFilter] = useState('all');
   const [showAvailableBeds, setShowAvailableBeds] = useState(false);
   const [selectedPatientForPharmacy, setSelectedPatientForPharmacy] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'billing'>('overview');
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -75,10 +79,16 @@ export default function InpatientPage() {
       // Get bed stats
       const bedStats = await getBedStats();
 
-      // Get active bed allocations
+      // Get active bed allocations (for overview tab)
       const allocationResponse = await getBedAllocations({
         status: statusFilter === 'all' ? undefined : statusFilter,
         limit: 100
+      });
+
+      // Get ALL bed allocations (for billing tab - includes discharged and transferred)
+      const allAllocationResponse = await getBedAllocations({
+        status: undefined, // Get all statuses
+        limit: 500 // Increase limit to get more historical records
       });
 
       // Get available beds
@@ -102,6 +112,7 @@ export default function InpatientPage() {
       });
 
       setAllocations(allocationResponse.allocations);
+      setAllAllocations(allAllocationResponse.allocations); // Set all allocations for billing tab
 
       try {
         const allocationIds = (allocationResponse.allocations || []).map(a => a.id);
@@ -195,6 +206,22 @@ export default function InpatientPage() {
       bedNumber.includes(searchTerm.toLowerCase());
   });
 
+  const filteredBillingAllocations = allAllocations.filter(allocation => {
+    // Status filter
+    if (billingStatusFilter !== 'all' && allocation.status !== billingStatusFilter) {
+      return false;
+    }
+    
+    // Search filter
+    if (!billingSearchTerm) return true;
+    const patientName = (allocation.patient?.name || '').toLowerCase();
+    const patientId = allocation.patient?.uhid?.toLowerCase() || '';
+    const bedNumber = allocation.bed?.bed_number?.toLowerCase() || '';
+    return patientName.includes(billingSearchTerm.toLowerCase()) ||
+      patientId.includes(billingSearchTerm.toLowerCase()) ||
+      bedNumber.includes(billingSearchTerm.toLowerCase());
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -228,8 +255,39 @@ export default function InpatientPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Tab Navigation */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center p-1">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors ${
+              activeTab === 'overview'
+                ? 'bg-purple-100 text-purple-700 font-medium'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('billing')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors ${
+              activeTab === 'billing'
+                ? 'bg-purple-100 text-purple-700 font-medium'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <Receipt className="h-4 w-4" />
+            Billing
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Admitted Patients */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between">
@@ -616,6 +674,249 @@ export default function InpatientPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
+
+      {activeTab === 'billing' && (
+        <>
+          {/* Billing Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total IP Records</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{allAllocations.length}</p>
+                  <p className="text-xs text-gray-500 mt-1">All time admissions</p>
+                </div>
+                <div className="p-3 bg-blue-100 rounded-xl">
+                  <Users className="h-5 w-5 text-blue-600" />
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Active Patients</p>
+                  <p className="text-2xl font-bold text-green-600 mt-1">{allAllocations.filter(a => a.status === 'active' || a.status === 'allocated').length}</p>
+                  <p className="text-xs text-gray-500 mt-1">Currently admitted</p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-xl">
+                  <BedDouble className="h-5 w-5 text-green-600" />
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Discharged</p>
+                  <p className="text-2xl font-bold text-gray-600 mt-1">{allAllocations.filter(a => a.status === 'discharged').length}</p>
+                  <p className="text-xs text-gray-500 mt-1">Completed admissions</p>
+                </div>
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <CheckCircle className="h-5 w-5 text-gray-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* All IP Records for Billing */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            <div className="p-5 border-b border-gray-100">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">All IP Records - Billing</h2>
+                  <p className="text-sm text-gray-600">Complete list of all inpatient records with billing access</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search patient/bed..."
+                      value={billingSearchTerm}
+                      onChange={(e) => setBillingSearchTerm(e.target.value)}
+                      className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full"
+                    />
+                  </div>
+                  <select
+                    value={billingStatusFilter}
+                    onChange={(e) => setBillingStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="allocated">Allocated</option>
+                    <option value="discharged">Discharged</option>
+                    <option value="transferred">Transferred</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+              {filteredBillingAllocations.length === 0 ? (
+                <div className="text-center py-12">
+                  <Receipt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No IP records found</h3>
+                  <p className="text-gray-600 mb-6">There are no inpatient records matching your criteria.</p>
+                </div>
+              ) : (
+                filteredBillingAllocations.map((allocation, index) => {
+                  const patientName = (allocation.patient?.name && typeof allocation.patient.name === 'string') ? allocation.patient.name.trim() || 'Unknown Patient' : 'Unknown Patient';
+                  const patientId = allocation.patient?.uhid || 'N/A';
+                  const bedNumber = allocation.bed?.bed_number || 'N/A';
+                  const bedType = allocation.bed?.bed_type || 'General';
+                  const doctorName = (allocation.doctor?.name && typeof allocation.doctor.name === 'string') ? allocation.doctor.name.trim() || 'Not Assigned' : 'Not Assigned';
+                  const daysAdmitted = calculateDaysAdmitted(allocation.admission_date, allocation.discharge_date, allocation.status);
+
+                  return (
+                    <div key={allocation.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          {/* Bed Info */}
+                          <div className="w-14 h-14 bg-gradient-to-r from-blue-400 to-blue-500 rounded-xl flex flex-col items-center justify-center">
+                            <BedDouble className="h-5 w-5 text-white" />
+                            <span className="text-white text-xs font-bold mt-0.5">{bedNumber}</span>
+                          </div>
+
+                          {/* Patient Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-semibold text-gray-900">{patientName}</h3>
+                              <span className="text-[10px] text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                {allocation.patient?.uhid || 'N/A'}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full ${getStatusColor(allocation.status)}`}>
+                                {allocation.status}
+                              </span>
+                              {allocation.patient?.is_critical && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-red-100 text-red-800 animate-pulse">
+                                  <AlertTriangle size={10} />
+                                  Critical
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-600">
+                              <span className="flex items-center gap-1 font-medium">
+                                {bedNumber} • {bedType}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Stethoscope size={12} className="text-blue-500" />
+                                Dr. {doctorName}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar size={12} className="text-gray-400" />
+                                Admitted: {new Date(allocation.admission_date).toLocaleDateString()}
+                              </span>
+                              {allocation.discharge_date && (
+                                <span className="flex items-center gap-1">
+                                  <LogOut size={12} className="text-gray-400" />
+                                  Discharged: {new Date(allocation.discharge_date).toLocaleDateString()}
+                                </span>
+                              )}
+                              <span className="flex items-center gap-1 text-purple-600 font-bold">
+                                <Clock size={12} />
+                                {daysAdmitted} day{daysAdmitted !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+
+                            {/* Additional Info Row */}
+                            <div className="mt-2 flex flex-wrap gap-3">
+                              {allocation.patient?.diagnosis && (
+                                <div className="text-xs text-gray-700 bg-blue-50 px-2 py-1 rounded border border-blue-100 flex items-center gap-1">
+                                  <Activity size={10} className="text-blue-600" />
+                                  <span className="font-medium">Diagnosis:</span>
+                                  <span className="truncate max-w-[200px]" title={allocation.patient.diagnosis}>
+                                    {allocation.patient.diagnosis}
+                                  </span>
+                                </div>
+                              )}
+
+                              {allocation.reason && (
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                  <AlertCircle size={10} />
+                                  <span className="italic">Note: {allocation.reason}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2">
+                          <Link href={`/inpatient/billing/${allocation.id}`}>
+                            <button 
+                              className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-1"
+                              title="View Billing Details"
+                            >
+                              <Receipt size={14} />
+                              View Bill
+                            </button>
+                          </Link>
+
+                          <Link href={`/patients/${allocation.patient_id}`}>
+                            <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
+                              <Eye size={18} />
+                            </button>
+                          </Link>
+
+                          {dischargeSummaryByAllocation[allocation.id] && (
+                            <Link href={`/inpatient/discharge/${allocation.id}?view=1`}>
+                              <button
+                                className="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                                title="View Discharge Summary"
+                              >
+                                <Eye size={14} />
+                                View Summary
+                              </button>
+                            </Link>
+                          )}
+
+                          {(allocation.status === 'active' || allocation.status === 'allocated') && (
+                            <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&subtab=discharge`}>
+                              <button
+                                className="text-xs px-3 py-1.5 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 transition-colors flex items-center gap-1"
+                                title="Discharge Summary 2.0"
+                              >
+                                <FileText size={14} />
+                                Discharge Summary 2.0
+                              </button>
+                            </Link>
+                          )}
+
+                          <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&allocation=${allocation.id}`}>
+                            <button
+                              className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                              title="Clinical Records"
+                            >
+                              <ClipboardList size={14} />
+                              Clinical Records
+                            </button>
+                          </Link>
+
+                          {(allocation.status === 'active' || allocation.status === 'allocated') && (
+                            <Link href={`/inpatient/discharge/${allocation.id}`}>
+                              <button
+                                className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
+                                title="Discharge Patient"
+                              >
+                                <LogOut size={14} />
+                                Discharge
+                              </button>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
