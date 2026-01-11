@@ -81,6 +81,24 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
             size: A4;
           }
           
+          /* Hide everything except print content */
+          body * {
+            visibility: hidden;
+          }
+          
+          /* Show only the print content */
+          .print-portal-root, .print-portal-root * {
+            visibility: visible;
+          }
+          
+          /* Ensure print content takes full page */
+          .print-portal-root {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          
           .section-break {
             break-inside: avoid;
             page-break-inside: avoid;
