@@ -124,10 +124,6 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
           .force-break {
             break-before: page;
             page-break-before: always;
-            display: block !important;
-            height: 0 !important;
-            line-height: 0 !important;
-            font-size: 0 !important;
           }
 
           .page-break {
@@ -386,16 +382,9 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
           </table>
         </div>
 
-        <p className="text-center mt-4" style={{fontSize: '10px'}}>
-          ** Detailed breakdown of services and payment history available on following pages **
-        </p>
-      </div>
-
-      {/* Explicit page break */}
-      <div className="first-page-break"></div>
+              </div>
 
       {/* PAGE 2: LAB TESTS DETAIL */}
-      <div className="page-break"></div>
       <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
@@ -497,7 +486,6 @@ export function PatientBillingPrint({ billing, patient, onClose }: PatientBillin
         </div>
 
       {/* PAGE 4: PAYMENT TRANSACTIONS */}
-      <div className="page-break"></div>
       <div className="force-break">
           {/* Reduced Header */}
           <div className="flex flex-col items-center justify-center mb-1">
