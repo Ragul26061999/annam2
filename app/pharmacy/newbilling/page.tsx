@@ -927,15 +927,16 @@ function NewBillingPageInner() {
             .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .items-8cm { font-size: 8pt; font-family: 'Times New Roman', Times, serif; }
+            .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
             .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .footer-7cm { font-size: 7pt; font-family: 'Times New Roman', Times, serif; }
             .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
             .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
             .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
             .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
             .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
-            .footer { margin-top: 20px; font-size: 8pt; font-family: 'Times New Roman', Times, serif; }
+            .footer { margin-top: 20px; font-family: 'Times New Roman', Times, serif; }
             .signature-area { margin-top: 30px; font-family: 'Times New Roman', Times, serif; }
           </style>
         </head>
@@ -1009,7 +1010,7 @@ function NewBillingPageInner() {
           </div>
 
           <div class="footer">
-            <div class="totals-line header-8cm">
+            <div class="totals-line footer-7cm">
               <span>Printed on ${printedDateTime}</span>
               <span>Pharmacist Sign</span>
             </div>
