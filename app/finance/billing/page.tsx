@@ -42,6 +42,17 @@ export default function BillingTransactionsPage() {
     try {
       setLoading(true);
       const offset = (currentPage - 1) * recordsPerPage;
+      console.log('Loading billing records with filters:', {
+        recordsPerPage,
+        offset,
+        filters: {
+          search: searchTerm,
+          status: statusFilter,
+          dateFrom: dateFromFilter,
+          dateTo: dateToFilter
+        }
+      });
+      
       const result = await getBillingRecords(
         recordsPerPage, 
         offset, 
@@ -52,10 +63,17 @@ export default function BillingTransactionsPage() {
           dateTo: dateToFilter
         }
       );
-      setRecords(result.records);
-      setTotalRecords(result.total);
+      
+      console.log('Billing records result:', result);
+      console.log('Records count:', result.records?.length);
+      console.log('Total count:', result.total);
+      
+      setRecords(result.records || []);
+      setTotalRecords(result.total || 0);
     } catch (error) {
       console.error('Error loading billing records:', error);
+      setRecords([]);
+      setTotalRecords(0);
     } finally {
       setLoading(false);
     }

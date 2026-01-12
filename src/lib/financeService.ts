@@ -295,8 +295,19 @@ export async function getBillingRecords(
   }
 ): Promise<{ records: BillingRecord[]; total: number }> {
   try {
+    console.log('getBillingRecords called with:', { limit, offset, filters });
+    
     // Fetch from ALL finance tables and combine results using correct joins
-    const [billingResult, pharmacyResult, labResult, radiologyResult, outpatientResult, otherBillsResult, ipPaymentResult] = await Promise.all([
+    const [
+      billingResult, 
+      pharmacyResult, 
+      labResult, 
+      radiologyResult, 
+      diagnosticResult, 
+      outpatientResult, 
+      otherBillsResult, 
+      ipPaymentResult
+    ] = await Promise.allSettled([
       // Main billing - use correct column names and patient join
       supabase
         .from('billing')
@@ -317,6 +328,11 @@ export async function getBillingRecords(
         .from('radiology_test_orders')
         .select('*, patients!patient_id(name, patient_id)', { count: 'exact' })
         .order('created_at', { ascending: false }),
+      // Diagnostic billing items - use correct patient join
+      supabase
+        .from('diagnostic_billing_items')
+        .select('*, patients!patient_id(name, patient_id, phone)', { count: 'exact' })
+        .order('created_at', { ascending: false }),
       // Outpatient billing from patients table
       supabase
         .from('patients')
@@ -336,11 +352,42 @@ export async function getBillingRecords(
         .order('created_at', { ascending: false })
     ]);
 
+    // Handle each result safely
+    const billingData = billingResult.status === 'fulfilled' ? billingResult.value : { data: [], error: billingResult.reason };
+    const pharmacyData = pharmacyResult.status === 'fulfilled' ? pharmacyResult.value : { data: [], error: pharmacyResult.reason };
+    const labData = labResult.status === 'fulfilled' ? labResult.value : { data: [], error: labResult.reason };
+    const radiologyData = radiologyResult.status === 'fulfilled' ? radiologyResult.value : { data: [], error: radiologyResult.reason };
+    const diagnosticData = diagnosticResult.status === 'fulfilled' ? diagnosticResult.value : { data: [], error: diagnosticResult.reason };
+    const outpatientData = outpatientResult.status === 'fulfilled' ? outpatientResult.value : { data: [], error: outpatientResult.reason };
+    const otherBillsData = otherBillsResult.status === 'fulfilled' ? otherBillsResult.value : { data: [], error: otherBillsResult.reason };
+    const ipPaymentData = ipPaymentResult.status === 'fulfilled' ? ipPaymentResult.value : { data: [], error: ipPaymentResult.reason };
+
+    // Log any errors
+    if (billingResult.status === 'rejected') console.error('Billing query failed:', billingResult.reason);
+    if (pharmacyResult.status === 'rejected') console.error('Pharmacy query failed:', pharmacyResult.reason);
+    if (labResult.status === 'rejected') console.error('Lab query failed:', labResult.reason);
+    if (radiologyResult.status === 'rejected') console.error('Radiology query failed:', radiologyResult.reason);
+    if (diagnosticResult.status === 'rejected') console.error('Diagnostic query failed:', diagnosticResult.reason);
+    if (outpatientResult.status === 'rejected') console.error('Outpatient query failed:', outpatientResult.reason);
+    if (otherBillsResult.status === 'rejected') console.error('Other bills query failed:', otherBillsResult.reason);
+    if (ipPaymentResult.status === 'rejected') console.error('IP payment query failed:', ipPaymentResult.reason);
+
+    console.log('Data fetched:', {
+      billing: billingData.data?.length,
+      pharmacy: pharmacyData.data?.length,
+      lab: labData.data?.length,
+      radiology: radiologyData.data?.length,
+      diagnostic: diagnosticData.data?.length,
+      outpatient: outpatientData.data?.length,
+      otherBills: otherBillsData.data?.length,
+      ipPayment: ipPaymentData.data?.length
+    });
+
     // Transform and combine all records with correct field mapping
     console.log('getBillingRecords - Outpatient result:', outpatientResult);
-    console.log('getBillingRecords - Outpatient data:', outpatientResult.data);
+    console.log('getBillingRecords - Outpatient data:', outpatientData.data);
     
-    const billingRecords = (billingResult.data || []).map((b: any) => {
+    const billingRecords = (billingData.data || []).map((b: any) => {
       // Determine source based on bill_type
       let source = 'billing';
       if (b.bill_type === 'lab') source = 'lab';
@@ -371,7 +418,7 @@ export async function getBillingRecords(
       };
     });
 
-    const pharmacyRecords = (pharmacyResult.data || []).map((b: any) => ({
+    const pharmacyRecords = (pharmacyData.data || []).map((b: any) => ({
       id: b.id,
       bill_id: b.bill_number || `PH-${b.id.substring(0, 8)}`,
       patient_id: b.patient_id,
@@ -392,7 +439,7 @@ export async function getBillingRecords(
       }
     }));
 
-    const labRecords = (labResult.data || []).map((b: any) => ({
+    const labRecords = (labData.data || []).map((b: any) => ({
       id: b.id,
       bill_id: `LAB-${b.id.substring(0, 8)}`,
       patient_id: b.patient_id,
@@ -405,7 +452,7 @@ export async function getBillingRecords(
       payment_method: b.payment_method,
       created_at: b.created_at,
       updated_at: b.updated_at || b.created_at,
-      source: 'lab' as const,
+      source: 'diagnostic' as const,
       patient: b.patients || {
         name: 'Unknown Patient',
         patient_id: 'N/A',
@@ -413,7 +460,7 @@ export async function getBillingRecords(
       }
     }));
 
-    const radiologyRecords = (radiologyResult.data || []).map((b: any) => ({
+    const radiologyRecords = (radiologyData.data || []).map((b: any) => ({
       id: b.id,
       bill_id: `RAD-${b.id.substring(0, 8)}`,
       patient_id: b.patient_id,
@@ -434,12 +481,33 @@ export async function getBillingRecords(
       }
     }));
 
-    const outpatientRecords = (outpatientResult.data || []).map((p: any) => {
+    const diagnosticRecords = (diagnosticData.data || []).map((b: any) => ({
+      id: b.id,
+      bill_id: `LAB-${b.id.substring(0, 8)}`,
+      patient_id: b.patient_id,
+      bill_date: b.created_at,
+      total_amount: Number(b.amount) || 0,
+      subtotal: Number(b.amount) || 0,
+      tax_amount: 0,
+      discount_amount: 0,
+      payment_status: b.billing_status || 'pending',
+      payment_method: b.payment_method,
+      created_at: b.created_at,
+      updated_at: b.updated_at || b.created_at,
+      source: 'lab' as const,
+      patient: b.patients || {
+        name: 'Unknown Patient',
+        patient_id: 'N/A',
+        phone: ''
+      }
+    }));
+
+    const outpatientRecords = (outpatientData.data || []).map((p: any) => {
       console.log('Transforming outpatient record:', p);
       return {
         id: p.id,
         bill_id: `OP-${p.id}`,
-        patient_id: p.id,
+        patient_id: p.patient_id || p.id,
         bill_date: p.created_at,
         total_amount: Number(p.total_amount) || 0,
         subtotal: Number(p.consultation_fee) || 0,
@@ -448,19 +516,18 @@ export async function getBillingRecords(
         payment_status: 'paid', // Outpatient records are typically paid
         payment_method: p.payment_mode || 'cash',
         created_at: p.created_at,
-        updated_at: p.updated_at,
+        updated_at: p.updated_at || p.created_at,
         source: 'outpatient' as const,
         patient: {
-          id: p.id,
-          patient_id: p.patient_id,
-          name: p.name,
-          phone: p.phone,
+          name: p.name || 'Unknown Patient',
+          patient_id: p.patient_id || 'N/A',
+          phone: p.phone || '',
         },
       };
     });
     console.log('Transformed outpatient records:', outpatientRecords);
 
-    const otherBillsRecords = (otherBillsResult.data || []).map((o: any) => ({
+    const otherBillsRecords = (otherBillsData.data || []).map((o: any) => ({
       id: o.id,
       bill_id: o.bill_number,
       patient_id: o.patient_id,
@@ -478,7 +545,7 @@ export async function getBillingRecords(
     }));
 
     // Transform IP Payment Receipts
-    const ipPaymentRecords = (ipPaymentResult.data || []).map((ip: any) => ({
+    const ipPaymentRecords = (ipPaymentData.data || []).map((ip: any) => ({
       id: ip.id,
       bill_id: `IP-${ip.id.substring(0, 8)}`,
       patient_id: ip.patient_id,
@@ -501,7 +568,7 @@ export async function getBillingRecords(
     }));
 
     // Combine all records
-    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords, ...otherBillsRecords, ...ipPaymentRecords];
+    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...diagnosticRecords, ...outpatientRecords, ...otherBillsRecords, ...ipPaymentRecords];
 
     // Sort by created_at descending
     allRecords.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

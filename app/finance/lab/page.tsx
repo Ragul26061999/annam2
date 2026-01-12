@@ -49,7 +49,7 @@ export default function LabTransactionsPage() {
       );
       
       // Filter only lab records
-      const labRecords = result.records.filter(record => record.source === 'lab');
+      const labRecords = result.records.filter(record => record.source === 'lab' || record.source === 'diagnostic');
       setRecords(labRecords);
       setTotalRecords(labRecords.length);
     } catch (error) {

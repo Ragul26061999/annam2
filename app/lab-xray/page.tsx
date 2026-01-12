@@ -28,7 +28,8 @@ import {
   PieChart as PieChartIcon,
   ChevronRight,
   ArrowRight,
-  Trash2
+  Trash2,
+  CreditCard
 } from 'lucide-react';
 import {
   getLabOrders,
@@ -37,9 +38,11 @@ import {
   updateLabOrderStatus,
   updateRadiologyOrder,
   deleteLabOrder,
-  deleteRadiologyOrder
+  deleteRadiologyOrder,
+  getDiagnosticBillingItems
 } from '../../src/lib/labXrayService';
 import { supabase } from '../../src/lib/supabase';
+import BillingList from './components/BillingList';
 import {
   BarChart,
   Bar,
@@ -71,9 +74,10 @@ const COLORS = ['#14b8a6', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444'];
 
 export default function LabXRayPage() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'management'>('management');
-  const [activeSubTab, setActiveSubTab] = useState<'lab' | 'radiology'>('lab');
+  const [activeSubTab, setActiveSubTab] = useState<'lab' | 'radiology' | 'billing'>('lab');
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
+  const [billingItems, setBillingItems] = useState<any[]>([]);
   const [stats, setStats] = useState<DiagnosticStats>({
     totalLabOrders: 0,
     totalRadiologyOrders: 0,
@@ -108,14 +112,16 @@ export default function LabXRayPage() {
       const statsData = await getDiagnosticStats();
       setStats(statsData);
 
-      // Get orders
-      const [lab, radiology] = await Promise.all([
+      // Get orders and billing
+      const [lab, radiology, billing] = await Promise.all([
         getLabOrders(),
-        getRadiologyOrders()
+        getRadiologyOrders(),
+        getDiagnosticBillingItems()
       ]);
 
       setLabOrders(lab || []);
       setRadiologyOrders(radiology || []);
+      setBillingItems(billing || []);
 
     } catch (error) {
       console.error('Error loading data:', error);
@@ -550,45 +556,65 @@ export default function LabXRayPage() {
                 </div>
                 {activeSubTab === 'radiology' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-cyan-600" />}
               </button>
+              <button
+                onClick={() => setActiveSubTab('billing')}
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'billing'
+                  ? 'border-green-600 text-green-600 bg-green-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard size={18} />
+                  BILLING
+                </div>
+                {activeSubTab === 'billing' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-green-600" />}
+              </button>
             </div>
 
             {/* Controls */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4.5 w-4.5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Patient Name, ID, or Order #"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-teal-500 transition-all outline-none"
-                />
+            {activeSubTab !== 'billing' && (
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4.5 w-4.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Patient Name, ID, or Order #"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-teal-500 transition-all outline-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
+                  >
+                    <option value="all">Any Status</option>
+                    <option value="ordered">Ordered</option>
+                    <option value="in_progress">Processing</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  <select
+                    value={urgencyFilter}
+                    onChange={(e) => setUrgencyFilter(e.target.value)}
+                    className="px-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
+                  >
+                    <option value="all">Any Urgency</option>
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="stat">STAT</option>
+                  </select>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
-                >
-                  <option value="all">Any Status</option>
-                  <option value="ordered">Ordered</option>
-                  <option value="in_progress">Processing</option>
-                  <option value="completed">Completed</option>
-                </select>
-                <select
-                  value={urgencyFilter}
-                  onChange={(e) => setUrgencyFilter(e.target.value)}
-                  className="px-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
-                >
-                  <option value="all">Any Urgency</option>
-                  <option value="routine">Routine</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="stat">STAT</option>
-                </select>
-              </div>
-            </div>
+            )}
 
             {/* Orders Feed */}
+            {activeSubTab === 'billing' && (
+              <BillingList items={billingItems} onRefresh={() => loadData(true)} />
+            )}
+
+            {activeSubTab !== 'billing' && (
             <div className="space-y-4">
               {filteredOrders.length === 0 ? (
                 <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-gray-200">
@@ -653,7 +679,7 @@ export default function LabXRayPage() {
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Process Flow</p>
                             <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">Step: {order.status?.replace(/_/g, ' ').toUpperCase()}</p>
                           </div>
-                          <WorkflowVisualizer status={order.status} type={activeSubTab} />
+                          <WorkflowVisualizer status={order.status} type={activeSubTab as 'lab' | 'radiology'} />
                         </div>
                       </div>
 
@@ -699,6 +725,7 @@ export default function LabXRayPage() {
                 ))
               )}
             </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

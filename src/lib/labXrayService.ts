@@ -1014,6 +1014,105 @@ async function createDiagnosticBilling(
 }
 
 /**
+ * Get all diagnostic billing items
+ */
+export async function getDiagnosticBillingItems(filters?: {
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  searchTerm?: string;
+}): Promise<any[]> {
+  try {
+    let query = supabase
+      .from('diagnostic_billing_items')
+      .select(`
+        *,
+        patients:patient_id (id, patient_id, name, phone, gender, date_of_birth)
+      `);
+
+    if (filters?.status && filters.status !== 'all') {
+      query = query.eq('billing_status', filters.status);
+    }
+
+    if (filters?.dateFrom) {
+      query = query.gte('created_at', filters.dateFrom);
+    }
+
+    if (filters?.dateTo) {
+      query = query.lte('created_at', filters.dateTo);
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('Diagnostic billing items table not available:', error.message);
+      return [];
+    }
+
+    let result = data || [];
+
+    // Client-side search since we can't easily search across joined tables with simple filters
+    if (filters?.searchTerm) {
+      const term = filters.searchTerm.toLowerCase();
+      result = result.filter((item: any) => 
+        item.test_name?.toLowerCase().includes(term) ||
+        item.patients?.name?.toLowerCase().includes(term) ||
+        item.patients?.patient_id?.toLowerCase().includes(term)
+      );
+    }
+
+    return result.map(item => ({
+        ...item,
+        patient: item.patients // Map the joined patient data
+    }));
+  } catch (error) {
+    console.error('Error in getDiagnosticBillingItems:', error);
+    return [];
+  }
+}
+
+/**
+ * Update billing status
+ */
+export async function updateDiagnosticBillingStatus(
+  id: string,
+  status: 'pending' | 'billed' | 'paid',
+  paymentMethod?: string | null
+): Promise<boolean> {
+  try {
+    const updates: any = {
+      billing_status: status
+    };
+
+    if (status === 'billed') {
+      updates.billed_at = new Date().toISOString();
+    } else if (status === 'paid') {
+      updates.paid_at = new Date().toISOString();
+      if (paymentMethod) {
+        updates.payment_method = paymentMethod;
+      }
+    }
+
+    const { error } = await supabase
+      .from('diagnostic_billing_items')
+      .update(updates)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Failed to update billing status:', error);
+      throw new Error(`Failed to update billing status: ${error.message}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in updateDiagnosticBillingStatus:', error);
+    throw error;
+  }
+}
+
+/**
  * Get diagnostic statistics
  */
 export async function getDiagnosticStats(): Promise<{
