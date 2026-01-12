@@ -927,6 +927,9 @@ function NewBillingPageInner() {
             .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .items-8cm { font-size: 8pt; font-family: 'Times New Roman', Times, serif; }
+            .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
+            .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
             .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
             .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
             .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
@@ -948,19 +951,24 @@ function NewBillingPageInner() {
           <div style="margin-top: 10px;">
             <table class="table">
               <tr>
-                <td>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;${generatedBill.bill_number}</td>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${generatedBill.bill_number}</td>
               </tr>
               <tr>
-                <td>UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${patientUhid}</td>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
               </tr>
               <tr>
-                <td>Patient Name&nbsp;:&nbsp;&nbsp;${customer.name}</td>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${customer.name}</td>
               </tr>
               <tr>
-                <td>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${formatISTDate(getISTDate())} ${formatISTTime(getISTDate())}</td>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${formatISTDate(getISTDate())} ${formatISTTime(getISTDate())}</td>
               </tr>
               <tr>
-                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;${salesType}</td>
+                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${salesType}</td>
               </tr>
             </table>
           </div>
@@ -968,25 +976,25 @@ function NewBillingPageInner() {
           <div style="margin-top: 10px;">
             <table class="table">
               <tr style="border-bottom: 1px dashed #000;">
-                <td width="30%">S.No</td>
-                <td width="40%">Drug Name</td>
-                <td width="15%" class="center">Qty</td>
-                <td width="15%" class="right">Amt</td>
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Drug Name</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
               </tr>
               ${itemsHtml}
             </table>
           </div>
 
           <div style="margin-top: 10px;">
-            <div class="totals-line">
+            <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
               <span>${Number(generatedBill.totals?.subtotal || 0).toFixed(2)}</span>
             </div>
-            <div class="totals-line">
+            <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
               <span>${Number(generatedBill.totals?.discountAmount || 0).toFixed(2)}</span>
             </div>
-            <div class="totals-line">
+            <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
               <span>${Number((generatedBill.totals?.taxAmount || 0) / 2).toFixed(2)}</span>
             </div>
