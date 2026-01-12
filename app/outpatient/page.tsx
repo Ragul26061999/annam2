@@ -8,7 +8,8 @@ import {
   UserPlus, RefreshCw, Eye, CheckCircle, XCircle,
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
-  MoreVertical, Edit3, Trash2, Printer, FileText
+  MoreVertical, Edit3, Trash2, Printer, FileText,
+  Receipt, CreditCard, IndianRupee, Download
 } from 'lucide-react';
 import { getDashboardStats } from '../../src/lib/dashboardService';
 import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
@@ -16,6 +17,7 @@ import { getPatientByUHID, registerNewPatient, getAllPatients } from '../../src/
 import { supabase } from '../../src/lib/supabase';
 import VitalsQueueCard from '../../components/VitalsQueueCard';
 import { getQueueStats } from '../../src/lib/outpatientQueueService';
+import { getBillingRecords, type BillingRecord } from '../../src/lib/financeService';
 
 interface OutpatientStats {
   totalPatients: number;
@@ -102,8 +104,16 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients' | 'billing'>('queue');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
+  
+  // Billing state
+  const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingSearch, setBillingSearch] = useState('');
+  const [selectedBill, setSelectedBill] = useState<BillingRecord | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
 
   // Check for registration success parameter
   useEffect(() => {
@@ -120,7 +130,7 @@ function OutpatientPageContent() {
     
     // Check for tab parameter
     const tab = searchParams?.get('tab');
-    if (tab === 'queue' || tab === 'appointments' || tab === 'patients') {
+    if (tab === 'queue' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
       setActiveTab(tab);
     }
     
@@ -163,6 +173,29 @@ function OutpatientPageContent() {
       console.error('Error loading queue stats:', err);
     }
   };
+
+  const loadBillingRecords = async () => {
+    try {
+      setBillingLoading(true);
+      const result = await getBillingRecords(50, 0, {
+        search: billingSearch
+      });
+      // Filter for outpatient records only
+      const outpatientRecords = result.records.filter(record => record.source === 'outpatient');
+      setBillingRecords(outpatientRecords);
+    } catch (error) {
+      console.error('Error loading billing records:', error);
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  // Load billing records when billing tab is active or search changes
+  useEffect(() => {
+    if (activeTab === 'billing') {
+      loadBillingRecords();
+    }
+  }, [activeTab, billingSearch]);
 
   const loadOutpatientData = async () => {
     try {
@@ -586,6 +619,17 @@ function OutpatientPageContent() {
               <Users className="h-4 w-4" />
               Recent Patients
             </button>
+            <button
+              onClick={() => setActiveTab('billing')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
+                activeTab === 'billing'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Receipt className="h-4 w-4" />
+              OP Billing
+            </button>
           </div>
         </div>
 
@@ -869,6 +913,137 @@ function OutpatientPageContent() {
         </div>
       )}
 
+      {/* Billing Tab */}
+      {activeTab === 'billing' && (
+        <div className="space-y-4">
+          {/* Billing Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Outpatient Billing</h3>
+              <p className="text-sm text-gray-600">Manage OP consultation bills and payments</p>
+            </div>
+            <button
+              onClick={() => loadBillingRecords()}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <input
+              type="text"
+              placeholder="Search bills by patient name, bill ID..."
+              value={billingSearch}
+              onChange={(e) => setBillingSearch(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          {/* Billing Records */}
+          {billingLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+              <span className="ml-2 text-gray-600">Loading billing records...</span>
+            </div>
+          ) : billingRecords.length > 0 ? (
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {billingRecords.map((record) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {record.bill_id}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div>
+                            <div className="font-medium">{record.patient?.name || 'Unknown Patient'}</div>
+                            <div className="text-gray-500">{record.patient?.patient_id || 'N/A'}</div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(record.bill_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <IndianRupee size={14} className="text-gray-500" />
+                            <span className="font-medium">{record.total_amount.toFixed(2)}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            record.payment_status === 'paid' 
+                              ? 'bg-green-100 text-green-800'
+                              : record.payment_status === 'partial'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {record.payment_status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedBill(record);
+                                setShowThermalModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                              title="Thermal Print"
+                            >
+                              <Printer size={16} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedBill(record);
+                                setShowPaymentModal(true);
+                              }}
+                              className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                              title="Process Payment"
+                            >
+                              <CreditCard size={16} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedBill(record);
+                                // View details
+                              }}
+                              className="text-gray-600 hover:text-gray-800 p-1 rounded hover:bg-gray-50"
+                              title="View Details"
+                            >
+                              <Eye size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Receipt className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">No billing records found</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Outpatient Display Section - HIDDEN, replaced by tabs */}
       <div className="hidden bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
@@ -1136,6 +1311,232 @@ function OutpatientPageContent() {
             >
               <XCircle className="h-5 w-5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Thermal Print Modal */}
+      {showThermalModal && selectedBill && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Thermal Print Preview</h3>
+              <button
+                onClick={() => setShowThermalModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <CloseIcon size={24} />
+              </button>
+            </div>
+            
+            <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
+              {/* Thermal Print Content */}
+              <div className="text-center mb-4">
+                <h4 className="font-bold text-lg">ANNAM HOSPITAL</h4>
+                <p className="text-xs">123 Hospital Road, City - 600001</p>
+                <p className="text-xs">Phone: 04639-252592 | GST: 29ABCDE1234F1Z5</p>
+                <hr className="my-2" />
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-xs"><strong>Bill No:</strong> {selectedBill.bill_id}</p>
+                <p className="text-xs"><strong>Patient:</strong> {selectedBill.patient?.name || 'Unknown Patient'}</p>
+                <p className="text-xs"><strong>Patient ID:</strong> {selectedBill.patient?.patient_id || 'N/A'}</p>
+                <p className="text-xs"><strong>Date:</strong> {new Date(selectedBill.bill_date).toLocaleString()}</p>
+              </div>
+              
+              <table className="w-full text-xs mb-4">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-1">S.No</th>
+                    <th className="text-left py-1">Description</th>
+                    <th className="text-center py-1">Qty</th>
+                    <th className="text-right py-1">Amt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="py-1">1.</td>
+                    <td className="py-1">Outpatient Consultation</td>
+                    <td className="text-center py-1">1</td>
+                    <td className="text-right py-1">{selectedBill.total_amount.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <div className="border-t pt-2 text-xs">
+                <div className="flex justify-between mb-1">
+                  <span>Taxable Amount</span>
+                  <span>{selectedBill.total_amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>    Dist Amt</span>
+                  <span>{selectedBill.discount_amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>    CGST Amt</span>
+                  <span>0.00</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>    SGST Amt</span>
+                  <span>0.00</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Total Amount</span>
+                  <span>{selectedBill.total_amount.toFixed(2)}</span>
+                </div>
+              </div>
+              
+              <div className="text-center mt-4 text-xs">
+                <p>Payment Method: {selectedBill.payment_method || 'Cash'}</p>
+                <p>Status: {selectedBill.payment_status}</p>
+                <hr className="my-2" />
+                <p className="text-xs">Thank you for visiting!</p>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowThermalModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  // Print functionality
+                  const printContent = document.querySelector('.bg-white.p-4');
+                  if (printContent) {
+                    const printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                      printWindow.document.write(`
+                        <html>
+                          <head>
+                            <title>Thermal Print - ${selectedBill.bill_id}</title>
+                            <style>
+                              body { font-family: monospace; font-size: 12px; margin: 20px; }
+                              table { width: 100%; border-collapse: collapse; }
+                              th, td { padding: 4px; text-align: left; }
+                              th { border-bottom: 1px solid #000; }
+                              .text-center { text-align: center; }
+                              .text-right { text-align: right; }
+                              .border-t { border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
+                            </style>
+                          </head>
+                          <body>
+                            ${printContent.innerHTML}
+                          </body>
+                        </html>
+                      `);
+                      printWindow.document.close();
+                      printWindow.print();
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                <Printer size={16} className="inline mr-2" />
+                Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedBill && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Process Payment</h3>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <CloseIcon size={24} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Bill Details</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Bill ID:</span>
+                    <span className="font-medium">{selectedBill.bill_id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Patient:</span>
+                    <span className="font-medium">{selectedBill.patient?.name || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Amount:</span>
+                    <span className="font-medium">₹{selectedBill.total_amount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Status:</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      selectedBill.payment_status === 'paid' 
+                        ? 'bg-green-100 text-green-800'
+                        : selectedBill.payment_status === 'partial'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedBill.payment_status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Method
+                </label>
+                <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="credit">Credit</option>
+                  <option value="others">Others</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Amount Received
+                </label>
+                <div className="relative">
+                  <IndianRupee size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="number"
+                    placeholder="0.00"
+                    className="pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                    defaultValue={selectedBill.total_amount}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    // Process payment logic here
+                    alert('Payment processed successfully!');
+                    setShowPaymentModal(false);
+                    loadBillingRecords(); // Refresh records
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                >
+                  <CreditCard size={16} className="inline mr-2" />
+                  Process Payment
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
