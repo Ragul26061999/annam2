@@ -506,7 +506,7 @@ export async function getBillingRecords(
       console.log('Transforming outpatient record:', p);
       return {
         id: p.id,
-        bill_id: `OP-${p.id}`,
+        bill_id: `OP-${p.id.substring(0, 8)}`,
         patient_id: p.patient_id || p.id,
         bill_date: p.created_at,
         total_amount: Number(p.total_amount) || 0,
