@@ -1059,13 +1059,11 @@ export async function updateDoctor(
     const doctorFields = {
       ...(updates.licenseNumber && { license_number: updates.licenseNumber }),
       ...(updates.specialization && { specialization: updates.specialization }),
-      ...(updates.department && { department: updates.department }),
       ...(updates.qualification && { qualification: updates.qualification }),
       ...(updates.experienceYears && { years_of_experience: updates.experienceYears }),
       ...(updates.consultationFee && { consultation_fee: updates.consultationFee }),
       ...(updates.roomNumber && { room_number: updates.roomNumber }),
-      ...(updates.floorNumber && { floor_number: updates.floorNumber }),
-      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined || updates.workingHoursStart || updates.workingHoursEnd) && {
+      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined || updates.workingHoursStart || updates.workingHoursEnd || updates.department || updates.floorNumber) && {
         availability_hours: {
           sessions: updates.sessions,
           availableSessions: updates.availableSessions,
