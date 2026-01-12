@@ -288,19 +288,46 @@ export default function BillingTransactionsPage() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
         );
         
-        // Try to fetch billing items from the database
-        const { data: items } = await supabase
-          .from('billing_item')
-          .select('*')
-          .eq('billing_id', record.id)
-          .order('created_at', { ascending: true });
+        let items = null;
+        
+        // First try to fetch from pharmacy_bill_items (for pharmacy_bills table)
+        try {
+          const { data: pharmacyItems } = await supabase
+            .from('pharmacy_bill_items')
+            .select('*')
+            .eq('bill_id', record.id)
+            .order('created_at', { ascending: true });
+          
+          if (pharmacyItems && pharmacyItems.length > 0) {
+            items = pharmacyItems;
+          }
+        } catch (pharmacyError) {
+          console.log('Failed to fetch from pharmacy_bill_items:', pharmacyError);
+        }
+        
+        // If no items from pharmacy_bill_items, try billing_item table (for billing table)
+        if (!items || items.length === 0) {
+          try {
+            const { data: billingItems } = await supabase
+              .from('billing_item')
+              .select('*')
+              .eq('billing_id', record.id)
+              .order('created_at', { ascending: true });
+            
+            if (billingItems && billingItems.length > 0) {
+              items = billingItems;
+            }
+          } catch (billingError) {
+            console.log('Failed to fetch from billing_item:', billingError);
+          }
+        }
         
         if (items && items.length > 0) {
           return items.map((item: any, index: number) => `
             <tr>
               <td class="items-8cm">${index + 1}.</td>
-              <td class="items-8cm">${item.description || 'Unknown Item'}</td>
-              <td class="items-8cm text-center">${item.qty || 1}</td>
+              <td class="items-8cm">${item.medication_name || item.description || 'Unknown Item'}</td>
+              <td class="items-8cm text-center">${item.quantity || item.qty || 1}</td>
               <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
             </tr>
           `).join('');
