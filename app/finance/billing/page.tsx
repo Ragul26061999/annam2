@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Search, 
   Filter, 
@@ -276,6 +277,40 @@ export default function BillingTransactionsPage() {
       }
     };
 
+    // For pharmacy bills, try to get actual medication details
+    const getPharmacyItemsContent = async () => {
+      if (record.source !== 'pharmacy') return getServiceContent();
+      
+      try {
+        // Initialize Supabase client only on client side
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        );
+        
+        // Try to fetch pharmacy bill items from the database
+        const { data: items } = await supabase
+          .from('pharmacy_bill_items')
+          .select('*')
+          .eq('bill_id', record.id)
+          .order('created_at', { ascending: true });
+        
+        if (items && items.length > 0) {
+          return items.map((item: any, index: number) => `
+            <tr>
+              <td class="items-8cm">${index + 1}.</td>
+              <td class="items-8cm">${item.medicine?.name || item.name || 'Unknown Medicine'}</td>
+              <td class="items-8cm text-center">${item.quantity || 1}</td>
+              <td class="items-8cm text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (error) {
+        console.error('Error fetching pharmacy items:', error);
+        return getServiceContent();
+      }
+    };
+
     const thermalContent = `
       <html>
         <head>
@@ -348,7 +383,7 @@ export default function BillingTransactionsPage() {
                 <td width="15%" class="items-8cm text-center">Qty</td>
                 <td width="15%" class="items-8cm text-right">Amt</td>
               </tr>
-              ${getServiceContent()}
+              ${record.source === 'pharmacy' ? '<!-- Pharmacy items will be loaded dynamically -->' : getServiceContent()}
             </table>
           </div>
 
@@ -383,7 +418,18 @@ export default function BillingTransactionsPage() {
           </div>
 
           <script>
-            window.onload = function() {
+            window.onload = async function() {
+              // For pharmacy bills, try to load actual items
+              if ('${record.source}' === 'pharmacy') {
+                const itemsContent = await getPharmacyItemsContent();
+                if (itemsContent !== '<!-- Pharmacy items will be loaded dynamically -->') {
+                  const tableBody = document.querySelector('tbody');
+                  const placeholderRow = tableBody.querySelector('tr:last-child');
+                  if (placeholderRow && placeholderRow.textContent.includes('<!-- Pharmacy items will be loaded dynamically -->')) {
+                    placeholderRow.outerHTML = itemsContent;
+                  }
+                }
+              }
               window.print();
             }
           </script>
