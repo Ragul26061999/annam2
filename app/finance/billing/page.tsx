@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { 
   Search, 
   Filter, 
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import { getBillingRecords, type BillingRecord } from '../../../src/lib/financeService';
 import TransactionViewModal from '../../../src/components/TransactionViewModal';
+import { supabase } from '../../../src/lib/supabase';
 
 export default function BillingTransactionsPage() {
   const [records, setRecords] = useState<BillingRecord[]>([]);
@@ -92,12 +92,6 @@ export default function BillingTransactionsPage() {
   // Export to Excel function
   const exportToExcel = async () => {
     try {
-      // Initialize Supabase client
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-      );
-
       // Get all records without pagination for export
       const result = await getBillingRecords(1000, 0, {
         search: searchTerm,
@@ -365,12 +359,6 @@ export default function BillingTransactionsPage() {
       if (record.source !== 'pharmacy') return getServiceContent();
       
       try {
-        // Initialize Supabase client only on client side
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        );
-        
         let items = null;
         
         // First try to fetch from pharmacy_bill_items (for pharmacy_bills table)
