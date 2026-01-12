@@ -17,6 +17,7 @@ import {
   CheckCircle,
   Trash2,
   Printer,
+  Eye,
   X
 } from 'lucide-react';
 import StaffSelect from '@/src/components/StaffSelect';
@@ -879,6 +880,146 @@ function NewBillingPageInner() {
       alert('Error generating bill: ' + (err?.message || JSON.stringify(err)));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Thermal printer preview function
+  const showThermalPreview = () => {
+    if (!generatedBill) return;
+
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    
+    // Get patient UHID
+    const patientUhid = customer.type === 'patient' ? customer.patient_id : 'WALK-IN';
+    
+    // Get sales type
+    let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
+    if (salesType === 'CREDIT') {
+      salesType = 'CREDIT';
+    }
+
+    // Generate items HTML
+    const itemsHtml = generatedBill.items.map((item: any, index: number) => `
+      <tr>
+        <td>${index + 1}.</td>
+        <td>${item.medicine?.name || item.name}</td>
+        <td class="text-center">${item.quantity}</td>
+        <td class="text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${generatedBill.bill_number}</title>
+          <style>
+            @page { margin: 5mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Courier New', monospace; 
+              margin: 0; 
+              padding: 10px;
+              font-size: 12px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { font-size: 14pt; font-weight: bold; }
+            .header-9cm { font-size: 9pt; font-weight: bold; }
+            .header-10cm { font-size: 10pt; font-weight: bold; }
+            .header-8cm { font-size: 8pt; font-weight: bold; }
+            .center { text-align: center; }
+            .right { text-align: right; }
+            .table { width: 100%; border-collapse: collapse; }
+            .table td { padding: 2px; }
+            .totals-line { display: flex; justify-content: space-between; }
+            .footer { margin-top: 20px; font-size: 8pt; }
+            .signature-area { margin-top: 30px; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <div class="header-14cm">ANNAM PHARMACY</div>
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;${generatedBill.bill_number}</td>
+              </tr>
+              <tr>
+                <td>UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${patientUhid}</td>
+              </tr>
+              <tr>
+                <td>Patient Name&nbsp;:&nbsp;&nbsp;${customer.name}</td>
+              </tr>
+              <tr>
+                <td>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${formatISTDate(getISTDate())} ${formatISTTime(getISTDate())}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;${salesType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%">S.No</td>
+                <td width="40%">Drug Name</td>
+                <td width="15%" class="center">Qty</td>
+                <td width="15%" class="right">Amt</td>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line">
+              <span>Taxable Amount</span>
+              <span>${Number(generatedBill.totals?.subtotal || 0).toFixed(2)}</span>
+            </div>
+            <div class="totals-line">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+              <span>${Number(generatedBill.totals?.discountAmount || 0).toFixed(2)}</span>
+            </div>
+            <div class="totals-line">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+              <span>${Number((generatedBill.totals?.taxAmount || 0) / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+              <span>${Number((generatedBill.totals?.taxAmount || 0) / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${Number(generatedBill.totals?.totalAmount || 0).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line header-8cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Pharmacist Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
     }
   };
 
@@ -1788,6 +1929,13 @@ function NewBillingPageInner() {
                 >
                   <Printer className="w-4 h-4" />
                   Print Receipt
+                </button>
+                <button
+                  onClick={() => showThermalPreview()}
+                  className="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Thermal Preview
                 </button>
                 <button
                   onClick={() => setShowBillSuccess(false)}
