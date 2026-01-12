@@ -399,10 +399,10 @@ export default function PharmacyBillingPage() {
     // Generate items HTML
     const itemsHtml = viewItems.map((item: any, index: number) => `
       <tr>
-        <td>${index + 1}.</td>
-        <td>${item.description || item.name || 'Unknown'}</td>
-        <td class="text-center">${item.qty || 1}</td>
-        <td class="text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
+        <td class="items-8cm">${index + 1}.</td>
+        <td class="items-8cm">${item.description || item.name || 'Unknown'}</td>
+        <td class="items-8cm text-center">${item.qty || 1}</td>
+        <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
       </tr>
     `).join('');
 
