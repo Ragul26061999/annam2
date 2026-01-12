@@ -159,7 +159,7 @@ export interface PaymentMethodStats {
 export async function getFinanceStats(dateRange?: { from: string; to: string }): Promise<FinanceStats> {
   try {
     // Fetch data from all finance-related tables in parallel
-    const [billingResult, pharmacyResult, labResult, radiologyResult, diagnosticResult, outpatientResult, otherBillsResult] = await Promise.all([
+    const [billingResult, pharmacyResult, labResult, radiologyResult, diagnosticResult, outpatientResult, otherBillsResult, ipPaymentResult] = await Promise.all([
       // Main billing table - uses 'total' not 'total_amount'
       supabase.from('billing').select('total, payment_status, created_at'),
       // Pharmacy bills - uses 'total_amount'
@@ -173,7 +173,9 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       // Outpatient billing from patients table
       supabase.from('patients').select('total_amount, consultation_fee, op_card_amount, created_at').not('total_amount', 'is', null),
       // Other bills
-      supabase.from('other_bills').select('total_amount, paid_amount, payment_status, created_at').eq('status', 'active')
+      supabase.from('other_bills').select('total_amount, paid_amount, payment_status, created_at').eq('status', 'active'),
+      // IP Payment Receipts
+      supabase.from('ip_payment_receipts').select('amount, payment_type, payment_date, created_at')
     ]);
 
     const billingData = billingResult.data || [];
@@ -183,6 +185,7 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const diagnosticData = diagnosticResult.data || [];
     const outpatientData = outpatientResult.data || [];
     const otherBillsData = otherBillsResult.data || [];
+    const ipPaymentData = ipPaymentResult.data || [];
     
     console.log('Outpatient query result:', outpatientResult);
     console.log('Outpatient data length:', outpatientData.length);
@@ -196,8 +199,9 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const diagnosticRevenue = diagnosticData.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
     const outpatientRevenue = outpatientData.reduce((sum: number, p: any) => sum + (Number(p.total_amount) || 0), 0);
     const otherBillsRevenue = otherBillsData.reduce((sum: number, b: any) => sum + (Number(b.total_amount) || 0), 0);
+    const ipPaymentRevenue = ipPaymentData.reduce((sum: number, ip: any) => sum + (Number(ip.amount) || 0), 0);
 
-    const totalRevenue = billingRevenue + pharmacyRevenue + labRevenue + radiologyRevenue + diagnosticRevenue + outpatientRevenue + otherBillsRevenue;
+    const totalRevenue = billingRevenue + pharmacyRevenue + labRevenue + radiologyRevenue + diagnosticRevenue + outpatientRevenue + otherBillsRevenue + ipPaymentRevenue;
 
     // Calculate counts
     const billingCount = billingData.length;
@@ -207,7 +211,8 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
     const diagnosticCount = diagnosticData.length;
     const outpatientCount = outpatientData.length;
     const otherBillsCount = otherBillsData.length;
-    const totalTransactions = billingCount + pharmacyCount + labCount + radiologyCount + diagnosticCount + outpatientCount + otherBillsCount;
+    const ipPaymentCount = ipPaymentData.length;
+    const totalTransactions = billingCount + pharmacyCount + labCount + radiologyCount + diagnosticCount + outpatientCount + otherBillsCount + ipPaymentCount;
 
     // Combine all records for status calculations
     const allRecords = [
@@ -216,7 +221,8 @@ export async function getFinanceStats(dateRange?: { from: string; to: string }):
       ...labData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.amount) || 0 })),
       ...radiologyData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.amount) || 0 })),
       ...diagnosticData.map((b: any) => ({ ...b, status: b.billing_status, amount: Number(b.amount) || 0 })),
-      ...otherBillsData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.total_amount) || 0 }))
+      ...otherBillsData.map((b: any) => ({ ...b, status: b.payment_status, amount: Number(b.total_amount) || 0 })),
+      ...ipPaymentData.map((ip: any) => ({ ...ip, status: 'paid', amount: Number(ip.amount) || 0 })) // IP payments are always paid
     ];
 
     const paidTransactions = allRecords.filter((r: any) => r.status === 'paid').length;
@@ -290,7 +296,7 @@ export async function getBillingRecords(
 ): Promise<{ records: BillingRecord[]; total: number }> {
   try {
     // Fetch from ALL finance tables and combine results using correct joins
-    const [billingResult, pharmacyResult, labResult, radiologyResult, outpatientResult, otherBillsResult] = await Promise.all([
+    const [billingResult, pharmacyResult, labResult, radiologyResult, outpatientResult, otherBillsResult, ipPaymentResult] = await Promise.all([
       // Main billing - use correct column names and patient join
       supabase
         .from('billing')
@@ -322,6 +328,11 @@ export async function getBillingRecords(
         .from('other_bills')
         .select('*, patients!patient_id(name, patient_id, phone)', { count: 'exact' })
         .eq('status', 'active')
+        .order('created_at', { ascending: false }),
+      // IP Payment Receipts - join with patients table
+      supabase
+        .from('ip_payment_receipts')
+        .select('*, patients!patient_id(name, patient_id, phone)', { count: 'exact' })
         .order('created_at', { ascending: false })
     ]);
 
@@ -466,8 +477,31 @@ export async function getBillingRecords(
       patient: o.patients || null,
     }));
 
+    // Transform IP Payment Receipts
+    const ipPaymentRecords = (ipPaymentResult.data || []).map((ip: any) => ({
+      id: ip.id,
+      bill_id: `IP-${ip.id.substring(0, 8)}`,
+      patient_id: ip.patient_id,
+      bill_date: ip.payment_date || ip.created_at,
+      total_amount: Number(ip.amount) || 0,
+      subtotal: Number(ip.amount) || 0,
+      tax_amount: 0,
+      discount_amount: 0,
+      payment_status: 'paid', // IP payment receipts are always paid
+      payment_method: ip.payment_type,
+      payment_date: ip.payment_date,
+      created_at: ip.created_at,
+      updated_at: ip.updated_at || ip.created_at,
+      source: 'billing' as const, // Show as regular billing in finance
+      patient: ip.patients || {
+        name: 'Unknown Patient',
+        patient_id: 'N/A',
+        phone: ''
+      }
+    }));
+
     // Combine all records
-    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords, ...otherBillsRecords];
+    let allRecords = [...billingRecords, ...pharmacyRecords, ...labRecords, ...radiologyRecords, ...outpatientRecords, ...otherBillsRecords, ...ipPaymentRecords];
 
     // Sort by created_at descending
     allRecords.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
