@@ -288,20 +288,20 @@ export default function BillingTransactionsPage() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
         );
         
-        // Try to fetch pharmacy bill items from the database
+        // Try to fetch billing items from the database
         const { data: items } = await supabase
-          .from('pharmacy_bill_items')
+          .from('billing_item')
           .select('*')
-          .eq('bill_id', record.id)
+          .eq('billing_id', record.id)
           .order('created_at', { ascending: true });
         
         if (items && items.length > 0) {
           return items.map((item: any, index: number) => `
             <tr>
               <td class="items-8cm">${index + 1}.</td>
-              <td class="items-8cm">${item.medicine?.name || item.name || 'Unknown Medicine'}</td>
-              <td class="items-8cm text-center">${item.quantity || 1}</td>
-              <td class="items-8cm text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+              <td class="items-8cm">${item.description || 'Unknown Item'}</td>
+              <td class="items-8cm text-center">${item.qty || 1}</td>
+              <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
             </tr>
           `).join('');
         }
