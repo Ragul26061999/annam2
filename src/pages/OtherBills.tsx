@@ -40,10 +40,14 @@ export default function OtherBills() {
   const fetchBills = async () => {
     try {
       setLoading(true);
+      console.log('Fetching other bills...');
       const data = await getOtherBills({ status: 'active' });
+      console.log('Fetched bills:', data);
       setBills(data);
     } catch (error) {
       console.error('Error fetching bills:', error);
+      // Set empty array to prevent UI from breaking
+      setBills([]);
     } finally {
       setLoading(false);
     }
@@ -51,10 +55,19 @@ export default function OtherBills() {
 
   const fetchStats = async () => {
     try {
+      console.log('Fetching other bills stats...');
       const statsData = await getOtherBillsStats();
+      console.log('Fetched stats:', statsData);
       setStats(statsData);
     } catch (error) {
       console.error('Error fetching stats:', error);
+      // Set default stats to prevent UI from breaking
+      setStats({
+        total_bills: 0,
+        total_amount: 0,
+        paid_amount: 0,
+        pending_amount: 0,
+      });
     }
   };
 

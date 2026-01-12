@@ -172,6 +172,8 @@ export async function getOtherBills(filters?: {
   status?: string;
 }): Promise<OtherBillWithPatient[]> {
   try {
+    console.log('getOtherBills called with filters:', filters);
+    
     let query = supabase
       .from('other_bills')
       .select(`
@@ -211,13 +213,15 @@ export async function getOtherBills(filters?: {
       query = query.lte('bill_date', filters.to_date);
     }
 
+    console.log('Executing Supabase query...');
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching other bills:', error);
+      console.error('Supabase error fetching other bills:', error);
       throw new Error(`Failed to fetch other bills: ${error.message}`);
     }
 
+    console.log('Successfully fetched other bills:', data);
     return data as OtherBillWithPatient[];
   } catch (error) {
     console.error('Exception fetching other bills:', error);
