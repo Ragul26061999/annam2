@@ -89,6 +89,89 @@ export default function BillingTransactionsPage() {
     setShowPrintDropdown(showPrintDropdown === record.id ? null : record.id);
   };
 
+  // Export to Excel function
+  const exportToExcel = async () => {
+    try {
+      // Initialize Supabase client
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      );
+
+      // Get all records without pagination for export
+      const result = await getBillingRecords(1000, 0, {
+        search: searchTerm,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        dateFrom: dateFromFilter,
+        dateTo: dateToFilter
+      });
+
+      const records = result.records || [];
+      
+      if (records.length === 0) {
+        alert('No data to export');
+        return;
+      }
+
+      // Create CSV content
+      const headers = [
+        'Invoice ID',
+        'Department',
+        'Patient Name',
+        'Patient ID',
+        'Phone',
+        'Bill Date',
+        'Amount',
+        'Subtotal',
+        'Tax',
+        'Discount',
+        'Payment Status',
+        'Payment Method',
+        'Source'
+      ];
+
+      const csvContent = [
+        headers.join(','),
+        ...records.map(record => [
+          record.bill_id,
+          getDepartmentName(record.source),
+          record.patient?.name || 'Unknown Patient',
+          record.patient?.patient_id || 'N/A',
+          record.patient?.phone || 'N/A',
+          new Date(record.bill_date).toLocaleDateString(),
+          record.total_amount.toFixed(2),
+          record.subtotal.toFixed(2),
+          record.tax_amount.toFixed(2),
+          record.discount_amount.toFixed(2),
+          record.payment_status,
+          record.payment_method || 'N/A',
+          record.source
+        ].map(field => `"${field}"`).join(','))
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      const fileName = `billing_transactions_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      URL.revokeObjectURL(url);
+      
+      console.log(`Exported ${records.length} records to ${fileName}`);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      alert('Error exporting data. Please try again.');
+    }
+  };
+
   // Get department name from source
   const getDepartmentName = (source: string) => {
     switch (source) {
@@ -612,7 +695,10 @@ export default function BillingTransactionsPage() {
           <p className="text-gray-500 mt-1">View and manage all billing transactions</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
+          <button 
+            onClick={exportToExcel}
+            className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
+          >
             <Download size={16} className="mr-2" />
             Export
           </button>
