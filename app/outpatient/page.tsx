@@ -1330,68 +1330,89 @@ function OutpatientPageContent() {
             </div>
             
             <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
-              {/* Thermal Print Content */}
+              {/* Thermal Print Content - Following exact format from guide */}
               <div className="text-center mb-4">
-                <h4 className="font-bold text-lg">ANNAM HOSPITAL</h4>
-                <p className="text-xs">123 Hospital Road, City - 600001</p>
-                <p className="text-xs">Phone: 04639-252592 | GST: 29ABCDE1234F1Z5</p>
-                <hr className="my-2" />
+                <div className="header-14cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>ANNAM HOSPITAL</div>
+                <div style={{ fontFamily: 'Times New Roman, Times, serif' }}>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                <div className="header-9cm" style={{ fontSize: '9pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Phone- 04639 252592</div>
+                <div className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Gst No: 33AJWPR2713G2ZZ</div>
+                <div style={{ marginTop: '5px', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>INVOICE</div>
               </div>
               
-              <div className="mb-4">
-                <p className="text-xs"><strong>Bill No:</strong> {selectedBill.bill_id}</p>
-                <p className="text-xs"><strong>Patient:</strong> {selectedBill.patient?.name || 'Unknown Patient'}</p>
-                <p className="text-xs"><strong>Patient ID:</strong> {selectedBill.patient?.patient_id || 'N/A'}</p>
-                <p className="text-xs"><strong>Date:</strong> {new Date(selectedBill.bill_date).toLocaleString()}</p>
-              </div>
-              
-              <table className="w-full text-xs mb-4">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-1">S.No</th>
-                    <th className="text-left py-1">Description</th>
-                    <th className="text-center py-1">Qty</th>
-                    <th className="text-right py-1">Amt</th>
-                  </tr>
-                </thead>
-                <tbody>
+              {/* Bill Information Section */}
+              <div style={{ marginTop: '10px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
                   <tr>
-                    <td className="py-1">1.</td>
-                    <td className="py-1">Outpatient Consultation</td>
-                    <td className="text-center py-1">1</td>
-                    <td className="text-right py-1">{selectedBill.total_amount.toFixed(2)}</td>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.bill_id}</td>
                   </tr>
-                </tbody>
-              </table>
-              
-              <div className="border-t pt-2 text-xs">
-                <div className="flex justify-between mb-1">
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient?.patient_id || 'N/A'}</td>
+                  </tr>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient?.name || 'Unknown Patient'}</td>
+                  </tr>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                  </tr>
+                  <tr>
+                    <td className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="header-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{(selectedBill.payment_method || 'CASH').toUpperCase()}</td>
+                  </tr>
+                </table>
+              </div>
+
+              {/* Items Table Section */}
+              <div style={{ marginTop: '10px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <tr style={{ borderBottom: '1px dashed #000' }}>
+                    <td width="30%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
+                    <td width="40%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Drug Name</td>
+                    <td width="15%" className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
+                    <td width="15%" className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amt</td>
+                  </tr>
+                  <tr>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Outpatient Consultation</td>
+                    <td className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>1</td>
+                    <td className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
+                  </tr>
+                </table>
+              </div>
+
+              {/* Totals Section */}
+              <div style={{ marginTop: '10px' }}>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
                   <span>Taxable Amount</span>
                   <span>{selectedBill.total_amount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between mb-1">
-                  <span>    Dist Amt</span>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
                   <span>{selectedBill.discount_amount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between mb-1">
-                  <span>    CGST Amt</span>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
                   <span>0.00</span>
                 </div>
-                <div className="flex justify-between mb-1">
-                  <span>    SGST Amt</span>
+                <div className="totals-line header-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
                   <span>0.00</span>
                 </div>
-                <div className="flex justify-between font-bold">
+                <div className="totals-line header-10cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', borderTop: '1px solid #000', paddingTop: '2px' }}>
                   <span>Total Amount</span>
                   <span>{selectedBill.total_amount.toFixed(2)}</span>
                 </div>
               </div>
-              
-              <div className="text-center mt-4 text-xs">
-                <p>Payment Method: {selectedBill.payment_method || 'Cash'}</p>
-                <p>Status: {selectedBill.payment_status}</p>
-                <hr className="my-2" />
-                <p className="text-xs">Thank you for visiting!</p>
+
+              {/* Footer Section */}
+              <div className="footer" style={{ marginTop: '20px', fontFamily: 'Times New Roman, Times, serif' }}>
+                <div className="totals-line footer-7cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7pt', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>Printed on {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+                  <span>Pharmacist Sign</span>
+                </div>
               </div>
             </div>
             
@@ -1404,33 +1425,139 @@ function OutpatientPageContent() {
               </button>
               <button
                 onClick={() => {
-                  // Print functionality
-                  const printContent = document.querySelector('.bg-white.p-4');
-                  if (printContent) {
-                    const printWindow = window.open('', '_blank');
-                    if (printWindow) {
-                      printWindow.document.write(`
-                        <html>
-                          <head>
-                            <title>Thermal Print - ${selectedBill.bill_id}</title>
-                            <style>
-                              body { font-family: monospace; font-size: 12px; margin: 20px; }
-                              table { width: 100%; border-collapse: collapse; }
-                              th, td { padding: 4px; text-align: left; }
-                              th { border-bottom: 1px solid #000; }
-                              .text-center { text-align: center; }
-                              .text-right { text-align: right; }
-                              .border-t { border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
-                            </style>
-                          </head>
-                          <body>
-                            ${printContent.innerHTML}
-                          </body>
-                        </html>
-                      `);
-                      printWindow.document.close();
-                      printWindow.print();
-                    }
+                  // Print functionality using exact thermal format
+                  const now = new Date();
+                  const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+                  
+                  const thermalContent = `
+                    <html>
+                    <head>
+                      <title>Thermal Receipt - ${selectedBill.bill_id}</title>
+                      <style>
+                        @page { margin: 5mm; size: 77mm 297mm; }
+                        body { 
+                          font-family: 'Times New Roman', Times, serif; 
+                          margin: 0; 
+                          padding: 10px;
+                          font-size: 12px;
+                          line-height: 1.2;
+                          width: 77mm;
+                        }
+                        .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
+                        .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+                        .footer-7cm { font-size: 7pt; font-family: 'Times New Roman', Times, serif; }
+                        .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
+                        .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
+                        .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
+                        .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
+                        .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
+                        .footer { margin-top: 20px; font-family: 'Times New Roman', Times, serif; }
+                      </style>
+                    </head>
+                    <body>
+                      <!-- Header Section -->
+                      <div class="center">
+                        <div class="header-14cm">ANNAM HOSPITAL</div>
+                        <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                        <div class="header-9cm">Phone- 04639 252592</div>
+                        <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+                        <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+                      </div>
+                      
+                      <!-- Bill Information Section -->
+                      <div style="margin-top: 10px;">
+                        <table class="table">
+                          <tr>
+                            <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_id}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.patient?.patient_id || 'N/A'}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.patient?.name || 'Unknown Patient'}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                          </tr>
+                          <tr>
+                            <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="header-10cm bill-info-bold">${(selectedBill.payment_method || 'CASH').toUpperCase()}</td>
+                          </tr>
+                        </table>
+                      </div>
+
+                      <!-- Items Table Section -->
+                      <div style="margin-top: 10px;">
+                        <table class="table">
+                          <tr style="border-bottom: 1px dashed #000;">
+                            <td width="30%" class="items-8cm">S.No</td>
+                            <td width="40%" class="items-8cm">Drug Name</td>
+                            <td width="15%" class="items-8cm text-center">Qty</td>
+                            <td width="15%" class="items-8cm text-right">Amt</td>
+                          </tr>
+                          <tr>
+                            <td class="items-8cm">1.</td>
+                            <td class="items-8cm">Outpatient Consultation</td>
+                            <td class="items-8cm text-center">1</td>
+                            <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
+                          </tr>
+                        </table>
+                      </div>
+
+                      <!-- Totals Section -->
+                      <div style="margin-top: 10px;">
+                        <div class="totals-line items-8cm">
+                          <span>Taxable Amount</span>
+                          <span>${selectedBill.total_amount.toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line items-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+                          <span>${selectedBill.discount_amount.toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line items-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+                          <span>0.00</span>
+                        </div>
+                        <div class="totals-line header-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+                          <span>0.00</span>
+                        </div>
+                        <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+                          <span>Total Amount</span>
+                          <span>${selectedBill.total_amount.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      <!-- Footer Section -->
+                      <div class="footer">
+                        <div class="totals-line footer-7cm">
+                          <span>Printed on ${printedDateTime}</span>
+                          <span>Pharmacist Sign</span>
+                        </div>
+                      </div>
+
+                      <script>
+                        window.onload = function() {
+                          window.print();
+                        }
+                      </script>
+                    </body>
+                    </html>
+                  `;
+                  
+                  const printWindow = window.open('', '_blank', 'width=400,height=600');
+                  if (printWindow) {
+                    printWindow.document.write(thermalContent);
+                    printWindow.document.close();
                   }
                 }}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
