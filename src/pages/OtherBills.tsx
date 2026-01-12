@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw, Download, TrendingUp, DollarSign, FileText, AlertCircle, Printer, CreditCard, X } from 'lucide-react';
+import { Plus, RefreshCw, Download, TrendingUp, DollarSign, FileText, AlertCircle, Printer, CreditCard, X, ChevronDown, Eye } from 'lucide-react';
 import OtherBillsForm from '../components/OtherBillsForm';
 import OtherBillsList from '../components/OtherBillsList';
 import OtherBillPrintTemplate from '../components/OtherBillPrintTemplate';
@@ -21,6 +21,8 @@ export default function OtherBills() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [billForPayment, setBillForPayment] = useState<OtherBillWithPatient | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
+  const [showPrintDropdown, setShowPrintDropdown] = useState(false);
 
   const handlePrint = () => {
     setShowPrintView(true);
@@ -204,13 +206,41 @@ export default function OtherBills() {
                         Payment
                       </button>
                     )}
-                    <button
-                      onClick={handlePrint}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Print
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowPrintDropdown(!showPrintDropdown)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                      >
+                        <Printer className="w-4 h-4" />
+                        Print
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                      
+                      {showPrintDropdown && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                          <button
+                            onClick={() => {
+                              setShowPrintDropdown(false);
+                              setShowThermalModal(true);
+                            }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 transition-colors rounded-t-lg"
+                          >
+                            <Printer className="w-4 h-4 text-blue-600" />
+                            <span>Thermal Print</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowPrintDropdown(false);
+                              handlePrint();
+                            }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 transition-colors rounded-b-lg"
+                          >
+                            <FileText className="w-4 h-4 text-gray-600" />
+                            <span>Normal Print</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => setSelectedBill(null)}
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -369,6 +399,273 @@ export default function OtherBills() {
       {showPrintView && selectedBill && (
         <div className="hidden print:block">
           <OtherBillPrintTemplate bill={selectedBill} />
+        </div>
+      )}
+
+      {/* Thermal Print Modal */}
+      {showThermalModal && selectedBill && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Thermal Print Preview</h3>
+              <button
+                onClick={() => setShowThermalModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
+              {/* Thermal Print Content - Following exact format from guide */}
+              <div className="text-center mb-4">
+                <div className="header-14cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>ANNAM HOSPITAL</div>
+                <div style={{ fontFamily: 'Times New Roman, Times, serif' }}>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                <div className="header-9cm" style={{ fontSize: '9pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Phone- 04639 252592</div>
+                <div className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Gst No: 33AJWPR2713G2ZZ</div>
+                <div style={{ marginTop: '5px', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>INVOICE</div>
+              </div>
+              
+              {/* Bill Information Section */}
+              <div style={{ marginTop: '10px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <tbody>
+                    <tr>
+                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.bill_number}</td>
+                    </tr>
+                    <tr>
+                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_name}</td>
+                    </tr>
+                    <tr>
+                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Type&nbsp;:&nbsp;&nbsp;</td>
+                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_type}</td>
+                    </tr>
+                    <tr>
+                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                    </tr>
+                    <tr>
+                      <td className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                      <td className="header-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Items Table Section */}
+              <div style={{ marginTop: '10px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px dashed #000' }}>
+                      <td width="30%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
+                      <td width="40%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Description</td>
+                      <td width="15%" className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
+                      <td width="15%" className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amt</td>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
+                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.charge_description}</td>
+                      <td className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>{selectedBill.quantity}</td>
+                      <td className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals Section */}
+              <div style={{ marginTop: '10px' }}>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>Taxable Amount</span>
+                  <span>{selectedBill.subtotal.toFixed(2)}</span>
+                </div>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+                  <span>{selectedBill.discount_amount.toFixed(2)}</span>
+                </div>
+                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+                  <span>{(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                </div>
+                <div className="totals-line header-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+                  <span>{(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                </div>
+                <div className="totals-line header-10cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', borderTop: '1px solid #000', paddingTop: '2px' }}>
+                  <span>Total Amount</span>
+                  <span>{selectedBill.total_amount.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Footer Section */}
+              <div className="footer" style={{ marginTop: '20px', fontFamily: 'Times New Roman, Times, serif' }}>
+                <div className="totals-line footer-7cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7pt', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>Printed on {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+                  <span>Pharmacist Sign</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowThermalModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  // Print functionality using exact thermal format
+                  const now = new Date();
+                  const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+                  
+                  const thermalContent = `
+                    <html>
+                    <head>
+                      <title>Thermal Receipt - ${selectedBill.bill_number}</title>
+                      <style>
+                        @page { margin: 5mm; size: 77mm 297mm; }
+                        body { 
+                          font-family: 'Times New Roman', Times, serif; 
+                          margin: 0; 
+                          padding: 10px;
+                          font-size: 12px;
+                          line-height: 1.2;
+                          width: 77mm;
+                        }
+                        .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman, Times, serif; }
+                        .bill-info-bold { font-weight: bold; font-family: 'Times New Roman, Times, serif; }
+                        .footer-7cm { font-size: 7pt; font-family: 'Times New Roman, Times, serif; }
+                        .center { text-align: center; font-family: 'Times New Roman, Times, serif; }
+                        .right { text-align: right; font-family: 'Times New Roman, Times, serif; }
+                        .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman, Times, serif; }
+                        .table td { padding: 2px; font-family: 'Times New Roman, Times, serif; }
+                        .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman, Times, serif; }
+                        .footer { margin-top: 20px; font-family: 'Times New Roman, Times, serif; }
+                      </style>
+                    </head>
+                    <body>
+                      <!-- Header Section -->
+                      <div class="center">
+                        <div class="header-14cm">ANNAM HOSPITAL</div>
+                        <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                        <div class="header-9cm">Phone- 04639 252592</div>
+                        <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+                        <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+                      </div>
+                      
+                      <!-- Bill Information Section -->
+                      <div style="margin-top: 10px;">
+                        <table class="table">
+                          <tbody>
+                            <tr>
+                              <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                              <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_number}</td>
+                            </tr>
+                            <tr>
+                              <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_name}</td>
+                            </tr>
+                            <tr>
+                              <td class="bill-info-10cm">Patient Type&nbsp;:&nbsp;&nbsp;</td>
+                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_type}</td>
+                            </tr>
+                            <tr>
+                              <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                              <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                            </tr>
+                            <tr>
+                              <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                              <td class="header-10cm bill-info-bold">${selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <!-- Items Table Section -->
+                      <div style="margin-top: 10px;">
+                        <table class="table">
+                          <thead>
+                            <tr style="border-bottom: 1px dashed #000;">
+                              <td width="30%" class="items-8cm">S.No</td>
+                              <td width="40%" class="items-8cm">Description</td>
+                              <td width="15%" class="items-8cm text-center">Qty</td>
+                              <td width="15%" class="items-8cm text-right">Amt</td>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td class="items-8cm">1.</td>
+                              <td class="items-8cm">${selectedBill.charge_description}</td>
+                              <td class="items-8cm text-center">${selectedBill.quantity}</td>
+                              <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <!-- Totals Section -->
+                      <div style="margin-top: 10px;">
+                        <div class="totals-line items-8cm">
+                          <span>Taxable Amount</span>
+                          <span>${selectedBill.subtotal.toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line items-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+                          <span>${selectedBill.discount_amount.toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line items-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+                          <span>${(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line header-8cm">
+                          <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+                          <span>${(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                        </div>
+                        <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+                          <span>Total Amount</span>
+                          <span>${selectedBill.total_amount.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      <!-- Footer Section -->
+                      <div class="footer">
+                        <div class="totals-line footer-7cm">
+                          <span>Printed on ${printedDateTime}</span>
+                          <span>Pharmacist Sign</span>
+                        </div>
+                      </div>
+
+                      <script>
+                        window.onload = function() {
+                          window.print();
+                        }
+                      </script>
+                    </body>
+                    </html>
+                  `;
+                  
+                  const printWindow = window.open('', '_blank', 'width=400,height=600');
+                  if (printWindow) {
+                    printWindow.document.write(thermalContent);
+                    printWindow.document.close();
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                <Printer size={16} className="inline mr-2" />
+                Print
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
