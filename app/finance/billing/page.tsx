@@ -36,7 +36,7 @@ export default function BillingTransactionsPage() {
   const recordsPerPage = 20;
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [showPrintDropdown, setShowPrintDropdown] = useState(false);
+  const [showPrintDropdown, setShowPrintDropdown] = useState<string | null>(null);
   const printDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function BillingTransactionsPage() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (printDropdownRef.current && !printDropdownRef.current.contains(event.target as Node)) {
-        setShowPrintDropdown(false);
+        setShowPrintDropdown(null);
       }
     };
 
@@ -83,6 +83,10 @@ export default function BillingTransactionsPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  const handlePrintDropdown = (record: BillingRecord) => {
+    setShowPrintDropdown(showPrintDropdown === record.id ? null : record.id);
+  };
 
   const loadRecords = async () => {
     try {
@@ -436,7 +440,7 @@ export default function BillingTransactionsPage() {
         <div className="flex gap-2">
           <div className="relative">
             <button 
-              onClick={() => setShowPrintDropdown(!showPrintDropdown)}
+              onClick={() => setShowPrintDropdown(showPrintDropdown ? null : 'header')}
               className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
             >
               <Printer size={16} className="mr-2" />
@@ -444,7 +448,7 @@ export default function BillingTransactionsPage() {
               <ChevronDown size={14} className="ml-1" />
             </button>
             
-            {showPrintDropdown && (
+            {showPrintDropdown === 'header' && (
               <div ref={printDropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
                 <div className="py-1">
                   <button
@@ -452,7 +456,7 @@ export default function BillingTransactionsPage() {
                       if (records.length > 0) {
                         showThermalPreview(records[0]);
                       }
-                      setShowPrintDropdown(false);
+                      setShowPrintDropdown(null);
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                   >
@@ -464,7 +468,7 @@ export default function BillingTransactionsPage() {
                       if (records.length > 0) {
                         showNormalPrint(records[0]);
                       }
-                      setShowPrintDropdown(false);
+                      setShowPrintDropdown(null);
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                   >
@@ -625,12 +629,51 @@ export default function BillingTransactionsPage() {
                     {record.payment_method || 'Pending'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button 
-                      onClick={() => handleViewRecord(record)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      <Eye size={16} />
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleViewRecord(record)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="View Details"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <div className="relative">
+                        <button 
+                          onClick={() => handlePrintDropdown(record)}
+                          className="text-green-600 hover:text-green-900"
+                          title="Print Options"
+                        >
+                          <Printer size={16} />
+                        </button>
+                        
+                        {showPrintDropdown === record.id && (
+                          <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                            <div className="py-1">
+                              <button
+                                onClick={() => {
+                                  showThermalPreview(record);
+                                  setShowPrintDropdown(null);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 flex items-center"
+                              >
+                                <Printer size={12} className="mr-2" />
+                                Thermal
+                              </button>
+                              <button
+                                onClick={() => {
+                                  showNormalPrint(record);
+                                  setShowPrintDropdown(null);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 flex items-center"
+                              >
+                                <Receipt size={12} className="mr-2" />
+                                Normal
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))}
