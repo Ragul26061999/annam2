@@ -418,7 +418,7 @@ export default function OtherBills() {
             
             <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
               {/* Thermal Print Content - Following exact format from guide */}
-              <div className="text-center mb-4">
+              <div className="center" style={{ textAlign: 'center', fontFamily: 'Times New Roman, Times, serif' }}>
                 <div className="header-14cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>ANNAM HOSPITAL</div>
                 <div style={{ fontFamily: 'Times New Roman, Times, serif' }}>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
                 <div className="header-9cm" style={{ fontSize: '9pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Phone- 04639 252592</div>
