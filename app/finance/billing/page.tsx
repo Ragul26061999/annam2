@@ -88,6 +88,34 @@ export default function BillingTransactionsPage() {
     setShowPrintDropdown(showPrintDropdown === record.id ? null : record.id);
   };
 
+  // Get department name from source
+  const getDepartmentName = (source: string) => {
+    switch (source) {
+      case 'pharmacy': return 'Pharmacy';
+      case 'lab': return 'Laboratory';
+      case 'radiology': return 'Radiology';
+      case 'diagnostic': return 'Diagnostic';
+      case 'outpatient': return 'Outpatient';
+      case 'billing': return 'Consultation';
+      case 'other_bills': return 'Other';
+      default: return 'General';
+    }
+  };
+
+  // Get department color
+  const getDepartmentColor = (source: string) => {
+    switch (source) {
+      case 'pharmacy': return 'bg-green-100 text-green-800';
+      case 'lab': return 'bg-purple-100 text-purple-800';
+      case 'radiology': return 'bg-orange-100 text-orange-800';
+      case 'diagnostic': return 'bg-pink-100 text-pink-800';
+      case 'outpatient': return 'bg-teal-100 text-teal-800';
+      case 'billing': return 'bg-blue-100 text-blue-800';
+      case 'other_bills': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   const loadRecords = async () => {
     try {
       setLoading(true);
@@ -604,6 +632,9 @@ export default function BillingTransactionsPage() {
                   Invoice ID
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Department
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Patient
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -629,6 +660,11 @@ export default function BillingTransactionsPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{record.bill_id}</div>
                     <div className="text-sm text-gray-500">{record.source}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDepartmentColor(record.source)}`}>
+                      {getDepartmentName(record.source)}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
