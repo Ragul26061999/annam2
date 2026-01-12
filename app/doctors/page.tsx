@@ -430,6 +430,12 @@ export default function DoctorsPage() {
       evening: { startTime: '18:00', endTime: '21:00' }
     };
     let availableSessions: string[] = [];
+    let availabilityWorkingDays: number[] | undefined;
+    let availabilityEmergencyAvailable: boolean | undefined;
+    let availabilityFloorNumber: number | undefined;
+    let availabilityWorkingHoursStart: string | undefined;
+    let availabilityWorkingHoursEnd: string | undefined;
+    let availabilityDepartment: string | undefined;
 
     if (doctor.availability_hours) {
       try {
@@ -443,6 +449,24 @@ export default function DoctorsPage() {
         if (availabilityData.availableSessions) {
           availableSessions = availabilityData.availableSessions;
         }
+        if (availabilityData.workingDays) {
+          availabilityWorkingDays = availabilityData.workingDays;
+        }
+        if (typeof availabilityData.emergencyAvailable === 'boolean') {
+          availabilityEmergencyAvailable = availabilityData.emergencyAvailable;
+        }
+        if (typeof availabilityData.floorNumber === 'number') {
+          availabilityFloorNumber = availabilityData.floorNumber;
+        }
+        if (availabilityData.workingHoursStart) {
+          availabilityWorkingHoursStart = availabilityData.workingHoursStart;
+        }
+        if (availabilityData.workingHoursEnd) {
+          availabilityWorkingHoursEnd = availabilityData.workingHoursEnd;
+        }
+        if (availabilityData.department) {
+          availabilityDepartment = availabilityData.department;
+        }
       } catch (error) {
         console.error('Error parsing availability_hours:', error);
       }
@@ -455,16 +479,16 @@ export default function DoctorsPage() {
       address: doctor.user?.address || '',
       licenseNumber: doctor.license_number,
       specialization: doctor.specialization,
-      department: doctor.department || '',
+      department: doctor.department || availabilityDepartment || '',
       qualification: doctor.qualification,
       experienceYears: doctor.years_of_experience,
       consultationFee: doctor.consultation_fee,
-      workingHoursStart: doctor.working_hours_start || '09:00',
-      workingHoursEnd: doctor.working_hours_end || '17:00',
-      workingDays: doctor.working_days || [1, 2, 3, 4, 5],
+      workingHoursStart: doctor.working_hours_start || availabilityWorkingHoursStart || '09:00',
+      workingHoursEnd: doctor.working_hours_end || availabilityWorkingHoursEnd || '17:00',
+      workingDays: doctor.working_days || availabilityWorkingDays || [1, 2, 3, 4, 5],
       roomNumber: doctor.room_number,
-      floorNumber: doctor.floor_number || 1,
-      emergencyAvailable: doctor.emergency_available || false,
+      floorNumber: doctor.floor_number || availabilityFloorNumber || 1,
+      emergencyAvailable: doctor.emergency_available ?? availabilityEmergencyAvailable ?? false,
       sessions,
       availableSessions
     });

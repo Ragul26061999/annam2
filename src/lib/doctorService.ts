@@ -471,19 +471,27 @@ export async function getAllDoctorsSimple(): Promise<Doctor[]> {
     // MD users are no longer included in doctor listings
     // This functionality has been removed as per system requirements
 
-    // Add computed fields for compatibility
-    const enhancedDoctors = allDoctors?.map(doctor => ({
-      ...doctor,
-      doctor_id: doctor.license_number, // Use license_number as doctor_id
-      department: getSpecializationDepartment(doctor.specialization),
-      experience_years: doctor.years_of_experience,
-      working_hours_start: '09:00',
-      working_hours_end: '17:00',
-      working_days: [1, 2, 3, 4, 5, 6],
-      floor_number: 1,
-      availability_status: 'available',
-      emergency_available: false
-    })) || [];
+    // Add computed fields for compatibility (prefer direct columns)
+    const enhancedDoctors = allDoctors?.map((doctor: any) => {
+      const ah = doctor.availability_hours
+        ? (typeof doctor.availability_hours === 'string'
+            ? JSON.parse(doctor.availability_hours)
+            : doctor.availability_hours)
+        : {};
+
+      return {
+        ...doctor,
+        doctor_id: doctor.license_number, // Use license_number as doctor_id
+        department: doctor.department || ah.department || getSpecializationDepartment(doctor.specialization),
+        experience_years: doctor.years_of_experience,
+        working_hours_start: doctor.working_hours_start || ah.workingHoursStart || '09:00',
+        working_hours_end: doctor.working_hours_end || ah.workingHoursEnd || '17:00',
+        working_days: doctor.working_days || ah.workingDays || [1, 2, 3, 4, 5, 6],
+        floor_number: doctor.floor_number || ah.floorNumber || 1,
+        emergency_available: doctor.emergency_available ?? ah.emergencyAvailable ?? false,
+        availability_status: doctor.availability_type === 'on_call' ? 'on_call' : 'available'
+      } as Doctor;
+    }) || [];
 
     return enhancedDoctors;
   } catch (error) {
@@ -1034,6 +1042,10 @@ export async function updateDoctor(
     console.log('Updating doctor with ID:', doctorId);
     console.log('Updates to apply:', JSON.stringify(updates, null, 2));
 
+    const isDefined = <T>(v: T | undefined): v is T => typeof v !== 'undefined';
+    const pickDefined = (obj: Record<string, any>) =>
+      Object.fromEntries(Object.entries(obj).filter(([, v]) => typeof v !== 'undefined'));
+
     // First, get the doctor to find the user_id
     const { data: existingDoctor, error: fetchError } = await supabase
       .from('doctors')
@@ -1048,34 +1060,35 @@ export async function updateDoctor(
 
     console.log('Found existing doctor with user_id:', existingDoctor.user_id);
 
-    // Separate user fields from doctor fields
-    const userFields = {
-      ...(updates.name && { name: updates.name }),
-      ...(updates.email && { email: updates.email }),
-      ...(updates.phone && { phone: updates.phone }),
-      ...(updates.address && { address: updates.address })
-    };
+    // Separate user fields from doctor fields (do NOT use truthy checks; allow 0/false/empty string)
+    const userFields = pickDefined({
+      name: updates.name,
+      email: updates.email,
+      phone: updates.phone,
+      address: updates.address
+    });
 
-    const doctorFields = {
-      ...(updates.licenseNumber && { license_number: updates.licenseNumber }),
-      ...(updates.specialization && { specialization: updates.specialization }),
-      ...(updates.qualification && { qualification: updates.qualification }),
-      ...(updates.experienceYears && { years_of_experience: updates.experienceYears }),
-      ...(updates.consultationFee && { consultation_fee: updates.consultationFee }),
-      ...(updates.roomNumber && { room_number: updates.roomNumber }),
-      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined || updates.workingHoursStart || updates.workingHoursEnd || updates.department || updates.floorNumber) && {
+    const doctorFields = pickDefined({
+      license_number: updates.licenseNumber,
+      specialization: updates.specialization,
+      qualification: updates.qualification,
+      years_of_experience: updates.experienceYears,
+      consultation_fee: updates.consultationFee,
+      room_number: updates.roomNumber,
+      department: updates.department,
+      floor_number: updates.floorNumber,
+      emergency_available: updates.emergencyAvailable,
+      working_days: updates.workingDays,
+      working_hours_start: updates.workingHoursStart,
+      working_hours_end: updates.workingHoursEnd,
+      // Keep availability_hours for sessions and availableSessions only
+      ...((updates.sessions || updates.availableSessions) && {
         availability_hours: {
           sessions: updates.sessions,
-          availableSessions: updates.availableSessions,
-          workingDays: updates.workingDays,
-          emergencyAvailable: updates.emergencyAvailable,
-          floorNumber: updates.floorNumber,
-          workingHoursStart: updates.workingHoursStart,
-          workingHoursEnd: updates.workingHoursEnd,
-          department: updates.department
+          availableSessions: updates.availableSessions
         }
       })
-    };
+    });
 
     // Update user fields if any exist
     if (Object.keys(userFields).length > 0) {
@@ -1094,33 +1107,10 @@ export async function updateDoctor(
 
     // Update doctor fields if any exist
     if (Object.keys(doctorFields).length > 0) {
-      // If we're updating availability_hours, merge with existing data
-      let finalDoctorFields = { ...doctorFields };
-      if (doctorFields.availability_hours) {
-        // Get existing availability_hours to merge
-        const { data: existingDoc } = await supabase
-          .from('doctors')
-          .select('availability_hours')
-          .eq('id', doctorId)
-          .single();
-        
-        if (existingDoc?.availability_hours) {
-          const existingAvailability = typeof existingDoc.availability_hours === 'string' 
-            ? JSON.parse(existingDoc.availability_hours) 
-            : existingDoc.availability_hours;
-          
-          // Merge existing with new data
-          finalDoctorFields.availability_hours = {
-            ...existingAvailability,
-            ...doctorFields.availability_hours
-          };
-        }
-      }
-
-      console.log('Updating doctor fields:', JSON.stringify(finalDoctorFields, null, 2));
+      console.log('Updating doctor fields:', JSON.stringify(doctorFields, null, 2));
       const { error: doctorError } = await supabase
         .from('doctors')
-        .update(finalDoctorFields)
+        .update(doctorFields)
         .eq('id', doctorId);
 
       if (doctorError) {
@@ -1158,26 +1148,14 @@ export async function updateDoctor(
     const enhancedDoctor = {
       ...updatedDoctor,
       doctor_id: updatedDoctor.license_number,
-      department: getSpecializationDepartment(updatedDoctor.specialization),
+      department: updatedDoctor.department || getSpecializationDepartment(updatedDoctor.specialization),
       experience_years: updatedDoctor.years_of_experience,
-      working_hours_start: '09:00',
-      working_hours_end: '17:00',
-      working_days: [1, 2, 3, 4, 5, 6],
-      floor_number: 1,
-      availability_status: 'available',
-      emergency_available: false,
-      // Extract department and floorNumber from availability_hours if available
-      ...(updatedDoctor.availability_hours && {
-        department: (typeof updatedDoctor.availability_hours === 'string' 
-          ? JSON.parse(updatedDoctor.availability_hours) 
-          : updatedDoctor.availability_hours)?.department || getSpecializationDepartment(updatedDoctor.specialization),
-        floor_number: (typeof updatedDoctor.availability_hours === 'string' 
-          ? JSON.parse(updatedDoctor.availability_hours) 
-          : updatedDoctor.availability_hours)?.floorNumber || 1,
-        emergency_available: (typeof updatedDoctor.availability_hours === 'string' 
-          ? JSON.parse(updatedDoctor.availability_hours) 
-          : updatedDoctor.availability_hours)?.emergencyAvailable || false
-      }),
+      working_hours_start: updatedDoctor.working_hours_start || '09:00',
+      working_hours_end: updatedDoctor.working_hours_end || '17:00',
+      working_days: updatedDoctor.working_days || [1, 2, 3, 4, 5, 6],
+      floor_number: updatedDoctor.floor_number || 1,
+      availability_status: updatedDoctor.availability_type === 'on_call' ? 'on_call' : 'available',
+      emergency_available: updatedDoctor.emergency_available ?? false,
       user: userData || undefined
     };
 
