@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Filter, 
@@ -15,7 +15,9 @@ import {
   TrendingUp,
   TrendingDown,
   CreditCard,
-  Receipt
+  Receipt,
+  Printer,
+  ChevronDown
 } from 'lucide-react';
 import { getBillingRecords, type BillingRecord } from '../../../src/lib/financeService';
 import TransactionViewModal from '../../../src/components/TransactionViewModal';
@@ -34,6 +36,8 @@ export default function BillingTransactionsPage() {
   const recordsPerPage = 20;
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showPrintDropdown, setShowPrintDropdown] = useState(false);
+  const printDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadRecords();
@@ -65,6 +69,20 @@ export default function BillingTransactionsPage() {
     setTotalRecords(filteredRecords.length);
     setCurrentPage(1); // Reset to first page when filters change
   }, [allRecords, searchTerm, statusFilter, dateFromFilter, dateToFilter]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (printDropdownRef.current && !printDropdownRef.current.contains(event.target as Node)) {
+        setShowPrintDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const loadRecords = async () => {
     try {
@@ -134,6 +152,255 @@ export default function BillingTransactionsPage() {
     setSelectedRecord(null);
   };
 
+  // Thermal printer function
+  const showThermalPreview = (record: BillingRecord) => {
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    
+    // Get patient UHID
+    const patientUhid = record.patient?.patient_id || 'WALK-IN';
+    
+    // Get sales type
+    let salesType = record.payment_method?.toUpperCase() || 'CASH';
+    if (salesType === 'CREDIT') {
+      salesType = 'CREDIT';
+    }
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${record.bill_id}</title>
+          <style>
+            @page { margin: 5mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Times New Roman', Times, serif; 
+              margin: 0; 
+              padding: 10px;
+              font-size: 12px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
+            .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .footer-7cm { font-size: 7pt; font-family: 'Times New Roman', Times, serif; }
+            .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
+            .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
+            .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
+            .footer { margin-top: 20px; font-family: 'Times New Roman', Times, serif; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <div class="header-14cm">ANNAM PHARMACY</div>
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${record.bill_id}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${record.patient?.name || 'Unknown Patient'}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${new Date(record.bill_date).toLocaleDateString()} ${new Date(record.bill_date).toLocaleTimeString()}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${salesType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Description</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              <tr>
+                <td class="items-8cm">1.</td>
+                <td class="items-8cm">${record.source} Service</td>
+                <td class="items-8cm text-center">1</td>
+                <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line items-8cm">
+              <span>Taxable Amount</span>
+              <span>${record.subtotal.toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+              <span>${record.discount_amount.toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+              <span>${(record.tax_amount / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+              <span>${(record.tax_amount / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${record.total_amount.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Pharmacist Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
+    }
+  };
+
+  // Normal print function
+  const showNormalPrint = (record: BillingRecord) => {
+    const printContent = `
+      <html>
+        <head>
+          <title>Bill Receipt - ${record.bill_id}</title>
+          <style>
+            @page { margin: 20mm; }
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 0; 
+              padding: 20px;
+              line-height: 1.4;
+            }
+            .header { text-align: center; margin-bottom: 30px; }
+            .header h1 { color: #333; margin-bottom: 10px; }
+            .header p { color: #666; margin: 5px 0; }
+            .bill-info { margin-bottom: 30px; }
+            .bill-info table { width: 100%; border-collapse: collapse; }
+            .bill-info td { padding: 8px; border-bottom: 1px solid #eee; }
+            .bill-info td:first-child { font-weight: bold; width: 150px; }
+            .amount-section { margin-bottom: 30px; }
+            .amount-table { width: 100%; border-collapse: collapse; }
+            .amount-table td { padding: 8px; border: 1px solid #ddd; text-align: right; }
+            .amount-table .label { text-align: left; font-weight: bold; }
+            .total-row { font-weight: bold; background: #f5f5f5; }
+            .footer { margin-top: 40px; text-align: center; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>BILL RECEIPT</h1>
+            <p>ANNAM HOSPITAL</p>
+            <p>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</p>
+            <p>Phone: 04639 252592 | GST: 33AJWPR2713G2ZZ</p>
+          </div>
+          
+          <div class="bill-info">
+            <table>
+              <tr>
+                <td>Bill Number:</td>
+                <td>${record.bill_id}</td>
+              </tr>
+              <tr>
+                <td>Patient Name:</td>
+                <td>${record.patient?.name || 'Unknown Patient'}</td>
+              </tr>
+              <tr>
+                <td>Patient ID:</td>
+                <td>${record.patient?.patient_id || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td>Bill Date:</td>
+                <td>${new Date(record.bill_date).toLocaleDateString()} ${new Date(record.bill_date).toLocaleTimeString()}</td>
+              </tr>
+              <tr>
+                <td>Payment Method:</td>
+                <td>${record.payment_method || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td>Payment Status:</td>
+                <td>${record.payment_status?.toUpperCase() || 'N/A'}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="amount-section">
+            <table class="amount-table">
+              <tr>
+                <td class="label">Subtotal:</td>
+                <td>₹${record.subtotal.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="label">Discount:</td>
+                <td>₹${record.discount_amount.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="label">Tax:</td>
+                <td>₹${record.tax_amount.toFixed(2)}</td>
+              </tr>
+              <tr class="total-row">
+                <td class="label">Total Amount:</td>
+                <td>₹${record.total_amount.toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="footer">
+            <p>Thank you for choosing ANNA HOSPITAL</p>
+            <p>Printed on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -167,6 +434,47 @@ export default function BillingTransactionsPage() {
           <p className="text-gray-500 mt-1">View and manage all billing transactions</p>
         </div>
         <div className="flex gap-2">
+          <div className="relative">
+            <button 
+              onClick={() => setShowPrintDropdown(!showPrintDropdown)}
+              className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              <Printer size={16} className="mr-2" />
+              Print
+              <ChevronDown size={14} className="ml-1" />
+            </button>
+            
+            {showPrintDropdown && (
+              <div ref={printDropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      if (records.length > 0) {
+                        showThermalPreview(records[0]);
+                      }
+                      setShowPrintDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    <Printer size={14} className="mr-2" />
+                    Thermal Print
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (records.length > 0) {
+                        showNormalPrint(records[0]);
+                      }
+                      setShowPrintDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    <Receipt size={14} className="mr-2" />
+                    Normal Print
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <button className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
             <Download size={16} className="mr-2" />
             Export
