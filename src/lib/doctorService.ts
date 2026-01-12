@@ -210,13 +210,13 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
         if (authError.message.includes('User already registered') || authError.message.includes('user_already_exists')) {
           // User exists in auth but not in our users table - try to get the existing auth user
           console.log('Auth user already exists, attempting to link to existing user record');
-          
+
           // Try to sign in to get the existing auth user ID
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
             email: emailToUse,
             password: 'Doctor@123'
           });
-          
+
           if (!signInError && signInData.user) {
             authUserId = signInData.user.id;
             console.log('Successfully linked to existing auth user');
@@ -260,17 +260,17 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
         if (userError) {
           console.error('Error creating user record:', userError);
-          
+
           // Check for duplicate email constraint violation
           if (userError.message.includes('duplicate') && userError.message.includes('email')) {
             throw new Error(`A user with email ${emailToUse} already exists in the system. Please use a different email address.`);
           }
-          
+
           // Check for duplicate phone constraint violation
           if (userError.message.includes('duplicate') && userError.message.includes('phone')) {
             throw new Error(`A user with phone number ${doctorData.phone} already exists in the system. Please use a different phone number.`);
           }
-          
+
           throw new Error(`Failed to create user record: ${userError.message}`);
         }
 
@@ -320,17 +320,17 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
     if (doctorError) {
       console.error('Error creating doctor record:', doctorError);
-      
+
       // Check for duplicate license number constraint violation
       if (doctorError.message.includes('duplicate') && doctorError.message.includes('license')) {
         throw new Error(`A doctor with this license number already exists. Please verify the license number.`);
       }
-      
+
       // Check for foreign key constraint violation
       if (doctorError.message.includes('foreign key') || doctorError.message.includes('violates')) {
         throw new Error(`Invalid user reference. Please try again or contact support.`);
       }
-      
+
       throw new Error(`Failed to create doctor record: ${doctorError.message}`);
     }
 
@@ -602,7 +602,7 @@ export async function updateDoctorAvailability(
     // Update availability_type field in database
     const { data: doctor, error } = await supabase
       .from('doctors')
-      .update({ 
+      .update({
         availability_type: availabilityType,
         // Also update status to match availability type
         is_active: availabilityType === 'session_based'
@@ -1031,6 +1031,9 @@ export async function updateDoctor(
   updates: Partial<DoctorRegistrationData>
 ): Promise<Doctor> {
   try {
+    console.log('Updating doctor with ID:', doctorId);
+    console.log('Updates to apply:', JSON.stringify(updates, null, 2));
+
     // First, get the doctor to find the user_id
     const { data: existingDoctor, error: fetchError } = await supabase
       .from('doctors')
@@ -1043,6 +1046,8 @@ export async function updateDoctor(
       throw new Error(`Failed to fetch doctor: ${fetchError.message}`);
     }
 
+    console.log('Found existing doctor with user_id:', existingDoctor.user_id);
+
     // Separate user fields from doctor fields
     const userFields = {
       ...(updates.name && { name: updates.name }),
@@ -1054,25 +1059,29 @@ export async function updateDoctor(
     const doctorFields = {
       ...(updates.licenseNumber && { license_number: updates.licenseNumber }),
       ...(updates.specialization && { specialization: updates.specialization }),
+      ...(updates.department && { department: updates.department }),
       ...(updates.qualification && { qualification: updates.qualification }),
       ...(updates.experienceYears && { years_of_experience: updates.experienceYears }),
       ...(updates.consultationFee && { consultation_fee: updates.consultationFee }),
       ...(updates.roomNumber && { room_number: updates.roomNumber }),
-      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined) && {
+      ...(updates.floorNumber && { floor_number: updates.floorNumber }),
+      ...((updates.sessions || updates.availableSessions || updates.workingDays || updates.emergencyAvailable !== undefined || updates.workingHoursStart || updates.workingHoursEnd) && {
         availability_hours: {
           sessions: updates.sessions,
           availableSessions: updates.availableSessions,
           workingDays: updates.workingDays,
           emergencyAvailable: updates.emergencyAvailable,
-          ...(updates.floorNumber && { floorNumber: updates.floorNumber }),
-          ...(updates.workingHoursStart && { workingHoursStart: updates.workingHoursStart }),
-          ...(updates.workingHoursEnd && { workingHoursEnd: updates.workingHoursEnd })
+          floorNumber: updates.floorNumber,
+          workingHoursStart: updates.workingHoursStart,
+          workingHoursEnd: updates.workingHoursEnd,
+          department: updates.department
         }
       })
     };
 
     // Update user fields if any exist
     if (Object.keys(userFields).length > 0) {
+      console.log('Updating user fields:', JSON.stringify(userFields, null, 2));
       const { error: userError } = await supabase
         .from('users')
         .update(userFields)
@@ -1082,19 +1091,45 @@ export async function updateDoctor(
         console.error('Error updating user:', userError);
         throw new Error(`Failed to update user: ${userError.message}`);
       }
+      console.log('User fields updated successfully');
     }
 
     // Update doctor fields if any exist
     if (Object.keys(doctorFields).length > 0) {
+      // If we're updating availability_hours, merge with existing data
+      let finalDoctorFields = { ...doctorFields };
+      if (doctorFields.availability_hours) {
+        // Get existing availability_hours to merge
+        const { data: existingDoc } = await supabase
+          .from('doctors')
+          .select('availability_hours')
+          .eq('id', doctorId)
+          .single();
+        
+        if (existingDoc?.availability_hours) {
+          const existingAvailability = typeof existingDoc.availability_hours === 'string' 
+            ? JSON.parse(existingDoc.availability_hours) 
+            : existingDoc.availability_hours;
+          
+          // Merge existing with new data
+          finalDoctorFields.availability_hours = {
+            ...existingAvailability,
+            ...doctorFields.availability_hours
+          };
+        }
+      }
+
+      console.log('Updating doctor fields:', JSON.stringify(finalDoctorFields, null, 2));
       const { error: doctorError } = await supabase
         .from('doctors')
-        .update(doctorFields)
+        .update(finalDoctorFields)
         .eq('id', doctorId);
 
       if (doctorError) {
         console.error('Error updating doctor:', doctorError);
         throw new Error(`Failed to update doctor: ${doctorError.message}`);
       }
+      console.log('Doctor fields updated successfully');
     }
 
     // Fetch and return the updated doctor with user data
