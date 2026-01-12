@@ -170,6 +170,84 @@ export default function BillingTransactionsPage() {
       salesType = 'CREDIT';
     }
 
+    // Generate service-specific content
+    const getServiceContent = () => {
+      switch (record.source) {
+        case 'pharmacy':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Medicines & Pharmacy Items</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'lab':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Laboratory Tests & Diagnostics</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'radiology':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Radiology Services & X-Ray</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'diagnostic':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Diagnostic Procedures</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'outpatient':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Outpatient Consultation</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'billing':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Medical Consultation & Services</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        case 'other_bills':
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Other Medical Services</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+        default:
+          return `
+            <tr>
+              <td class="items-8cm">1.</td>
+              <td class="items-8cm">Medical Services</td>
+              <td class="items-8cm text-center">1</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+            </tr>
+          `;
+      }
+    };
+
     const thermalContent = `
       <html>
         <head>
@@ -202,7 +280,7 @@ export default function BillingTransactionsPage() {
         </head>
         <body>
           <div class="center">
-            <div class="header-14cm">ANNAM PHARMACY</div>
+            <div class="header-14cm">ANNAM HOSPITAL</div>
             <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
             <div class="header-9cm">Phone- 04639 252592</div>
             <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
@@ -242,12 +320,7 @@ export default function BillingTransactionsPage() {
                 <td width="15%" class="items-8cm text-center">Qty</td>
                 <td width="15%" class="items-8cm text-right">Amt</td>
               </tr>
-              <tr>
-                <td class="items-8cm">1.</td>
-                <td class="items-8cm">${record.source} Service</td>
-                <td class="items-8cm text-center">1</td>
-                <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
-              </tr>
+              ${getServiceContent()}
             </table>
           </div>
 
@@ -438,47 +511,6 @@ export default function BillingTransactionsPage() {
           <p className="text-gray-500 mt-1">View and manage all billing transactions</p>
         </div>
         <div className="flex gap-2">
-          <div className="relative">
-            <button 
-              onClick={() => setShowPrintDropdown(showPrintDropdown ? null : 'header')}
-              className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              <Printer size={16} className="mr-2" />
-              Print
-              <ChevronDown size={14} className="ml-1" />
-            </button>
-            
-            {showPrintDropdown === 'header' && (
-              <div ref={printDropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      if (records.length > 0) {
-                        showThermalPreview(records[0]);
-                      }
-                      setShowPrintDropdown(null);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                  >
-                    <Printer size={14} className="mr-2" />
-                    Thermal Print
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (records.length > 0) {
-                        showNormalPrint(records[0]);
-                      }
-                      setShowPrintDropdown(null);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                  >
-                    <Receipt size={14} className="mr-2" />
-                    Normal Print
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
           <button className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md">
             <Download size={16} className="mr-2" />
             Export
