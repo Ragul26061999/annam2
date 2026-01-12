@@ -504,7 +504,7 @@ export default function OtherBills() {
               <div className="footer" style={{ marginTop: '20px', fontFamily: 'Times New Roman, Times, serif' }}>
                 <div className="totals-line footer-7cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7pt', fontFamily: 'Times New Roman, Times, serif' }}>
                   <span>Printed on {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-                  <span>Pharmacist Sign</span>
+                  <span>Billing Sign</span>
                 </div>
               </div>
             </div>
@@ -640,7 +640,7 @@ export default function OtherBills() {
                       <div class="footer">
                         <div class="totals-line footer-7cm">
                           <span>Printed on ${printedDateTime}</span>
-                          <span>Pharmacist Sign</span>
+                          <span>Billing Sign</span>
                         </div>
                       </div>
 
