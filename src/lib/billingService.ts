@@ -36,11 +36,11 @@ export interface Bill {
 
 /**
  * Generate a unique bill number
- * New Format: AP{YY}{Sequential}
+ * Simple Format: AP{YY}-{Sequence}
  *   - Prefix "AP" for pharmacy
  *   - {YY} = last two digits of the year (e.g., 2025 -> 25)
- *   - {Sequential} = 5‑digit zero-padded running number for that year
- * Example: AP2500001, AP2500002, ...
+ *   - {Sequence} = simple running number for that year
+ * Example: AP25-1, AP25-2, ...
  */
 export async function generateBillNumber(): Promise<string> {
   const now = new Date();
@@ -60,8 +60,8 @@ export async function generateBillNumber(): Promise<string> {
       throw new Error('Failed to generate bill number');
     }
 
-    const sequence = ((count || 0) + 1).toString().padStart(5, '0');
-    return `${prefix}${sequence}`;
+    const sequence = (count || 0) + 1;
+    return `${prefix}-${sequence}`;
   } catch (error) {
     console.error('Error generating bill number:', error);
     throw error;

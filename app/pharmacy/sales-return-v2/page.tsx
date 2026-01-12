@@ -384,7 +384,7 @@ export default function SalesReturnPageV2() {
             <div className="flex gap-4">
               <input
                 type="text"
-                placeholder="Enter Bill Number, Customer Name, or Phone..."
+                placeholder="Enter Bill Number, Customer Name..."
                 value={billSearchTerm}
                 onChange={(e) => setBillSearchTerm(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearchBills()}
@@ -423,7 +423,7 @@ export default function SalesReturnPageV2() {
                           {bill.customer_name || 'Walk-in Customer'}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {bill.customer_phone || 'No phone'}
+                          Patient ID: {bill.patient_id || 'N/A'}
                         </div>
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -468,7 +468,7 @@ export default function SalesReturnPageV2() {
                           {bill.customer_name || 'Walk-in Customer'}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {bill.customer_phone || 'No phone'}
+                          Patient ID: {bill.patient_id || 'N/A'}
                         </div>
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -585,7 +585,7 @@ export default function SalesReturnPageV2() {
                     {billDetails.bill.customer_name || 'Walk-in Customer'}
                   </div>
                   <div className="text-sm opacity-90">
-                    {billDetails.bill.customer_phone || 'No phone'}
+                    Patient ID: {billDetails.bill.patient_id || 'N/A'}
                   </div>
                 </div>
               </div>

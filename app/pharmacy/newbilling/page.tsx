@@ -2,7 +2,8 @@
 
 import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { supabase } from '@/src/lib/supabase';
+import { supabase } from '@/src/lib/supabase'
+import { generateBillNumber } from '@/src/lib/billingService';
 import {
   Search,
   Plus,
@@ -237,6 +238,7 @@ function NewBillingPageInner() {
     }
 
     .receipt {
+      font-family: 'Times New Roman', Times, serif;
       font-size: 11px;
       max-width: 77mm;
       margin: 0 auto;
@@ -514,7 +516,7 @@ function NewBillingPageInner() {
         const { data, error } = await supabase
           .from('patients')
           .select('id, patient_id, name, phone')
-          .or(`name.ilike.%${term}%,patient_id.ilike.%${term}%,phone.ilike.%${term}%`)
+          .or(`name.ilike.%${term}%,patient_id.ilike.%${term}%`)
           .limit(10);
         if (error) throw error;
         setPatientResults(data || []);
@@ -712,10 +714,14 @@ function NewBillingPageInner() {
     try {
       setLoading(true);
 
+      // Generate bill number using our simplified format
+      const billNumber = await generateBillNumber();
+
       // Create pharmacy bill (handle prod schema differences: total_amount vs total)
       let billData: any = null;
       {
         const base = {
+          bill_number: billNumber, // Use our generated bill number
           patient_id: customer.type === 'patient' ? customer.patient_id : 'c0c4724a-1e95-48fd-9db0-9e70eaa6a940', // Use existing patient ID for walk-ins
           currency: 'INR',
           subtotal: billTotals.subtotal,
@@ -986,7 +992,7 @@ function NewBillingPageInner() {
                 {customer.type === 'patient' ? (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Search Patient (name / UHID / phone)</label>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Search Patient (name / UHID)</label>
                       <div className="relative">
                         <input
                           type="text"
@@ -1023,7 +1029,7 @@ function NewBillingPageInner() {
                               >
                                 <div className="text-xs">
                                   <div className="font-medium text-slate-900">{p.name}</div>
-                                  <div className="text-slate-500">UHID: {p.patient_id}{p.phone ? ` • ${p.phone}` : ''}</div>
+                                  <div className="text-slate-500">UHID: {p.patient_id}</div>
                                 </div>
                               </button>
                             ))}
@@ -1833,7 +1839,6 @@ function NewBillingPageInner() {
                 </div>
                 <div className="space-y-1">
                   <p><strong>To:</strong> {generatedBill.customer.name}</p>
-                  {generatedBill.customer.phone && <p><strong>Phone:</strong> {generatedBill.customer.phone}</p>}
                   {generatedBill.customer.address && <p><strong>Address:</strong> {generatedBill.customer.address}</p>}
                 </div>
               </div>

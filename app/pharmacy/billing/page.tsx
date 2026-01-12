@@ -305,16 +305,18 @@ export default function PharmacyBillingPage() {
           <title>Bill ${selectedBill.bill_number}</title>
           <style>
             @page{margin:5mm}
-            body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;color:#111827}
-            table{border-collapse:collapse;width:100%}
-            .invoice-header{line-height:1.3;margin-bottom:6px;text-align:center}
-            .bill-info td{word-break:break-all}
-            .amount-cell{text-align:right;padding-right:4mm}
-            .label{font-weight:400;color:#333}
-            .value{font-weight:600}
-            .totals{page-break-inside:avoid;margin-bottom:5mm;border-top:2px solid #d1d5db;padding-top:8px}
-            .invoice-footer{position:relative;margin-top:10mm;text-align:center;font-size:10pt}
-            th{padding:6px;text-align:left}
+            body{font-family:'Times New Roman', Times, serif;color:#111827}
+            table{font-family:'Times New Roman', Times, serif;border-collapse:collapse;width:100%}
+            .invoice-header{font-family:'Times New Roman', Times, serif;line-height:1.3;margin-bottom:6px;text-align:center}
+            .bill-info td{font-family:'Times New Roman', Times, serif;word-break:break-all}
+            .amount-cell{font-family:'Times New Roman', Times, serif;text-align:right;padding-right:4mm}
+            .label{font-family:'Times New Roman', Times, serif;font-weight:400;color:#333}
+            .value{font-family:'Times New Roman', Times, serif;font-weight:600}
+            .totals{font-family:'Times New Roman', Times, serif;page-break-inside:avoid;margin-bottom:5mm;border-top:2px solid #d1d5db;padding-top:8px}
+            .invoice-footer{font-family:'Times New Roman', Times, serif;position:relative;margin-top:10mm;text-align:center;font-size:10pt}
+            th{font-family:'Times New Roman', Times, serif;padding:6px;text-align:left}
+            td{font-family:'Times New Roman', Times, serif;padding:6px}
+            h1,h2,h3,div,p,span,strong{font-family:'Times New Roman', Times, serif}
           </style>
         </head>
         <body>

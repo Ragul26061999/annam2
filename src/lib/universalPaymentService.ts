@@ -78,12 +78,12 @@ export interface PaymentReceipt {
   created_at: string;
 }
 
-// Generate unique bill number
+// Generate unique bill number - using same format as pharmacy billing
 export function generateBillNumber(prefix: string): string {
-  const date = new Date();
-  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `${prefix}-${dateStr}-${random}`;
+  const now = new Date();
+  const yearShort = now.getFullYear().toString().slice(-2); // e.g., "2025" -> "25"
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${yearShort}-${random}`;
 }
 
 // Create universal bill for any service
