@@ -22,6 +22,7 @@ import TransactionViewModal from '../../../src/components/TransactionViewModal';
 
 export default function BillingTransactionsPage() {
   const [records, setRecords] = useState<BillingRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -36,92 +37,53 @@ export default function BillingTransactionsPage() {
 
   useEffect(() => {
     loadRecords();
-  }, [currentPage, searchTerm, statusFilter, dateFromFilter, dateToFilter]);
+  }, []);
+
+  useEffect(() => {
+    // Apply client-side filtering
+    const filteredRecords = allRecords.filter(record => {
+      const matchesSearch = !searchTerm || 
+        record.bill_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.patient?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.patient?.patient_id?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'all' || record.payment_status === statusFilter;
+      
+      // Date filtering
+      let matchesDate = true;
+      if (dateFromFilter) {
+        matchesDate = matchesDate && new Date(record.bill_date) >= new Date(dateFromFilter);
+      }
+      if (dateToFilter) {
+        matchesDate = matchesDate && new Date(record.bill_date) <= new Date(dateToFilter);
+      }
+      
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+
+    setRecords(filteredRecords);
+    setTotalRecords(filteredRecords.length);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [allRecords, searchTerm, statusFilter, dateFromFilter, dateToFilter]);
 
   const loadRecords = async () => {
     try {
       setLoading(true);
-      const offset = (currentPage - 1) * recordsPerPage;
-      console.log('Loading billing records with filters:', {
-        recordsPerPage,
-        offset,
-        filters: {
-          search: searchTerm,
-          status: statusFilter,
-          dateFrom: dateFromFilter,
-          dateTo: dateToFilter
-        }
-      });
+      console.log('Loading billing records...');
       
-      const result = await getBillingRecords(
-        recordsPerPage, 
-        offset, 
-        {
-          search: searchTerm,
-          status: statusFilter,
-          dateFrom: dateFromFilter,
-          dateTo: dateToFilter
-        }
-      );
+      // Use the same approach as the working finance dashboard
+      const result = await getBillingRecords(200); // Get more records for the billing page
       
       console.log('Billing records result:', result);
       console.log('Records count:', result.records?.length);
       console.log('Total count:', result.total);
       
-      // If no records found and no filters applied, add sample data for testing
-      if ((!result.records || result.records.length === 0) && result.total === 0 && !searchTerm && statusFilter === 'all' && !dateFromFilter && !dateToFilter) {
-        console.log('No records found, adding sample data for testing');
-        const sampleData = [
-          {
-            id: 'sample-1',
-            bill_id: 'SAMPLE-001',
-            patient_id: 'patient-1',
-            bill_date: new Date().toISOString(),
-            total_amount: 1500,
-            subtotal: 1500,
-            tax_amount: 0,
-            discount_amount: 0,
-            payment_status: 'paid',
-            payment_method: 'cash',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            source: 'pharmacy' as const,
-            patient: {
-              name: 'Sample Patient 1',
-              patient_id: 'UHID001',
-              phone: '9876543210'
-            }
-          },
-          {
-            id: 'sample-2',
-            bill_id: 'SAMPLE-002',
-            patient_id: 'patient-2',
-            bill_date: new Date().toISOString(),
-            total_amount: 500,
-            subtotal: 500,
-            tax_amount: 0,
-            discount_amount: 0,
-            payment_status: 'pending',
-            payment_method: 'card',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            source: 'lab' as const,
-            patient: {
-              name: 'Sample Patient 2',
-              patient_id: 'UHID002',
-              phone: '9876543211'
-            }
-          }
-        ];
-        setRecords(sampleData);
-        setTotalRecords(2);
-        console.log('Sample data loaded:', sampleData);
-      } else {
-        setRecords(result.records || []);
-        setTotalRecords(result.total || 0);
-      }
+      setAllRecords(result.records || []);
+      setRecords(result.records || []);
+      setTotalRecords(result.total || 0);
     } catch (error) {
       console.error('Error loading billing records:', error);
+      setAllRecords([]);
       setRecords([]);
       setTotalRecords(0);
     } finally {
@@ -280,10 +242,10 @@ export default function BillingTransactionsPage() {
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            Showing {records.length} of {totalRecords} transactions
+            Showing {Math.min((currentPage - 1) * recordsPerPage + 1, records.length)} to {Math.min(currentPage * recordsPerPage, records.length)} of {records.length} transactions
           </p>
           <div className="flex gap-2">
-            <span className="text-sm text-gray-500">Page {currentPage} of {totalPages}</span>
+            <span className="text-sm text-gray-500">Page {currentPage} of {Math.ceil(records.length / recordsPerPage)}</span>
           </div>
         </div>
       </div>
@@ -318,7 +280,7 @@ export default function BillingTransactionsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {records.map((record) => (
+              {records.slice((currentPage - 1) * recordsPerPage, currentPage * recordsPerPage).map((record) => (
                 <tr key={record.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{record.bill_id}</div>
@@ -401,26 +363,26 @@ export default function BillingTransactionsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {Math.ceil(records.length / recordsPerPage) > 1 && (
         <div className="flex items-center justify-between bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div className="text-sm text-gray-700">
-            Showing {((currentPage - 1) * recordsPerPage) + 1} to {Math.min(currentPage * recordsPerPage, totalRecords)} of {totalRecords} results
+            Showing {Math.min((currentPage - 1) * recordsPerPage + 1, records.length)} to {Math.min(currentPage * recordsPerPage, records.length)} of {records.length} results
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center space-x-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
-            <span className="px-3 py-1 text-sm font-medium text-gray-700">
-              {currentPage} / {totalPages}
+            <span className="text-sm text-gray-700">
+              Page {currentPage} of {Math.ceil(records.length / recordsPerPage)}
             </span>
             <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage(Math.min(Math.ceil(records.length / recordsPerPage), currentPage + 1))}
+              disabled={currentPage === Math.ceil(records.length / recordsPerPage)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>
