@@ -916,24 +916,24 @@ function NewBillingPageInner() {
           <style>
             @page { margin: 5mm; size: 77mm 297mm; }
             body { 
-              font-family: 'Courier New', monospace; 
+              font-family: 'Times New Roman', Times, serif; 
               margin: 0; 
               padding: 10px;
               font-size: 12px;
               line-height: 1.2;
               width: 77mm;
             }
-            .header-14cm { font-size: 14pt; font-weight: bold; }
-            .header-9cm { font-size: 9pt; font-weight: bold; }
-            .header-10cm { font-size: 10pt; font-weight: bold; }
-            .header-8cm { font-size: 8pt; font-weight: bold; }
-            .center { text-align: center; }
-            .right { text-align: right; }
-            .table { width: 100%; border-collapse: collapse; }
-            .table td { padding: 2px; }
-            .totals-line { display: flex; justify-content: space-between; }
-            .footer { margin-top: 20px; font-size: 8pt; }
-            .signature-area { margin-top: 30px; }
+            .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
+            .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
+            .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
+            .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
+            .footer { margin-top: 20px; font-size: 8pt; font-family: 'Times New Roman', Times, serif; }
+            .signature-area { margin-top: 30px; font-family: 'Times New Roman', Times, serif; }
           </style>
         </head>
         <body>
