@@ -429,50 +429,44 @@ export default function OtherBills() {
               {/* Bill Information Section */}
               <div style={{ marginTop: '10px' }}>
                 <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <tbody>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.bill_number}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_name}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Type&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_type}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
-                    </tr>
-                    <tr>
-                      <td className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Sales Type&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="header-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
-                    </tr>
-                  </tbody>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.bill_number}</td>
+                  </tr>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_name}</td>
+                  </tr>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Type&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient_type}</td>
+                  </tr>
+                  <tr>
+                    <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                  </tr>
+                  <tr>
+                    <td className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                    <td className="header-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
+                  </tr>
                 </table>
               </div>
 
               {/* Items Table Section */}
               <div style={{ marginTop: '10px' }}>
                 <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px dashed #000' }}>
-                      <td width="30%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
-                      <td width="40%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Description</td>
-                      <td width="15%" className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
-                      <td width="15%" className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amt</td>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
-                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.charge_description}</td>
-                      <td className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>{selectedBill.quantity}</td>
-                      <td className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
-                    </tr>
-                  </tbody>
+                  <tr style={{ borderBottom: '1px dashed #000' }}>
+                    <td width="30%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
+                    <td width="40%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Description</td>
+                    <td width="15%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
+                    <td width="15%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amt</td>
+                  </tr>
+                  <tr>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.charge_description}</td>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>{selectedBill.quantity}</td>
+                    <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
+                  </tr>
                 </table>
               </div>
 
@@ -565,50 +559,44 @@ export default function OtherBills() {
                       <!-- Bill Information Section -->
                       <div style="margin-top: 10px;">
                         <table class="table">
-                          <tbody>
-                            <tr>
-                              <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_number}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_name}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">Patient Type&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_type}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
-                            </tr>
-                            <tr>
-                              <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="header-10cm bill-info-bold">${selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
-                            </tr>
-                          </tbody>
+                          <tr>
+                            <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_number}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_name}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">Patient Type&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${selectedBill.patient_type}</td>
+                          </tr>
+                          <tr>
+                            <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
+                          </tr>
+                          <tr>
+                            <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                            <td class="header-10cm bill-info-bold">${selectedBill.payment_status === 'paid' ? 'PAID' : 'CASH'}</td>
+                          </tr>
                         </table>
                       </div>
 
                       <!-- Items Table Section -->
                       <div style="margin-top: 10px;">
                         <table class="table">
-                          <thead>
-                            <tr style="border-bottom: 1px dashed #000;">
-                              <td width="30%" class="items-8cm">S.No</td>
-                              <td width="40%" class="items-8cm">Description</td>
-                              <td width="15%" class="items-8cm text-center">Qty</td>
-                              <td width="15%" class="items-8cm text-right">Amt</td>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td class="items-8cm">1.</td>
-                              <td class="items-8cm">${selectedBill.charge_description}</td>
-                              <td class="items-8cm text-center">${selectedBill.quantity}</td>
-                              <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
-                            </tr>
-                          </tbody>
+                          <tr style="border-bottom: 1px dashed #000;">
+                            <td width="30%" class="items-8cm">S.No</td>
+                            <td width="40%" class="items-8cm">Description</td>
+                            <td width="15%" class="items-8cm text-center">Qty</td>
+                            <td width="15%" class="items-8cm text-right">Amt</td>
+                          </tr>
+                          <tr>
+                            <td class="items-8cm">1.</td>
+                            <td class="items-8cm">${selectedBill.charge_description}</td>
+                            <td class="items-8cm text-center">${selectedBill.quantity}</td>
+                            <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
+                          </tr>
                         </table>
                       </div>
 
