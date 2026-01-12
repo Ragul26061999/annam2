@@ -1154,10 +1154,34 @@ export async function updateDoctor(
       // Don't throw error, just return doctor without user data
     }
 
-    return {
+    // Add computed fields for compatibility
+    const enhancedDoctor = {
       ...updatedDoctor,
+      doctor_id: updatedDoctor.license_number,
+      department: getSpecializationDepartment(updatedDoctor.specialization),
+      experience_years: updatedDoctor.years_of_experience,
+      working_hours_start: '09:00',
+      working_hours_end: '17:00',
+      working_days: [1, 2, 3, 4, 5, 6],
+      floor_number: 1,
+      availability_status: 'available',
+      emergency_available: false,
+      // Extract department and floorNumber from availability_hours if available
+      ...(updatedDoctor.availability_hours && {
+        department: (typeof updatedDoctor.availability_hours === 'string' 
+          ? JSON.parse(updatedDoctor.availability_hours) 
+          : updatedDoctor.availability_hours)?.department || getSpecializationDepartment(updatedDoctor.specialization),
+        floor_number: (typeof updatedDoctor.availability_hours === 'string' 
+          ? JSON.parse(updatedDoctor.availability_hours) 
+          : updatedDoctor.availability_hours)?.floorNumber || 1,
+        emergency_available: (typeof updatedDoctor.availability_hours === 'string' 
+          ? JSON.parse(updatedDoctor.availability_hours) 
+          : updatedDoctor.availability_hours)?.emergencyAvailable || false
+      }),
       user: userData || undefined
     };
+
+    return enhancedDoctor;
   } catch (error) {
     console.error('Error updating doctor:', error);
     throw error;

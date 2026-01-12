@@ -257,6 +257,7 @@ export default function DoctorsPage() {
     try {
       setLoading(true);
       const doctorsData = await getAllDoctorsSimple();
+      console.log('Loaded doctors data:', JSON.stringify(doctorsData, null, 2));
       setDoctors(doctorsData);
       setFilteredDoctors(doctorsData);
 
@@ -357,11 +358,21 @@ export default function DoctorsPage() {
     if (!selectedDoctor) return;
 
     try {
-      await updateDoctor(selectedDoctor.id, formData);
+      console.log('Starting doctor update for ID:', selectedDoctor.id);
+      console.log('Form data being sent:', JSON.stringify(formData, null, 2));
+      
+      const updatedDoctor = await updateDoctor(selectedDoctor.id, formData);
+      console.log('Updated doctor returned:', JSON.stringify(updatedDoctor, null, 2));
+      
       setShowEditModal(false);
       setSelectedDoctor(null);
       resetForm();
-      loadDoctors();
+      
+      // Add a small delay before reloading to ensure database is updated
+      setTimeout(() => {
+        console.log('Reloading doctors list...');
+        loadDoctors();
+      }, 500);
     } catch (error) {
       console.error('Error updating doctor:', error);
       alert('Error updating doctor. Please try again.');
