@@ -388,13 +388,32 @@ export async function getBillingRecords(
     console.log('getBillingRecords - Outpatient data:', outpatientData.data);
     
     const billingRecords = (billingData.data || []).map((b: any) => {
-      // Determine source based on bill_type
-      let source = 'billing';
+      // Determine source based on bill_type or other indicators
+      let source = 'billing'; // Default to consultation
+      
+      // Check bill_type first
       if (b.bill_type === 'lab') source = 'lab';
       else if (b.bill_type === 'radiology') source = 'radiology';
       else if (b.bill_type === 'pharmacy') source = 'pharmacy';
       else if (b.bill_type === 'diagnostic') source = 'diagnostic';
       else if (b.bill_type === 'outpatient') source = 'outpatient';
+      
+      // If no bill_type, try to identify from other fields
+      else if (!b.bill_type) {
+        // Check if it's a pharmacy bill by looking for pharmacy-specific patterns
+        const billNumber = b.bill_number || b.bill_no || '';
+        if (billNumber.startsWith('PH-') || billNumber.startsWith('AP')) {
+          source = 'pharmacy';
+        }
+        // Check if customer_name suggests pharmacy (contains drug/medicine keywords)
+        else if (b.customer_name && (b.customer_name.toLowerCase().includes('drug') || b.customer_name.toLowerCase().includes('medicine'))) {
+          source = 'pharmacy';
+        }
+        // Check if the table suggests pharmacy (pharmacy_bills table)
+        else if (b.table_name === 'pharmacy_bills') {
+          source = 'pharmacy';
+        }
+      }
       
       return {
         id: b.id,
