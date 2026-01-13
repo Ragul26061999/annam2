@@ -367,15 +367,12 @@ export default function DoctorsPage() {
       setShowEditModal(false);
       setSelectedDoctor(null);
       resetForm();
-      
-      // Add a small delay before reloading to ensure database is updated
-      setTimeout(() => {
-        console.log('Reloading doctors list...');
-        loadDoctors();
-      }, 500);
+
+      console.log('Reloading doctors list...');
+      await loadDoctors();
     } catch (error) {
       console.error('Error updating doctor:', error);
-      alert('Error updating doctor. Please try again.');
+      throw error;
     }
   };
 
