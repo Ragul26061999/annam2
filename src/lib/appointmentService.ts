@@ -647,7 +647,7 @@ export async function getAppointments(options: {
           if (apt.encounter?.patient_id) {
             const { data: patient } = await supabase
               .from('patients')
-              .select('id, patient_id, name, phone, email')
+              .select('id, patient_id, name, phone, email, consulting_doctor_name')
               .eq('id', apt.encounter.patient_id)
               .single();
             patientData = patient;
@@ -669,7 +669,7 @@ export async function getAppointments(options: {
 
             if (doctor && doctor.user_id) {
               const { data: user } = await supabase
-                .from('public.users')
+                .from('users') // Standardized to 'users'
                 .select('name, phone, email')
                 .eq('id', doctor.user_id)
                 .single();
@@ -737,7 +737,7 @@ export async function getAppointments(options: {
         .from('appointments')
         .select(`
           *,
-          patient:patients(id, patient_id, name, phone, email),
+          patient:patients(id, patient_id, name, phone, email, consulting_doctor_name),
           doctor:doctors(
             id,
             specialization,
@@ -800,7 +800,25 @@ export async function getAppointments(options: {
 
         // Related data
         patient: apt.patient,
-        doctor: apt.doctor
+        doctor: apt.doctor ? {
+          id: apt.doctor.id,
+          specialization: apt.doctor.specialization || '',
+          qualification: apt.doctor.qualification || '',
+          department: '',
+          user: apt.doctor.user ? (
+            Array.isArray(apt.doctor.user)
+              ? {
+                name: (apt.doctor.user[0] as any)?.name || '',
+                phone: (apt.doctor.user[0] as any)?.phone || '',
+                email: (apt.doctor.user[0] as any)?.email || ''
+              }
+              : {
+                name: (apt.doctor.user as any).name || '',
+                phone: (apt.doctor.user as any).phone || '',
+                email: (apt.doctor.user as any).email || ''
+              }
+          ) : { name: '', phone: '', email: '' }
+        } : undefined
       }));
 
       return {

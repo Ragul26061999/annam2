@@ -352,6 +352,38 @@ export async function createRadiologyBill(
   });
 }
 
+// Create bill specifically for scan tests
+export async function createScanBill(
+  patientId: string,
+  scanOrders: any[],
+  staffId?: string
+): Promise<PaymentRecord> {
+  const items: PaymentItem[] = scanOrders.map(order => ({
+    service_name: order.test_catalog?.test_name || 'Scan Test',
+    quantity: 1,
+    unit_rate: order.test_catalog?.test_cost || 0,
+    total_amount: order.test_catalog?.test_cost || 0,
+    item_type: 'radiology' as const, // Using radiology type for scans
+    reference_id: order.id,
+  }));
+
+  const subtotal = items.reduce((sum, item) => sum + item.total_amount, 0);
+  const taxAmount = subtotal * 0.05; // 5% tax
+  const totalAmount = subtotal + taxAmount;
+
+  return createUniversalBill({
+    patient_id: patientId,
+    items,
+    subtotal,
+    tax_amount: taxAmount,
+    discount_amount: 0,
+    total_amount: totalAmount,
+    payment_method: 'cash',
+    created_by: staffId,
+    bill_type: 'radiology', // Using radiology type for scans
+  });
+}
+
 // Create bill specifically for IP admission
 export async function createIPAdmissionBill(
   patientId: string,

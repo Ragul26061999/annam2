@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { 
-  Search, 
-  Receipt, 
-  DollarSign, 
+import {
+  Search,
+  Receipt,
+  DollarSign,
   ArrowLeft,
   Calendar,
   CreditCard,
@@ -60,6 +60,15 @@ export default function PharmacyBillingPage() {
   // Payment details for split payments
   const [paymentDetails, setPaymentDetails] = useState<any[]>([])
   const [paymentDetailsLoading, setPaymentDetailsLoading] = useState(false)
+
+  // Advanced Filters
+  const [attrFilterCategory, setAttrFilterCategory] = useState('') // 'name', 'combination', 'dosage_form', 'manufacturer'
+  const [attrFilterValue, setAttrFilterValue] = useState('')
+  const [timeframe, setTimeframe] = useState('all') // 'all', 'daily', 'weekly', 'monthly', 'yearly'
+  const [timeframeValue, setTimeframeValue] = useState('')
+  const [medications, setMedications] = useState<any[]>([])
+  const [matchedBillIds, setMatchedBillIds] = useState<string[] | null>(null)
+  const [loadingFilters, setLoadingFilters] = useState(false)
   // Hospital settings
   const [hospital, setHospital] = useState({
     name: 'ANNAM PHARMACY',
@@ -71,26 +80,82 @@ export default function PharmacyBillingPage() {
 
   useEffect(() => {
     loadBillingData()
-    ;(async () => {
-      try {
-        const { data } = await supabase.from('hospital_settings').select('*').eq('id', 1).maybeSingle()
-        if (data) {
-          setHospital({
-            name: data.name,
-            department: data.department,
-            address: data.address,
-            contact_number: data.contact_number,
-            gst_number: data.gst_number
-          })
-        }
-      } catch {}
-    })()
+    loadMedications()
+      ; (async () => {
+        try {
+          const { data } = await supabase.from('hospital_settings').select('*').eq('id', 1).maybeSingle()
+          if (data) {
+            setHospital({
+              name: data.name,
+              department: data.department,
+              address: data.address,
+              contact_number: data.contact_number,
+              gst_number: data.gst_number
+            })
+          }
+        } catch { }
+      })()
   }, [])
+
+  const loadMedications = async () => {
+    try {
+      const { data } = await supabase.from('medications').select('*')
+      setMedications(data || [])
+    } catch (err) {
+      console.error('Failed to load medications for filters', err)
+    }
+  }
+
+  const getUniqueAttrValues = (category: string) => {
+    if (!category) return []
+    const key = category === 'dosage_form' ? 'dosage_form' :
+      category === 'combination' ? 'combination' :
+        category === 'manufacturer' ? 'manufacturer' : 'name'
+    const vals = medications.map(m => m[key]).filter(v => v !== null && v !== undefined && v !== '')
+    return Array.from(new Set(vals)).sort()
+  }
+
+  useEffect(() => {
+    const fetchMatchedBills = async () => {
+      if (!attrFilterCategory || !attrFilterValue) {
+        setMatchedBillIds(null)
+        return
+      }
+
+      setLoadingFilters(true)
+      try {
+        const key = attrFilterCategory === 'dosage_form' ? 'dosage_form' :
+          attrFilterCategory === 'combination' ? 'combination' :
+            attrFilterCategory === 'manufacturer' ? 'manufacturer' : 'name'
+        const filteredMeds = medications.filter(m => m[key] === attrFilterValue)
+        const medIds = filteredMeds.map(m => m.id)
+
+        if (medIds.length === 0) {
+          setMatchedBillIds([])
+          return
+        }
+
+        const { data: items } = await supabase
+          .from('billing_item')
+          .select('billing_id')
+          .in('medicine_id', medIds)
+
+        const ids = Array.from(new Set((items || []).map(it => it.billing_id)))
+        setMatchedBillIds(ids)
+      } catch (err) {
+        console.error('Filter error:', err)
+      } finally {
+        setLoadingFilters(false)
+      }
+    }
+
+    fetchMatchedBills()
+  }, [attrFilterCategory, attrFilterValue, medications])
 
   const loadBillingData = async () => {
     try {
       setLoading(true)
-      
+
       // Fetch billing data first (no join to avoid FK/join errors)
       const { data: billsData, error: billsError } = await supabase
         .from('billing')
@@ -151,30 +216,30 @@ export default function PharmacyBillingPage() {
         payment_status: bill.payment_status || 'paid',
         created_at: bill.created_at
       }))
-      
+
       setBills(mappedBills)
-      
+
       // Calculate KPI stats from the bills data
       const today = new Date()
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
       const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-      
+
       const todaysCollection = mappedBills
         .filter(bill => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
-      
+
       const monthlyCollection = mappedBills
         .filter(bill => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
-      
+
       const pendingDue = mappedBills
         .filter(bill => bill.payment_status === 'pending')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
-      
+
       const totalPayments = mappedBills
         .filter(bill => bill.payment_status === 'paid')
         .reduce((sum, bill) => sum + bill.total_amount, 0)
-      
+
       setDashboardStats({
         todaysSales: todaysCollection,
         pendingOrders: pendingDue,
@@ -224,7 +289,7 @@ export default function PharmacyBillingPage() {
     setShowViewModal(true)
     setViewLoading(true)
     setPaymentDetailsLoading(true)
-    
+
     try {
       // Fetch bill items
       const { data: itemsData, error: itemsError } = await supabase
@@ -259,7 +324,7 @@ export default function PharmacyBillingPage() {
 
   const printBill = () => {
     if (!selectedBill) return
-    
+
     // Generate payment details HTML
     const paymentDetailsHtml = paymentDetails.length > 0 ? `
       <div style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 6px;">
@@ -292,11 +357,11 @@ export default function PharmacyBillingPage() {
         <td class="amount-cell" style="padding:6px;text-align:right;padding-right:4mm">₹${Number(it.total_amount || 0).toFixed(2)}</td>
       </tr>
     `).join('')
-    
+
     const subtotal = selectedBill.subtotal ?? viewItems.reduce((s: number, it: any) => s + Number(it.total_amount || 0), 0)
     const discount = selectedBill.discount || 0
     const tax = selectedBill.tax ?? Math.max(selectedBill.total_amount - (subtotal - discount), 0)
-    
+
     const w = window.open('', 'printwin')
     if (!w) return
     w.document.write(`
@@ -357,8 +422,8 @@ export default function PharmacyBillingPage() {
           <div class="totals" style="font-size:14px">
             <div style="display:flex;justify-content:space-between"><span class="label">Taxable Amt</span><span class="value">₹${subtotal.toFixed(2)}</span></div>
             ${discount > 0 ? `<div style="display:flex;justify-content:space-between"><span class="label">Disc Amt</span><span class="value">-₹${discount.toFixed(2)}</span></div>` : ''}
-            <div style="display:flex;justify-content:space-between"><span class="label">CGST Amt</span><span class="value">₹${(tax/2).toFixed(2)}</span></div>
-            <div style="display:flex;justify-content:space-between"><span class="label">SGST Amt</span><span class="value">₹${(tax/2).toFixed(2)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span class="label">CGST Amt</span><span class="value">₹${(tax / 2).toFixed(2)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span class="label">SGST Amt</span><span class="value">₹${(tax / 2).toFixed(2)}</span></div>
             <div style="display:flex;justify-content:space-between;font-weight:600;border-top:1px solid #e5e7eb;padding-top:6px"><span>Total Net Amt</span><span>₹${selectedBill.total_amount.toFixed(2)}</span></div>
           </div>
 
@@ -386,10 +451,10 @@ export default function PharmacyBillingPage() {
 
     const now = new Date();
     const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-    
+
     // Get patient UHID
     const patientUhid = selectedBill.patient_uhid || 'WALK-IN';
-    
+
     // Get sales type
     let salesType = selectedBill.payment_method?.toUpperCase() || 'CASH';
     if (salesType === 'CREDIT') {
@@ -545,7 +610,7 @@ export default function PharmacyBillingPage() {
       setUpdatingPayment(true)
       const { error } = await supabase
         .from('billing')
-        .update({ 
+        .update({
           payment_method: newPaymentMethod,
           updated_at: new Date().toISOString()
         })
@@ -568,13 +633,38 @@ export default function PharmacyBillingPage() {
 
   const filteredBills = bills.filter(bill => {
     const matchesSearch = (bill.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (bill.patient_uhid || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (bill.bill_number || '').toLowerCase().includes(searchTerm.toLowerCase())
-    
+      (bill.patient_uhid || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (bill.bill_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+
     const matchesStatus = statusFilter === 'all' || bill.payment_status === statusFilter
     const matchesPayment = paymentFilter === 'all' || bill.payment_method === paymentFilter
-    
-    return matchesSearch && matchesStatus && matchesPayment
+
+    // Attribute Filter
+    const matchesAttr = matchedBillIds === null || matchedBillIds.includes(bill.id)
+
+    // Timeframe Filter
+    let matchesTimeframe = true
+    if (timeframe !== 'all' && timeframeValue) {
+      const billDate = new Date(bill.created_at)
+      const selectedDate = new Date(timeframeValue)
+
+      if (timeframe === 'daily') {
+        matchesTimeframe = billDate.toDateString() === selectedDate.toDateString()
+      } else if (timeframe === 'weekly') {
+        const start = new Date(selectedDate)
+        start.setDate(selectedDate.getDate() - selectedDate.getDay())
+        const end = new Date(start)
+        end.setDate(start.getDate() + 6)
+        matchesTimeframe = billDate >= start && billDate <= end
+      } else if (timeframe === 'monthly') {
+        matchesTimeframe = billDate.getMonth() === selectedDate.getMonth() &&
+          billDate.getFullYear() === selectedDate.getFullYear()
+      } else if (timeframe === 'yearly') {
+        matchesTimeframe = billDate.getFullYear() === selectedDate.getFullYear()
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesPayment && matchesAttr && matchesTimeframe
   })
 
   const getStatusBadge = (status: string) => {
@@ -690,7 +780,8 @@ export default function PharmacyBillingPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+        {/* Row 1: Basic Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -702,7 +793,7 @@ export default function PharmacyBillingPage() {
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
+
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -728,10 +819,83 @@ export default function PharmacyBillingPage() {
             <option value="others">Others</option>
           </select>
 
-          <div className="text-sm text-gray-600 flex items-center">
-            Showing {filteredBills.length} of {bills.length} bills
+          <div className="text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2 rounded-lg flex items-center justify-center border border-blue-100">
+            {filteredBills.length} results found
           </div>
         </div>
+
+        {/* Row 2: Advanced Dynamic Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Item Filter Category</label>
+            <select
+              value={attrFilterCategory}
+              onChange={(e) => {
+                setAttrFilterCategory(e.target.value)
+                setAttrFilterValue('')
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50/50 font-medium"
+            >
+              <option value="">-- Choose Category --</option>
+              <option value="name">Medicine Name</option>
+              <option value="combination">Combination</option>
+              <option value="dosage_form">Dosage Type</option>
+              <option value="manufacturer">Manufacturer</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Filter Value</label>
+            <select
+              value={attrFilterValue}
+              onChange={(e) => setAttrFilterValue(e.target.value)}
+              disabled={!attrFilterCategory}
+              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed font-medium"
+            >
+              <option value="">All {attrFilterCategory ? (attrFilterCategory === 'dosage_form' ? 'Dosage Types' : attrFilterCategory.charAt(0).toUpperCase() + attrFilterCategory.slice(1) + 's') : 'Values'}</option>
+              {getUniqueAttrValues(attrFilterCategory).map(val => (
+                <option key={val} value={val}>{val}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Timeframe Range</label>
+            <select
+              value={timeframe}
+              onChange={(e) => {
+                setTimeframe(e.target.value)
+                setTimeframeValue('')
+              }}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50/50 font-medium"
+            >
+              <option value="all">All Dates</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Select {timeframe === 'weekly' ? 'Week Star' : timeframe === 'all' ? 'Date' : timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</label>
+            <input
+              type={timeframe === 'monthly' ? 'month' : timeframe === 'yearly' ? 'number' : 'date'}
+              value={timeframeValue}
+              onChange={(e) => setTimeframeValue(e.target.value)}
+              disabled={timeframe === 'all'}
+              placeholder={timeframe === 'yearly' ? "e.g. 2026" : ""}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed font-medium"
+            />
+          </div>
+        </div>
+
+        {loadingFilters && (
+          <div className="flex items-center gap-2 text-xs text-blue-600 animate-pulse font-medium bg-blue-50 p-2 rounded-lg border border-blue-100">
+            <div className="h-2 w-2 bg-blue-600 rounded-full animate-bounce"></div>
+            Filtering bills by selected medicine attribute...
+          </div>
+        )}
       </div>
 
       {/* Bills Table */}
@@ -797,7 +961,7 @@ export default function PharmacyBillingPage() {
                       <button className="text-green-600 hover:text-green-800" onClick={(e) => { e.stopPropagation(); (async () => { await openViewBill(bill); setTimeout(() => printBill(), 150); })(); }} title="Download / Print">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); handleEditPaymentMethod(bill) }}
                         className="text-purple-600 hover:text-purple-800"
                         title="Edit Payment Method"
@@ -805,7 +969,7 @@ export default function PharmacyBillingPage() {
                         <Edit className="w-4 h-4" />
                       </button>
                       {bill.payment_status === 'pending' && (
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); handleSettlePayment(bill.id) }}
                           className="text-orange-600 hover:text-orange-800"
                           title="Settle Payment"
@@ -939,7 +1103,7 @@ export default function PharmacyBillingPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-2">
                 Bill: <span className="font-medium">{selectedBill.bill_number}</span>
@@ -947,7 +1111,7 @@ export default function PharmacyBillingPage() {
               <p className="text-sm text-gray-600 mb-4">
                 Current Method: <span className="font-medium capitalize">{selectedBill.payment_method}</span>
               </p>
-              
+
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 New Payment Method
               </label>
@@ -965,7 +1129,7 @@ export default function PharmacyBillingPage() {
                 <option value="others">Others</option>
               </select>
             </div>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => {

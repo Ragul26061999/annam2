@@ -106,14 +106,46 @@ function OutpatientPageContent() {
   // Tab state for queue management
   const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients' | 'billing'>('queue');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
-  
+
   // Billing state
   const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingSearch, setBillingSearch] = useState('');
+  const [billingStartDate, setBillingStartDate] = useState<string>('');
+  const [billingEndDate, setBillingEndDate] = useState<string>('');
+  const [billingDateFilter, setBillingDateFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly'>('all');
   const [selectedBill, setSelectedBill] = useState<BillingRecord | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showThermalModal, setShowThermalModal] = useState(false);
+
+  // Effect to update date inputs when date filter changes
+  useEffect(() => {
+    if (billingDateFilter !== 'all' && !billingStartDate && !billingEndDate) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      switch (billingDateFilter) {
+        case 'daily':
+          setBillingStartDate(today.toISOString().split('T')[0]);
+          setBillingEndDate(today.toISOString().split('T')[0]);
+          break;
+        case 'weekly':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay()); // Sunday
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6); // Saturday
+          setBillingStartDate(weekStart.toISOString().split('T')[0]);
+          setBillingEndDate(weekEnd.toISOString().split('T')[0]);
+          break;
+        case 'monthly':
+          const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+          const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          setBillingStartDate(monthStart.toISOString().split('T')[0]);
+          setBillingEndDate(monthEnd.toISOString().split('T')[0]);
+          break;
+      }
+    }
+  }, [billingDateFilter]);
 
   // Check for registration success parameter
   useEffect(() => {
@@ -127,13 +159,13 @@ function OutpatientPageContent() {
       }, 5000);
       return () => clearTimeout(timer);
     }
-    
+
     // Check for tab parameter
     const tab = searchParams?.get('tab');
     if (tab === 'queue' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
       setActiveTab(tab);
     }
-    
+
     // Check for vitals completed notification
     if (searchParams?.get('vitals') === 'completed') {
       setShowRegistrationSuccess(true);
@@ -177,11 +209,46 @@ function OutpatientPageContent() {
   const loadBillingRecords = async () => {
     try {
       setBillingLoading(true);
+      
+      // Calculate date range based on filter
+      let startDate = billingStartDate;
+      let endDate = billingEndDate;
+      
+      if (billingDateFilter !== 'all' && !startDate && !endDate) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        switch (billingDateFilter) {
+          case 'daily':
+            startDate = today.toISOString().split('T')[0];
+            endDate = today.toISOString().split('T')[0];
+            break;
+          case 'weekly':
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - today.getDay()); // Sunday
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6); // Saturday
+            startDate = weekStart.toISOString().split('T')[0];
+            endDate = weekEnd.toISOString().split('T')[0];
+            break;
+          case 'monthly':
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            startDate = monthStart.toISOString().split('T')[0];
+            endDate = monthEnd.toISOString().split('T')[0];
+            break;
+        }
+      }
+      
       const result = await getBillingRecords(50, 0, {
-        search: billingSearch
+        search: billingSearch,
+        dateFrom: startDate,
+        dateTo: endDate
       });
+      
       // Filter for outpatient records only
       const outpatientRecords = result.records.filter(record => record.source === 'outpatient');
+      
       setBillingRecords(outpatientRecords);
     } catch (error) {
       console.error('Error loading billing records:', error);
@@ -190,12 +257,27 @@ function OutpatientPageContent() {
     }
   };
 
-  // Load billing records when billing tab is active or search changes
+  // Load billing records when billing tab is active or search/date changes
   useEffect(() => {
     if (activeTab === 'billing') {
       loadBillingRecords();
     }
-  }, [activeTab, billingSearch]);
+  }, [activeTab, billingSearch, billingStartDate, billingEndDate, billingDateFilter]);
+
+  // Handle manual date input changes - reset the date filter to 'all'
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBillingStartDate(e.target.value);
+    if (billingDateFilter !== 'all') {
+      setBillingDateFilter('all');
+    }
+  };
+
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBillingEndDate(e.target.value);
+    if (billingDateFilter !== 'all') {
+      setBillingDateFilter('all');
+    }
+  };
 
   const loadOutpatientData = async () => {
     try {
@@ -735,44 +817,40 @@ function OutpatientPageContent() {
           <div className="flex gap-1 p-2">
             <button
               onClick={() => setActiveTab('queue')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
-                activeTab === 'queue'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'queue'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Clock className="h-4 w-4" />
               Waiting for Vitals ({queueStats.totalWaiting})
             </button>
             <button
               onClick={() => setActiveTab('appointments')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
-                activeTab === 'appointments'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'appointments'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Calendar className="h-4 w-4" />
               Today's Queue
             </button>
             <button
               onClick={() => setActiveTab('patients')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
-                activeTab === 'patients'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'patients'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Users className="h-4 w-4" />
               Recent Patients
             </button>
             <button
               onClick={() => setActiveTab('billing')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
-                activeTab === 'billing'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'billing'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Receipt className="h-4 w-4" />
               OP Billing
@@ -782,8 +860,8 @@ function OutpatientPageContent() {
 
         <div className="p-6">
           {activeTab === 'queue' && (
-            <VitalsQueueCard 
-              selectedDate={selectedDate} 
+            <VitalsQueueCard
+              selectedDate={selectedDate}
               onRefresh={() => {
                 loadOutpatientData();
                 loadQueueStats();
@@ -918,7 +996,9 @@ function OutpatientPageContent() {
           <div className="divide-y divide-gray-100">
             {filteredAppointments.map((appointment, index) => {
               const patientName = appointment.patient?.name || 'Unknown Patient';
-              const doctorName = appointment.doctor?.user?.name || 'Unknown Doctor';
+              const doctorName = appointment.doctor?.user?.name ||
+                appointment.patient?.consulting_doctor_name ||
+                'Unknown Doctor';
 
               return (
                 <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
@@ -1078,16 +1158,48 @@ function OutpatientPageContent() {
             </button>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Search bills by patient name, bill ID..."
-              value={billingSearch}
-              onChange={(e) => setBillingSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-            />
+          {/* Search and Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="text"
+                placeholder="Search bills by patient name, bill ID..."
+                value={billingSearch}
+                onChange={(e) => setBillingSearch(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <select
+                value={billingDateFilter}
+                onChange={(e) => setBillingDateFilter(e.target.value as 'all' | 'daily' | 'weekly' | 'monthly')}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+              >
+                <option value="all">All Time</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={billingStartDate}
+                onChange={handleStartDateChange}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                placeholder="From Date"
+              />
+              <input
+                type="date"
+                value={billingEndDate}
+                onChange={handleEndDateChange}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                placeholder="To Date"
+              />
+            </div>
           </div>
 
           {/* Billing Records */}
@@ -1132,13 +1244,12 @@ function OutpatientPageContent() {
                           </div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            record.payment_status === 'paid' 
-                              ? 'bg-green-100 text-green-800'
-                              : record.payment_status === 'partial'
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${record.payment_status === 'paid'
+                            ? 'bg-green-100 text-green-800'
+                            : record.payment_status === 'partial'
                               ? 'bg-yellow-100 text-yellow-800'
                               : 'bg-red-100 text-red-800'
-                          }`}>
+                            }`}>
                             {record.payment_status}
                           </span>
                         </td>
@@ -1382,7 +1493,9 @@ function OutpatientPageContent() {
           ) : (
             filteredAppointments.map((appointment, index) => {
               const patientName = appointment.patient?.name || 'Unknown Patient';
-              const doctorName = appointment.doctor?.user?.name || 'Unknown Doctor';
+              const doctorName = appointment.doctor?.user?.name ||
+                appointment.patient?.consulting_doctor_name ||
+                'Unknown Doctor';
               const patientInitials = patientName.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase();
 
               return (
@@ -1475,7 +1588,7 @@ function OutpatientPageContent() {
                 <CloseIcon size={24} />
               </button>
             </div>
-            
+
             <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
               {/* Thermal Print Content - Following exact format from guide */}
               <div className="text-center mb-4">
@@ -1485,7 +1598,7 @@ function OutpatientPageContent() {
                 <div className="header-10cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Gst No: 33AJWPR2713G2ZZ</div>
                 <div style={{ marginTop: '8px', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', fontSize: '14pt' }}>INVOICE</div>
               </div>
-              
+
               {/* Bill Information Section */}
               <div style={{ margin: '5px 0', fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>
                 <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>Bill No  :   {selectedBill.bill_id}</div>
@@ -1524,10 +1637,10 @@ function OutpatientPageContent() {
                   <span>{selectedBill.total_amount.toFixed(2)}</span>
                 </div>
                 {selectedBill.discount_amount > 0 && (
-                <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <span>Discount</span>
-                  <span>-{selectedBill.discount_amount.toFixed(2)}</span>
-                </div>
+                  <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                    <span>Discount</span>
+                    <span>-{selectedBill.discount_amount.toFixed(2)}</span>
+                  </div>
                 )}
                 <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
                   <span>GST (0%)</span>
@@ -1547,7 +1660,7 @@ function OutpatientPageContent() {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowThermalModal(false)}
@@ -1560,7 +1673,7 @@ function OutpatientPageContent() {
                   // Print functionality using exact thermal format
                   const now = new Date();
                   const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-                  
+
                   const thermalContent = `
                     <html>
                     <head>
@@ -1736,7 +1849,7 @@ function OutpatientPageContent() {
                     </body>
                     </html>
                   `;
-                  
+
                   const printWindow = window.open('', '_blank', 'width=400,height=600');
                   if (printWindow) {
                     printWindow.document.write(thermalContent);
@@ -1766,7 +1879,7 @@ function OutpatientPageContent() {
                 <CloseIcon size={24} />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium mb-2">Bill Details</h4>
@@ -1785,19 +1898,18 @@ function OutpatientPageContent() {
                   </div>
                   <div className="flex justify-between">
                     <span>Status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      selectedBill.payment_status === 'paid' 
-                        ? 'bg-green-100 text-green-800'
-                        : selectedBill.payment_status === 'partial'
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${selectedBill.payment_status === 'paid'
+                      ? 'bg-green-100 text-green-800'
+                      : selectedBill.payment_status === 'partial'
                         ? 'bg-yellow-100 text-yellow-800'
                         : 'bg-red-100 text-red-800'
-                    }`}>
+                      }`}>
                       {selectedBill.payment_status}
                     </span>
                   </div>
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Payment Method
@@ -1810,7 +1922,7 @@ function OutpatientPageContent() {
                   <option value="others">Others</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Amount Received
@@ -1825,7 +1937,7 @@ function OutpatientPageContent() {
                   />
                 </div>
               </div>
-              
+
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowPaymentModal(false)}
