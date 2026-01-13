@@ -345,69 +345,216 @@ function OutpatientPageContent() {
   });
 
   const handlePrintBill = (patient: any) => {
+    // Format the current date and time
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+    const formattedTime = now.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const dateTime = `${formattedDate} ${formattedTime}`;
+
     // Create a new window with bill details
-    const billWindow = window.open('', '_blank', 'width=800,height=600');
+    const billWindow = window.open('', '_blank', 'width=77mm,height=297mm');
     if (billWindow) {
       billWindow.document.write(`
         <html>
-          <head>
-            <title>Bill - ${patient.name}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              .header { text-align: center; margin-bottom: 30px; }
-              .patient-info { margin-bottom: 20px; }
-              .bill-details { margin-bottom: 20px; }
-              .footer { margin-top: 50px; text-align: center; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              @media print { body { padding: 10px; } }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>Annam Multispeciality Hospital</h1>
-              <h2>OP Bill</h2>
-            </div>
-            <div class="patient-info">
-              <h3>Patient Information</h3>
-              <p><strong>Name:</strong> ${patient.name}</p>
-              <p><strong>UHID:</strong> ${patient.patient_id}</p>
-              <p><strong>Age/Gender:</strong> ${patient.age || calculateAge(patient.date_of_birth)} | ${patient.gender}</p>
-              <p><strong>Phone:</strong> ${patient.phone || 'N/A'}</p>
-              ${patient.consulting_doctor_name ? `<p><strong>Doctor:</strong> Dr. ${patient.consulting_doctor_name}</p>` : ''}
-            </div>
-            <div class="bill-details">
-              <h3>Bill Details</h3>
-              <table>
+        <head>
+          <title>Bill - ${patient.name}</title>
+          <style>
+            @page { 
+              margin: 5mm; 
+              size: 77mm 297mm; 
+            }
+            body { 
+              font-family: 'Times New Roman', Times, serif; 
+              margin: 0; 
+              padding: 10px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { 
+              font-size: 16pt; 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .header-9cm { 
+              font-size:11pt; 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .header-10cm { 
+              font-size: 12pt; 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .header-8cm { 
+              font-size: 10pt; 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .items-8cm { 
+              font-size: 10pt; 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .bill-info-10cm { 
+              font-size: 12pt; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .bill-info-bold { 
+              font-weight: bold; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .footer-7cm { 
+              font-size: 9pt; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .center { 
+              text-align: center; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .right { 
+              text-align: right; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .table td { 
+              padding: 2px; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .totals-line { 
+              display: flex; 
+              justify-content: space-between; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .footer { 
+              margin-top: 15px; 
+              font-family: 'Times New Roman', Times, serif; 
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+          </style>
+        </head>
+        <body>
+          <!-- Header Section -->
+          <div class="center">
+            <div class="header-14cm">ANNAM HOSPITAL</div>
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div style="margin-top: 5px; font-weight: bold;">OUTPATIENT BILL</div>
+          </div>
+          
+          <!-- Bill Information Section -->
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tbody>
                 <tr>
-                  <th>Description</th>
-                  <th>Amount</th>
+                  <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                  <td class="bill-info-10cm bill-info-bold">${patient.bill_id || 'N/A'}</td>
                 </tr>
                 <tr>
-                  <td>Consultation Fee</td>
-                  <td>₹${patient.consultation_fee || patient.total_amount || '0'}</td>
+                  <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                  <td class="bill-info-10cm bill-info-bold">${patient.patient_id}</td>
+                </tr>
+                <tr>
+                  <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                  <td class="bill-info-10cm bill-info-bold">${patient.name}</td>
+                </tr>
+                <tr>
+                  <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                  <td class="bill-info-10cm bill-info-bold">${dateTime}</td>
+                </tr>
+                <tr>
+                  <td class="header-10cm">Payment Mode&nbsp;:&nbsp;&nbsp;</td>
+                  <td class="header-10cm bill-info-bold">${(patient.payment_mode || 'CASH').toUpperCase()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Items Table Section -->
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <thead>
+                <tr style="border-bottom: 1px dashed #000;">
+                  <td width="30%" class="items-8cm">S.No</td>
+                  <td width="40%" class="items-8cm">Description</td>
+                  <td width="15%" class="items-8cm text-center">Qty</td>
+                  <td width="15%" class="items-8cm text-right">Amt</td>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="items-8cm">1.</td>
+                  <td class="items-8cm">Consultation Fee</td>
+                  <td class="items-8cm text-center">1</td>
+                  <td class="items-8cm text-right">${patient.consultation_fee || patient.total_amount || '0'}</td>
                 </tr>
                 ${patient.op_card_amount ? `
                 <tr>
-                  <td>OP Card</td>
-                  <td>₹${patient.op_card_amount}</td>
+                  <td class="items-8cm">2.</td>
+                  <td class="items-8cm">OP Card</td>
+                  <td class="items-8cm text-center">1</td>
+                  <td class="items-8cm text-right">${patient.op_card_amount}</td>
                 </tr>` : ''}
-                <tr>
-                  <td><strong>Total</strong></td>
-                  <td><strong>₹${patient.total_amount || '0'}</strong></td>
-                </tr>
-              </table>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Totals Section -->
+          <div style="margin-top: 10px;">
+            <div class="totals-line items-8cm">
+              <span>Taxable Amount</span>
+              <span>${patient.total_amount || '0.00'}</span>
             </div>
-            <div class="footer">
-              <p>Thank you for visiting Annam Multispeciality Hospital</p>
-              <p>Generated on: ${new Date().toLocaleString()}</p>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+              <span>${patient.discount_amount || '0.00'}</span>
             </div>
-          </body>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+              <span>0.00</span>
+            </div>
+            <div class="totals-line header-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+              <span>0.00</span>
+            </div>
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${patient.total_amount || '0.00'}</span>
+            </div>
+          </div>
+
+          <!-- Footer Section -->
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${dateTime}</span>
+              <span>Cashier Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
         </html>
       `);
       billWindow.document.close();
-      billWindow.print();
     }
   };
 
@@ -1332,58 +1479,39 @@ function OutpatientPageContent() {
             <div className="bg-white p-4 border border-gray-200 rounded font-mono text-sm">
               {/* Thermal Print Content - Following exact format from guide */}
               <div className="text-center mb-4">
-                <div className="header-14cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>ANNAM HOSPITAL</div>
-                <div style={{ fontFamily: 'Times New Roman, Times, serif' }}>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
-                <div className="header-9cm" style={{ fontSize: '9pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Phone- 04639 252592</div>
-                <div className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Gst No: 33AJWPR2713G2ZZ</div>
-                <div style={{ marginTop: '5px', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>INVOICE</div>
+                <div className="header-14cm" style={{ fontSize: '16pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>ANNAM HOSPITAL</div>
+                <div style={{ fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                <div className="header-9cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Phone- 04639 252592</div>
+                <div className="header-10cm" style={{ fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Gst No: 33AJWPR2713G2ZZ</div>
+                <div style={{ marginTop: '8px', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', fontSize: '14pt' }}>INVOICE</div>
               </div>
               
               {/* Bill Information Section */}
-              <div style={{ marginTop: '10px' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <tbody>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.bill_id}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient?.patient_id || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{selectedBill.patient?.name || 'Unknown Patient'}</td>
-                    </tr>
-                    <tr>
-                      <td className="bill-info-10cm" style={{ fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif' }}>Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="bill-info-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
-                    </tr>
-                    <tr>
-                      <td className="header-10cm" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Sales Type&nbsp;:&nbsp;&nbsp;</td>
-                      <td className="header-10cm bill-info-bold" style={{ fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>{(selectedBill.payment_method || 'CASH').toUpperCase()}</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div style={{ margin: '5px 0', fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>
+                <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>Bill No  :   {selectedBill.bill_id}</div>
+                <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>UHID         :   {selectedBill.patient?.patient_id || 'N/A'}</div>
+                <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>Patient Name :   {selectedBill.patient?.name || 'Unknown Patient'}</div>
+                <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>Date           :   {new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                <div style={{ fontSize: '12pt', margin: '3px 0', whiteSpace: 'pre' }}>Sales Type :   {(selectedBill.payment_method || 'CASH').toUpperCase()}</div>
               </div>
 
               {/* Items Table Section */}
               <div style={{ marginTop: '10px' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px dashed #000' }}>
-                      <td width="30%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
-                      <td width="40%" className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Drug Name</td>
-                      <td width="15%" className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
-                      <td width="15%" className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amt</td>
+                      <td width="15%" className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>S.No</td>
+                      <td width="55%" className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Service</td>
+                      <td width="15%" className="items-8cm text-center" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>Qty</td>
+                      <td width="15%" className="items-8cm text-right" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>Amount</td>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
-                      <td className="items-8cm" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Outpatient Consultation</td>
-                      <td className="items-8cm text-center" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>1</td>
-                      <td className="items-8cm text-right" style={{ fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
+                      <td className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
+                      <td className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Consultation Fee</td>
+                      <td className="items-8cm text-center" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>1</td>
+                      <td className="items-8cm text-right" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1391,33 +1519,31 @@ function OutpatientPageContent() {
 
               {/* Totals Section */}
               <div style={{ marginTop: '10px' }}>
-                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <span>Taxable Amount</span>
+                <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>Subtotal</span>
                   <span>{selectedBill.total_amount.toFixed(2)}</span>
                 </div>
-                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-                  <span>{selectedBill.discount_amount.toFixed(2)}</span>
+                {selectedBill.discount_amount > 0 && (
+                <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>Discount</span>
+                  <span>-{selectedBill.discount_amount.toFixed(2)}</span>
                 </div>
-                <div className="totals-line items-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+                )}
+                <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
+                  <span>GST (0%)</span>
                   <span>0.00</span>
                 </div>
-                <div className="totals-line header-8cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
-                  <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-                  <span>0.00</span>
-                </div>
-                <div className="totals-line header-10cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', borderTop: '1px solid #000', paddingTop: '2px' }}>
+                <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', borderTop: '1px solid #000', padding: '4px 0 0 0' }}>
                   <span>Total Amount</span>
-                  <span>{selectedBill.total_amount.toFixed(2)}</span>
+                  <span>{(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</span>
                 </div>
               </div>
 
               {/* Footer Section */}
-              <div className="footer" style={{ marginTop: '20px', fontFamily: 'Times New Roman, Times, serif' }}>
-                <div className="totals-line footer-7cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7pt', fontFamily: 'Times New Roman, Times, serif' }}>
+              <div className="footer" style={{ marginTop: '20px', fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>
+                <div className="totals-line footer-7cm" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10pt', fontFamily: 'Times New Roman, Times, serif', fontWeight: 'bold' }}>
                   <span>Printed on {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-                  <span>Pharmacist Sign</span>
+                  <span>Authorized Sign</span>
                 </div>
               </div>
             </div>
@@ -1440,29 +1566,89 @@ function OutpatientPageContent() {
                     <head>
                       <title>Thermal Receipt - ${selectedBill.bill_id}</title>
                       <style>
-                        @page { margin: 5mm; size: 77mm 297mm; }
-                        body { 
-                          font-family: 'Times New Roman', Times, serif; 
-                          margin: 0; 
-                          padding: 10px;
-                          font-size: 12px;
-                          line-height: 1.2;
-                          width: 77mm;
-                        }
-                        .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
-                        .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-                        .footer-7cm { font-size: 7pt; font-family: 'Times New Roman', Times, serif; }
-                        .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
-                        .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
-                        .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
-                        .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
-                        .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
-                        .footer { margin-top: 20px; font-family: 'Times New Roman', Times, serif; }
+                      @page { 
+                        margin: 2mm; 
+                        size: 77mm 297mm; 
+                      }
+                      body { 
+                        font-family: 'Times New Roman', Times, serif; 
+                        margin: 0; 
+                        padding: 5px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        line-height: 1.2;
+                        width: 77mm;
+                      }
+                      .header-14cm { 
+                        font-size: 16pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .header-9cm { 
+                        font-size: 12pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .header-10cm { 
+                        font-size: 14pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .header-8cm { 
+                        font-size: 12pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .items-8cm { 
+                        font-size: 12pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .bill-info-10cm { 
+                        font-size: 12pt; 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .bill-info-bold { 
+                        font-weight: bold; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .footer-7cm { 
+                        font-size: 10pt; 
+                        font-weight: bold;
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .center { 
+                        text-align: center; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .right { 
+                        text-align: right; 
+                        font-family: 'Times New Roman', Times, serif; 
+                      }
+                      .table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        font-family: 'Times New Roman', Times, serif; 
+                        margin: 5px 0;
+                      }
+                      .table td { 
+                        padding: 3px 2px; 
+                        font-family: 'Times New Roman', Times, serif; 
+                        font-weight: bold;
+                      }
+                      .totals-line { 
+                        display: flex; 
+                        justify-content: space-between; 
+                        font-family: 'Times New Roman', Times, serif; 
+                        margin: 3px 0;
+                        font-weight: bold;
+                      }
+                      .footer { 
+                        margin-top: 10px; 
+                        font-family: 'Times New Roman', Times, serif; 
+                        font-weight: bold;
+                      }
                       </style>
                     </head>
                     <body>
@@ -1472,44 +1658,28 @@ function OutpatientPageContent() {
                         <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
                         <div class="header-9cm">Phone- 04639 252592</div>
                         <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
-                        <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+                        <div style="margin: 5px 0; font-weight: bold;">INVOICE</div>
                       </div>
-                      
+
                       <!-- Bill Information Section -->
-                      <div style="margin-top: 10px;">
-                        <table class="table">
-                          <tbody>
-                            <tr>
-                              <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_id}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient?.patient_id || 'N/A'}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${selectedBill.patient?.name || 'Unknown Patient'}</td>
-                            </tr>
-                            <tr>
-                              <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td>
-                            </tr>
-                            <tr>
-                              <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
-                              <td class="header-10cm bill-info-bold">${(selectedBill.payment_method || 'CASH').toUpperCase()}</td>
-                            </tr>
-                          </tbody>
-                        </table>
+                      <div style="margin: 5px 0; font-family: 'Times New Roman', Times, serif; font-weight: bold;">
+                        <div style="font-size: 12pt; white-space: pre;">Bill No  :   ${selectedBill.bill_id}</div>
+                        <div style="font-size: 12pt; white-space: pre;">UHID         :   ${selectedBill.patient?.patient_id || 'N/A'}</div>
+                        <div style="font-size: 12pt; white-space: pre;">Patient Name :   ${selectedBill.patient?.name || 'Unknown Patient'}</div>
+                        <div style="font-size: 12pt; white-space: pre;">Date           :   ${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                        <div style="font-size: 12pt; white-space: pre;">Sales Type :   ${(selectedBill.payment_method || 'CASH').toUpperCase()}</div>
                       </div>
 
                       <!-- Items Table Section -->
-                      <div style="margin-top: 10px;">
-                        <table class="table">
+                      </div>
+
+                      <!-- Items Table Section -->
+                      <div style="margin: 5px 0;">
+                        <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: none;">
                           <thead>
                             <tr style="border-bottom: 1px dashed #000;">
                               <td width="30%" class="items-8cm">S.No</td>
-                              <td width="40%" class="items-8cm">Drug Name</td>
+                              <td width="40%" class="items-8cm">Service</td>
                               <td width="15%" class="items-8cm text-center">Qty</td>
                               <td width="15%" class="items-8cm text-right">Amt</td>
                             </tr>
@@ -1517,7 +1687,7 @@ function OutpatientPageContent() {
                           <tbody>
                             <tr>
                               <td class="items-8cm">1.</td>
-                              <td class="items-8cm">Outpatient Consultation</td>
+                              <td class="items-8cm">Consultation Fee</td>
                               <td class="items-8cm text-center">1</td>
                               <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
                             </tr>
@@ -1526,7 +1696,7 @@ function OutpatientPageContent() {
                       </div>
 
                       <!-- Totals Section -->
-                      <div style="margin-top: 10px;">
+                      <div style="margin: 5px 0;">
                         <div class="totals-line items-8cm">
                           <span>Taxable Amount</span>
                           <span>${selectedBill.total_amount.toFixed(2)}</span>
@@ -1551,9 +1721,10 @@ function OutpatientPageContent() {
 
                       <!-- Footer Section -->
                       <div class="footer">
-                        <div class="totals-line footer-7cm">
-                          <span>Printed on ${printedDateTime}</span>
-                          <span>Pharmacist Sign</span>
+                        <div style="text-align: center; margin-top: 20px; font-size: 10pt;">
+                          <div style="border-top: 1px dashed #000; width: 60%; margin: 0 auto; padding-top: 5px;">
+                            Authorized Sign
+                          </div>
                         </div>
                       </div>
 
