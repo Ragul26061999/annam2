@@ -10,7 +10,7 @@
     "supabase:test": "node scripts/test-supabase-connection.js"
   },
   "dependencies": {
-    "@supabase/mcp-server-supabase": "^0.6.1",
+    "@supabase/mcp-server-supabase": "^0.5.10",
     "@supabase/supabase-js": "^2.50.5",
     "@types/qrcode.react": "^1.0.5",
     "date-fns": "^4.1.0",

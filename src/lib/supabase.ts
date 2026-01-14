@@ -1,7 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// Check if environment variables are set
+if (!supabaseUrl) {
+  console.error('Error: NEXT_PUBLIC_SUPABASE_URL is not set in environment variables');
+}
+
+if (!supabaseAnonKey) {
+  console.error('Error: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set in environment variables');
+}
+
+// Throw error if either environment variable is missing
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

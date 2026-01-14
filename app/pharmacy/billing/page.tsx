@@ -64,8 +64,10 @@ export default function PharmacyBillingPage() {
   // Advanced Filters
   const [attrFilterCategory, setAttrFilterCategory] = useState('') // 'name', 'combination', 'dosage_form', 'manufacturer'
   const [attrFilterValue, setAttrFilterValue] = useState('')
-  const [timeframe, setTimeframe] = useState('all') // 'all', 'daily', 'weekly', 'monthly', 'yearly'
+  const [timeframe, setTimeframe] = useState('all') // 'all', 'daily', 'weekly', 'monthly', 'yearly', 'date_range'
   const [timeframeValue, setTimeframeValue] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [medications, setMedications] = useState<any[]>([])
   const [matchedBillIds, setMatchedBillIds] = useState<string[] | null>(null)
   const [loadingFilters, setLoadingFilters] = useState(false)
@@ -644,23 +646,42 @@ export default function PharmacyBillingPage() {
 
     // Timeframe Filter
     let matchesTimeframe = true
-    if (timeframe !== 'all' && timeframeValue) {
+    if (timeframe !== 'all') {
       const billDate = new Date(bill.created_at)
-      const selectedDate = new Date(timeframeValue)
+      
+      if (timeframe === 'date_range') {
+        if (startDate && endDate) {
+          const start = new Date(startDate)
+          const end = new Date(endDate)
+          end.setHours(23, 59, 59, 999) // Include the entire end date
+          matchesTimeframe = billDate >= start && billDate <= end
+        } else if (startDate) {
+          const start = new Date(startDate)
+          matchesTimeframe = billDate >= start
+        } else if (endDate) {
+          const end = new Date(endDate)
+          end.setHours(23, 59, 59, 999)
+          matchesTimeframe = billDate <= end
+        } else {
+          matchesTimeframe = true // No date range selected
+        }
+      } else if (timeframeValue) {
+        const selectedDate = new Date(timeframeValue)
 
-      if (timeframe === 'daily') {
-        matchesTimeframe = billDate.toDateString() === selectedDate.toDateString()
-      } else if (timeframe === 'weekly') {
-        const start = new Date(selectedDate)
-        start.setDate(selectedDate.getDate() - selectedDate.getDay())
-        const end = new Date(start)
-        end.setDate(start.getDate() + 6)
-        matchesTimeframe = billDate >= start && billDate <= end
-      } else if (timeframe === 'monthly') {
-        matchesTimeframe = billDate.getMonth() === selectedDate.getMonth() &&
-          billDate.getFullYear() === selectedDate.getFullYear()
-      } else if (timeframe === 'yearly') {
-        matchesTimeframe = billDate.getFullYear() === selectedDate.getFullYear()
+        if (timeframe === 'daily') {
+          matchesTimeframe = billDate.toDateString() === selectedDate.toDateString()
+        } else if (timeframe === 'weekly') {
+          const start = new Date(selectedDate)
+          start.setDate(selectedDate.getDate() - selectedDate.getDay())
+          const end = new Date(start)
+          end.setDate(start.getDate() + 6)
+          matchesTimeframe = billDate >= start && billDate <= end
+        } else if (timeframe === 'monthly') {
+          matchesTimeframe = billDate.getMonth() === selectedDate.getMonth() &&
+            billDate.getFullYear() === selectedDate.getFullYear()
+        } else if (timeframe === 'yearly') {
+          matchesTimeframe = billDate.getFullYear() === selectedDate.getFullYear()
+        }
       }
     }
 
@@ -866,6 +887,8 @@ export default function PharmacyBillingPage() {
               onChange={(e) => {
                 setTimeframe(e.target.value)
                 setTimeframeValue('')
+                setStartDate('')
+                setEndDate('')
               }}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50/50 font-medium"
             >
@@ -874,20 +897,44 @@ export default function PharmacyBillingPage() {
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
               <option value="yearly">Yearly</option>
+              <option value="date_range">Date Range</option>
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500 uppercase">Select {timeframe === 'weekly' ? 'Week Star' : timeframe === 'all' ? 'Date' : timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</label>
-            <input
-              type={timeframe === 'monthly' ? 'month' : timeframe === 'yearly' ? 'number' : 'date'}
-              value={timeframeValue}
-              onChange={(e) => setTimeframeValue(e.target.value)}
-              disabled={timeframe === 'all'}
-              placeholder={timeframe === 'yearly' ? "e.g. 2026" : ""}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed font-medium"
-            />
-          </div>
+          {timeframe === 'date_range' ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase">Date Range</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  placeholder="Start Date"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  placeholder="End Date"
+                  min={startDate}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase">Select {timeframe === 'weekly' ? 'Week Star' : timeframe === 'all' ? 'Date' : timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}</label>
+              <input
+                type={timeframe === 'monthly' ? 'month' : timeframe === 'yearly' ? 'number' : 'date'}
+                value={timeframeValue}
+                onChange={(e) => setTimeframeValue(e.target.value)}
+                disabled={timeframe === 'all'}
+                placeholder={timeframe === 'yearly' ? "e.g. 2026" : ""}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed font-medium"
+              />
+            </div>
+          )}
         </div>
 
         {loadingFilters && (
