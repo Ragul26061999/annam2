@@ -19,7 +19,7 @@ export interface PaymentItem {
   quantity: number;
   unit_rate: number;
   total_amount: number;
-  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology' | 'scan';
+  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology';
   reference_id?: string; // Links to specific service (lab_order, radiology_order, etc.)
 }
 
@@ -35,7 +35,7 @@ export interface PaymentData {
   payment_method?: string; // Default for backward compatibility
   notes?: string;
   created_by?: string;
-  bill_type?: 'consultation' | 'lab' | 'radiology' | 'scan' | 'pharmacy' | 'ipd' | 'other';
+  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'other';
 }
 
 export interface PaymentSplit {
@@ -352,23 +352,23 @@ export async function createRadiologyBill(
   });
 }
 
-// Create bill specifically for scan/other services
+// Create bill specifically for scan tests
 export async function createScanBill(
   patientId: string,
   scanOrders: any[],
   staffId?: string
 ): Promise<PaymentRecord> {
   const items: PaymentItem[] = scanOrders.map(order => ({
-    service_name: order.scan_test_catalog?.scan_name || order.scan_name || 'Scan',
+    service_name: order.test_catalog?.test_name || 'Scan Test',
     quantity: 1,
-    unit_rate: Number(order.amount || order.scan_test_catalog?.test_cost || 0),
-    total_amount: Number(order.amount || order.scan_test_catalog?.test_cost || 0),
-    item_type: 'scan' as const,
+    unit_rate: order.test_catalog?.test_cost || 0,
+    total_amount: order.test_catalog?.test_cost || 0,
+    item_type: 'radiology' as const, // Using radiology type for scans
     reference_id: order.id,
   }));
 
   const subtotal = items.reduce((sum, item) => sum + item.total_amount, 0);
-  const taxAmount = subtotal * 0.05;
+  const taxAmount = subtotal * 0.05; // 5% tax
   const totalAmount = subtotal + taxAmount;
 
   return createUniversalBill({
@@ -380,7 +380,7 @@ export async function createScanBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
-    bill_type: 'scan',
+    bill_type: 'radiology', // Using radiology type for scans
   });
 }
 

@@ -723,7 +723,7 @@ function NewBillingPageInner() {
       {
         const base = {
           bill_number: billNumber, // Use our generated bill number
-          patient_id: customer.type === 'patient' ? customer.patient_id : 'c0c4724a-1e95-48fd-9db0-9e70eaa6a940', // Use existing patient ID for walk-ins
+          patient_id: customer.type === 'patient' ? customer.patient_id : null, // Set to null for walk-in customers
           currency: 'INR',
           subtotal: billTotals.subtotal,
           discount_type: billTotals.discountType,

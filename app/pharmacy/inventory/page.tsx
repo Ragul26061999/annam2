@@ -143,6 +143,13 @@ export default function InventoryPage() {
   const [batchStatsMap, setBatchStatsMap] = useState<Record<string, { remainingUnits: number; soldUnitsThisMonth: number; purchasedUnitsThisMonth: number }>>({})
   const embedded = false
 
+  // Advanced Filters
+  const [attrFilterCategory, setAttrFilterCategory] = useState('') // 'name', 'combination', 'unit', 'manufacturer'
+  const [attrFilterValue, setAttrFilterValue] = useState('')
+  const [timeframeType, setTimeframeType] = useState('all') // 'all', 'daily', 'weekly', 'monthly', 'yearly'
+  const [timeframeValue, setTimeframeValue] = useState('')
+  const [timeframeMode, setTimeframeMode] = useState<'expiry' | 'received'>('expiry')
+
   const dosageTypes = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 'Ointment', 'Powder', 'Drops']
   const units = ['tablets', 'capsules', 'ml', 'mg', 'bottles', 'tubes', 'sachets']
 
@@ -574,6 +581,13 @@ export default function InventoryPage() {
 
   // Removed overall stock summary fetch per request
 
+  const getUniqueAttrValues = (category: string) => {
+    if (!category) return []
+    const key = category === 'unit' ? 'unit' : category
+    const vals = medicines.map((m: any) => m[key]).filter(v => v !== null && v !== undefined && v !== '')
+    return Array.from(new Set(vals)).sort()
+  }
+
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = (medicine.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (medicine.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -581,15 +595,51 @@ export default function InventoryPage() {
       (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesDosage = !dosageFilter || medicine.unit === dosageFilter
-
     const matchesStatus = statusFilter === '' ||
       (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
       (statusFilter === 'expired' && medicine.batches.some(batch => new Date(batch.expiry_date) < new Date())) ||
       (statusFilter === 'active' && medicine.total_stock > medicine.min_stock_level) ||
       (statusFilter === 'out_of_stock' && medicine.total_stock <= 0)
 
-    return matchesSearch && matchesDosage && matchesStatus
+    // New Attribute Filter
+    const matchesAttr = !attrFilterCategory || !attrFilterValue || (
+      attrFilterCategory === 'name' ? medicine.name === attrFilterValue :
+        attrFilterCategory === 'combination' ? medicine.combination === attrFilterValue :
+          attrFilterCategory === 'unit' ? medicine.unit === attrFilterValue :
+            attrFilterCategory === 'manufacturer' ? medicine.manufacturer === attrFilterValue :
+              true
+    )
+
+    // Legacy Dosage Filter (keep for backward compatibility or remove if replaced)
+    const matchesDosage = !dosageFilter || medicine.unit === dosageFilter
+
+    // Timeframe Filter logic
+    let matchesTimeframe = true
+    if (timeframeType !== 'all' && timeframeValue) {
+      const selectedDate = new Date(timeframeValue)
+      const relevantBatches = medicine.batches.filter(batch => {
+        const batchDate = timeframeMode === 'expiry' ? new Date(batch.expiry_date) : new Date(batch.received_date)
+
+        if (timeframeType === 'daily') {
+          return batchDate.toDateString() === selectedDate.toDateString()
+        } else if (timeframeType === 'weekly') {
+          const start = new Date(selectedDate)
+          start.setDate(selectedDate.getDate() - selectedDate.getDay())
+          const end = new Date(start)
+          end.setDate(start.getDate() + 6)
+          return batchDate >= start && batchDate <= end
+        } else if (timeframeType === 'monthly') {
+          return batchDate.getMonth() === selectedDate.getMonth() &&
+            batchDate.getFullYear() === selectedDate.getFullYear()
+        } else if (timeframeType === 'yearly') {
+          return batchDate.getFullYear() === selectedDate.getFullYear()
+        }
+        return true
+      })
+      matchesTimeframe = relevantBatches.length > 0
+    }
+
+    return matchesSearch && matchesStatus && matchesAttr && matchesDosage && matchesTimeframe
   })
 
   const getStockStatus = (medicine: Medicine) => {
@@ -1806,10 +1856,10 @@ export default function InventoryPage() {
             <div
               role="dialog"
               aria-modal="true"
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200"
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
             >
               {/* Header with gradient */}
-              <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6">
+              <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-bold tracking-tight">Edit Medicine</h2>
@@ -1827,7 +1877,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Form Content */}
-              <div className="p-8 space-y-6">
+              <div className="p-8 space-y-6 overflow-y-auto flex-1">
                 {/* Medicine Icon and Name */}
                 <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -2049,7 +2099,7 @@ export default function InventoryPage() {
         )}
 
         {/* Enhanced Search and Filter Section */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-6 space-y-4">
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search Bar */}
             <div className="flex-1 relative">
@@ -2063,22 +2113,8 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* Filter Dropdowns */}
+            {/* Filter Dropdowns - Row 1 */}
             <div className="flex gap-3">
-              <div className="relative">
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <select
-                  value={dosageFilter}
-                  onChange={(e) => setDosageFilter(e.target.value)}
-                  className="pl-10 pr-8 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm appearance-none cursor-pointer transition-all duration-200"
-                >
-                  <option value="">All Dosage Types</option>
-                  {dosageTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="relative">
                 <AlertTriangle className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <select
@@ -2093,16 +2129,99 @@ export default function InventoryPage() {
                   <option value="expired">Expired</option>
                 </select>
               </div>
+
+              {/* Results Counter */}
+              <div className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 min-w-[140px] justify-center">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">
+                    {filteredMedicines.length} medicines
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Advanced Dynamic Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-100">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Attribute Type</label>
+              <select
+                value={attrFilterCategory}
+                onChange={(e) => {
+                  setAttrFilterCategory(e.target.value)
+                  setAttrFilterValue('')
+                }}
+                className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-sm"
+              >
+                <option value="">-- Select --</option>
+                <option value="name">Medicine Name</option>
+                <option value="combination">Combination</option>
+                <option value="unit">Dosage Type</option>
+                <option value="manufacturer">Manufacturer</option>
+              </select>
             </div>
 
-            {/* Results Counter */}
-            <div className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">
-                  {filteredMedicines.length} medicines
-                </span>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Value</label>
+              <select
+                value={attrFilterValue}
+                onChange={(e) => setAttrFilterValue(e.target.value)}
+                disabled={!attrFilterCategory}
+                className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-sm disabled:bg-gray-50"
+              >
+                <option value="">All {attrFilterCategory ? (attrFilterCategory === 'unit' ? 'Dosages' : attrFilterCategory.charAt(0).toUpperCase() + attrFilterCategory.slice(1) + 's') : 'Values'}</option>
+                {getUniqueAttrValues(attrFilterCategory).map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Date Filter For</label>
+              <div className="flex bg-gray-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => setTimeframeMode('expiry')}
+                  className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${timeframeMode === 'expiry' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  EXPIRY
+                </button>
+                <button
+                  onClick={() => setTimeframeMode('received')}
+                  className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${timeframeMode === 'received' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  RECEIVED
+                </button>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Timeframe Range</label>
+              <select
+                value={timeframeType}
+                onChange={(e) => {
+                  setTimeframeType(e.target.value)
+                  setTimeframeValue('')
+                }}
+                className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-sm"
+              >
+                <option value="all">Any Date</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Select {timeframeType === 'weekly' ? 'Week' : timeframeType === 'all' ? 'Date' : timeframeType.charAt(0).toUpperCase() + timeframeType.slice(1)}</label>
+              <input
+                type={timeframeType === 'monthly' ? 'month' : timeframeType === 'yearly' ? 'number' : 'date'}
+                value={timeframeValue}
+                onChange={(e) => setTimeframeValue(e.target.value)}
+                disabled={timeframeType === 'all'}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-sm disabled:bg-gray-50"
+              />
             </div>
           </div>
         </div>

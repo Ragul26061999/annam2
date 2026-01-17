@@ -1,11 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
-const supabaseUrl = 'https://zusheijhebsmjiyyeiqq.supabase.co';
-const supabaseServiceKey = 'SUPABASE_SERVICE_KEY_HERE'; // TODO: Replace with actual service key
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Service role key for admin functions
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing required environment variables. Make sure to set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY');
+if (!supabaseUrl) {
+  console.error('Error: NEXT_PUBLIC_SUPABASE_URL is not set in environment variables');
+  process.exit(1);
+}
+
+if (!supabaseServiceKey) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY is not set in environment variables');
+  console.error('Please add SUPABASE_SERVICE_ROLE_KEY to your .env.local file');
   process.exit(1);
 }
 

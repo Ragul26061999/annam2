@@ -29,16 +29,20 @@ import {
   ChevronRight,
   ArrowRight,
   Trash2,
-  CreditCard
+  CreditCard,
+  Scissors
 } from 'lucide-react';
 import {
   getLabOrders,
   getRadiologyOrders,
+  getScanOrders,
   getDiagnosticStats,
   updateLabOrderStatus,
   updateRadiologyOrder,
+  updateScanOrder,
   deleteLabOrder,
   deleteRadiologyOrder,
+  deleteScanOrder,
   getDiagnosticBillingItems
 } from '../../src/lib/labXrayService';
 import { supabase } from '../../src/lib/supabase';
@@ -65,8 +69,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface DiagnosticStats {
   totalLabOrders: number;
   totalRadiologyOrders: number;
+  totalScanOrders: number;
   pendingLabOrders: number;
   pendingRadiologyOrders: number;
+  pendingScanOrders: number;
   completedToday: number;
 }
 
@@ -74,15 +80,18 @@ const COLORS = ['#14b8a6', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444'];
 
 export default function LabXRayPage() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'management'>('management');
-  const [activeSubTab, setActiveSubTab] = useState<'lab' | 'radiology' | 'billing'>('lab');
+  const [activeSubTab, setActiveSubTab] = useState<'lab' | 'radiology' | 'scan' | 'billing'>('lab');
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
+  const [scanOrders, setScanOrders] = useState<any[]>([]);
   const [billingItems, setBillingItems] = useState<any[]>([]);
   const [stats, setStats] = useState<DiagnosticStats>({
     totalLabOrders: 0,
     totalRadiologyOrders: 0,
+    totalScanOrders: 0,
     pendingLabOrders: 0,
     pendingRadiologyOrders: 0,
+    pendingScanOrders: 0,
     completedToday: 0
   });
   const [loading, setLoading] = useState(true);
@@ -113,9 +122,10 @@ export default function LabXRayPage() {
       setStats(statsData);
 
       // Get orders and billing
-      const [lab, radiology, billing] = await Promise.all([
+      const [lab, radiology, scan, billing] = await Promise.all([
         getLabOrders(),
         getRadiologyOrders(),
+        getScanOrders(),
         getDiagnosticBillingItems()
       ]);
 
@@ -146,8 +156,11 @@ export default function LabXRayPage() {
 
       if (activeSubTab === 'lab') {
         await updateLabOrderStatus(order.id, 'cancelled', updatePayload);
-      } else {
+      } else if (activeSubTab === 'radiology') {
         await updateRadiologyOrder(order.id, updatePayload);
+      } else {
+        // For scan orders, use updateScanOrder function
+        await updateScanOrder(order.id, updatePayload);
       }
 
       await loadData();
@@ -168,8 +181,11 @@ export default function LabXRayPage() {
       
       if (activeSubTab === 'lab') {
         await deleteLabOrder(order.id);
-      } else {
+      } else if (activeSubTab === 'radiology') {
         await deleteRadiologyOrder(order.id);
+      } else {
+        // For scan orders, use deleteScanOrder function
+        await deleteScanOrder(order.id);
       }
 
       await loadData();
@@ -209,7 +225,16 @@ export default function LabXRayPage() {
   };
 
   const filteredOrders = useMemo(() => {
-    const orders = activeSubTab === 'lab' ? labOrders : radiologyOrders;
+    let orders: any[] = [];
+    if (activeSubTab === 'lab') {
+      orders = labOrders;
+    } else if (activeSubTab === 'radiology') {
+      orders = radiologyOrders;
+    } else if (activeSubTab === 'scan') {
+      orders = scanOrders;
+    } else {
+      orders = [];
+    }
     return orders.filter(order => {
       // Apply status and urgency filters
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
@@ -224,18 +249,19 @@ export default function LabXRayPage() {
         orderNumber.includes(searchTerm.toLowerCase()) ||
         testName.includes(searchTerm.toLowerCase());
     });
-  }, [activeSubTab, labOrders, radiologyOrders, searchTerm, statusFilter, urgencyFilter]);
+  }, [activeSubTab, labOrders, radiologyOrders, scanOrders, searchTerm, statusFilter, urgencyFilter]);
 
   // Analytics Calculations
   const analyticsData = useMemo(() => {
     // Volume by Type
     const volumeData = [
       { name: 'Laboratory', count: stats.totalLabOrders, color: '#14b8a6' },
-      { name: 'Radiology', count: stats.totalRadiologyOrders, color: '#06b6d4' }
+      { name: 'Radiology', count: stats.totalRadiologyOrders, color: '#06b6d4' },
+      { name: 'Scan', count: stats.totalScanOrders, color: '#8b5cf6' }
     ];
 
     // Status Distribution
-    const allOrders = [...labOrders, ...radiologyOrders];
+    const allOrders = [...labOrders, ...radiologyOrders, ...scanOrders];
     const statusCounts: Record<string, number> = {};
     allOrders.forEach(o => {
       const status = o.status || 'unknown';
@@ -257,22 +283,25 @@ export default function LabXRayPage() {
 
       const dayLabs = labOrders.filter(o => o.created_at?.startsWith(dateStr)).length;
       const dayRads = radiologyOrders.filter(o => o.created_at?.startsWith(dateStr)).length;
+      const dayScans = scanOrders.filter(o => o.created_at?.startsWith(dateStr)).length;
 
       dailyData.push({
         date: date.toLocaleDateString('en-US', { weekday: 'short' }),
         lab: dayLabs,
         radiology: dayRads,
-        total: dayLabs + dayRads
+        scan: dayScans,
+        total: dayLabs + dayRads + dayScans
       });
     }
 
     return { volumeData, distributionData, dailyData };
-  }, [labOrders, radiologyOrders, stats]);
+  }, [labOrders, radiologyOrders, scanOrders, stats]);
 
-  const WorkflowVisualizer = ({ status, type }: { status: string, type: 'lab' | 'radiology' }) => {
+  const WorkflowVisualizer = ({ status, type }: { status: string, type: 'lab' | 'radiology' | 'scan' }) => {
     const labSteps = ['ordered', 'sample_pending', 'sample_collected', 'in_progress', 'completed'];
     const radSteps = ['ordered', 'scheduled', 'patient_arrived', 'scan_completed', 'report_pending', 'completed'];
-    const steps = type === 'lab' ? labSteps : radSteps;
+    const scanSteps = ['ordered', 'scheduled', 'patient_arrived', 'scan_completed', 'report_pending', 'completed'];
+    const steps = type === 'lab' ? labSteps : (type === 'scan' ? scanSteps : radSteps);
     const currentIndex = steps.indexOf(status);
 
     return (
@@ -281,13 +310,13 @@ export default function LabXRayPage() {
           <React.Fragment key={step}>
             <div
               className={`h-2 rounded-full flex-1 transition-all duration-500 ${idx <= currentIndex
-                ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]')
+                ? (type === 'lab' ? 'bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.5)]' : (type === 'scan' ? 'bg-purple-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]'))
                 : 'bg-gray-200'
                 }`}
               title={step.replace(/_/g, ' ')}
             />
             {idx < steps.length - 1 && (
-              <div className={`h-[1px] w-2 ${idx < currentIndex ? (type === 'lab' ? 'bg-teal-300' : 'bg-cyan-300') : 'bg-gray-200'}`} />
+              <div className={`h-[1px] w-2 ${idx < currentIndex ? (type === 'lab' ? 'bg-teal-300' : (type === 'scan' ? 'bg-purple-300' : 'bg-cyan-300')) : 'bg-gray-200'}`} />
             )}
           </React.Fragment>
         ))}
@@ -370,16 +399,10 @@ export default function LabXRayPage() {
                 <span className="font-semibold">X-ray</span>
               </button>
             </Link>
-            <Link href="/lab-xray/scans">
-              <button className="flex items-center gap-2 px-6 py-2.5 bg-orange-600 text-white rounded-xl shadow-lg hover:bg-orange-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
-                <Activity size={18} />
-                <span className="font-semibold">Scans</span>
-              </button>
-            </Link>
-            <Link href="/lab-xray/other">
+            <Link href="/lab-xray/scan">
               <button className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl shadow-lg hover:bg-purple-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
-                <FileText size={18} />
-                <span className="font-semibold">Other</span>
+                <Scissors size={18} />
+                <span className="font-semibold">Scan</span>
               </button>
             </Link>
           </div>
@@ -391,8 +414,10 @@ export default function LabXRayPage() {
         {[
           { label: 'Total Lab', value: stats.totalLabOrders, icon: Beaker, color: 'teal', trend: 'Orders' },
           { label: 'Total Radiology', value: stats.totalRadiologyOrders, icon: Radiation, color: 'cyan', trend: 'Scans' },
+          { label: 'Total Scan', value: stats.totalScanOrders, icon: Scissors, color: 'purple', trend: 'Scans' },
           { label: 'Active Lab', value: stats.pendingLabOrders, icon: Clock, color: 'orange', trend: 'In Queue' },
           { label: 'Active Radiology', value: stats.pendingRadiologyOrders, icon: Zap, color: 'purple', trend: 'In Queue' },
+          { label: 'Active Scan', value: stats.pendingScanOrders, icon: Activity, color: 'indigo', trend: 'In Queue' },
           { label: 'Release Today', value: stats.completedToday, icon: FileCheck, color: 'emerald', trend: 'Reports' },
         ].map((item, i) => (
           <motion.div
@@ -437,6 +462,7 @@ export default function LabXRayPage() {
                   <div className="flex gap-2">
                     <span className="flex items-center gap-1 text-xs text-gray-500"><div className="w-2 h-2 rounded-full bg-teal-500" /> Lab</span>
                     <span className="flex items-center gap-1 text-xs text-gray-500"><div className="w-2 h-2 rounded-full bg-cyan-500" /> Rad</span>
+                    <span className="flex items-center gap-1 text-xs text-gray-500"><div className="w-2 h-2 rounded-full bg-purple-500" /> Scan</span>
                   </div>
                 </div>
                 <div className="h-[300px] w-full">
@@ -451,6 +477,10 @@ export default function LabXRayPage() {
                           <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.1} />
                           <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                         </linearGradient>
+                        <linearGradient id="colorScan" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
@@ -460,6 +490,7 @@ export default function LabXRayPage() {
                       />
                       <Area type="monotone" dataKey="lab" stroke="#14b8a6" fillOpacity={1} fill="url(#colorLab)" strokeWidth={3} />
                       <Area type="monotone" dataKey="radiology" stroke="#06b6d4" fillOpacity={1} fill="url(#colorRad)" strokeWidth={3} />
+                      <Area type="monotone" dataKey="scan" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorScan)" strokeWidth={3} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -569,6 +600,22 @@ export default function LabXRayPage() {
                 {activeSubTab === 'radiology' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-cyan-600" />}
               </button>
               <button
+                onClick={() => setActiveSubTab('scan')}
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'scan'
+                  ? 'border-purple-600 text-purple-600 bg-purple-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Scissors size={18} />
+                  SCAN
+                  <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-100 text-purple-700">
+                    {stats.pendingScanOrders} NEW
+                  </span>
+                </div>
+                {activeSubTab === 'scan' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-purple-600" />}
+              </button>
+              <button
                 onClick={() => setActiveSubTab('billing')}
                 className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'billing'
                   ? 'border-green-600 text-green-600 bg-green-50/50'
@@ -645,7 +692,7 @@ export default function LabXRayPage() {
                     key={order.id}
                     className="group bg-white rounded-2xl border border-gray-200 p-5 hover:border-teal-500/50 hover:shadow-lg transition-all duration-300 relative overflow-hidden"
                   >
-                    <div className="absolute top-0 left-0 w-1.5 h-full transition-colors group-hover:scale-y-110" style={{ backgroundColor: order.urgency === 'stat' ? '#ef4444' : (activeSubTab === 'lab' ? '#14b8a6' : '#06b6d4') }} />
+                    <div className="absolute top-0 left-0 w-1.5 h-full transition-colors group-hover:scale-y-110" style={{ backgroundColor: order.urgency === 'stat' ? '#ef4444' : (activeSubTab === 'lab' ? '#14b8a6' : (activeSubTab === 'scan' ? '#8b5cf6' : '#06b6d4')) }} />
 
                     <div className="flex flex-col lg:flex-row gap-6">
                       <div className="flex-1">
@@ -691,7 +738,7 @@ export default function LabXRayPage() {
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Process Flow</p>
                             <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">Step: {order.status?.replace(/_/g, ' ').toUpperCase()}</p>
                           </div>
-                          <WorkflowVisualizer status={order.status} type={activeSubTab as 'lab' | 'radiology'} />
+                          <WorkflowVisualizer status={order.status} type={activeSubTab as 'lab' | 'radiology' | 'scan'} />
                         </div>
                       </div>
 

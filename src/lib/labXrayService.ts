@@ -1299,17 +1299,20 @@ export async function updateDiagnosticBillingStatus(
 export async function getDiagnosticStats(): Promise<{
   totalLabOrders: number;
   totalRadiologyOrders: number;
+  totalScanOrders: number;
   pendingLabOrders: number;
   pendingRadiologyOrders: number;
+  pendingScanOrders: number;
   completedToday: number;
 }> {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Query lab and radiology orders with error handling for missing tables
-    const [labOrdersResult, radiologyOrdersResult] = await Promise.allSettled([
+    // Query lab, radiology, and scan orders with error handling for missing tables
+    const [labOrdersResult, radiologyOrdersResult, scanOrdersResult] = await Promise.allSettled([
       supabase.from('lab_test_orders').select('id, status, created_at'),
-      supabase.from('radiology_test_orders').select('id, status, created_at')
+      supabase.from('radiology_test_orders').select('id, status, created_at'),
+      supabase.from('scan_test_orders').select('id, status, created_at')
     ]);
 
     // Handle lab orders result
@@ -1330,14 +1333,26 @@ export async function getDiagnosticStats(): Promise<{
       console.warn('Radiology orders table not available:', radiologyOrdersResult.status === 'rejected' ? radiologyOrdersResult.reason : radiologyOrdersResult.value.error?.message);
     }
 
+    // Handle scan orders result
+    let scanOrdersData: any[] = [];
+    if (scanOrdersResult.status === 'fulfilled' && !scanOrdersResult.value.error) {
+      scanOrdersData = scanOrdersResult.value.data || [];
+    } else {
+      // If table doesn't exist, log and continue with empty data
+      console.warn('Scan orders table not available:', scanOrdersResult.status === 'rejected' ? scanOrdersResult.reason : scanOrdersResult.value.error?.message);
+    }
+
     const stats = {
       totalLabOrders: labOrdersData.length,
       totalRadiologyOrders: radiologyOrdersData.length,
+      totalScanOrders: scanOrdersData.length,
       pendingLabOrders: labOrdersData.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length,
       pendingRadiologyOrders: radiologyOrdersData.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length,
+      pendingScanOrders: scanOrdersData.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length,
       completedToday: [
         ...labOrdersData,
-        ...radiologyOrdersData
+        ...radiologyOrdersData,
+        ...scanOrdersData
       ].filter(o => o.status === 'completed' && o.created_at?.startsWith(today)).length
     };
 
@@ -1348,9 +1363,452 @@ export async function getDiagnosticStats(): Promise<{
     return {
       totalLabOrders: 0,
       totalRadiologyOrders: 0,
+      totalScanOrders: 0,
       pendingLabOrders: 0,
       pendingRadiologyOrders: 0,
+      pendingScanOrders: 0,
       completedToday: 0
     };
+  }
+}
+
+// ============================================
+// SCAN TEST CATALOG FUNCTIONS
+// ============================================
+
+export interface ScanTestCatalog {
+  id: string;
+  test_code: string;
+  test_name: string;
+  modality: string; // CT, MRI, Ultrasound, etc.
+  body_part?: string;
+  contrast_required: boolean;
+  radiation_exposure?: string; // Low, Medium, High (NULL for non-radiation scans like MRI/USG)
+  requires_sedation: boolean;
+  requires_prep: boolean;
+  prep_instructions?: string;
+  average_duration?: number; // in minutes
+  normal_turnaround_time?: number; // in hours
+  urgent_turnaround_time?: number; // in hours
+  test_cost: number;
+  is_active: boolean;
+  requires_radiologist: boolean;
+}
+
+/**
+ * Get all active scan tests from catalog
+ */
+export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
+  try {
+    const { data, error } = await supabase
+      .from('scan_test_catalog')
+      .select('*')
+      .eq('is_active', true)
+      .order('modality', { ascending: true })
+      .order('test_name', { ascending: true });
+
+    if (error) {
+      console.warn('Scan test catalog not available:', error.message);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getScanTestCatalog:', error);
+    return [];
+  }
+}
+
+/**
+ * Create a new scan test in the catalog
+ */
+export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatalog>): Promise<ScanTestCatalog> {
+  const { data, error } = await supabase
+    .from('scan_test_catalog')
+    .insert([{      
+      contrast_required: false, // Default
+      requires_sedation: false, // Default
+      requires_prep: false, // Default
+      requires_radiologist: true, // Default
+      ...testData,
+      test_code: testData.test_code || `SCN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      is_active: true
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating scan test:', JSON.stringify(error, null, 2));
+    throw new Error(`Failed to create scan test: ${error.message || error.code || 'Unknown error'}`);
+  }
+  return data;
+}
+
+// ============================================
+// SCAN ORDER FUNCTIONS
+// ============================================
+
+/**
+ * Generate unique scan order number
+ */
+function generateScanOrderNumber(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `SCN-${year}${month}${day}-${random}`;
+}
+
+export interface ScanTestOrder {
+  id?: string;
+  order_number?: string;
+  patient_id: string;
+  encounter_id?: string;
+  appointment_id?: string;
+  ordering_doctor_id: string;
+  test_catalog_id: string;
+  clinical_indication: string;
+  provisional_diagnosis?: string;
+  special_instructions?: string;
+  body_part?: string;
+  laterality?: string;
+  contrast_required?: boolean;
+  contrast_type?: string;
+  patient_preparation_notes?: string;
+  allergies_checked?: boolean;
+  prep_completed?: boolean;
+  urgency?: 'routine' | 'urgent' | 'stat' | 'emergency';
+  preferred_scan_date?: string;
+  preferred_scan_time?: string;
+  status?: string;
+  staff_id?: string;
+}
+
+/**
+ * Create a new scan test order
+ */
+export async function createScanTestOrder(orderData: ScanTestOrder): Promise<any> {
+  try {
+    const orderNumber = generateScanOrderNumber();
+
+    const { data: order, error } = await supabase
+      .from('scan_test_orders')
+      .insert([{
+        ...orderData,
+        order_number: orderNumber,
+        status: 'ordered',
+        staff_id: orderData.staff_id
+      }])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Failed to create scan test order:', error);
+      throw new Error(`Failed to create scan test order: ${error.message}`);
+    }
+
+    // Create billing item
+    if (order) {
+      // Fetch catalog data separately
+      const { data: catalog, error: catalogError } = await supabase
+        .from('scan_test_catalog')
+        .select('*')
+        .eq('id', order.test_catalog_id)
+        .single();
+
+      if (catalogError) {
+        console.error('Error fetching catalog for billing:', catalogError);
+      } else if (catalog) {
+        await createDiagnosticBilling('scan', order.id, orderData.patient_id, catalog.test_name, catalog.test_cost);
+      }
+    }
+
+    // Return the complete order with related data
+    if (order) {
+      const [patient, doctor, catalog] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('id, patient_id, name, phone, date_of_birth, gender')
+          .eq('id', order.patient_id)
+          .single(),
+        supabase
+          .from('doctors')
+          .select('id, name, specialization')
+          .eq('id', order.ordering_doctor_id)
+          .single(),
+        supabase
+          .from('scan_test_catalog')
+          .select('*')
+          .eq('id', order.test_catalog_id)
+          .single()
+      ]);
+
+      return {
+        ...order,
+        patient: patient.data,
+        ordering_doctor: doctor.data,
+        test_catalog: catalog.data
+      };
+    }
+
+    return order;
+  } catch (error) {
+    console.error('Error in createScanTestOrder:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get scan orders for a patient
+ */
+export async function getPatientScanOrders(patientId: string): Promise<any[]> {
+  try {
+    const { data: orders, error } = await supabase
+      .from('scan_test_orders')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Scan orders table not available:', error.message);
+      return [];
+    }
+
+    // Fetch related data separately
+    if (orders && orders.length > 0) {
+      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+      const orderIds = orders.map(order => order.id);
+
+      const [patient, doctors, catalog, results] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('id, patient_id, name')
+          .eq('id', patientId)
+          .single(),
+        supabase
+          .from('doctors')
+          .select('id, name, specialization')
+          .in('id', doctorIds),
+        supabase
+          .from('scan_test_catalog')
+          .select('*')
+          .in('id', catalogIds),
+        supabase
+          .from('scan_test_results') // Assuming scan test results table exists
+          .select('*')
+          .in('order_id', orderIds)
+      ]);
+
+      // Combine the data
+      return orders.map(order => ({
+        ...order,
+        patient: patient.data,
+        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id),
+        results: results.data?.filter(r => r.order_id === order.id) || []
+      }));
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Error in getPatientScanOrders:', error);
+    return [];
+  }
+}
+
+/**
+ * Get all scan orders with filters
+ */
+export async function getScanOrders(filters?: {
+  status?: string;
+  urgency?: string;
+  modality?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<any[]> {
+  try {
+    let query = supabase
+      .from('scan_test_orders')
+      .select('*');
+
+    if (filters?.status) {
+      query = query.eq('status', filters.status);
+    }
+
+    if (filters?.urgency) {
+      query = query.eq('urgency', filters.urgency);
+    }
+
+    if (filters?.dateFrom) {
+      query = query.gte('created_at', filters.dateFrom);
+    }
+
+    if (filters?.dateTo) {
+      query = query.lte('created_at', filters.dateTo);
+    }
+
+    if (filters?.modality) {
+      // Need to join with scan_test_catalog to filter by modality
+      const { data: catalogTests, error: catalogError } = await supabase
+        .from('scan_test_catalog')
+        .select('id')
+        .eq('modality', filters.modality);
+
+      if (catalogError) {
+        console.warn('Scan catalog not available for modality filter:', catalogError.message);
+      }
+
+      const catalogIds = catalogTests?.map(test => test.id) || [];
+      if (catalogIds.length > 0) {
+        query = query.in('test_catalog_id', catalogIds);
+      }
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data: orders, error } = await query;
+
+    if (error) {
+      console.warn('Scan orders table not available:', error.message);
+      return [];
+    }
+
+    // Fetch related data separately
+    if (orders && orders.length > 0) {
+      const patientIds = [...new Set(orders.map(order => order.patient_id))];
+      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+
+      const [patients, doctors, catalog] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('id, patient_id, name, phone, date_of_birth, gender')
+          .in('id', patientIds),
+        supabase
+          .from('doctors')
+          .select('id, name, specialization')
+          .in('id', doctorIds),
+        supabase
+          .from('scan_test_catalog')
+          .select('*')
+          .in('id', catalogIds)
+      ]);
+
+      // Combine the data
+      return orders.map(order => ({
+        ...order,
+        patient: patients.data?.find(p => p.id === order.patient_id),
+        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id)
+      }));
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Error in getScanOrders:', error);
+    return [];
+  }
+}
+
+/**
+ * Update scan order
+ */
+export async function updateScanOrder(
+  orderId: string,
+  updateData: any
+): Promise<any> {
+  try {
+    const { data: order, error } = await supabase
+      .from('scan_test_orders')
+      .update({
+        ...updateData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Failed to update scan order:', error);
+      throw new Error(`Failed to update scan order: ${error.message}`);
+    }
+
+    // Return the complete order with related data
+    if (order) {
+      const [patient, doctor, catalog] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('id, patient_id, name, phone, date_of_birth, gender')
+          .eq('id', order.patient_id)
+          .single(),
+        supabase
+          .from('doctors')
+          .select('id, name, specialization')
+          .eq('id', order.ordering_doctor_id)
+          .single(),
+        supabase
+          .from('scan_test_catalog')
+          .select('*')
+          .eq('id', order.test_catalog_id)
+          .single()
+      ]);
+
+      return {
+        ...order,
+        patient: patient.data,
+        ordering_doctor: doctor.data,
+        test_catalog: catalog.data
+      };
+    }
+
+    return order;
+  } catch (error) {
+    console.error('Error in updateScanOrder:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete scan order
+ */
+export async function deleteScanOrder(orderId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('scan_test_orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) {
+      console.error('Failed to delete scan order:', error);
+      throw new Error(`Failed to delete scan order: ${error.message}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteScanOrder:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get scan orders for dashboard analytics
+ */
+export async function getScanOrdersForAnalytics(): Promise<any[]> {
+  try {
+    const { data: orders, error } = await supabase
+      .from('scan_test_orders')
+      .select('id, status, created_at, urgency');
+
+    if (error) {
+      console.warn('Scan orders table not available:', error.message);
+      return [];
+    }
+
+    return orders || [];
+  } catch (error) {
+    console.error('Error in getScanOrdersForAnalytics:', error);
+    return [];
   }
 }
