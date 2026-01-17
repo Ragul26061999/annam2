@@ -50,6 +50,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 export default function StaffPage() {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>(staffDataCache || []);
   const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>(staffDataCache || []);
+  const [deletedStaff, setDeletedStaff] = useState<StaffMember[]>([]);
   const [stats, setStats] = useState<StaffStats>(() => {
     if (staffDataCache) {
       return {
@@ -71,6 +72,8 @@ export default function StaffPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -138,6 +141,18 @@ export default function StaffPage() {
     }
   }, [isInitialLoad]);
 
+  const fetchDeletedStaff = useCallback(async () => {
+    try {
+      const data = (await getStaffMembers({ include_deleted: true }))
+        .filter(s => s.role !== 'Doctor')
+        .filter(s => !!s.deleted_at);
+      setDeletedStaff(data);
+    } catch (err) {
+      console.error('Error fetching deleted staff:', err);
+      setDeletedStaff([]);
+    }
+  }, []);
+
   const filterStaff = useCallback(() => {
     let filtered = [...staffMembers];
 
@@ -163,6 +178,12 @@ export default function StaffPage() {
   }, [fetchStaffData]);
 
   useEffect(() => {
+    if (showDeleted) {
+      fetchDeletedStaff();
+    }
+  }, [showDeleted, fetchDeletedStaff]);
+
+  useEffect(() => {
     filterStaff();
   }, [filterStaff]);
 
@@ -182,6 +203,22 @@ export default function StaffPage() {
     } catch (error) {
       console.error('Error deactivating staff member:', error);
       alert('Failed to deactivate staff member. Please try again.');
+    }
+  };
+
+  const handleRestoreStaff = async (id: string, name: string) => {
+    if (!window.confirm(`Reactivate staff member "${name}"?`)) {
+      return;
+    }
+
+    try {
+      await restoreStaffMember(id);
+      await fetchDeletedStaff();
+      await fetchStaffData(true);
+      alert('Staff member reactivated successfully.');
+    } catch (error) {
+      console.error('Error restoring staff member:', error);
+      alert('Failed to reactivate staff member. Please try again.');
     }
   };
 
@@ -297,9 +334,29 @@ export default function StaffPage() {
             ))}
           </select>
         </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+            className="flex items-center px-4 py-3.5 bg-gray-50 rounded-2xl font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            {viewMode === 'list' ? 'Grid View' : 'List View'}
+          </button>
+          <button
+            onClick={() => setShowDeleted(!showDeleted)}
+            className={`flex items-center px-4 py-3.5 rounded-2xl font-medium transition-colors ${
+              showDeleted
+                ? 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            {showDeleted ? 'Show Active' : 'Show Deleted'}
+          </button>
+        </div>
       </div>
 
-      {/* Staff Table */}
+      {/* Staff */}
+      {!showDeleted && viewMode === 'list' ? (
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left">
@@ -415,6 +472,95 @@ export default function StaffPage() {
           </table>
         </div>
       </div>
+
+      ) : null}
+
+      {!showDeleted && viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredStaff.map((staff) => (
+            <div key={staff.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${staff.is_active ? 'from-orange-400 to-orange-600' : 'from-gray-300 to-gray-400'} flex items-center justify-center text-white font-black text-lg shadow-sm`}>
+                    {staff.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-base font-bold text-gray-900 leading-tight">{staff.name}</div>
+                    <div className="text-sm text-gray-500">{staff.role}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-1">{staff.employee_id || '---'}</div>
+                  </div>
+                </div>
+                <span className={`inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide capitalize ${staff.is_active
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-red-50 text-red-600'
+                }`}>
+                  {staff.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center gap-2 text-gray-700 text-sm">
+                  <Building size={16} className="text-gray-400" />
+                  {staff.department_name || 'Unassigned'}
+                </div>
+                <div className="flex items-center gap-2 text-gray-700 text-sm">
+                  <Mail size={16} className="text-gray-400" />
+                  {staff.email || 'No email'}
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  className="px-3 py-2 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium"
+                  onClick={() => handleViewStaff(staff)}
+                >
+                  View
+                </button>
+                <button
+                  className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-medium"
+                  onClick={() => handleEditStaff(staff)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="px-3 py-2 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 text-sm font-medium"
+                  onClick={() => handleDeleteStaff(staff.id, staff.name || 'Unknown')}
+                >
+                  Deactivate
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {showDeleted ? (
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-bold text-gray-900">Deleted Staff</h3>
+            <span className="text-sm text-gray-500">{deletedStaff.length} items</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {deletedStaff.map((staff) => (
+              <div key={staff.id} className="px-6 py-4 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-gray-900">{staff.name}</div>
+                  <div className="text-sm text-gray-500">{staff.role} • {staff.employee_id || '---'}</div>
+                </div>
+                <button
+                  className="px-4 py-2 rounded-2xl bg-green-50 text-green-700 hover:bg-green-100 font-bold text-sm"
+                  onClick={() => handleRestoreStaff(staff.id, staff.name || 'Unknown')}
+                >
+                  Reactivate
+                </button>
+              </div>
+            ))}
+            {deletedStaff.length === 0 && (
+              <div className="py-16 text-center text-gray-500">No deleted staff.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* Add Staff Modal */}
       <AddStaffModal

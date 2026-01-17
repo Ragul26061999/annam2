@@ -20,6 +20,16 @@ export interface LabTestCatalog {
   is_active: boolean;
 }
 
+export interface ScanTestCatalog {
+  id: string;
+  scan_code: string | null;
+  scan_name: string;
+  category: string;
+  body_part: string | null;
+  test_cost: number;
+  is_active: boolean;
+}
+
 export interface RadiologyTestCatalog {
   id: string;
   test_code: string;
@@ -55,6 +65,23 @@ export interface LabTestOrder {
   staff_id?: string;
 }
 
+export interface ScanOrder {
+  id?: string;
+  encounter_id: string;
+  appointment_id?: string;
+  patient_id: string;
+  doctor_id: string;
+  scan_type: string;
+  scan_name: string;
+  body_part?: string;
+  urgency?: 'routine' | 'urgent' | 'stat' | 'emergency';
+  clinical_indication: string;
+  special_instructions?: string;
+  status?: string;
+  scan_test_catalog_id?: string;
+  amount?: number;
+}
+
 export interface RadiologyTestOrder {
   id?: string;
   order_number?: string;
@@ -88,6 +115,158 @@ export interface LabTestResult {
   is_abnormal?: boolean;
   abnormal_flag?: string;
   technician_notes?: string;
+}
+
+export async function getPatientXrayOrders(patientId: string): Promise<any[]> {
+  try {
+    const { data: orders, error } = await supabase
+      .from('xray_orders')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Error fetching xray orders:', error.message);
+      return [];
+    }
+
+    return orders || [];
+  } catch (error) {
+    console.error('Error in getPatientXrayOrders:', error);
+    return [];
+  }
+}
+
+// ============================================
+// SCAN/OTHER CATALOG FUNCTIONS
+// ============================================
+
+export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
+  try {
+    const { data, error } = await supabase
+      .from('scan_test_catalog')
+      .select('*')
+      .eq('is_active', true)
+      .order('category', { ascending: true })
+      .order('scan_name', { ascending: true });
+
+    if (error) {
+      console.warn('Scan test catalog not available:', error.message);
+      return [];
+    }
+
+    return (data || []) as ScanTestCatalog[];
+  } catch (error) {
+    console.error('Error in getScanTestCatalog:', error);
+    return [];
+  }
+}
+
+export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatalog>): Promise<ScanTestCatalog> {
+  const { data, error } = await supabase
+    .from('scan_test_catalog')
+    .insert([
+      {
+        ...testData,
+        scan_code: testData.scan_code || `SCN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        scan_name: testData.scan_name,
+        category: testData.category || 'Scans/Other',
+        test_cost: Number(testData.test_cost || 0),
+        is_active: true,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating scan catalog entry:', error);
+    throw new Error(`Failed to create scan catalog entry: ${error.message || error.code || 'Unknown error'}`);
+  }
+
+  return data as ScanTestCatalog;
+}
+
+// ============================================
+// SCAN/OTHER ORDER FUNCTIONS
+// ============================================
+
+export async function createScanOrder(orderData: ScanOrder): Promise<any> {
+  try {
+    const payload: any = {
+      encounter_id: orderData.encounter_id,
+      appointment_id: orderData.appointment_id || null,
+      patient_id: orderData.patient_id,
+      doctor_id: orderData.doctor_id,
+      scan_type: orderData.scan_type,
+      scan_name: orderData.scan_name,
+      body_part: orderData.body_part || null,
+      urgency: orderData.urgency || 'routine',
+      clinical_indication: orderData.clinical_indication,
+      special_instructions: orderData.special_instructions || null,
+      status: orderData.status || 'ordered',
+      ordered_date: new Date().toISOString(),
+      scan_test_catalog_id: orderData.scan_test_catalog_id || null,
+      amount: orderData.amount ?? null,
+    };
+
+    const { data: order, error } = await supabase
+      .from('scan_orders')
+      .insert([payload])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Failed to create scan order:', error);
+      throw new Error(`Failed to create scan order: ${error.message}`);
+    }
+
+    // Create diagnostic billing item (optional table)
+    try {
+      const amount = Number(order.amount ?? orderData.amount ?? 0);
+      await createDiagnosticBilling('scan', order.id, orderData.patient_id, orderData.scan_name, amount);
+    } catch (e) {
+      console.warn('Failed to create scan diagnostic billing item:', e);
+    }
+
+    // Attach catalog + patient/doctor
+    const [catalog, patient, doctor] = await Promise.all([
+      order.scan_test_catalog_id
+        ? supabase.from('scan_test_catalog').select('*').eq('id', order.scan_test_catalog_id).maybeSingle()
+        : Promise.resolve({ data: null } as any),
+      supabase.from('patients').select('id, patient_id, name, phone, date_of_birth, gender').eq('id', order.patient_id).maybeSingle(),
+      supabase.from('doctors').select('id, name, specialization').eq('id', order.doctor_id).maybeSingle(),
+    ]);
+
+    return {
+      ...order,
+      scan_test_catalog: catalog.data || null,
+      patient: patient.data || null,
+      doctor: doctor.data || null,
+    };
+  } catch (error) {
+    console.error('Error in createScanOrder:', error);
+    throw error;
+  }
+}
+
+export async function getPatientScanOrders(patientId: string): Promise<any[]> {
+  try {
+    const { data: orders, error } = await supabase
+      .from('scan_orders')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Error fetching scan orders:', error.message);
+      return [];
+    }
+
+    return orders || [];
+  } catch (error) {
+    console.error('Error in getPatientScanOrders:', error);
+    return [];
+  }
 }
 
 // ============================================
@@ -979,7 +1158,7 @@ export async function deleteRadiologyOrder(orderId: string): Promise<boolean> {
  * Create diagnostic billing item
  */
 async function createDiagnosticBilling(
-  orderType: 'lab' | 'radiology',
+  orderType: 'lab' | 'radiology' | 'scan',
   orderId: string,
   patientId: string,
   testName: string,
@@ -996,8 +1175,10 @@ async function createDiagnosticBilling(
 
     if (orderType === 'lab') {
       billingData.lab_order_id = orderId;
-    } else {
+    } else if (orderType === 'radiology') {
       billingData.radiology_order_id = orderId;
+    } else {
+      billingData.scan_order_id = orderId;
     }
 
     const { error } = await supabase

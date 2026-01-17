@@ -57,6 +57,12 @@ export default function LabOrderPage() {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const ensureTrailingEmptyRow = useCallback((tests: TestSelection[]) => {
+        const hasEmpty = tests.some(t => !t.testId);
+        if (hasEmpty) return tests;
+        return [...tests, { testId: '', testName: '', groupName: '', amount: 0 }];
+    }, []);
+
     // Master Data
     const [labCatalog, setLabCatalog] = useState<LabTestCatalog[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
@@ -272,7 +278,7 @@ export default function LabOrderPage() {
                 } else {
                     newTests.push(selection);
                 }
-                return newTests;
+                return ensureTrailingEmptyRow(newTests);
             });
 
             // Success!
@@ -294,7 +300,7 @@ export default function LabOrderPage() {
         if (selectedTests.length === 1) return;
         const newTests = [...selectedTests];
         newTests.splice(index, 1);
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleTestChange = (index: number, testId: string) => {
@@ -308,13 +314,13 @@ export default function LabOrderPage() {
             groupName: test.category || 'N/A',
             amount: test.test_cost || 0
         };
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleManualAmountChange = (index: number, amount: number) => {
         const newTests = [...selectedTests];
         newTests[index].amount = amount;
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -331,8 +337,9 @@ export default function LabOrderPage() {
             setError('Please select the staff member processing this order.');
             return;
         }
-        if (selectedTests.some(t => !t.testId)) {
-            setError('Please select all tests or remove empty rows.');
+        const filledTests = selectedTests.filter(t => t.testId);
+        if (filledTests.length === 0) {
+            setError('Please add at least one test.');
             return;
         }
 
@@ -341,7 +348,7 @@ export default function LabOrderPage() {
 
         try {
             // Create lab test orders
-            const orderPromises = selectedTests.map(test =>
+            const orderPromises = filledTests.map(test =>
                 createLabTestOrder({
                     patient_id: patientDetails.id,
                     ordering_doctor_id: orderingDoctorId,
@@ -846,8 +853,32 @@ export default function LabOrderPage() {
                                                 placeholder="e.g., Blood Sugar"
                                             />
                                         </div>
+
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Group Name</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Category</label>
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewTestData({ ...newTestData, groupName: 'Biochemistry' })}
+                                                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors"
+                                                >
+                                                    Biochemistry
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewTestData({ ...newTestData, groupName: 'Hematology' })}
+                                                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors"
+                                                >
+                                                    Hematology
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewTestData({ ...newTestData, groupName: 'Scans/Other' })}
+                                                    className="px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-xs font-black hover:bg-teal-100 transition-colors border border-teal-100"
+                                                >
+                                                    Scans/Other (ECG/EEG)
+                                                </button>
+                                            </div>
                                             <input
                                                 type="text"
                                                 value={newTestData.groupName}
@@ -856,8 +887,9 @@ export default function LabOrderPage() {
                                                 placeholder="e.g., Biochemistry"
                                             />
                                         </div>
+
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Base Amount (₹)</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Amount (₹)</label>
                                             <input
                                                 type="number"
                                                 value={newTestData.amount}

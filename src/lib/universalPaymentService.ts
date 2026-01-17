@@ -19,7 +19,7 @@ export interface PaymentItem {
   quantity: number;
   unit_rate: number;
   total_amount: number;
-  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology';
+  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology' | 'scan';
   reference_id?: string; // Links to specific service (lab_order, radiology_order, etc.)
 }
 
@@ -35,7 +35,7 @@ export interface PaymentData {
   payment_method?: string; // Default for backward compatibility
   notes?: string;
   created_by?: string;
-  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'other';
+  bill_type?: 'consultation' | 'lab' | 'radiology' | 'scan' | 'pharmacy' | 'ipd' | 'other';
 }
 
 export interface PaymentSplit {
@@ -349,6 +349,38 @@ export async function createRadiologyBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
+  });
+}
+
+// Create bill specifically for scan/other services
+export async function createScanBill(
+  patientId: string,
+  scanOrders: any[],
+  staffId?: string
+): Promise<PaymentRecord> {
+  const items: PaymentItem[] = scanOrders.map(order => ({
+    service_name: order.scan_test_catalog?.scan_name || order.scan_name || 'Scan',
+    quantity: 1,
+    unit_rate: Number(order.amount || order.scan_test_catalog?.test_cost || 0),
+    total_amount: Number(order.amount || order.scan_test_catalog?.test_cost || 0),
+    item_type: 'scan' as const,
+    reference_id: order.id,
+  }));
+
+  const subtotal = items.reduce((sum, item) => sum + item.total_amount, 0);
+  const taxAmount = subtotal * 0.05;
+  const totalAmount = subtotal + taxAmount;
+
+  return createUniversalBill({
+    patient_id: patientId,
+    items,
+    subtotal,
+    tax_amount: taxAmount,
+    discount_amount: 0,
+    total_amount: totalAmount,
+    payment_method: 'cash',
+    created_by: staffId,
+    bill_type: 'scan',
   });
 }
 

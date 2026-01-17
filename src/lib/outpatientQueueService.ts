@@ -258,8 +258,13 @@ export async function getQueueStats(
 
     return { success: true, stats };
   } catch (error) {
-    console.error('Error fetching queue stats:', error);
-    return { success: false, error: (error as Error).message };
+    const e: any = error;
+    const message =
+      typeof e === 'string'
+        ? e
+        : e?.message || e?.error_description || e?.details || e?.hint || 'Failed to fetch queue stats';
+    console.error('Error fetching queue stats:', message);
+    return { success: false, error: message };
   }
 }
 

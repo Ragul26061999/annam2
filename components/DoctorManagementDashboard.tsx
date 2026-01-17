@@ -70,7 +70,6 @@ interface DoctorFormData {
   specialization: string;
   department: string;
   qualification: string;
-  experienceYears: number;
   consultationFee: number;
   workingHoursStart: string;
   workingHoursEnd: string;
@@ -109,7 +108,6 @@ const DoctorManagementDashboard: React.FC = () => {
     specialization: '',
     department: '',
     qualification: '',
-    experienceYears: 0,
     consultationFee: 0,
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
@@ -210,8 +208,10 @@ const DoctorManagementDashboard: React.FC = () => {
   const handleAddDoctor = async () => {
     try {
       const doctorData: DoctorRegistrationData = {
-        doctorId: '', // Will be generated
+        doctorId: '', // This will be generated automatically
         ...formData,
+        sessions: formData.sessions,
+        availableSessions: formData.availableSessions
       };
 
       await createDoctor(doctorData);
@@ -227,9 +227,11 @@ const DoctorManagementDashboard: React.FC = () => {
     if (!selectedDoctor) return;
 
     try {
-      await updateDoctor(selectedDoctor.id, formData);
-      await loadDoctors();
-      setShowEditModal(false);
+      console.log('Starting doctor update for ID:', selectedDoctor.id);
+      console.log('Form data being sent:', JSON.stringify(formData, null, 2));
+      
+      const updatedDoctor = await updateDoctor(selectedDoctor.id, formData);
+      console.log('Updated doctor returned:', JSON.stringify(updatedDoctor, null, 2));
       resetForm();
       setSelectedDoctor(null);
     } catch (error) {
@@ -270,7 +272,6 @@ const DoctorManagementDashboard: React.FC = () => {
       specialization: '',
       department: '',
       qualification: '',
-      experienceYears: 0,
       consultationFee: 0,
       workingHoursStart: '09:00',
       workingHoursEnd: '17:00',
@@ -298,7 +299,6 @@ const DoctorManagementDashboard: React.FC = () => {
       specialization: doctor.specialization || '',
       department: doctor.department || '',
       qualification: doctor.qualification || '',
-      experienceYears: doctor.experience_years || 0,
       consultationFee: doctor.consultation_fee || 0,
       workingHoursStart: doctor.working_hours_start || '09:00',
       workingHoursEnd: doctor.working_hours_end || '17:00',
@@ -817,15 +817,6 @@ const DoctorManagementDashboard: React.FC = () => {
                               type="text"
                               value={formData.qualification}
                               onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Experience (Years)</label>
-                            <input
-                              type="number"
-                              value={formData.experienceYears}
-                              onChange={(e) => setFormData({ ...formData, experienceYears: parseInt(e.target.value) || 0 })}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
                             />
                           </div>

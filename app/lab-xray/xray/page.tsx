@@ -56,6 +56,12 @@ export default function XrayOrderPage() {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const ensureTrailingEmptyRow = useCallback((tests: TestSelection[]) => {
+        const hasEmpty = tests.some(t => !t.testId);
+        if (hasEmpty) return tests;
+        return [...tests, { testId: '', testName: '', groupName: '', bodyPart: '', amount: 0 }];
+    }, []);
+
     // Master Data
     const [radCatalog, setRadCatalog] = useState<RadiologyTestCatalog[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
@@ -272,7 +278,7 @@ export default function XrayOrderPage() {
         if (selectedTests.length === 1) return;
         const newTests = [...selectedTests];
         newTests.splice(index, 1);
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleTestChange = (index: number, testId: string) => {
@@ -287,13 +293,13 @@ export default function XrayOrderPage() {
             bodyPart: test.body_part || '',
             amount: test.test_cost || 0
         };
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleManualAmountChange = (index: number, amount: number) => {
         const newTests = [...selectedTests];
         newTests[index].amount = amount;
-        setSelectedTests(newTests);
+        setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -310,8 +316,9 @@ export default function XrayOrderPage() {
             setError('Please select the staff member processing this order.');
             return;
         }
-        if (selectedTests.some(t => !t.testId)) {
-            setError('Please select all radiology scans or remove empty rows.');
+        const filledTests = selectedTests.filter(t => t.testId);
+        if (filledTests.length === 0) {
+            setError('Please add at least one radiology scan.');
             return;
         }
 
@@ -320,7 +327,7 @@ export default function XrayOrderPage() {
 
         try {
             // Create radiology test orders
-            const orderPromises = selectedTests.map(test =>
+            const orderPromises = filledTests.map(test =>
                 createRadiologyTestOrder({
                     patient_id: patientDetails.id,
                     ordering_doctor_id: orderingDoctorId,

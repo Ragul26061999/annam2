@@ -1143,13 +1143,17 @@ export async function getAllPatients(
       throw new Error(`Failed to fetch patients: ${error.message}`);
     }
 
-    // Get active bed allocations to determine admission status
-    // Note: 'active' status means the patient is currently admitted
-    const { data: activeBedAllocations } = await supabase
-      .from('bed_allocations')
-      .select('patient_id, bed_id')
-      .eq('status', 'active')
-      .is('discharge_date', null);
+    // Get active bed allocations only for the fetched patients to determine admission status.
+    // Note: 'active' status means the patient is currently admitted.
+    const fetchedPatientIds = (patients || []).map((p: any) => p.id).filter(Boolean);
+    const { data: activeBedAllocations } = fetchedPatientIds.length
+      ? await supabase
+          .from('bed_allocations')
+          .select('patient_id, bed_id')
+          .eq('status', 'active')
+          .is('discharge_date', null)
+          .in('patient_id', fetchedPatientIds)
+      : { data: [] as any[] };
 
     const admittedPatientMap = new Map((activeBedAllocations || []).map(a => [a.patient_id, a.bed_id]));
 

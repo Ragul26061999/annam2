@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Eye, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Eye, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, Award } from 'lucide-react';
 import { StaffMember } from '@/src/lib/staffService';
 
 interface ViewStaffModalProps {
@@ -135,6 +135,11 @@ export default function ViewStaffModal({ isOpen, onClose, staff }: ViewStaffModa
                                 icon={Building}
                                 label="Department"
                                 value={staff.department_name || 'Unassigned'}
+                            />
+                            <DetailRow
+                                icon={Award}
+                                label="Training Category"
+                                value={staff.training_category || 'Not specified'}
                             />
                             <DetailRow
                                 icon={Activity}

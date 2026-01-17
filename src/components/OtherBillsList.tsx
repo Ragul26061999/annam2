@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Eye, Trash2, CreditCard, FileText, Filter } from 'lucide-react';
 import { 
   type OtherBillWithPatient,
@@ -8,6 +8,7 @@ import {
   type PatientType,
   type PaymentStatus,
   CHARGE_CATEGORIES,
+  getOtherBillChargeCategories,
   cancelOtherBill
 } from '../lib/otherBillsService';
 import OtherBillsPaymentModal from './OtherBillsPaymentModal';
@@ -26,11 +27,43 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
   const [showFilters, setShowFilters] = useState(false);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<OtherBillWithPatient | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [chargeCategories, setChargeCategories] = useState(CHARGE_CATEGORIES);
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate, setFilterToDate] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cats = await getOtherBillChargeCategories();
+        if (!mounted) return;
+        setChargeCategories(cats);
+      } catch (err) {
+        console.warn('Failed to load other bill charge categories:', err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filteredBills = bills.filter((bill) => {
     if (filterPatientType !== 'all' && bill.patient_type !== filterPatientType) return false;
     if (filterPaymentStatus !== 'all' && bill.payment_status !== filterPaymentStatus) return false;
     if (filterCategory !== 'all' && bill.charge_category !== filterCategory) return false;
+
+    if (filterFromDate) {
+      const from = new Date(`${filterFromDate}T00:00:00`).getTime();
+      const billTime = new Date(bill.bill_date).getTime();
+      if (Number.isFinite(from) && billTime < from) return false;
+    }
+
+    if (filterToDate) {
+      const to = new Date(`${filterToDate}T23:59:59`).getTime();
+      const billTime = new Date(bill.bill_date).getTime();
+      if (Number.isFinite(to) && billTime > to) return false;
+    }
     
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -78,7 +111,7 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
   };
 
   const getCategoryLabel = (category: ChargeCategory) => {
-    const cat = CHARGE_CATEGORIES.find(c => c.value === category);
+    const cat = chargeCategories.find(c => c.value === category);
     return cat?.label || category;
   };
 
@@ -152,12 +185,36 @@ export default function OtherBillsList({ bills, onBillClick, onRefresh }: OtherB
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Categories</option>
-              {CHARGE_CATEGORIES.map((cat) => (
+              {chargeCategories.map((cat) => (
                 <option key={cat.value} value={cat.value}>
                   {cat.label}
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+      )}
+
+      {showFilters && (
+        <div className="bg-gray-50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+            <input
+              type="date"
+              value={filterFromDate}
+              onChange={(e) => setFilterFromDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+            <input
+              type="date"
+              value={filterToDate}
+              onChange={(e) => setFilterToDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
           </div>
         </div>
       )}

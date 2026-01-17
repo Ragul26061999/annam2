@@ -6,13 +6,214 @@ export interface SessionTiming {
   endTime: string;
 }
 
+export async function getDeletedDoctorsSimple(): Promise<Doctor[]> {
+  try {
+    const { data: doctors, error } = await supabase
+      .from('doctors')
+      .select(
+        `
+        *,
+        user:users(
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `
+      )
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching deleted doctors:', error);
+      throw new Error(`Failed to fetch deleted doctors: ${error.message}`);
+    }
+
+    return (doctors || []).map((doctor: any) => ({
+      ...doctor,
+      doctor_id: doctor.license_number,
+      department: doctor.department || getSpecializationDepartment(doctor.specialization),
+      availability_status: doctor.availability_type === 'on_call' ? 'on_call' : 'available'
+    } as Doctor));
+  } catch (error) {
+    console.error('Error fetching deleted doctors:', error);
+    throw error;
+  }
+}
+
+export async function reorderDoctorSortOrder(doctorId: string, newSortOrder: number): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('reorder_doctor_sort_order', {
+      p_doctor_id: doctorId,
+      p_new_sort_order: newSortOrder
+    });
+
+    if (error) {
+      console.error('Error reordering doctor sort order:', error);
+      throw new Error(`Failed to reorder sort order: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('Error reordering doctor sort order:', error);
+    throw error;
+  }
+}
+
+export async function restoreDoctor(doctorId: string): Promise<void> {
+  try {
+    const { data: doctor, error: fetchError } = await supabase
+      .from('doctors')
+      .select('user_id')
+      .eq('id', doctorId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching doctor:', fetchError);
+      throw new Error(`Failed to fetch doctor: ${fetchError.message}`);
+    }
+
+    const { error: doctorError } = await supabase
+      .from('doctors')
+      .update({ deleted_at: null, status: 'active' })
+      .eq('id', doctorId);
+
+    if (doctorError) {
+      console.error('Error restoring doctor:', doctorError);
+      throw new Error(`Failed to restore doctor: ${doctorError.message}`);
+    }
+
+    if (doctor?.user_id) {
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ status: 'active' })
+        .eq('id', doctor.user_id);
+
+      if (userError) {
+        console.error('Error restoring associated user:', userError);
+      }
+    }
+  } catch (error) {
+    console.error('Error restoring doctor:', error);
+    throw error;
+  }
+}
+
+export async function updateDoctorSortOrder(doctorId: string, sortOrder: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('doctors')
+      .update({ sort_order: sortOrder })
+      .eq('id', doctorId);
+
+    if (error) {
+      console.error('Error updating doctor sort order:', error);
+      throw new Error(`Failed to update sort order: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('Error updating doctor sort order:', error);
+    throw error;
+  }
+}
+
+export async function addSpecialization(name: string): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('specializations')
+      .insert([{ name, status: 'active' }])
+      .select('name')
+      .single();
+
+    if (error) {
+      console.error('Error adding specialization:', error);
+      throw new Error(`Failed to add specialization: ${error.message}`);
+    }
+
+    return data.name;
+  } catch (error) {
+    console.error('Error adding specialization:', error);
+    throw error;
+  }
+}
+
+export async function listDoctorDocuments(doctorId: string): Promise<DoctorDocument[]> {
+  try {
+    const { data, error } = await supabase
+      .from('doctor_documents')
+      .select('*')
+      .eq('doctor_id', doctorId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error listing doctor documents:', error);
+      throw new Error(`Failed to list doctor documents: ${error.message}`);
+    }
+
+    return (data || []) as DoctorDocument[];
+  } catch (error) {
+    console.error('Error listing doctor documents:', error);
+    throw error;
+  }
+}
+
+export async function uploadDoctorDocument(options: {
+  doctorId: string;
+  docType: 'aadhar' | 'certificate';
+  displayName: string;
+  file: File;
+}): Promise<DoctorDocument> {
+  const { doctorId, docType, displayName, file } = options;
+
+  try {
+    const ext = file.name.includes('.') ? file.name.split('.').pop() : '';
+    const safeExt = ext ? `.${ext}` : '';
+    const objectName = `${crypto.randomUUID()}${safeExt}`;
+    const storagePath = `${doctorId}/${docType}/${objectName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('doctor-documents')
+      .upload(storagePath, file, {
+        contentType: file.type || undefined,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Error uploading doctor document:', uploadError);
+      throw new Error(`Failed to upload document: ${uploadError.message}`);
+    }
+
+    const { data, error: insertError } = await supabase
+      .from('doctor_documents')
+      .insert([
+        {
+          doctor_id: doctorId,
+          doc_type: docType,
+          display_name: displayName,
+          storage_path: storagePath,
+          mime_type: file.type || null,
+          file_size: file.size || null
+        }
+      ])
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error('Error saving doctor document metadata:', insertError);
+      throw new Error(`Failed to save document metadata: ${insertError.message}`);
+    }
+
+    return data as DoctorDocument;
+  } catch (error) {
+    console.error('Error uploading doctor document:', error);
+    throw error;
+  }
+}
+
 export interface DoctorRegistrationData {
   doctorId: string;
   licenseNumber: string;
   specialization: string;
   department: string;
   qualification: string;
-  experienceYears: number;
   consultationFee: number;
 
   // User information
@@ -48,12 +249,12 @@ export interface Doctor {
   license_number: string;
   specialization: string;
   qualification: string;
-  years_of_experience: number;
   consultation_fee: number;
   availability_hours: any; // jsonb field
   room_number: string;
   max_patients_per_day: number;
   status: string;
+  sort_order?: number;
   created_at: string;
   updated_at: string;
   // New database fields
@@ -70,13 +271,23 @@ export interface Doctor {
   // Computed fields for compatibility
   doctor_id?: string;
   department?: string;
-  experience_years?: number;
   working_hours_start?: string;
   working_hours_end?: string;
   working_days?: number[];
   floor_number?: number;
   availability_status?: string;
   emergency_available?: boolean;
+}
+
+export interface DoctorDocument {
+  id: string;
+  doctor_id: string;
+  doc_type: 'aadhar' | 'certificate';
+  display_name: string;
+  storage_path: string;
+  mime_type: string | null;
+  file_size: number | null;
+  created_at: string;
 }
 
 /**
@@ -293,7 +504,6 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       license_number: doctorData.licenseNumber, // Use user's entered license number
       specialization: doctorData.specialization,
       qualification: doctorData.qualification,
-      years_of_experience: doctorData.experienceYears,
       consultation_fee: doctorData.consultationFee,
       room_number: doctorData.roomNumber,
       availability_hours: {
@@ -418,7 +628,6 @@ export async function getAllDoctors(options: {
       ...doctor,
       doctor_id: doctor.license_number, // Use license_number as doctor_id
       department: getSpecializationDepartment(doctor.specialization),
-      experience_years: doctor.years_of_experience,
       working_hours_start: '09:00',
       working_hours_end: '17:00',
       working_days: [1, 2, 3, 4, 5, 6],
@@ -459,6 +668,7 @@ export async function getAllDoctorsSimple(): Promise<Doctor[]> {
       `)
       .eq('status', 'active')
       .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -483,7 +693,6 @@ export async function getAllDoctorsSimple(): Promise<Doctor[]> {
         ...doctor,
         doctor_id: doctor.license_number, // Use license_number as doctor_id
         department: doctor.department || ah.department || getSpecializationDepartment(doctor.specialization),
-        experience_years: doctor.years_of_experience,
         working_hours_start: doctor.working_hours_start || ah.workingHoursStart || '09:00',
         working_hours_end: doctor.working_hours_end || ah.workingHoursEnd || '17:00',
         working_days: doctor.working_days || ah.workingDays || [1, 2, 3, 4, 5, 6],
@@ -583,7 +792,6 @@ export async function getDoctorById(doctorId: string): Promise<Doctor> {
       ...doctor,
       doctor_id: doctor.license_number,
       department: getSpecializationDepartment(doctor.specialization),
-      experience_years: doctor.years_of_experience,
       working_hours_start: '09:00',
       working_hours_end: '17:00',
       working_days: [1, 2, 3, 4, 5, 6],
@@ -632,7 +840,6 @@ export async function updateDoctorAvailability(
       ...doctor,
       doctor_id: doctor.license_number,
       department: getSpecializationDepartment(doctor.specialization),
-      experience_years: doctor.years_of_experience,
       working_hours_start: '09:00',
       working_hours_end: '17:00',
       working_days: [1, 2, 3, 4, 5, 6],
@@ -661,6 +868,7 @@ export async function getDoctorsBySpecialization(specialization: string): Promis
       `)
       .eq('specialization', specialization)
       .eq('status', 'active')
+      .eq('availability_type', 'session_based') // Filter by availability type
       .is('deleted_at', null)
       .order('created_at', { ascending: false }); // Changed from user.name since it might cause issues
 
@@ -674,7 +882,6 @@ export async function getDoctorsBySpecialization(specialization: string): Promis
       ...doctor,
       doctor_id: doctor.license_number,
       department: getSpecializationDepartment(doctor.specialization),
-      experience_years: doctor.years_of_experience,
       working_hours_start: '09:00',
       working_hours_end: '17:00',
       working_days: [1, 2, 3, 4, 5, 6],
@@ -705,8 +912,8 @@ export async function getAvailableDoctors(
         *,
         user:users(id, name, email, phone, address)
       `)
-      .eq('availability_status', 'available')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('availability_type', 'session_based');
 
     query = query.is('deleted_at', null);
 
@@ -727,15 +934,16 @@ export async function getAvailableDoctors(
     const [hours, minutes] = time.split(':').map(Number);
     const requestTimeMinutes = hours * 60 + minutes;
 
-    const availableDoctors = (doctors || []).filter(doctor => {
+    const availableDoctors = (doctors || []).filter((doctor: any) => {
       // Check if doctor works on this day
-      if (!doctor.working_days.includes(dayOfWeek)) {
+      if (!doctor.working_days || !Array.isArray(doctor.working_days) || !doctor.working_days.includes(dayOfWeek)) {
         return false;
       }
 
       // Check if time is within working hours
-      const startTime = doctor.working_hours_start.split(':').map(Number);
-      const endTime = doctor.working_hours_end.split(':').map(Number);
+      if (!doctor.working_hours_start || !doctor.working_hours_end) return false;
+      const startTime = String(doctor.working_hours_start).split(':').map(Number);
+      const endTime = String(doctor.working_hours_end).split(':').map(Number);
       const startTimeMinutes = startTime[0] * 60 + startTime[1];
       const endTimeMinutes = endTime[0] * 60 + endTime[1];
 
@@ -1072,7 +1280,6 @@ export async function updateDoctor(
       license_number: updates.licenseNumber,
       specialization: updates.specialization,
       qualification: updates.qualification,
-      years_of_experience: updates.experienceYears,
       consultation_fee: updates.consultationFee,
       room_number: updates.roomNumber,
       department: updates.department,
@@ -1149,7 +1356,6 @@ export async function updateDoctor(
       ...updatedDoctor,
       doctor_id: updatedDoctor.license_number,
       department: updatedDoctor.department || getSpecializationDepartment(updatedDoctor.specialization),
-      experience_years: updatedDoctor.years_of_experience,
       working_hours_start: updatedDoctor.working_hours_start || '09:00',
       working_hours_end: updatedDoctor.working_hours_end || '17:00',
       working_days: updatedDoctor.working_days || [1, 2, 3, 4, 5, 6],

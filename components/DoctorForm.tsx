@@ -18,7 +18,6 @@ export interface DoctorFormData {
   specialization: string;
   department: string;
   qualification: string;
-  experienceYears: number;
   consultationFee: number;
   workingHoursStart: string;
   workingHoursEnd: string;
@@ -45,6 +44,7 @@ interface DoctorFormProps {
   isEditing?: boolean;
   title?: string;
   onAddDepartment?: (name: string) => Promise<void>;
+  onAddSpecialization?: (name: string) => Promise<void>;
 }
 
 interface ValidationErrors {
@@ -158,11 +158,16 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
   departments,
   isEditing = false,
   title,
-  onAddDepartment
+  onAddDepartment,
+  onAddSpecialization
 }) => {
   const [isAddingDepartment, setIsAddingDepartment] = useState(false);
   const [newDeptName, setNewDeptName] = useState('');
   const [isSubmittingDept, setIsSubmittingDept] = useState(false);
+
+  const [isAddingSpecialization, setIsAddingSpecialization] = useState(false);
+  const [newSpecializationName, setNewSpecializationName] = useState('');
+  const [isSubmittingSpecialization, setIsSubmittingSpecialization] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
@@ -204,11 +209,6 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
 
     // Qualification validation (optional)
     // No validation required - qualification is optional
-
-    // Experience validation
-    if (formData.experienceYears < 0) {
-      errors.experienceYears = 'Experience cannot be negative';
-    }
 
     // Consultation fee validation
     if (formData.consultationFee < 0) {
@@ -312,6 +312,31 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
       setShowErrorDialog(true);
     } finally {
       setIsSubmittingDept(false);
+    }
+  };
+
+  const handleAddSpec = async () => {
+    if (!newSpecializationName.trim() || !onAddSpecialization) return;
+
+    setIsSubmittingSpecialization(true);
+    try {
+      await onAddSpecialization(newSpecializationName.trim());
+      setFormData({
+        ...formData,
+        specialization: newSpecializationName.trim(),
+        department: newSpecializationName.trim()
+      });
+      setNewSpecializationName('');
+      setIsAddingSpecialization(false);
+    } catch (error: any) {
+      console.error('Error adding specialization:', error);
+      setErrorDialogContent({
+        title: 'Error Adding Specialization',
+        message: error.message || 'Failed to add specialization. It might already exist.'
+      });
+      setShowErrorDialog(true);
+    } finally {
+      setIsSubmittingSpecialization(false);
     }
   };
 
@@ -512,33 +537,76 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Specialization <span className="text-red-500">*</span>
                         </label>
-                        <select
-                          value={formData.specialization}
-                          onChange={(e) => {
-                            const selectedSpec = e.target.value;
-                            setFormData({
-                              ...formData,
-                              specialization: selectedSpec,
-                              department: selectedSpec
-                            });
-                            if (hasFieldError('specialization')) {
-                              const newErrors = { ...validationErrors };
-                              delete newErrors.specialization;
-                              setValidationErrors(newErrors);
-                            }
-                          }}
-                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
-                            hasFieldError('specialization')
-                              ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
-                              : 'border-gray-300 focus:ring-blue-300'
-                          }`}
-                          required
-                        >
-                          <option value="">Select Specialization</option>
-                          {specializations.map(spec => (
-                            <option key={spec} value={spec}>{spec}</option>
-                          ))}
-                        </select>
+                        <div className="space-y-2">
+                          <select
+                            value={formData.specialization}
+                            onChange={(e) => {
+                              const selectedSpec = e.target.value;
+                              setFormData({
+                                ...formData,
+                                specialization: selectedSpec,
+                                department: selectedSpec
+                              });
+                              if (hasFieldError('specialization')) {
+                                const newErrors = { ...validationErrors };
+                                delete newErrors.specialization;
+                                setValidationErrors(newErrors);
+                              }
+                            }}
+                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white/80 backdrop-blur-sm transition-colors ${
+                              hasFieldError('specialization')
+                                ? 'border-red-300 focus:ring-red-300 focus:border-red-500'
+                                : 'border-gray-300 focus:ring-blue-300'
+                            }`}
+                            required
+                          >
+                            <option value="">Select Specialization</option>
+                            {specializations.map(spec => (
+                              <option key={spec} value={spec}>{spec}</option>
+                            ))}
+                          </select>
+
+                          {onAddSpecialization && !isAddingSpecialization && (
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingSpecialization(true)}
+                              className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center"
+                            >
+                              <Plus size={14} className="mr-1" />
+                              Add new specialization
+                            </button>
+                          )}
+
+                          {onAddSpecialization && isAddingSpecialization && (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newSpecializationName}
+                                onChange={(e) => setNewSpecializationName(e.target.value)}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
+                                placeholder="e.g., Diabetology"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddSpec}
+                                disabled={isSubmittingSpecialization || !newSpecializationName.trim()}
+                                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
+                              >
+                                {isSubmittingSpecialization ? 'Saving' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAddingSpecialization(false);
+                                  setNewSpecializationName('');
+                                }}
+                                className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         {hasFieldError('specialization') && (
                           <p className="mt-1 text-sm text-red-600 flex items-center">
                             <AlertCircle size={14} className="mr-1" />
@@ -589,17 +657,6 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Experience (Years)</label>
-                        <input
-                          type="number"
-                          value={formData.experienceYears}
-                          onChange={(e) => setFormData({ ...formData, experienceYears: parseInt(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/80 backdrop-blur-sm"
-                          placeholder="5"
-                        />
-                      </div>
-
-                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Consultation Fee (₹)</label>
                         <input
                           type="number"
@@ -644,6 +701,26 @@ const DoctorForm: React.FC<DoctorFormProps> = ({
 
                 {openSections.schedule && (
                   <div className="px-5 pb-5">
+                    <div className="flex justify-end mb-4">
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg hover:bg-orange-100"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            workingDays: [0, 1, 2, 3, 4, 5, 6],
+                            availableSessions: ['morning', 'afternoon', 'evening'],
+                            sessions: {
+                              morning: { startTime: '00:00', endTime: '23:59' },
+                              afternoon: { startTime: '00:00', endTime: '23:59' },
+                              evening: { startTime: '00:00', endTime: '23:59' }
+                            }
+                          })
+                        }
+                      >
+                        Set 24/7
+                      </button>
+                    </div>
                     {/* Session Selection */}
                     <div className="mb-6">
                       <label className="block text-sm font-medium text-gray-700 mb-3">Available Sessions</label>

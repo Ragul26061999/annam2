@@ -73,7 +73,7 @@ export default function ScanDocumentUpload({
     const filePath = `scan-documents/${patientId}/${fileName}`;
 
     const { data, error: uploadError } = await supabase.storage
-      .from('medical-documents')
+      .from('diagnostic-files')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false
@@ -85,7 +85,7 @@ export default function ScanDocumentUpload({
 
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from('medical-documents')
+      .from('diagnostic-files')
       .getPublicUrl(filePath);
 
     return publicUrl;
@@ -101,6 +101,7 @@ export default function ScanDocumentUpload({
       setUploading(true);
       setError(null);
       const uploadedDocs: UploadedDocument[] = [];
+      let lastUploadedUrl: string | null = null;
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
@@ -108,6 +109,7 @@ export default function ScanDocumentUpload({
 
         // Upload file to storage
         const fileUrl = await uploadFile(file);
+        lastUploadedUrl = fileUrl;
 
         // Save document record to database
         const { data, error: dbError } = await supabase
@@ -139,7 +141,10 @@ export default function ScanDocumentUpload({
         .from('scan_orders')
         .update({ 
           status: 'completed',
-          completed_date: new Date().toISOString()
+          completed_date: new Date().toISOString(),
+          report_url: lastUploadedUrl,
+          result_summary: [findings, impression].filter(Boolean).join('\n\n') || null,
+          radiologist_notes: radiologistNotes || null
         })
         .eq('id', scanOrder.id);
 

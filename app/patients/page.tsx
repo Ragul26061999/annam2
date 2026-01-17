@@ -86,6 +86,7 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [totalPatients, setTotalPatients] = useState(0);
@@ -384,6 +385,12 @@ export default function PatientsPage() {
           <p className="text-gray-500 mt-1">Manage patient records and information</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            {viewMode === 'grid' ? 'List View' : 'Grid View'}
+          </button>
         </div>      </div>
 
       {/* Stats Cards */}
@@ -491,11 +498,12 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* Patients Grid */}
-      {patients.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {patients.map((patient) => (
-            <div key={patient.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+      {/* Patients */}
+      {filteredPatients.length > 0 ? (
+        viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredPatients.map((patient) => (
+              <div key={patient.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center">
                   <div className={`w-12 h-12 bg-gradient-to-r ${getGradientColors(patient.name)} rounded-xl flex items-center justify-center text-white font-bold text-sm`}>
@@ -736,8 +744,65 @@ export default function PatientsPage() {
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Patient</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">UHID</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Flags</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {filteredPatients.map((patient) => (
+                    <tr key={patient.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-gray-900">{patient.name}</div>
+                        <div className="text-xs text-gray-500">{patient.age || calculateAge(patient.date_of_birth)} • {patient.gender || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-mono text-orange-600">{patient.patient_id}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{patient.phone || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {isPatientCritical(patient) && (
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Critical</span>
+                          )}
+                          {isPatientAdmitted(patient) && (
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Admitted</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => router.push(`/patients/${patient.patient_id}`)}
+                            className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 text-sm font-medium hover:bg-orange-100"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => router.push(`/patients/${patient.patient_id}/edit`)}
+                            className="px-3 py-1.5 rounded-lg bg-gray-50 text-gray-700 text-sm font-medium hover:bg-gray-100"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
       ) : (
         !loading && (
           <div className="text-center py-12">

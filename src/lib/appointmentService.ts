@@ -629,8 +629,10 @@ export async function getAppointments(options: {
 
       if (date) {
         // Filter by date part of scheduled_at
-        const startOfDay = `${date}T00:00:00Z`;
-        const endOfDay = `${date}T23:59:59Z`;
+        // NOTE: createAppointment writes scheduled_at without a timezone suffix (no trailing 'Z').
+        // Using 'Z' here can shift the range and accidentally exclude same-day rows.
+        const startOfDay = `${date}T00:00:00`;
+        const endOfDay = `${date}T23:59:59`;
         query = query.gte('scheduled_at', startOfDay).lte('scheduled_at', endOfDay);
       }
 
@@ -640,61 +642,67 @@ export async function getAppointments(options: {
         .order('scheduled_at', { ascending: false });
 
       if (!error && appointments) {
-        // Transform appointments and fetch related data separately
-        const transformedAppointments = await Promise.all((appointments || []).map(async (apt: any) => {
-          // Fetch patient data separately
-          let patientData = null;
-          if (apt.encounter?.patient_id) {
-            const { data: patient } = await supabase
-              .from('patients')
-              .select('id, patient_id, name, phone, email')
-              .eq('id', apt.encounter.patient_id)
-              .single();
-            patientData = patient;
-          }
+        // Transform appointments and fetch related data in batches (avoid N+1 queries)
+        const encounterPatientIds = Array.from(
+          new Set((appointments || []).map((a: any) => a.encounter?.patient_id).filter(Boolean))
+        );
+        const encounterClinicianIds = Array.from(
+          new Set((appointments || []).map((a: any) => a.encounter?.clinician_id).filter(Boolean))
+        );
 
-          // Fetch doctor data separately
-          let doctorData: Appointment['doctor'] = undefined;
-          if (apt.encounter?.clinician_id) {
-            const { data: doctor } = await supabase
-              .from('doctors')
-              .select(`
-                id,
-                specialization,
-                qualification,
-                user_id
-              `)
-              .eq('id', apt.encounter.clinician_id)
-              .single();
+        const [{ data: patientsData }, { data: doctorsData }] = await Promise.all([
+          encounterPatientIds.length
+            ? supabase
+                .from('patients')
+                .select('id, patient_id, name, phone, email, admission_type, is_admitted')
+                .in('id', encounterPatientIds)
+            : Promise.resolve({ data: [] as any[] }),
+          encounterClinicianIds.length
+            ? supabase
+                .from('doctors')
+                .select('id, specialization, qualification, user_id')
+                .in('id', encounterClinicianIds)
+            : Promise.resolve({ data: [] as any[] })
+        ]);
 
-            if (doctor && doctor.user_id) {
-              const { data: user } = await supabase
-                .from('public.users')
-                .select('name, phone, email')
-                .eq('id', doctor.user_id)
-                .single();
+        const userIds = Array.from(new Set((doctorsData || []).map((d: any) => d.user_id).filter(Boolean)));
+        const { data: usersData } = userIds.length
+          ? await supabase.from('public.users').select('id, name, phone, email').in('id', userIds)
+          : { data: [] as any[] };
 
-              if (user) {
-                doctorData = {
-                  id: doctor.id,
-                  specialization: doctor.specialization || '',
-                  qualification: doctor.qualification || '',
+        const patientById = new Map((patientsData || []).map((p: any) => [p.id, p]));
+        const userById = new Map((usersData || []).map((u: any) => [u.id, u]));
+        const doctorById = new Map(
+          (doctorsData || []).map((d: any) => {
+            const user = d.user_id ? userById.get(d.user_id) : undefined;
+            const doctorData: Appointment['doctor'] | undefined = user
+              ? {
+                  id: d.id,
+                  specialization: d.specialization || '',
+                  qualification: d.qualification || '',
                   department: '',
                   user: {
                     name: user.name || '',
                     phone: user.phone || '',
                     email: user.email || ''
                   }
-                };
-              }
-            }
-          }
+                }
+              : undefined;
+            return [d.id, doctorData] as const;
+          })
+        );
+
+        const transformedAppointments = (appointments || []).map((apt: any) => {
+          const pid = apt.encounter?.patient_id;
+          const did = apt.encounter?.clinician_id;
+          const patientData = pid ? patientById.get(pid) : null;
+          const doctorData = did ? doctorById.get(did) : undefined;
 
           return {
             id: apt.id,
             appointment_id: `APT-${apt.id.slice(0, 8)}`,
-            patient_id: apt.encounter?.patient_id || '',
-            doctor_id: apt.encounter?.clinician_id || '',
+            patient_id: pid || '',
+            doctor_id: did || '',
             appointment_date: apt.scheduled_at ? new Date(apt.scheduled_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             appointment_time: apt.scheduled_at ? new Date(apt.scheduled_at).toTimeString().split(' ')[0] : '00:00:00',
             duration_minutes: apt.duration_minutes || 30,
@@ -718,7 +726,7 @@ export async function getAppointments(options: {
             doctor: doctorData,
             encounter: apt.encounter
           };
-        }));
+        });
 
         return {
           appointments: transformedAppointments,

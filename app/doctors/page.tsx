@@ -18,7 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getAllDoctorsSimple, createDoctor, updateDoctor, getAllSpecializations, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, type Doctor, type DoctorRegistrationData } from '../../src/lib/doctorService';
+import { getAllDoctorsSimple, getDeletedDoctorsSimple, restoreDoctor, reorderDoctorSortOrder, createDoctor, updateDoctor, getAllSpecializations, addSpecialization, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, listDoctorDocuments, uploadDoctorDocument, type Doctor, type DoctorRegistrationData, type DoctorDocument } from '../../src/lib/doctorService';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 
@@ -186,14 +186,27 @@ const getSessionTimings = (doctor: Doctor) => {
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [filteredDoctors, setFilteredDoctors] = useState<Doctor[]>([]);
+  const [deletedDoctors, setDeletedDoctors] = useState<Doctor[]>([]);
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedSpecialization, setSelectedSpecialization] = useState<string>('All Specializations');
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewTab, setViewTab] = useState<'overview' | 'appointments' | 'payments'>('overview');
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [doctorDocuments, setDoctorDocuments] = useState<DoctorDocument[]>([]);
+  const [docType, setDocType] = useState<'aadhar' | 'certificate'>('aadhar');
+  const [docDisplayName, setDocDisplayName] = useState('');
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalDoctors: 0,
@@ -211,7 +224,6 @@ export default function DoctorsPage() {
     specialization: '',
     department: '',
     qualification: '',
-    experienceYears: 0,
     consultationFee: 0,
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
@@ -233,6 +245,12 @@ export default function DoctorsPage() {
     loadSpecializations();
     loadDepartments();
   }, []);
+
+  useEffect(() => {
+    if (showDeleted) {
+      loadDeletedDoctors();
+    }
+  }, [showDeleted]);
 
   // Filter doctors based on search and specialization
   useEffect(() => {
@@ -307,12 +325,31 @@ export default function DoctorsPage() {
     }
   };
 
+  const loadDeletedDoctors = async () => {
+    try {
+      const deleted = await getDeletedDoctorsSimple();
+      setDeletedDoctors(deleted);
+    } catch (error) {
+      console.error('Error loading deleted doctors:', error);
+    }
+  };
+
   const loadSpecializations = async () => {
     try {
       const specs = await getAllSpecializations();
       setSpecializations(specs);
     } catch (error) {
       console.error('Error loading specializations:', error);
+    }
+  };
+
+  const handleCreateSpecialization = async (name: string) => {
+    try {
+      await addSpecialization(name);
+      await loadSpecializations();
+    } catch (error) {
+      console.error('Error in handleCreateSpecialization:', error);
+      throw error;
     }
   };
 
@@ -386,7 +423,6 @@ export default function DoctorsPage() {
       specialization: '',
       department: '',
       qualification: '',
-      experienceYears: 0,
       consultationFee: 0,
       workingHoursStart: '09:00',
       workingHoursEnd: '17:00',
@@ -478,7 +514,6 @@ export default function DoctorsPage() {
       specialization: doctor.specialization,
       department: doctor.department || availabilityDepartment || '',
       qualification: doctor.qualification,
-      experienceYears: doctor.years_of_experience,
       consultationFee: doctor.consultation_fee,
       workingHoursStart: doctor.working_hours_start || availabilityWorkingHoursStart || '09:00',
       workingHoursEnd: doctor.working_hours_end || availabilityWorkingHoursEnd || '17:00',
@@ -497,6 +532,88 @@ export default function DoctorsPage() {
     setShowScheduleModal(true);
   };
 
+  const openDocumentsModal = async (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowDocumentsModal(true);
+    setDocType('aadhar');
+    setDocDisplayName('');
+    setDocFile(null);
+
+    try {
+      const docs = await listDoctorDocuments(doctor.id);
+      setDoctorDocuments(docs);
+    } catch (err) {
+      console.error('Failed to load doctor documents:', err);
+      setDoctorDocuments([]);
+    }
+  };
+
+  const openViewModal = async (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowViewModal(true);
+    setViewTab('overview');
+    setAppointments([]);
+  };
+
+  const loadDoctorAppointments = async (doctor: Doctor) => {
+    try {
+      setAppointmentsLoading(true);
+
+      const { data: encounters, error: encErr } = await supabase
+        .from('encounter')
+        .select('id, patient_id, start_at')
+        .eq('clinician_id', doctor.user_id)
+        .order('start_at', { ascending: false })
+        .limit(50);
+
+      if (encErr) throw encErr;
+      const encounterIds = (encounters || []).map((e: any) => e.id);
+
+      if (encounterIds.length === 0) {
+        setAppointments([]);
+        return;
+      }
+
+      const { data: appts, error: apptErr } = await supabase
+        .from('appointment')
+        .select('id, encounter_id, scheduled_at, duration_minutes, booking_method')
+        .in('encounter_id', encounterIds)
+        .order('scheduled_at', { ascending: false })
+        .limit(50);
+
+      if (apptErr) throw apptErr;
+      setAppointments(appts || []);
+    } catch (err) {
+      console.error('Failed to load appointments:', err);
+      setAppointments([]);
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  };
+
+  const refreshDocuments = async () => {
+    if (!selectedDoctor) return;
+    const docs = await listDoctorDocuments(selectedDoctor.id);
+    setDoctorDocuments(docs);
+  };
+
+  const openDocument = async (doc: DoctorDocument) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('doctor-documents')
+        .createSignedUrl(doc.storage_path, 60);
+
+      if (error || !data?.signedUrl) {
+        throw new Error(error?.message || 'Failed to create signed url');
+      }
+
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open document:', err);
+      alert('Unable to open document. Storage permissions may be missing.');
+    }
+  };
+
   const handleAvailabilityToggle = async (doctor: Doctor, availabilityType: 'session_based' | 'on_call') => {
     try {
       // Update doctor availability status
@@ -510,10 +627,6 @@ export default function DoctorsPage() {
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
-  };
-
-  const formatExperience = (years: number) => {
-    return years === 1 ? '1 year exp' : `${years} years exp`;
   };
 
   if (loading) {
@@ -612,6 +725,22 @@ export default function DoctorsPage() {
             />
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+              className="flex items-center px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              {viewMode === 'grid' ? 'List View' : 'Grid View'}
+            </button>
+            <button
+              onClick={() => setShowDeleted(!showDeleted)}
+              className={`flex items-center px-4 py-2.5 border rounded-xl text-sm font-medium transition-colors ${
+                showDeleted
+                  ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {showDeleted ? 'Show Active' : 'Show Deleted'}
+            </button>
             <button className="flex items-center px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
               <Filter size={16} className="mr-2" />
               Filter
@@ -630,8 +759,81 @@ export default function DoctorsPage() {
         </div>
       </div>
 
-      {/* Doctors Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      {/* Doctors */}
+      {!showDeleted && viewMode === 'list' ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-4 py-3">Order</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-4 py-3">Name</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-4 py-3">Specialization</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-4 py-3">License</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredDoctors.map((doctor) => (
+                  <tr key={doctor.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        defaultValue={doctor.sort_order || 0}
+                        onBlur={async (e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (!Number.isFinite(v)) return;
+                          try {
+                            await reorderDoctorSortOrder(doctor.id, v);
+                            await loadDoctors();
+                          } catch (err) {
+                            console.error('Failed to update sort order:', err);
+                          }
+                        }}
+                        className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{doctor.user?.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{doctor.specialization}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{doctor.license_number}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openViewModal(doctor)}
+                          className="px-3 py-1.5 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => openDocumentsModal(doctor)}
+                          className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100"
+                        >
+                          Documents
+                        </button>
+                        <button
+                          onClick={() => openEditModal(doctor)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDoctor(doctor.id, doctor.user?.name || 'Unknown')}
+                          className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100"
+                        >
+                          Deactivate
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {!showDeleted && viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredDoctors.map((doctor) => {
           const buttonColors = getCardButtonColors(doctor.id);
           const cardGradient = getCardGradient(doctor.id);
@@ -658,7 +860,7 @@ export default function DoctorsPage() {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">
                   <Stethoscope size={14} className="mr-2" />
-                  {doctor.specialization} • {formatExperience(doctor.experience_years || 0)}
+                  {doctor.specialization}
                 </div>
                 {doctor.department && (
                   <div className="flex items-center text-sm text-gray-600">
@@ -740,6 +942,34 @@ export default function DoctorsPage() {
               </div>
 
               <div className="flex gap-2">
+                <input
+                  type="number"
+                  defaultValue={doctor.sort_order || 0}
+                  onBlur={async (e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!Number.isFinite(v)) return;
+                    try {
+                      await reorderDoctorSortOrder(doctor.id, v);
+                      await loadDoctors();
+                    } catch (err) {
+                      console.error('Failed to update sort order:', err);
+                    }
+                  }}
+                  className="w-20 px-2 py-2 rounded-xl text-sm font-medium border border-gray-200 bg-white"
+                  title="Sort order"
+                />
+                <button
+                  onClick={() => openViewModal(doctor)}
+                  className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
+                >
+                  View
+                </button>
+                <button
+                  onClick={() => openDocumentsModal(doctor)}
+                  className="flex-1 flex items-center justify-center bg-orange-50 text-orange-700 hover:bg-orange-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Documents
+                </button>
                 <button 
                   onClick={() => openScheduleModal(doctor)}
                   className={`flex-1 flex items-center justify-center ${buttonColors.schedule} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}
@@ -770,6 +1000,44 @@ export default function DoctorsPage() {
           );
         })}
       </div>
+      ) : null}
+
+      {showDeleted ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">Deleted Doctors</h3>
+            <span className="text-sm text-gray-500">{deletedDoctors.length} items</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {deletedDoctors.map((doctor) => (
+              <div key={doctor.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-900">{doctor.user?.name}</div>
+                  <div className="text-sm text-gray-600">{doctor.specialization} • {doctor.license_number}</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await restoreDoctor(doctor.id);
+                      await loadDeletedDoctors();
+                      await loadDoctors();
+                    } catch (err) {
+                      console.error('Failed to restore doctor:', err);
+                      alert('Failed to restore doctor. Please try again.');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 font-medium text-sm"
+                >
+                  Reactivate
+                </button>
+              </div>
+            ))}
+            {deletedDoctors.length === 0 && (
+              <div className="p-8 text-center text-gray-500">No deleted doctors.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* Load More */}
       {filteredDoctors.length === 0 && !loading && (
@@ -790,6 +1058,7 @@ export default function DoctorsPage() {
         isEditing={false}
         title="Add New Doctor"
         onAddDepartment={handleCreateDepartment}
+        onAddSpecialization={handleCreateSpecialization}
       />
 
       {/* Edit Doctor Modal */}
@@ -804,6 +1073,7 @@ export default function DoctorsPage() {
         isEditing={true}
         title="Edit Doctor"
         onAddDepartment={handleCreateDepartment}
+        onAddSpecialization={handleCreateSpecialization}
       />
 
       {/* Schedule Modal */}
@@ -873,6 +1143,246 @@ export default function DoctorsPage() {
                   </div>
                   <button className="btn-primary">Save Schedule</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Documents Modal */}
+      {showDocumentsModal && selectedDoctor && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" onClick={() => setShowDocumentsModal(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+              <div className="bg-white px-6 pt-5 pb-6">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Doctor Documents</h3>
+                    <p className="text-sm text-gray-500">{selectedDoctor.user?.name}</p>
+                  </div>
+                  <button
+                    className="text-gray-400 hover:text-gray-500"
+                    onClick={() => setShowDocumentsModal(false)}
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-4 mb-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                      <select
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value as 'aadhar' | 'certificate')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                      >
+                        <option value="aadhar">Aadhar</option>
+                        <option value="certificate">Certificate</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Document Name</label>
+                      <input
+                        type="text"
+                        value={docDisplayName}
+                        onChange={(e) => setDocDisplayName(e.target.value)}
+                        placeholder="e.g., Aadhar Front / MBBS Certificate"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <input
+                      type="file"
+                      onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                      className="text-sm"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!docFile || !docDisplayName.trim()) {
+                          alert('Please provide document name and choose a file.');
+                          return;
+                        }
+                        try {
+                          setDocBusy(true);
+                          await uploadDoctorDocument({
+                            doctorId: selectedDoctor.id,
+                            docType,
+                            displayName: docDisplayName.trim(),
+                            file: docFile
+                          });
+                          setDocDisplayName('');
+                          setDocFile(null);
+                          await refreshDocuments();
+                        } catch (err) {
+                          console.error('Upload failed:', err);
+                          alert('Upload failed. Storage permissions may be missing.');
+                        } finally {
+                          setDocBusy(false);
+                        }
+                      }}
+                      disabled={docBusy}
+                      className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium text-sm disabled:opacity-60"
+                    >
+                      {docBusy ? 'Uploading…' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                    <div className="text-sm font-semibold text-gray-700">Uploaded</div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await refreshDocuments();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="text-sm text-orange-700 hover:text-orange-800 font-medium"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  <div className="divide-y divide-gray-100">
+                    {doctorDocuments.map((d) => (
+                      <div key={d.id} className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{d.display_name}</div>
+                          <div className="text-xs text-gray-500">{d.doc_type}</div>
+                        </div>
+                        <button
+                          onClick={() => openDocument(d)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-medium"
+                        >
+                          Open
+                        </button>
+                      </div>
+                    ))}
+                    {doctorDocuments.length === 0 && (
+                      <div className="px-4 py-8 text-center text-gray-500">No documents uploaded.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Doctor Modal */}
+      {showViewModal && selectedDoctor && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" onClick={() => setShowViewModal(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+              <div className="bg-white px-6 pt-5 pb-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">{selectedDoctor.user?.name}</h3>
+                    <p className="text-sm text-gray-500">{selectedDoctor.specialization} • {selectedDoctor.license_number}</p>
+                  </div>
+                  <button
+                    className="text-gray-400 hover:text-gray-500"
+                    onClick={() => setShowViewModal(false)}
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="border-b border-gray-200 mb-4">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setViewTab('overview')}
+                      className={`px-4 py-2 text-sm font-medium rounded-t-lg ${viewTab === 'overview' ? 'bg-orange-50 text-orange-700 border border-b-0 border-orange-200' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Overview
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setViewTab('appointments');
+                        await loadDoctorAppointments(selectedDoctor);
+                      }}
+                      className={`px-4 py-2 text-sm font-medium rounded-t-lg ${viewTab === 'appointments' ? 'bg-orange-50 text-orange-700 border border-b-0 border-orange-200' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Appointments
+                    </button>
+                    <button
+                      onClick={() => setViewTab('payments')}
+                      className={`px-4 py-2 text-sm font-medium rounded-t-lg ${viewTab === 'payments' ? 'bg-orange-50 text-orange-700 border border-b-0 border-orange-200' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Payments
+                    </button>
+                  </div>
+                </div>
+
+                {viewTab === 'overview' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <div className="text-sm font-semibold text-gray-700 mb-2">Contact</div>
+                      <div className="text-sm text-gray-700">Email: {selectedDoctor.user?.email || '-'}</div>
+                      <div className="text-sm text-gray-700">Phone: {selectedDoctor.user?.phone || '-'}</div>
+                      <div className="text-sm text-gray-700">Address: {selectedDoctor.user?.address || '-'}</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <div className="text-sm font-semibold text-gray-700 mb-2">Work</div>
+                      <div className="text-sm text-gray-700">Room: {selectedDoctor.room_number || '-'}</div>
+                      <div className="text-sm text-gray-700">Floor: {selectedDoctor.floor_number ?? '-'}</div>
+                      <div className="text-sm text-gray-700">Consultation Fee: ₹{selectedDoctor.consultation_fee ?? 0}</div>
+                      <div className="text-sm text-gray-700">Availability Type: {selectedDoctor.availability_type || 'session_based'}</div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {viewTab === 'appointments' ? (
+                  <div className="rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-gray-700">Recent Appointments</div>
+                      <button
+                        onClick={() => loadDoctorAppointments(selectedDoctor)}
+                        className="text-sm text-orange-700 hover:text-orange-800 font-medium"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {appointmentsLoading ? (
+                        <div className="px-4 py-8 text-center text-gray-500">Loading…</div>
+                      ) : null}
+
+                      {!appointmentsLoading && appointments.map((a) => (
+                        <div key={a.id} className="px-4 py-3 flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{new Date(a.scheduled_at).toLocaleString()}</div>
+                            <div className="text-xs text-gray-500">Duration: {a.duration_minutes} mins • Method: {a.booking_method}</div>
+                          </div>
+                          <div className="text-xs text-gray-500">#{String(a.id).slice(0, 8)}</div>
+                        </div>
+                      ))}
+
+                      {!appointmentsLoading && appointments.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-gray-500">No appointments found.</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {viewTab === 'payments' ? (
+                  <div className="rounded-xl border border-gray-200 p-6 text-sm text-gray-600">
+                    Payments tab is inactive for now. We can integrate billing logic later.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

@@ -370,6 +370,18 @@ export default function LabXRayPage() {
                 <span className="font-semibold">X-ray</span>
               </button>
             </Link>
+            <Link href="/lab-xray/scans">
+              <button className="flex items-center gap-2 px-6 py-2.5 bg-orange-600 text-white rounded-xl shadow-lg hover:bg-orange-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                <Activity size={18} />
+                <span className="font-semibold">Scans</span>
+              </button>
+            </Link>
+            <Link href="/lab-xray/other">
+              <button className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl shadow-lg hover:bg-purple-700 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                <FileText size={18} />
+                <span className="font-semibold">Other</span>
+              </button>
+            </Link>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, RefreshCcw } from 'lucide-react';
+import { X, UserPlus, Building, Mail, Phone, IdCard, Calendar, Briefcase, Activity, CheckCircle, AlertCircle, RefreshCcw, Award } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { createStaffMember, generateNextEmployeeId } from '@/src/lib/staffService';
 
@@ -22,6 +22,8 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [isAddingDepartment, setIsAddingDepartment] = useState(false);
+    const [newDepartmentName, setNewDepartmentName] = useState('');
 
     // Form state
     const [formData, setFormData] = useState({
@@ -30,6 +32,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
         email: '',
         phone: '',
         role: 'Staff',
+        training_category: '',
         employee_id: '',
         department_id: '',
         hire_date: new Date().toISOString().split('T')[0],
@@ -53,6 +56,30 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             setFormData(prev => ({ ...prev, employee_id: nextId }));
         } catch (err) {
             console.error('Error generating employee ID:', err);
+        }
+    };
+
+    const handleAddDepartment = async () => {
+        if (!newDepartmentName.trim()) return;
+        try {
+            setSubmitting(true);
+            const { data, error } = await supabase
+                .from('departments')
+                .insert([{ name: newDepartmentName.trim(), status: 'active' }])
+                .select('id, name')
+                .single();
+
+            if (error) throw error;
+            const created = data as Department;
+            await fetchDepartments();
+            setFormData(prev => ({ ...prev, department_id: created.id }));
+            setNewDepartmentName('');
+            setIsAddingDepartment(false);
+        } catch (err: any) {
+            console.error('Error adding department:', err);
+            setError(err.message || 'Failed to add department. It might already exist.');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -86,6 +113,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
             email: '',
             phone: '',
             role: 'Staff',
+            training_category: '',
             employee_id: '',
             department_id: departments.length > 0 ? departments[0].id : '',
             hire_date: new Date().toISOString().split('T')[0],
@@ -132,6 +160,7 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                 email: formData.email || undefined,
                 phone: formData.phone || undefined,
                 role: formData.role,
+                training_category: formData.training_category || undefined,
                 employee_id: formData.employee_id || undefined,
                 department_id: formData.department_id || undefined,
                 hire_date: formData.hire_date || undefined,
@@ -279,6 +308,22 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                 </select>
                             </div>
 
+                            {/* Training Category */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                    <Award size={16} /> Training Category
+                                </label>
+                                <input
+                                    type="text"
+                                    name="training_category"
+                                    value={(formData as any).training_category}
+                                    onChange={handleChange}
+                                    placeholder="e.g. Basic, Advanced, ICU"
+                                    className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                    disabled={submitting}
+                                />
+                            </div>
+
                             {/* Department */}
                             <div className="space-y-2">
                                 <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
@@ -287,18 +332,58 @@ export default function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffMo
                                 {loading ? (
                                     <div className="animate-pulse h-[50px] bg-gray-100 rounded-2xl"></div>
                                 ) : (
-                                    <select
-                                        name="department_id"
-                                        value={formData.department_id}
-                                        onChange={handleChange}
-                                        className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none appearance-none"
-                                        disabled={submitting}
-                                    >
-                                        <option value="">Select Department</option>
-                                        {departments.map(dept => (
-                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                        ))}
-                                    </select>
+                                    <div className="space-y-2">
+                                        <select
+                                            name="department_id"
+                                            value={formData.department_id}
+                                            onChange={handleChange}
+                                            className="w-full pl-4 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none appearance-none"
+                                            disabled={submitting}
+                                        >
+                                            <option value="">Select Department</option>
+                                            {departments.map(dept => (
+                                                <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                            ))}
+                                        </select>
+
+                                        {!isAddingDepartment ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsAddingDepartment(true)}
+                                                className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                                                disabled={submitting}
+                                            >
+                                                + Add new department
+                                            </button>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={newDepartmentName}
+                                                    onChange={(e) => setNewDepartmentName(e.target.value)}
+                                                    className="flex-1 pl-4 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all outline-none"
+                                                    placeholder="Department name"
+                                                    disabled={submitting}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddDepartment}
+                                                    className="px-4 py-2.5 bg-orange-500 text-white font-bold rounded-2xl hover:bg-orange-600"
+                                                    disabled={submitting || !newDepartmentName.trim()}
+                                                >
+                                                    Add
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setIsAddingDepartment(false); setNewDepartmentName(''); }}
+                                                    className="px-4 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-2xl hover:bg-gray-200"
+                                                    disabled={submitting}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 

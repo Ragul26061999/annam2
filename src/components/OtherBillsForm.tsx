@@ -5,6 +5,7 @@ import { X, Plus, Search, DollarSign } from 'lucide-react';
 import { 
   createOtherBill, 
   CHARGE_CATEGORIES,
+  getOtherBillChargeCategories,
   type OtherBillFormData,
   type ChargeCategory,
   type PatientType 
@@ -46,6 +47,7 @@ export default function OtherBillsForm({ isOpen, onClose, onSuccess, initialData
   const [patientSearch, setPatientSearch] = useState('');
   const [patientResults, setPatientResults] = useState<PatientSearchResult[]>([]);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
+  const [chargeCategories, setChargeCategories] = useState(CHARGE_CATEGORIES);
 
   const [calculatedAmounts, setCalculatedAmounts] = useState({
     subtotal: 0,
@@ -73,6 +75,23 @@ export default function OtherBillsForm({ isOpen, onClose, onSuccess, initialData
       totalAmount,
     });
   }, [formData.quantity, formData.unit_price, formData.discount_percent, formData.tax_percent]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cats = await getOtherBillChargeCategories();
+        if (!mounted) return;
+        setChargeCategories(cats);
+      } catch (err) {
+        console.warn('Failed to load other bill charge categories:', err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const searchPatients = async (query: string) => {
     if (query.length < 2) {
@@ -268,7 +287,7 @@ export default function OtherBillsForm({ isOpen, onClose, onSuccess, initialData
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
-              {CHARGE_CATEGORIES.map((category) => (
+              {chargeCategories.map((category) => (
                 <option key={category.value} value={category.value}>
                   {category.label} - {category.description}
                 </option>

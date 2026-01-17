@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, RefreshCw, Download, TrendingUp, DollarSign, FileText, AlertCircle, Printer, CreditCard, X, ChevronDown, Eye } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import OtherBillsForm from '../components/OtherBillsForm';
 import OtherBillsList from '../components/OtherBillsList';
 import OtherBillPrintTemplate from '../components/OtherBillPrintTemplate';
@@ -10,10 +11,12 @@ import {
   getOtherBills, 
   getOtherBillsStats,
   CHARGE_CATEGORIES,
+  getOtherBillChargeCategories,
   type OtherBillWithPatient 
 } from '../lib/otherBillsService';
 
 export default function OtherBills() {
+  const searchParams = useSearchParams();
   const [bills, setBills] = useState<OtherBillWithPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -22,6 +25,7 @@ export default function OtherBills() {
   const [billForPayment, setBillForPayment] = useState<OtherBillWithPatient | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
   const [showPrintDropdown, setShowPrintDropdown] = useState(false);
+  const [chargeCategories, setChargeCategories] = useState(CHARGE_CATEGORIES);
 
   const handlePrint = () => {
     setShowPrintView(true);
@@ -76,6 +80,33 @@ export default function OtherBills() {
     fetchStats();
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cats = await getOtherBillChargeCategories();
+        if (!mounted) return;
+        setChargeCategories(cats);
+      } catch (err) {
+        console.warn('Failed to load other bill charge categories:', err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const billId = searchParams?.get('bill');
+    if (billId && bills.length > 0) {
+      const bill = bills.find(b => b.id === billId);
+      if (bill) {
+        setSelectedBill(bill);
+      }
+    }
+  }, [searchParams, bills]);
+
   const handleRefresh = () => {
     fetchBills();
     fetchStats();
@@ -91,7 +122,7 @@ export default function OtherBills() {
   };
 
   const getCategoryLabel = (category: string) => {
-    const cat = CHARGE_CATEGORIES.find(c => c.value === category);
+    const cat = chargeCategories.find(c => c.value === category);
     return cat?.label || category;
   };
 

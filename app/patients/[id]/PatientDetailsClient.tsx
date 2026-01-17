@@ -41,7 +41,7 @@ import {
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
 import { getMedicalHistory, MedicalHistoryEvent } from '../../../src/lib/medicalHistoryService';
-import { getPatientLabOrders, getPatientRadiologyOrders } from '../../../src/lib/labXrayService';
+import { getPatientLabOrders, getPatientRadiologyOrders, getPatientXrayOrders, getPatientScanOrders } from '../../../src/lib/labXrayService';
 import { getIPComprehensiveBilling, IPComprehensiveBilling } from '../../../src/lib/ipBillingService';
 import MedicalHistoryForm from '../../../src/components/MedicalHistoryForm';
 import AddDummyMedicalHistory from '../../../src/components/AddDummyMedicalHistory';
@@ -55,6 +55,7 @@ import DocumentUpload from '../../../src/components/DocumentUpload';
 import EnhancedDocumentList from '../../../src/components/EnhancedDocumentList';
 import ClinicalRecordsModal from '../../../src/components/ip-clinical/ClinicalRecordsModal';
 import { PatientBillingPrint } from '../../../src/components/PatientBillingPrint';
+import { getPatientCompleteHistory, PatientTimelineEvent, PatientTimelineEventType } from '../../../src/lib/patientTimelineService';
 
 interface Patient {
   id: string;
@@ -199,7 +200,18 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [comprehensiveBilling, setComprehensiveBilling] = useState<IPComprehensiveBilling | null>(null);
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
+  const [xrayOrders, setXrayOrders] = useState<any[]>([]);
+  const [scanOrders, setScanOrders] = useState<any[]>([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [completeHistory, setCompleteHistory] = useState<PatientTimelineEvent[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<PatientTimelineEvent[]>([]);
+  const [showFilterDialog, setShowFilterDialog] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [selectedServices, setSelectedServices] = useState<PatientTimelineEventType[]>([]);
+  const [expandedIPSections, setExpandedIPSections] = useState<Set<string>>(new Set());
+  const [completeHistoryLoading, setCompleteHistoryLoading] = useState(false);
+  const [timelineLoaded, setTimelineLoaded] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -307,8 +319,9 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       }
 
       setVitalsLoading(true);
+      let vitalsData: any[] = [];
       try {
-        const vitalsData = await getPatientVitals(patientData.id);
+        vitalsData = await getPatientVitals(patientData.id);
         setVitals(vitalsData);
       } catch (vitalsError) {
         console.error('Error fetching vitals data:', vitalsError);
@@ -317,8 +330,9 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       }
 
       setHistoryLoading(true);
+      let historyData: MedicalHistoryEvent[] = [];
       try {
-        const historyData = await getMedicalHistory(patientData.id);
+        historyData = await getMedicalHistory(patientData.id);
         setMedicalHistory(historyData);
       } catch (historyError) {
         console.error('Error fetching medical history data:', historyError);
@@ -327,16 +341,28 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       }
 
       // Fetch Lab & Radiology Orders
+      let lOrders: any[] = [];
+      let rOrders: any[] = [];
+      let xOrders: any[] = [];
+      let sOrders: any[] = [];
       try {
-        const [lOrders, rOrders] = await Promise.all([
+        [lOrders, rOrders, xOrders, sOrders] = await Promise.all([
           getPatientLabOrders(patientData.id),
-          getPatientRadiologyOrders(patientData.id)
+          getPatientRadiologyOrders(patientData.id),
+          getPatientXrayOrders(patientData.id),
+          getPatientScanOrders(patientData.id)
         ]);
         setLabOrders(lOrders);
         setRadiologyOrders(rOrders);
+        setXrayOrders(xOrders);
+        setScanOrders(sOrders);
       } catch (reportsError) {
         console.error('Error fetching medical reports:', reportsError);
+        setXrayOrders([]);
+        setScanOrders([]);
       }
+
+      // Timeline will be loaded on demand
     } catch (err) {
       console.error('Error fetching patient data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load patient data');
@@ -344,6 +370,50 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       setLoading(false);
     }
   };
+
+  const fetchTimeline = async () => {
+    if (!patient || timelineLoaded) return;
+    
+    setCompleteHistoryLoading(true);
+    try {
+      const vitalsData = await getPatientVitals(patient.id);
+      const historyData = await getMedicalHistory(patient.id);
+      const [lOrders, rOrders, xOrders, sOrders] = await Promise.all([
+        getPatientLabOrders(patient.id),
+        getPatientRadiologyOrders(patient.id),
+        getPatientXrayOrders(patient.id),
+        getPatientScanOrders(patient.id)
+      ]);
+      
+      const history = await getPatientCompleteHistory({
+        patientUuid: patient.id,
+        patientUhid: patient.patient_id,
+        patientCreatedAt: patient.created_at,
+        appointments: patient.appointments,
+        bedAllocations: patient.bed_allocations,
+        vitals: vitalsData,
+        medicalHistory: historyData,
+        labOrders: lOrders,
+        radiologyOrders: rOrders,
+        xrayOrders: xOrders,
+        scanOrders: sOrders,
+        includeClinicalRecords: true,
+      });
+      setCompleteHistory(history);
+      setFilteredHistory(history);
+      setTimelineLoaded(true);
+    } catch (timelineErr) {
+      console.error('Error building complete patient history:', timelineErr);
+      setCompleteHistory([]);
+      setFilteredHistory([]);
+    } finally {
+      setCompleteHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPatientData();
+  }, [searchParams]);
 
   const calculateAge = (dateOfBirth: string, directAge?: number) => {
     if (directAge) return directAge;
@@ -679,25 +749,347 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   )}
                 </div>
                 <div>
-                  <h4 className="font-bold text-gray-900 mb-4 text-sm uppercase">Activity History</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">Patient Registered</p>
-                        <p className="text-xs text-gray-500">{formatDateTime(patient.created_at)}</p>
-                      </div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-gray-900 text-sm uppercase">Complete History Timeline</h4>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setShowFilterDialog(true)}
+                        className="px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        </svg>
+                        Filter
+                      </button>
+                      <div className="text-xs text-gray-500">{filteredHistory.length} events</div>
                     </div>
-                    {patient.admission_date && (
-                      <div className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">Patient Admitted</p>
-                          <p className="text-xs text-gray-500">{formatDateTime(patient.admission_date)}</p>
+                  </div>
+
+                  {showFilterDialog && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowFilterDialog(false)}>
+                      <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-bold text-gray-900">Filter Timeline</h3>
+                          <button onClick={() => setShowFilterDialog(false)} className="text-gray-400 hover:text-gray-600">
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="From"
+                              />
+                              <input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="To"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Service Types</label>
+                            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                              {(['appointment', 'ip_admission', 'ip_discharge', 'vitals', 'lab', 'radiology', 'xray', 'scan', 'billing', 'pharmacy_bill', 'medication', 'case_sheet', 'progress_note', 'doctor_order', 'nurse_record'] as PatientTimelineEventType[]).map((type) => (
+                                <label key={type} className="flex items-center gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedServices.includes(type)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedServices([...selectedServices, type]);
+                                      } else {
+                                        setSelectedServices(selectedServices.filter(s => s !== type));
+                                      }
+                                    }}
+                                    className="rounded border-gray-300"
+                                  />
+                                  <span className="capitalize">{type.replace('_', ' ')}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-4 border-t">
+                            <button
+                              onClick={() => {
+                                setDateFrom('');
+                                setDateTo('');
+                                setSelectedServices([]);
+                                setFilteredHistory(completeHistory);
+                                setShowFilterDialog(false);
+                              }}
+                              className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              onClick={() => {
+                                let filtered = completeHistory;
+                                if (dateFrom) {
+                                  filtered = filtered.filter(e => new Date(e.date) >= new Date(dateFrom));
+                                }
+                                if (dateTo) {
+                                  filtered = filtered.filter(e => new Date(e.date) <= new Date(dateTo));
+                                }
+                                if (selectedServices.length > 0) {
+                                  filtered = filtered.filter(e => selectedServices.includes(e.type));
+                                }
+                                setFilteredHistory(filtered);
+                                setShowFilterDialog(false);
+                              }}
+                              className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                              Apply
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {!timelineLoaded ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                      <div className="space-y-4">
+                        <div className="w-16 h-16 mx-auto bg-orange-100 rounded-full flex items-center justify-center">
+                          <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Complete History Timeline</h3>
+                          <p className="text-gray-500 mb-4">Load the complete patient history including appointments, admissions, vitals, lab results, billing, and more.</p>
+                          <button
+                            onClick={fetchTimeline}
+                            disabled={completeHistoryLoading}
+                            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white rounded-lg font-medium transition-colors flex items-center gap-2 mx-auto"
+                          >
+                            {completeHistoryLoading ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                Loading Timeline...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Load Complete History
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : completeHistoryLoading ? (
+                    <div className="py-10 flex justify-center">
+                      <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
+                    </div>
+                  ) : filteredHistory.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                      <p className="text-gray-500">No history found.</p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-gradient-to-b from-gray-200 via-gray-300 to-gray-200" style={{backgroundImage: 'repeating-linear-gradient(0deg, #e5e7eb, #e5e7eb 4px, transparent 4px, transparent 8px)'}}></div>
+                      <div className="space-y-4">
+                        {(() => {
+                          const groupedByIP: { [key: string]: PatientTimelineEvent[] } = {};
+                          const standaloneEvents: PatientTimelineEvent[] = [];
+                          
+                          filteredHistory.forEach(e => {
+                            if (e.bedAllocationId) {
+                              if (!groupedByIP[e.bedAllocationId]) {
+                                groupedByIP[e.bedAllocationId] = [];
+                              }
+                              groupedByIP[e.bedAllocationId].push(e);
+                            } else {
+                              standaloneEvents.push(e);
+                            }
+                          });
+
+                          const allEvents = [...standaloneEvents];
+                          Object.entries(groupedByIP).forEach(([allocId, events]) => {
+                            const admission = filteredHistory.find(e => e.type === 'ip_admission' && e.bedAllocationId === allocId);
+                            if (admission) {
+                              allEvents.push({ ...admission, _isIPGroup: true, _ipEvents: events } as any);
+                            } else {
+                              allEvents.push(...events);
+                            }
+                          });
+
+                          allEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                          return allEvents.map((e: any) => {
+                            const getEventColor = (type: PatientTimelineEventType) => {
+                              const colors: Record<PatientTimelineEventType, string> = {
+                                registration: 'bg-gray-500',
+                                appointment: 'bg-blue-500',
+                                ip_admission: 'bg-indigo-600',
+                                ip_discharge: 'bg-indigo-400',
+                                vitals: 'bg-orange-500',
+                                medical_history: 'bg-red-500',
+                                lab: 'bg-cyan-500',
+                                radiology: 'bg-purple-500',
+                                xray: 'bg-purple-400',
+                                scan: 'bg-purple-600',
+                                billing: 'bg-yellow-500',
+                                billing_payment: 'bg-green-500',
+                                ip_payment: 'bg-green-600',
+                                other_bill: 'bg-yellow-600',
+                                other_bill_payment: 'bg-green-400',
+                                pharmacy_bill: 'bg-pink-500',
+                                medication: 'bg-emerald-500',
+                                case_sheet: 'bg-teal-500',
+                                progress_note: 'bg-sky-500',
+                                doctor_order: 'bg-violet-500',
+                                nurse_record: 'bg-rose-500',
+                                discharge_summary: 'bg-indigo-500',
+                              };
+                              return colors[type] || 'bg-gray-400';
+                            };
+
+                            const getEventIcon = (type: PatientTimelineEventType) => {
+                              const icons: Record<PatientTimelineEventType, React.ReactElement> = {
+                                registration: <User className="h-3.5 w-3.5" />,
+                                appointment: <Calendar className="h-3.5 w-3.5" />,
+                                ip_admission: <Bed className="h-3.5 w-3.5" />,
+                                ip_discharge: <LogOut className="h-3.5 w-3.5" />,
+                                vitals: <Activity className="h-3.5 w-3.5" />,
+                                medical_history: <Heart className="h-3.5 w-3.5" />,
+                                lab: <Microscope className="h-3.5 w-3.5" />,
+                                radiology: <Radiation className="h-3.5 w-3.5" />,
+                                xray: <Radiation className="h-3.5 w-3.5" />,
+                                scan: <FolderOpen className="h-3.5 w-3.5" />,
+                                billing: <FileText className="h-3.5 w-3.5" />,
+                                billing_payment: <FileText className="h-3.5 w-3.5" />,
+                                ip_payment: <FileText className="h-3.5 w-3.5" />,
+                                other_bill: <FileText className="h-3.5 w-3.5" />,
+                                other_bill_payment: <FileText className="h-3.5 w-3.5" />,
+                                pharmacy_bill: <Pill className="h-3.5 w-3.5" />,
+                                medication: <Pill className="h-3.5 w-3.5" />,
+                                case_sheet: <ClipboardList className="h-3.5 w-3.5" />,
+                                progress_note: <MessageSquare className="h-3.5 w-3.5" />,
+                                doctor_order: <Stethoscope className="h-3.5 w-3.5" />,
+                                nurse_record: <UserCheck className="h-3.5 w-3.5" />,
+                                discharge_summary: <FileText className="h-3.5 w-3.5" />,
+                              };
+                              return icons[type] || <FileText className="h-3.5 w-3.5" />;
+                            };
+
+                            if (e._isIPGroup) {
+                              const isExpanded = expandedIPSections.has(e.bedAllocationId!);
+                              return (
+                                <div key={e.id} className="relative">
+                                  <div className="flex gap-4">
+                                    <div className="relative flex flex-col items-center">
+                                      <div className={`w-10 h-10 rounded-full ${getEventColor(e.type)} flex items-center justify-center text-white shadow-lg z-10`}>
+                                        {getEventIcon(e.type)}
+                                      </div>
+                                    </div>
+                                    <div className="flex-1 pb-4">
+                                      <button
+                                        onClick={() => {
+                                          const newExpanded = new Set(expandedIPSections);
+                                          if (isExpanded) {
+                                            newExpanded.delete(e.bedAllocationId!);
+                                          } else {
+                                            newExpanded.add(e.bedAllocationId!);
+                                          }
+                                          setExpandedIPSections(newExpanded);
+                                        }}
+                                        className="w-full text-left bg-gradient-to-r from-indigo-50 to-blue-50 hover:from-indigo-100 hover:to-blue-100 rounded-xl p-4 border border-indigo-200 transition-all"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <p className="text-base font-bold text-indigo-900">{e.title}</p>
+                                              <span className="px-2 py-0.5 bg-indigo-200 text-indigo-800 text-xs font-medium rounded-full">{e._ipEvents.length} events</span>
+                                            </div>
+                                            <p className="text-sm text-indigo-700">{e.subtitle}</p>
+                                            <p className="text-xs text-indigo-600 mt-1">{formatDateTime(e.date)}</p>
+                                          </div>
+                                          <ChevronRight className={`h-5 w-5 text-indigo-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                        </div>
+                                      </button>
+                                      {isExpanded && (
+                                        <div className="mt-3 ml-4 space-y-2 border-l-2 border-indigo-200 pl-4">
+                                          {e._ipEvents.map((ipEvent: PatientTimelineEvent) => (
+                                            <div key={ipEvent.id} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                                              <div className={`w-8 h-8 rounded-full ${getEventColor(ipEvent.type)} flex items-center justify-center text-white flex-shrink-0`}>
+                                                {getEventIcon(ipEvent.type)}
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <p className="text-sm font-semibold text-gray-900">{ipEvent.title}</p>
+                                                  {typeof ipEvent.amount === 'number' && (
+                                                    <p className="text-sm font-bold text-gray-900 whitespace-nowrap">₹{formatMoney(ipEvent.amount)}</p>
+                                                  )}
+                                                </div>
+                                                <p className="text-xs text-gray-600 mt-0.5">{ipEvent.subtitle || ipEvent.status || ''}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{formatDateTime(ipEvent.date)}</p>
+                                              </div>
+                                              {ipEvent.link && (
+                                                <Link href={ipEvent.link} className="text-orange-600 font-bold text-xs hover:underline flex items-center gap-1 flex-shrink-0">
+                                                  VIEW <ChevronRight size={10} />
+                                                </Link>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div key={e.id} className="relative flex gap-4">
+                                <div className="relative flex flex-col items-center">
+                                  <div className={`w-10 h-10 rounded-full ${getEventColor(e.type)} flex items-center justify-center text-white shadow-lg z-10`}>
+                                    {getEventIcon(e.type)}
+                                  </div>
+                                </div>
+                                <div className="flex-1 pb-4">
+                                  <div className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-lg transition-shadow">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <p className="text-sm font-bold text-gray-900">{e.title}</p>
+                                          {e.status && (
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full capitalize">{e.status}</span>
+                                          )}
+                                        </div>
+                                        {e.subtitle && <p className="text-xs text-gray-600 mb-1">{e.subtitle}</p>}
+                                        <p className="text-xs text-gray-500">{formatDateTime(e.date)}</p>
+                                      </div>
+                                      <div className="flex items-center gap-3 flex-shrink-0">
+                                        {typeof e.amount === 'number' && (
+                                          <p className="text-base font-bold text-gray-900 whitespace-nowrap">₹{formatMoney(e.amount)}</p>
+                                        )}
+                                        {e.link && (
+                                          <Link href={e.link} className="text-orange-600 font-bold text-xs hover:underline flex items-center gap-1">
+                                            VIEW <ChevronRight size={12} />
+                                          </Link>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -914,7 +1306,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
             {/* Medical Records Tab */}
             {activeTab === 'reports-docs' && (
               <div className="space-y-6">
-                <div className="border-b border-gray-100 flex gap-6 mb-4">
+                <div className="border-b border-gray-200 flex gap-6 mb-6">
                   <button 
                     onClick={() => setActiveReportTab('generated')} 
                     className={`pb-3 text-sm font-bold ${activeReportTab === 'generated' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}
@@ -930,127 +1322,67 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 </div>
 
                 {activeReportTab === 'generated' ? (
-                  <div className="space-y-8">
-                    {/* Lab Reports Section */}
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Microscope className="h-5 w-5 text-teal-600" />
-                        Laboratory Reports
-                      </h3>
-                      {labOrders.length > 0 ? (
-                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Test Name</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Doctor</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {labOrders.map((order) => (
-                                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {formatDateTime(order.created_at)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
-                                    <div className="text-xs text-gray-500">{order.test_catalog?.category}</div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                    Dr. {order.ordering_doctor?.name || 'Unknown'}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                      ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                                        order.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
-                                        'bg-gray-100 text-gray-800'}`}>
-                                      {order.status ? order.status.replace(/_/g, ' ').toUpperCase() : 'PENDING'}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <Link 
-                                      href={`/lab-xray/order/${order.id}`}
-                                      className="text-teal-600 hover:text-teal-900 font-bold flex items-center justify-end gap-1"
-                                    >
-                                      View <ChevronRight size={14} />
-                                    </Link>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
-                          <Microscope className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                          <p className="text-gray-500">No lab reports found for this patient.</p>
-                        </div>
-                      )}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                        <Microscope className="h-4 w-4 text-teal-600" />
+                        <div className="font-bold text-gray-900">Lab</div>
+                        <div className="ml-auto text-xs text-gray-500">{labOrders.length}</div>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {labOrders.slice(0, 10).map((order) => (
+                          <div key={order.id} className="p-4 flex items-center justify-between">
+                            <div>
+                              <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
+                              <div className="text-xs text-gray-500">{formatDateTime(order.created_at)}</div>
+                            </div>
+                            <Link href={`/lab-xray/order/${order.id}`} className="text-teal-600 hover:text-teal-900 font-bold text-sm">
+                              View
+                            </Link>
+                          </div>
+                        ))}
+                        {labOrders.length === 0 && (
+                          <div className="p-8 text-center text-gray-500 text-sm">No lab records.</div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Radiology Reports Section */}
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Radiation className="h-5 w-5 text-cyan-600" />
-                        Radiology Reports
-                      </h3>
-                      {radiologyOrders.length > 0 ? (
-                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Procedure</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Modality</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {radiologyOrders.map((order) => (
-                                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {formatDateTime(order.created_at)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Scan'}</div>
-                                    <div className="text-xs text-gray-500">{order.body_part || 'General'}</div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                    <span className="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-600">
-                                      {order.test_catalog?.modality || 'X-RAY'}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                      ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                                        order.status === 'report_pending' ? 'bg-amber-100 text-amber-800' : 
-                                        'bg-gray-100 text-gray-800'}`}>
-                                      {order.status ? order.status.replace(/_/g, ' ').toUpperCase() : 'PENDING'}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <Link 
-                                      href={`/lab-xray/order/${order.id}`}
-                                      className="text-cyan-600 hover:text-cyan-900 font-bold flex items-center justify-end gap-1"
-                                    >
-                                      View <ChevronRight size={14} />
-                                    </Link>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
-                          <Radiation className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                          <p className="text-gray-500">No radiology reports found for this patient.</p>
-                        </div>
-                      )}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                        <Radiation className="h-4 w-4 text-cyan-600" />
+                        <div className="font-bold text-gray-900">X-ray</div>
+                        <div className="ml-auto text-xs text-gray-500">{xrayOrders.length}</div>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {xrayOrders.slice(0, 10).map((order) => (
+                          <div key={order.id} className="p-4">
+                            <div className="text-sm font-bold text-gray-900">{order.scan_name || order.body_part || 'X-ray'}</div>
+                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_at)}</div>
+                          </div>
+                        ))}
+                        {xrayOrders.length === 0 && (
+                          <div className="p-8 text-center text-gray-500 text-sm">No X-ray records.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4 text-purple-600" />
+                        <div className="font-bold text-gray-900">Scans</div>
+                        <div className="ml-auto text-xs text-gray-500">{scanOrders.length}</div>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {scanOrders.slice(0, 10).map((order) => (
+                          <div key={order.id} className="p-4">
+                            <div className="text-sm font-bold text-gray-900">{order.scan_name || order.scan_type || 'Scan'}</div>
+                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_date)}</div>
+                          </div>
+                        ))}
+                        {scanOrders.length === 0 && (
+                          <div className="p-8 text-center text-gray-500 text-sm">No scan records.</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : (

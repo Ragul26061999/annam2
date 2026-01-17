@@ -1,24 +1,19 @@
 import { supabase } from './supabase';
 import type { OtherBills, OtherBillPayments } from '../types/database';
 
-export type ChargeCategory = 
-  | 'nursing_charges'
-  | 'attendant_charges'
-  | 'medical_equipment'
-  | 'ambulance_service'
-  | 'special_procedures'
-  | 'dietary_charges'
-  | 'laundry_service'
-  | 'accommodation_extra'
-  | 'mortuary_charges'
-  | 'certificate_charges'
-  | 'photocopying'
-  | 'misc_supplies'
-  | 'other';
+export type ChargeCategory = string;
 
 export type PatientType = 'IP' | 'OP' | 'Emergency' | 'General';
 
 export type PaymentStatus = 'pending' | 'partial' | 'paid' | 'cancelled';
+
+export interface OtherBillChargeCategory {
+  value: string;
+  label: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+}
 
 export interface OtherBillFormData {
   patient_id?: string;
@@ -50,7 +45,7 @@ export type OtherBillWithPatient = OtherBills['Row'] & {
   } | null;
 }
 
-export const CHARGE_CATEGORIES: { value: ChargeCategory; label: string; description: string }[] = [
+export const CHARGE_CATEGORIES: { value: string; label: string; description: string }[] = [
   { value: 'nursing_charges', label: 'Nursing Charges', description: 'Nursing care and monitoring fees' },
   { value: 'attendant_charges', label: 'Attendant Charges', description: 'Patient attendant service fees' },
   { value: 'medical_equipment', label: 'Medical Equipment', description: 'Equipment rental or usage charges' },
@@ -65,6 +60,73 @@ export const CHARGE_CATEGORIES: { value: ChargeCategory; label: string; descript
   { value: 'misc_supplies', label: 'Miscellaneous Supplies', description: 'Other medical supplies' },
   { value: 'other', label: 'Other', description: 'Other miscellaneous charges' },
 ];
+
+export async function getOtherBillChargeCategories(): Promise<OtherBillChargeCategory[]> {
+  try {
+    const { data, error } = await supabase
+      .from('other_bill_charge_categories')
+      .select('value,label,description,is_active,sort_order')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .order('label', { ascending: true });
+
+    if (error) {
+      console.warn('Error fetching other bill charge categories from DB, using fallback:', error);
+      return CHARGE_CATEGORIES.map((c, idx) => ({
+        value: c.value,
+        label: c.label,
+        description: c.description,
+        is_active: true,
+        sort_order: idx + 1,
+      }));
+    }
+
+    if (!data || data.length === 0) {
+      return CHARGE_CATEGORIES.map((c, idx) => ({
+        value: c.value,
+        label: c.label,
+        description: c.description,
+        is_active: true,
+        sort_order: idx + 1,
+      }));
+    }
+
+    return data as OtherBillChargeCategory[];
+  } catch (error) {
+    console.warn('Exception fetching other bill charge categories, using fallback:', error);
+    return CHARGE_CATEGORIES.map((c, idx) => ({
+      value: c.value,
+      label: c.label,
+      description: c.description,
+      is_active: true,
+      sort_order: idx + 1,
+    }));
+  }
+}
+
+export async function getActiveBedAllocationForPatient(patientId: string): Promise<{ id: string } | null> {
+  try {
+    const { data, error } = await supabase
+      .from('bed_allocations')
+      .select('id')
+      .eq('patient_id', patientId)
+      .eq('status', 'active')
+      .is('discharge_date', null)
+      .order('admission_date', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn('Error fetching active bed allocation:', error);
+      return null;
+    }
+
+    if (!data || data.length === 0) return null;
+    return { id: data[0].id };
+  } catch (error) {
+    console.warn('Exception fetching active bed allocation:', error);
+    return null;
+  }
+}
 
 export async function generateOtherBillNumber(): Promise<string> {
   try {
@@ -113,33 +175,45 @@ export async function createOtherBill(
   userId?: string
 ): Promise<OtherBills['Row']> {
   try {
+    let normalizedFormData = { ...formData };
+    if (normalizedFormData.patient_id) {
+      const activeAllocation = await getActiveBedAllocationForPatient(normalizedFormData.patient_id);
+      if (activeAllocation) {
+        normalizedFormData = {
+          ...normalizedFormData,
+          patient_type: 'IP',
+          bed_allocation_id: activeAllocation.id,
+        };
+      }
+    }
+
     const billNumber = await generateOtherBillNumber();
-    const amounts = calculateBillAmounts(formData);
+    const amounts = calculateBillAmounts(normalizedFormData);
 
     const billData: any = {
       bill_number: billNumber,
       bill_date: new Date().toISOString(),
-      patient_id: formData.patient_id || null,
-      patient_type: formData.patient_type,
-      patient_name: formData.patient_name,
-      patient_phone: formData.patient_phone || null,
-      charge_category: formData.charge_category,
-      charge_description: formData.charge_description,
-      quantity: formData.quantity,
-      unit_price: formData.unit_price,
-      discount_percent: formData.discount_percent || 0,
+      patient_id: normalizedFormData.patient_id || null,
+      patient_type: normalizedFormData.patient_type,
+      patient_name: normalizedFormData.patient_name,
+      patient_phone: normalizedFormData.patient_phone || null,
+      charge_category: normalizedFormData.charge_category,
+      charge_description: normalizedFormData.charge_description,
+      quantity: normalizedFormData.quantity,
+      unit_price: normalizedFormData.unit_price,
+      discount_percent: normalizedFormData.discount_percent || 0,
       discount_amount: amounts.discount_amount,
       subtotal: amounts.subtotal,
-      tax_percent: formData.tax_percent || 0,
+      tax_percent: normalizedFormData.tax_percent || 0,
       tax_amount: amounts.tax_amount,
       total_amount: amounts.total_amount,
       payment_status: 'pending',
       paid_amount: 0,
       balance_amount: amounts.balance_amount,
-      reference_number: formData.reference_number || null,
-      remarks: formData.remarks || null,
-      bed_allocation_id: formData.bed_allocation_id || null,
-      encounter_id: formData.encounter_id || null,
+      reference_number: normalizedFormData.reference_number || null,
+      remarks: normalizedFormData.remarks || null,
+      bed_allocation_id: normalizedFormData.bed_allocation_id || null,
+      encounter_id: normalizedFormData.encounter_id || null,
       status: 'active',
       // Remove created_by and updated_by to avoid foreign key constraints
     };
@@ -283,7 +357,7 @@ export async function updateOtherBill(
 
     const amounts = calculateBillAmounts(mergedData);
 
-    const updateData: Partial<OtherBills['Row']> = {
+    const updateData: any = {
       ...updates,
       discount_amount: amounts.discount_amount,
       subtotal: amounts.subtotal,

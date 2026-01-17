@@ -8,6 +8,7 @@ export interface StaffMember {
   email?: string;
   phone?: string;
   role: string;
+  training_category?: string;
   department_id?: string;
   is_active: boolean;
   hire_date?: string;
