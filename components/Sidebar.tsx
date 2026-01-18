@@ -22,7 +22,8 @@ import {
   Microscope,
   Radiation,
   RefreshCw,
-  FileText
+  FileText,
+  Scissors
 } from 'lucide-react';
 
 interface NavItem {
@@ -116,6 +117,12 @@ const Sidebar: React.FC = () => {
       label: 'Other Bills',
       icon: <FileText size={18} />,
       color: 'text-cyan-600'
+    },
+    {
+      href: '/surgery-charges',
+      label: 'Surgery Charges',
+      icon: <Scissors size={18} />,
+      color: 'text-purple-600'
     },
   ];
 

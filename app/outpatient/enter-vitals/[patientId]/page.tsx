@@ -93,7 +93,7 @@ export default function EnterVitalsPage() {
 
       if (data && data.length > 0) {
         // Get user details separately
-        const userIds = data.map(d => d.user_id).filter(Boolean);
+        const userIds = data.map((d: { user_id: string | null }) => d.user_id).filter(Boolean);
         let doctorsWithUsers = data;
 
         if (userIds.length > 0) {
@@ -105,9 +105,9 @@ export default function EnterVitalsPage() {
           console.log('Users query result:', { usersData, usersError });
 
           if (!usersError && usersData) {
-            doctorsWithUsers = data.map(doctor => ({
+            doctorsWithUsers = data.map((doctor: any) => ({
               ...doctor,
-              users: usersData.find(user => user.id === doctor.user_id)
+              users: usersData.find((user: any) => user.id === doctor.user_id)
             }));
           } else if (usersError) {
             console.warn('Could not fetch user details:', usersError);

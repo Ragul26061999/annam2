@@ -365,7 +365,7 @@ export async function convertRecommendationsToPrescription(
     }
 
     // Create prescriptions
-    const prescriptions = recommendations?.map(rec => ({
+    const prescriptions = recommendations?.map((rec: any) => ({
       patient_id: patientId,
       doctor_id: doctorId,
       medication_name: rec.medication_name,

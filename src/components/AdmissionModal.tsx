@@ -84,7 +84,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
 
       if (error) throw error;
 
-      const bedsWithDepartment = beds?.map(bed => ({
+      const bedsWithDepartment = beds?.map((bed: any) => ({
         ...bed,
         department: Array.isArray(bed.department) ? bed.department[0] : bed.department
       })) || [];
@@ -93,7 +93,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
 
       // Extract unique ward names
       const uniqueWards = [...new Set(bedsWithDepartment
-        .map(bed => bed.department?.name)
+        .map((bed: any) => bed.department?.name)
         .filter(Boolean)
       )] as string[];
       setWards(uniqueWards);
@@ -124,7 +124,7 @@ export default function AdmissionModal({ isOpen, onClose, patient, onSuccess }: 
       if (error) throw error;
 
       // Transform the data to match our interface
-      const transformedDoctors = doctors?.map(doctor => ({
+      const transformedDoctors = doctors?.map((doctor: any) => ({
         ...doctor,
         user: Array.isArray(doctor.user) ? doctor.user[0] : doctor.user
       })) || [];

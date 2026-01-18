@@ -318,7 +318,7 @@ export function getLabXrayAttachmentDownloadUrl(filePath: string): string {
 export async function ensureLabXrayAttachmentBucket(): Promise<void> {
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === 'lab-xray-attachments') || false;
+    const bucketExists = buckets?.some((bucket: any) => bucket.name === 'lab-xray-attachments') || false;
     
     if (!bucketExists) {
       const { error } = await supabase.storage.createBucket('lab-xray-attachments', {

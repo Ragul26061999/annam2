@@ -129,8 +129,8 @@ export default function PharmacyBillingPage() {
         const key = attrFilterCategory === 'dosage_form' ? 'dosage_form' :
           attrFilterCategory === 'combination' ? 'combination' :
             attrFilterCategory === 'manufacturer' ? 'manufacturer' : 'name'
-        const filteredMeds = medications.filter(m => m[key] === attrFilterValue)
-        const medIds = filteredMeds.map(m => m.id)
+        const filteredMeds = medications.filter((m: any) => m[key] === attrFilterValue)
+        const medIds = filteredMeds.map((m: any) => m.id)
 
         if (medIds.length === 0) {
           setMatchedBillIds([])
@@ -142,7 +142,7 @@ export default function PharmacyBillingPage() {
           .select('billing_id')
           .in('medicine_id', medIds)
 
-        const ids = Array.from(new Set((items || []).map(it => it.billing_id)))
+        const ids = Array.from(new Set((items || []).map((it: any) => String(it.billing_id)))) as string[]
         setMatchedBillIds(ids)
       } catch (err) {
         console.error('Filter error:', err)
@@ -227,20 +227,20 @@ export default function PharmacyBillingPage() {
       const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
 
       const todaysCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'paid')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'paid')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
 
       const monthlyCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'paid')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'paid')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
 
       const pendingDue = mappedBills
-        .filter(bill => bill.payment_status === 'pending')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => bill.payment_status === 'pending')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
 
       const totalPayments = mappedBills
-        .filter(bill => bill.payment_status === 'paid')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => bill.payment_status === 'paid')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
 
       setDashboardStats({
         todaysSales: todaysCollection,

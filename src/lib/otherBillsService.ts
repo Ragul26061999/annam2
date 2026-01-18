@@ -529,7 +529,7 @@ export async function getOtherBillsStats(): Promise<{
       by_patient_type: {} as Record<string, { count: number; amount: number }>,
     };
 
-    bills?.forEach((bill) => {
+    bills?.forEach((bill: any) => {
       stats.total_amount += bill.total_amount;
       stats.paid_amount += bill.paid_amount;
       stats.pending_amount += bill.balance_amount;

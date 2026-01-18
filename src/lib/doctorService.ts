@@ -624,7 +624,7 @@ export async function getAllDoctors(options: {
     }
 
     // Add computed fields for compatibility
-    const enhancedDoctors = allDoctors?.map(doctor => ({
+    const enhancedDoctors = allDoctors?.map((doctor: any) => ({
       ...doctor,
       doctor_id: doctor.license_number, // Use license_number as doctor_id
       department: getSpecializationDepartment(doctor.specialization),
@@ -878,7 +878,7 @@ export async function getDoctorsBySpecialization(specialization: string): Promis
     }
 
     // Add computed fields for compatibility
-    const enhancedDoctors = doctors?.map(doctor => ({
+    const enhancedDoctors = doctors?.map((doctor: any) => ({
       ...doctor,
       doctor_id: doctor.license_number,
       department: getSpecializationDepartment(doctor.specialization),
@@ -1143,9 +1143,9 @@ export async function getDoctorStats(doctorId?: string): Promise<{
     }
 
     const totalAppointments = appointments?.length || 0;
-    const todayAppointments = appointments?.filter(apt => apt.appointment_date === today).length || 0;
-    const completedAppointments = appointments?.filter(apt => apt.status === 'completed').length || 0;
-    const pendingAppointments = appointments?.filter(apt =>
+    const todayAppointments = appointments?.filter((apt: any) => apt.appointment_date === today).length || 0;
+    const completedAppointments = appointments?.filter((apt: any) => apt.status === 'completed').length || 0;
+    const pendingAppointments = appointments?.filter((apt: any) =>
       apt.status === 'scheduled' || apt.status === 'confirmed'
     ).length || 0;
 
@@ -1179,7 +1179,7 @@ export async function getAllSpecializations(): Promise<string[]> {
     }
 
     // Return the specialization names
-    return specializations?.map(s => s.name) || [];
+    return specializations?.map((s: any) => s.name) || [];
   } catch (error) {
     console.error('Error fetching specializations:', error);
     throw error;
@@ -1227,11 +1227,12 @@ export async function getAllDepartments(): Promise<string[]> {
         .select('specialization')
         .eq('status', 'active');
 
-      const departments = doctors?.map(d => getSpecializationDepartment(d.specialization)) || [];
-      return [...new Set(departments)].sort();
+      const departments = (doctors || []).map((d: any) => String(getSpecializationDepartment(d.specialization) || ''))
+        .filter(Boolean) as string[];
+      return Array.from(new Set(departments)).sort();
     }
 
-    const uniqueDepartments = [...new Set(data?.map(d => d.name) || [])];
+    const uniqueDepartments = Array.from(new Set((data || []).map((d: any) => String(d.name || '')).filter(Boolean))) as string[];
     return uniqueDepartments.sort();
   } catch (error) {
     console.error('Error fetching departments:', error);

@@ -449,40 +449,81 @@ export default function InventoryPage() {
     try {
       setLoading(true)
       setError(null)
-      // Fetch active medications
+      console.log('Testing Supabase client...')
+      const chunk = <T,>(arr: T[], size: number) => {
+        const out: T[][] = []
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+        return out
+      }
+
+      // Test with a simple query to see if the client works
+      const { data: test, error: testError } = await supabase
+        .from('medications')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+
+      console.log('testError:', testError)
+      console.log('test:', test)
+
+      if (testError) {
+        console.error('Supabase client test failed:', testError)
+        throw testError
+      }
+
+      // If test passes, proceed with full query
       const { data: meds, error: medsError } = await supabase
         .from('medications')
-        .select('id, name, category, manufacturer, available_stock, minimum_stock_level, dosage_form, combination')
-        .eq('status', 'active')
+        .select('id, name, category, manufacturer, dosage_form, minimum_stock_level, combination')
+        .eq('is_active', true)
         .order('name')
 
-      if (medsError) throw medsError
+      console.log('medsError:', medsError)
+      console.log('meds:', meds)
 
-      const medIds = (meds || []).map(m => m.id)
+      if (medsError) {
+        console.error('Supabase medsError:', medsError)
+        throw medsError
+      }
+
+      const medIds = (meds || []).map((m: any) => m.id)
       // Fetch batches for these medications
-      const { data: batches, error: batchesError } = await supabase
-        .from('medicine_batches')
-        .select('id, medicine_id, batch_number, manufacturing_date, expiry_date, current_quantity, purchase_price, selling_price, received_date, status, supplier_id')
-        .in('medicine_id', medIds.length ? medIds : ['00000000-0000-0000-0000-000000000000'])
-
-      if (batchesError) throw batchesError
+      let batches: any[] = []
+      const idChunks = chunk(medIds, 200)
+      if (idChunks.length === 0) {
+        batches = []
+      } else {
+        for (const ids of idChunks) {
+          const { data: b, error: bErr } = await supabase
+            .from('medicine_batches')
+            .select('id, medicine_id, batch_number, manufacturing_date, expiry_date, current_quantity, purchase_price, selling_price, received_date, status, supplier_id')
+            .in('medicine_id', ids)
+          if (bErr) throw bErr
+          if (b && b.length) batches = batches.concat(b)
+        }
+      }
 
       // Fetch suppliers referenced by batches
-      const supplierIds = Array.from(new Set((batches || []).map(b => b.supplier_id).filter(Boolean))) as string[]
+      const supplierIds = Array.from(new Set((batches || []).map((b: any) => b.supplier_id).filter(Boolean))) as string[]
       let suppliersMap: Record<string, string> = {}
       if (supplierIds.length > 0) {
-        const { data: suppliers } = await supabase
-          .from('suppliers')
-          .select('id, name')
-          .in('id', supplierIds)
-        suppliersMap = Object.fromEntries((suppliers || []).map(s => [s.id, s.name]))
+        let suppliers: any[] = []
+        for (const ids of chunk(supplierIds, 200)) {
+          const { data: s, error: sErr } = await supabase
+            .from('suppliers')
+            .select('id, name')
+            .in('id', ids)
+          if (sErr) throw sErr
+          if (s && s.length) suppliers = suppliers.concat(s)
+        }
+        suppliersMap = Object.fromEntries((suppliers || []).map((s: any) => [s.id, s.name]))
       }
 
 
 
 
       const mapped: Medicine[] = (meds || []).map((m: any) => {
-        const mBatches = (batches || []).filter(b => b.medicine_id === m.id)
+        const mBatches = (batches || []).filter((b: any) => b.medicine_id === m.id)
         const batchesMapped: MedicineBatch[] = mBatches.map((b: any) => ({
           id: b.id,
           medicine_id: b.medicine_id,
@@ -501,23 +542,30 @@ export default function InventoryPage() {
         return {
           id: m.id,
           name: m.name,
-          nickname: m.nickname || null, // Handle missing nickname field
-          category: m.category,
+          category: m.category || 'Uncategorized',
           description: '',
-          manufacturer: m.manufacturer,
+          manufacturer: m.manufacturer || 'Unknown',
           unit: m.dosage_form || 'units',
           total_stock: calculatedTotalStock,
           min_stock_level: Number(m.minimum_stock_level ?? 0),
-          batches: batchesMapped,
-          medication_code: m.medication_code,
-          combination: m.combination
+          batches: batchesMapped
         }
       })
 
       setMedicines(mapped)
-    } catch (err) {
+      console.log('Successfully loaded', mapped.length, 'medicines')
+    } catch (err: any) {
       console.error('loadMedicines failed', err)
-      setError('Failed to load medicines')
+      try {
+        console.error('Error props:', Object.getOwnPropertyNames(err || {}))
+      } catch { }
+      console.error('Error details:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code
+      })
+      setError('Failed to load medicines: ' + (err?.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }

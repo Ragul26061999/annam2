@@ -119,9 +119,9 @@ export async function getStaffMembers(
     if (deptsError) {
       console.warn('Could not fetch departments for staff mapping:', deptsError.message);
     }
-    const deptMap = Object.fromEntries(depts?.map(d => [d.id, d.name]) || []);
+    const deptMap = Object.fromEntries(depts?.map((d: any) => [d.id, d.name]) || []);
 
-    return (staff || []).map(s => ({
+    return (staff || []).map((s: any) => ({
       ...s,
       name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
       department_name: s.department_id ? deptMap[s.department_id] : undefined
@@ -304,16 +304,16 @@ export async function getStaffStats(): Promise<StaffStats> {
     if (deptsError) {
       console.warn('Could not fetch departments for staff stats:', deptsError.message);
     }
-    const deptMap = Object.fromEntries(depts?.map(d => [d.id, d.name]) || []);
+    const deptMap = Object.fromEntries(depts?.map((d: any) => [d.id, d.name]) || []);
 
     const totalStaff = staff?.length || 0;
-    const activeStaff = staff?.filter(s => s.is_active).length || 0;
+    const activeStaff = staff?.filter((s: any) => s.is_active).length || 0;
     const onLeaveStaff = 0; // Placeholder
 
     const departmentCounts: { [department: string]: number } = {};
     const roleCounts: { [role: string]: number } = {};
 
-    staff?.forEach(member => {
+    staff?.forEach((member: any) => {
       const deptName = member.department_id ? deptMap[member.department_id] : 'Unassigned';
       departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
 
@@ -411,9 +411,9 @@ export async function getStaffSchedule(
 
     // Fetch staff info separately to map names
     const { data: staffMembers } = await supabase.from('staff').select('id, first_name, last_name, role');
-    const staffMap = Object.fromEntries(staffMembers?.map(s => [s.id, s]) || []);
+    const staffMap = Object.fromEntries(staffMembers?.map((s: any) => [s.id, s]) || []);
 
-    return (schedules || []).map(s => {
+    return (schedules || []).map((s: any) => {
       const staffInfo = staffMap[s.staff_id];
       return {
         ...s,
@@ -511,7 +511,7 @@ export async function getRoles(): Promise<string[]> {
       throw error;
     }
 
-    const roles = [...new Set(staff?.map(s => s.role).filter(Boolean))] as string[];
+    const roles = [...new Set(staff?.map((s: any) => s.role).filter(Boolean))] as string[];
     return roles.sort();
   } catch (error) {
     console.error('Error in getRoles:', error);
@@ -584,11 +584,11 @@ export async function generateNextEmployeeId(): Promise<string> {
 
     // Extract numbers and find max
     const numbers = staff
-      .map(s => {
+      .map((s: any) => {
         const match = s.employee_id?.match(/EMP-(\d+)/);
         return match ? parseInt(match[1]) : 0;
       })
-      .filter(n => !isNaN(n));
+      .filter((n: any) => !isNaN(n));
 
     const maxId = numbers.length > 0 ? Math.max(...numbers) : 0;
     const nextId = maxId + 1;
@@ -681,10 +681,10 @@ export async function getStaffAttendance(filters?: {
       .select('id, first_name, last_name');
     
     const staffMap = Object.fromEntries(
-      staff?.map(s => [s.id, `${s.first_name} ${s.last_name}`]) || []
+      staff?.map((s: any) => [s.id, `${s.first_name} ${s.last_name}`]) || []
     );
 
-    return (data || []).map(a => ({
+    return (data || []).map((a: any) => ({
       ...a,
       staff_name: staffMap[a.staff_id] || 'Unknown'
     }));
@@ -764,10 +764,10 @@ export async function getStaffAttendanceSummary(staff_id: string, month?: string
     }
 
     const total_days = data?.length || 0;
-    const present_days = data?.filter(a => a.status === 'present').length || 0;
-    const absent_days = data?.filter(a => a.status === 'absent').length || 0;
-    const half_days = data?.filter(a => a.status === 'half_day').length || 0;
-    const leave_days = data?.filter(a => a.status === 'leave').length || 0;
+    const present_days = data?.filter((a: any) => a.status === 'present').length || 0;
+    const absent_days = data?.filter((a: any) => a.status === 'absent').length || 0;
+    const half_days = data?.filter((a: any) => a.status === 'half_day').length || 0;
+    const leave_days = data?.filter((a: any) => a.status === 'leave').length || 0;
     const attendance_percentage = total_days > 0 ? (present_days / total_days) * 100 : 0;
 
     return {

@@ -229,15 +229,15 @@ export async function getQueueStats(
     if (error) throw error;
 
     const entries = data || [];
-    const waiting = entries.filter(e => e.status === 'waiting');
-    const inProgress = entries.filter(e => e.status === 'in_progress');
-    const completed = entries.filter(e => e.status === 'completed');
+    const waiting = entries.filter((e: any) => e.status === 'waiting');
+    const inProgress = entries.filter((e: any) => e.status === 'in_progress');
+    const completed = entries.filter((e: any) => e.status === 'completed');
 
     // Calculate average wait time for completed entries
     let totalWaitMinutes = 0;
     let completedCount = 0;
 
-    completed.forEach(entry => {
+    completed.forEach((entry: any) => {
       if (entry.created_at && entry.completed_at) {
         const created = new Date(entry.created_at);
         const completedTime = new Date(entry.completed_at);

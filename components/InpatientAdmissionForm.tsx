@@ -79,7 +79,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                 .eq('status', 'active')
                 .order('name');
             if (error) throw error;
-            setAdmissionCategories(data.map(c => c.name));
+            setAdmissionCategories((data || []).map((c: any) => c.name));
         } catch (err) {
             console.error('Error fetching categories:', err);
         }

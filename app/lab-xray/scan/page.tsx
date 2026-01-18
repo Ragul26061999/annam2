@@ -245,8 +245,8 @@ export default function ScanOrderPage() {
         try {
             setCreatingTest(true);
             const newEntry = await createScanTestCatalogEntry({
-                test_name: newTestData.testName,
-                modality: newTestData.groupName,
+                scan_name: newTestData.testName,
+                category: newTestData.groupName,
                 test_cost: newTestData.amount
             });
 
@@ -261,8 +261,8 @@ export default function ScanOrderPage() {
 
                 const selection = {
                     testId: newEntry.id,
-                    testName: newEntry.test_name,
-                    groupName: newEntry.modality || 'N/A',
+                    testName: newEntry.test_name || newEntry.scan_name || '',
+                    groupName: newEntry.modality || newEntry.category || 'N/A',
                     amount: newEntry.test_cost || 0
                 };
 
@@ -303,8 +303,8 @@ export default function ScanOrderPage() {
         const newTests = [...selectedTests];
         newTests[index] = {
             testId: test.id,
-            testName: test.test_name,
-            groupName: test.modality || 'N/A',
+            testName: test.test_name || test.scan_name || '',
+            groupName: test.modality || test.category || 'N/A',
             amount: test.test_cost || 0
         };
         setSelectedTests(newTests);
@@ -599,8 +599,8 @@ export default function ScanOrderPage() {
                                                         onChange={(value: string) => handleTestChange(index, value)}
                                                         options={scanCatalog.map(item => ({
                                                             value: item.id,
-                                                            label: item.test_name,
-                                                            group: item.modality,
+                                                            label: item.test_name || item.scan_name || '',
+                                                            group: item.modality || item.category || 'Other',
                                                             subLabel: `₹${item.test_cost}`
                                                         }))}
                                                         placeholder="Search & Select Test..."

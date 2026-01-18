@@ -226,7 +226,7 @@ const fetchFullDates = async (doctorId: string) => {
     .lte('appointment_date', maxDate)
     .in('status', ['scheduled', 'confirmed', 'in_progress']);
   if (error) return;
-  const countByDate = appointments.reduce((acc: { [key: string]: number }, app) => {
+  const countByDate = (appointments || []).reduce((acc: { [key: string]: number }, app: any) => {
     acc[app.appointment_date] = (acc[app.appointment_date] || 0) + 1;
     return acc;
   }, {});

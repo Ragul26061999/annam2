@@ -307,7 +307,7 @@ export async function getPrescriptions(options: {
     }
 
     // Transform prescription_items to medicines format for backward compatibility
-    const transformedPrescriptions = data?.map(prescription => ({
+    const transformedPrescriptions = data?.map((prescription: any) => ({
       ...prescription,
       medicines: prescription.prescription_items?.map((item: any) => ({
         medication_id: item.medication_id,
@@ -500,7 +500,7 @@ export async function getMedicineCategories(): Promise<{ categories: string[]; e
       return { categories: [], error };
     }
 
-    const categories = [...new Set(data.map(item => item.category).filter(Boolean))];
+    const categories = [...new Set(data.map((item: any) => item.category).filter(Boolean))] as string[];
     return { categories, error: null };
   } catch (error) {
     console.error('Error in getMedicineCategories:', error);

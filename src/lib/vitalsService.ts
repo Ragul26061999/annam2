@@ -212,7 +212,7 @@ export async function getPatientVitals(patientId: string): Promise<VitalRecord[]
 
     // Fetch related data for each record
     const vitalsWithRelations = await Promise.all(
-      data.map(async (vital) => {
+      data.map(async (vital: any) => {
         const [patientData, userData] = await Promise.all([
           supabase.from('patients').select('patient_id, name').eq('id', vital.patient_id).single(),
           supabase.from('users').select('name').eq('id', vital.recorded_by).single()

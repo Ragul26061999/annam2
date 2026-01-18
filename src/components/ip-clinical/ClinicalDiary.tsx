@@ -9,6 +9,7 @@ import DoctorOrders from './DoctorOrders';
 import NurseRecords from './NurseRecords';
 import CaseSheet from './CaseSheet';
 import DischargeSummary from './DischargeSummary';
+import LabResultsTab from './LabResultsTab';
 
 interface ClinicalDiaryProps {
   bedAllocationId: string;
@@ -17,7 +18,7 @@ interface ClinicalDiaryProps {
   admissionDate: string;
   dischargeDate?: string;
   ipNumber?: string;
-  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge';
+  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'lab' | 'discharge';
 }
 
 export default function ClinicalDiary({ bedAllocationId, patientId, patientName, admissionDate, dischargeDate, ipNumber, defaultTab = 'overview' }: ClinicalDiaryProps) {
@@ -37,7 +38,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
     if (dischargeDate) return getLocalDateString(new Date(dischargeDate));
     return getLocalDateString();
   });
-  const [activeTab, setActiveTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'lab' | 'discharge'>(defaultTab);
 
   useEffect(() => {
     loadTimeline();
@@ -118,6 +119,7 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
     { id: 'doctor', label: "Doctor's Notes", icon: Stethoscope },
     { id: 'nurse', label: "Nurse's Record", icon: User },
     { id: 'casesheet', label: 'Case Sheet', icon: FileText },
+    { id: 'lab', label: 'Lab Results', icon: Microscope },
     { id: 'discharge', label: 'Discharge Summary', icon: ClipboardList },
   ];
 
@@ -339,6 +341,24 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                   </div>
                 </div>
                 <CaseSheet bedAllocationId={bedAllocationId} patientId={patientId} selectedDate={selectedDate} />
+              </div>
+            )}
+
+            {activeTab === 'lab' && (
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Laboratory Results</h3>
+                    <p className="text-sm text-gray-500">View and upload lab test results</p>
+                  </div>
+                  <div className="p-2 bg-teal-50 rounded-lg">
+                    <Microscope className="h-6 w-6 text-teal-600" />
+                  </div>
+                </div>
+                <LabResultsTab 
+                  bedAllocationId={bedAllocationId}
+                  patientId={patientId}
+                />
               </div>
             )}
 

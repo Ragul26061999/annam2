@@ -12,12 +12,22 @@ if (!supabaseAnonKey) {
   console.error('Error: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set in environment variables');
 }
 
-// Throw error if either environment variable is missing
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
-}
+const missingSupabaseEnv = !supabaseUrl || !supabaseAnonKey;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const missingSupabaseEnvError = new Error(
+  'Missing Supabase environment variables. Please check your .env.local file.'
+);
+
+export const supabase = missingSupabaseEnv
+  ? (new Proxy(
+      {},
+      {
+        get() {
+          throw missingSupabaseEnvError;
+        },
+      }
+    ) as any)
+  : createClient(supabaseUrl, supabaseAnonKey);
 
 export const signInWithEmail = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signInWithPassword({

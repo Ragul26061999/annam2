@@ -448,7 +448,7 @@ export async function getDrugPurchaseById(id: string): Promise<DrugPurchase | nu
 
     return {
       ...purchase,
-      items: items?.map(item => ({
+      items: items?.map((item: any) => ({
         ...item,
         medication_name: item.medication?.name || ''
       })) || []
@@ -678,7 +678,7 @@ export async function createPurchaseReturn(
         .select('available_stock')
         .eq('id', item.medication_id)
         .single()
-        .then(async ({ data: med }) => {
+        .then(async ({ data: med }: any) => {
           if (med) {
             await supabase
               .from('medications')
@@ -1656,7 +1656,7 @@ export async function getGSTReport(filters: {
 
     const entries = data || [];
 
-    const summary = entries.reduce((acc, entry) => ({
+    const summary = entries.reduce((acc: any, entry: any) => ({
       total_taxable: acc.total_taxable + (entry.taxable_amount || 0),
       total_cgst: acc.total_cgst + (entry.cgst_amount || 0),
       total_sgst: acc.total_sgst + (entry.sgst_amount || 0),
@@ -1727,10 +1727,10 @@ export async function getDrugStockReport(filters?: {
     const expiryDays = filters?.expiring_soon_days || 30;
     const expiryThreshold = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
 
-    let items = medications?.map(med => {
-      const medBatches = batches?.filter(b => b.medicine_id === med.id) || [];
-      const expiredBatches = medBatches.filter(b => new Date(b.expiry_date) < now);
-      const expiringSoonBatches = medBatches.filter(b => {
+    let items = medications?.map((med: any) => {
+      const medBatches = batches?.filter((b: any) => b.medicine_id === med.id) || [];
+      const expiredBatches = medBatches.filter((b: any) => new Date(b.expiry_date) < now);
+      const expiringSoonBatches = medBatches.filter((b: any) => {
         const expiry = new Date(b.expiry_date);
         return expiry >= now && expiry <= expiryThreshold;
       });
@@ -1739,27 +1739,27 @@ export async function getDrugStockReport(filters?: {
         ...med,
         stock_value: (med.available_stock || 0) * (med.selling_price || 0),
         is_low_stock: (med.available_stock || 0) <= (med.minimum_stock_level || 0),
-        expired_quantity: expiredBatches.reduce((sum, b) => sum + (b.current_quantity || 0), 0),
-        expiring_soon_quantity: expiringSoonBatches.reduce((sum, b) => sum + (b.current_quantity || 0), 0),
+        expired_quantity: expiredBatches.reduce((sum: number, b: any) => sum + (b.current_quantity || 0), 0),
+        expiring_soon_quantity: expiringSoonBatches.reduce((sum: number, b: any) => sum + (b.current_quantity || 0), 0),
         batches: medBatches
       };
     }) || [];
 
     // Apply filters
     if (filters?.low_stock_only) {
-      items = items.filter(item => item.is_low_stock);
+      items = items.filter((item: any) => item.is_low_stock);
     }
 
     if (filters?.expired_only) {
-      items = items.filter(item => item.expired_quantity > 0);
+      items = items.filter((item: any) => item.expired_quantity > 0);
     }
 
     const summary = {
       total_medicines: items.length,
-      total_stock_value: items.reduce((sum, item) => sum + item.stock_value, 0),
-      low_stock_count: items.filter(item => item.is_low_stock).length,
-      expired_count: items.filter(item => item.expired_quantity > 0).length,
-      expiring_soon_count: items.filter(item => item.expiring_soon_quantity > 0).length
+      total_stock_value: items.reduce((sum: number, item: any) => sum + item.stock_value, 0),
+      low_stock_count: items.filter((item: any) => item.is_low_stock).length,
+      expired_count: items.filter((item: any) => item.expired_quantity > 0).length,
+      expiring_soon_count: items.filter((item: any) => item.expiring_soon_quantity > 0).length
     };
 
     return { summary, items };
@@ -1827,10 +1827,10 @@ export async function getMedicalReport(filters: {
       .lte('record_date', filters.to_date);
 
     // Calculate summary
-    const totalSales = sales?.reduce((sum, s) => sum + (s.total_amount || 0), 0) || 0;
-    const totalPurchases = purchases?.reduce((sum, p) => sum + (p.total_amount || 0), 0) || 0;
-    const totalReturns = salesReturns?.reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0;
-    const totalDamaged = damaged?.reduce((sum, d) => sum + (d.total_loss || 0), 0) || 0;
+    const totalSales = sales?.reduce((sum: number, s: any) => sum + (s.total_amount || 0), 0) || 0;
+    const totalPurchases = purchases?.reduce((sum: number, p: any) => sum + (p.total_amount || 0), 0) || 0;
+    const totalReturns = salesReturns?.reduce((sum: number, r: any) => sum + (r.total_amount || 0), 0) || 0;
+    const totalDamaged = damaged?.reduce((sum: number, d: any) => sum + (d.total_loss || 0), 0) || 0;
     const totalBills = sales?.length || 0;
 
     const summary = {

@@ -418,28 +418,28 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
       console.error('Error fetching dispensed medications:', dispError);
     } else if (dispensed) {
       // Get pharmacist names
-      const pharmacistIds = [...new Set(dispensed.map(d => d.pharmacist_id))];
+      const pharmacistIds = [...new Set(dispensed.map((d: any) => d.pharmacist_id))];
       const { data: pharmacists } = await supabase
         .from('users')
         .select('id, name')
         .in('id', pharmacistIds);
 
       // Get medication names
-      const medicationIds = dispensed.flatMap(d =>
-        d.prescription_dispensed_items?.map(item => item.medication_id) || []
+      const medicationIds = dispensed.flatMap((d: any) =>
+        d.prescription_dispensed_items?.map((item: any) => item.medication_id) || []
       );
       const { data: medications } = await supabase
         .from('medications')
         .select('id, name, generic_name, strength, dosage_form')
         .in('id', medicationIds);
 
-      dispensed.forEach(dispense => {
-        const pharmacist = pharmacists?.find(p => p.id === dispense.pharmacist_id);
+      dispensed.forEach((dispense: any) => {
+        const pharmacist = pharmacists?.find((p: any) => p.id === dispense.pharmacist_id);
 
         const dispensedItems = dispense.prescription_dispensed_items || [];
-        dispensedItems.forEach(item => {
+        dispensedItems.forEach((item: any) => {
           if (!item) return; // Skip if item is null/undefined
-          const medication = medications?.find(m => m.id === item.medication_id);
+          const medication = medications?.find((m: any) => m.id === item.medication_id);
 
           history.push({
             id: `disp_${dispense.id}_${item.medication_id}`,
@@ -511,7 +511,7 @@ export async function getPharmacyDashboardStats(): Promise<{
       .gte('created_at', `${today}T00:00:00`)
       .lt('created_at', `${today}T23:59:59`);
 
-    const stockSales = todaySalesData?.reduce((sum, transaction) => sum + (transaction.total_amount || 0), 0) || 0;
+    const stockSales = todaySalesData?.reduce((sum: number, transaction: any) => sum + (transaction.total_amount || 0), 0) || 0;
 
     // Get payments collected today (regardless of original bill date)
     const { data: todayPaymentsData } = await supabase
@@ -521,7 +521,7 @@ export async function getPharmacyDashboardStats(): Promise<{
       .gte('updated_at', `${today}T00:00:00`)
       .lt('updated_at', `${today}T23:59:59`);
 
-    const paymentsCollected = todayPaymentsData?.reduce((sum, bill) => sum + (bill.total_amount || 0), 0) || 0;
+    const paymentsCollected = todayPaymentsData?.reduce((sum: number, bill: any) => sum + (bill.total_amount || 0), 0) || 0;
 
     const todaySales = stockSales + paymentsCollected;
 
@@ -539,7 +539,7 @@ export async function getPharmacyDashboardStats(): Promise<{
       .eq('payment_status', 'paid')
       .gte('created_at', firstDayOfMonth);
 
-    const totalRevenue = revenueData?.reduce((sum, bill) => sum + bill.total_amount, 0) || 0;
+    const totalRevenue = revenueData?.reduce((sum: number, bill: any) => sum + bill.total_amount, 0) || 0;
 
     // Get prescriptions dispensed today
     const { count: prescriptionsDispensed } = await supabase
@@ -700,7 +700,7 @@ export async function getPendingPrescriptions(): Promise<PendingPrescription[]> 
       throw error;
     }
 
-    const formattedPrescriptions: PendingPrescription[] = (prescriptions || []).map(prescription => ({
+    const formattedPrescriptions: PendingPrescription[] = (prescriptions || []).map((prescription: any) => ({
       id: prescription.id,
       prescription_id: prescription.prescription_id,
       patient_id: prescription.patient_id,
@@ -709,8 +709,8 @@ export async function getPendingPrescriptions(): Promise<PendingPrescription[]> 
       issue_date: prescription.issue_date,
       status: prescription.status,
       total_items: prescription.prescription_items?.length || 0,
-      total_amount: (prescription.prescription_items as any[])?.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0) || 0,
-      prescription_items: (prescription.prescription_items as any[])?.map(item => ({
+      total_amount: (prescription.prescription_items as any[])?.reduce((sum: number, item: any) => sum + (Number(item.total_price) || 0), 0) || 0,
+      prescription_items: (prescription.prescription_items as any[])?.map((item: any) => ({
         ...item,
         medication_name: item.medication?.name || 'Unknown Medicine'
       })) || []
@@ -880,7 +880,7 @@ export async function getMedicationCategories(): Promise<string[]> {
       return [];
     }
 
-    const categories = [...new Set(data?.map(item => item.category) || [])];
+    const categories = [...new Set(data?.map((item: any) => item.category) || [])] as string[];
     return categories.sort();
   } catch (error) {
     console.error('Error in getMedicationCategories:', error);
@@ -1037,7 +1037,7 @@ export async function adjustExpiredStock(
 
       if (batchTransactions && batchTransactions.length > 0) {
         // Calculate total quantity to remove from stock
-        const totalQuantity = batchTransactions.reduce((sum, tx) => sum + tx.quantity, 0);
+        const totalQuantity = batchTransactions.reduce((sum: number, tx: any) => sum + tx.quantity, 0);
 
         // Delete the transactions
         const { error: deleteError } = await supabase
@@ -1327,7 +1327,7 @@ export async function getPharmacyBills(patientId?: string): Promise<PharmacyBill
     }
 
     // Transform data to include display patient_name and normalized payment_status
-    const bills = data?.map(bill => ({
+    const bills = data?.map((bill: any) => ({
       ...bill,
       // For walk-in customers or if patient not linked
       patient_name: bill.customer_name || 'Walk-in Customer',
@@ -1472,8 +1472,8 @@ export async function getBatchPurchaseHistory(batchNumber: string): Promise<Batc
     // 5) Join data locally (with safe fallbacks)
     const result: BatchPurchaseHistoryEntry[] = items.map(i => {
       const bill = (bills || []).find(b => b.id === i.bill_id);
-      const patient = bill ? (patients || []).find(p => p.id === bill.patient_id) : undefined;
-      const med = (meds || []).find(m => m.id === (i.medicine_id ?? i.medication_id));
+      const patient = bill ? (patients || []).find((p: any) => p.id === bill.patient_id) : undefined;
+      const med = (meds || []).find((m: any) => m.id === (i.medicine_id ?? i.medication_id));
 
       return {
         bill_id: bill?.id || i.bill_id,
@@ -1926,30 +1926,30 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     if (batchError) throw batchError;
 
     // Calculate total stock values
-    const totalCostValue = (medications || []).reduce((sum, med) =>
+    const totalCostValue = (medications || []).reduce((sum: number, med: any) =>
       sum + ((med.available_stock || 0) * (med.purchase_price || 0)), 0);
-    const totalRetailValue = (medications || []).reduce((sum, med) =>
+    const totalRetailValue = (medications || []).reduce((sum: number, med: any) =>
       sum + ((med.available_stock || 0) * (med.selling_price || 0)), 0);
     const profitMargin = totalCostValue > 0 ? ((totalRetailValue - totalCostValue) / totalCostValue) * 100 : 0;
 
     // Stock summary
-    const totalUnits = (medications || []).reduce((sum, med) => sum + (med.available_stock || 0), 0);
-    const lowStockItems = (medications || []).filter(med =>
+    const totalUnits = (medications || []).reduce((sum: number, med: any) => sum + (med.available_stock || 0), 0);
+    const lowStockItems = (medications || []).filter((med: any) =>
       med.available_stock <= 10 && med.available_stock > 0).length;
 
     const now = new Date();
-    const expiredItems = (batches || []).filter(batch =>
+    const expiredItems = (batches || []).filter((batch: any) =>
       new Date(batch.expiry_date) < now && batch.current_quantity > 0).length;
 
     const ninetyDaysFromNow = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000));
-    const expiringSoonItems = (batches || []).filter(batch =>
+    const expiringSoonItems = (batches || []).filter((batch: any) =>
       new Date(batch.expiry_date) >= now &&
       new Date(batch.expiry_date) <= ninetyDaysFromNow &&
       batch.current_quantity > 0).length;
 
     // Category breakdown
     const categoryMap = new Map();
-    (medications || []).forEach(med => {
+    (medications || []).forEach((med: any) => {
       const category = med.category || 'Uncategorized';
       const value = (med.available_stock || 0) * (med.selling_price || 0);
       if (!categoryMap.has(category)) {
@@ -1981,7 +1981,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
       monthlyMap.set(monthKey, { purchases: 0, sales: 0, revenue: 0 });
     }
 
-    (transactions || []).forEach(tx => {
+    (transactions || []).forEach((tx: any) => {
       const month = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       if (monthlyMap.has(month)) {
         const data = monthlyMap.get(month);
@@ -2004,8 +2004,8 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     // Top selling medicines
     const salesMap = new Map();
     (transactions || [])
-      .filter(tx => tx.transaction_type === 'sale')
-      .forEach(tx => {
+      .filter((tx: any) => tx.transaction_type === 'sale')
+      .forEach((tx: any) => {
         if (!salesMap.has(tx.medication_id)) {
           salesMap.set(tx.medication_id, { totalSold: 0, revenue: 0 });
         }
@@ -2016,7 +2016,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
 
     const topSellingMedicines = Array.from(salesMap.entries())
       .map(([medicationId, data]) => {
-        const med = medications?.find(m => m.id === medicationId);
+        const med = medications?.find((m: any) => m.id === medicationId);
         return {
           medicationId,
           medicationName: med?.name || 'Unknown',
@@ -2037,7 +2037,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     ];
 
     const expiryAnalysis = expiryPeriods.map(period => {
-      const filtered = (batches || []).filter(batch => {
+      const filtered = (batches || []).filter((batch: any) => {
         const expiryDate = new Date(batch.expiry_date);
         const daysDiff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         return daysDiff >= period.daysAgo && daysDiff < period.daysAhead && batch.current_quantity > 0;
@@ -2046,7 +2046,7 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
       return {
         period: period.period,
         count: filtered.length,
-        totalValue: filtered.reduce((sum, batch) =>
+        totalValue: filtered.reduce((sum: number, batch: any) =>
           sum + (batch.current_quantity * (batch.selling_price || 0)), 0)
       };
     });
@@ -2197,7 +2197,7 @@ export async function getComprehensiveMedicineData(medicationId: string): Promis
             if (!supplierError && suppliers) {
               // Merge supplier data
               batchesData = batchesData.map(batch => {
-                const supplier = suppliers.find(s => s.id === batch.supplier_id);
+                const supplier = suppliers.find((s: any) => s.id === batch.supplier_id);
                 return {
                   ...batch,
                   suppliers: supplier ? { name: supplier.name } : null

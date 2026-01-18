@@ -620,10 +620,10 @@ export async function getBedStats(): Promise<BedStats> {
     }
 
     const total = beds?.length || 0;
-    const available = beds?.filter(b => b.status === 'available').length || 0;
-    const occupied = beds?.filter(b => b.status === 'occupied').length || 0;
-    const maintenance = beds?.filter(b => b.status === 'maintenance').length || 0;
-    const reserved = beds?.filter(b => b.status === 'reserved').length || 0;
+    const available = beds?.filter((b: any) => b.status === 'available').length || 0;
+    const occupied = beds?.filter((b: any) => b.status === 'occupied').length || 0;
+    const maintenance = beds?.filter((b: any) => b.status === 'maintenance').length || 0;
+    const reserved = beds?.filter((b: any) => b.status === 'reserved').length || 0;
     const occupancyRate = total > 0 ? (occupied / total) * 100 : 0;
 
     return {

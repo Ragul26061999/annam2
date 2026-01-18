@@ -400,7 +400,7 @@ export async function getRecentPatients(limit: number = 4): Promise<RecentPatien
       return [];
     }
 
-    return (patients || []).map(patient => ({
+    return (patients || []).map((patient: any) => ({
       id: patient.id,
       name: patient.name,
       status: patient.status,
@@ -431,7 +431,7 @@ export async function getBedStatus(): Promise<BedStatus[]> {
     // Group beds by type and calculate statistics
     const bedStats: { [key: string]: { total: number; occupied: number; available: number } } = {};
 
-    (beds || []).forEach(bed => {
+    (beds || []).forEach((bed: any) => {
       const type = bed.bed_type || 'general';
       if (!bedStats[type]) {
         bedStats[type] = { total: 0, occupied: 0, available: 0 };
@@ -481,12 +481,12 @@ export async function getDepartmentStatus(): Promise<DepartmentStatus[]> {
       console.error('Error fetching bed allocations:', allocError);
     }
 
-    const activeBedIds = new Set((allocations || []).map(a => a.bed_id));
+    const activeBedIds = new Set((allocations || []).map((a: any) => a.bed_id));
 
     // Group beds by type
     const bedTypeStats: { [key: string]: { total: number; occupied: number } } = {};
 
-    (beds || []).forEach(bed => {
+    (beds || []).forEach((bed: any) => {
       const type = bed.bed_type || 'General';
       if (!bedTypeStats[type]) {
         bedTypeStats[type] = { total: 0, occupied: 0 };
@@ -511,7 +511,7 @@ export async function getDepartmentStatus(): Promise<DepartmentStatus[]> {
         occupiedBeds: stats.occupied,
         occupancyRate,
       };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    }).sort((a: any, b: any) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error('Error in getDepartmentStatus:', error);
     return [];

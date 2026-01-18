@@ -108,11 +108,11 @@ export default function BedsPage() {
 
       // Calculate statistics with proper null checks
       const totalBeds = bedStats?.length || 0;
-      const occupiedBeds = bedStats?.filter(bed => bed?.status === 'occupied').length || 0;
-      const availableBeds = bedStats?.filter(bed => bed?.status === 'available').length || 0;
-      const maintenanceBeds = bedStats?.filter(bed => bed?.status === 'maintenance').length || 0;
-      const icuBeds = bedStats?.filter(bed => bed?.bed_type === 'icu').length || 0;
-      const generalBeds = bedStats?.filter(bed => bed?.bed_type === 'general').length || 0;
+      const occupiedBeds = bedStats?.filter((bed: { status?: string | null; bed_type?: string | null }) => bed?.status === 'occupied').length || 0;
+      const availableBeds = bedStats?.filter((bed: { status?: string | null; bed_type?: string | null }) => bed?.status === 'available').length || 0;
+      const maintenanceBeds = bedStats?.filter((bed: { status?: string | null; bed_type?: string | null }) => bed?.status === 'maintenance').length || 0;
+      const icuBeds = bedStats?.filter((bed: { status?: string | null; bed_type?: string | null }) => bed?.bed_type === 'icu').length || 0;
+      const generalBeds = bedStats?.filter((bed: { status?: string | null; bed_type?: string | null }) => bed?.bed_type === 'general').length || 0;
       const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
 
       setStats({
@@ -150,7 +150,7 @@ export default function BedsPage() {
       }
 
       // Transform the data with comprehensive null checks
-      const transformedBeds: BedData[] = bedData?.map(bed => {
+      const transformedBeds: BedData[] = bedData?.map((bed: any) => {
         // Safely handle bed_allocations array
         const allocations = Array.isArray(bed.bed_allocations) ? bed.bed_allocations : [];
         

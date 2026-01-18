@@ -1,10 +1,11 @@
 'use client';
 import React, { useState } from 'react';
-import { Bell, Search, HelpCircle, MessageSquare, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown, Pill } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 const TopBar: React.FC = () => {
+  const router = useRouter();
   const [searchFocused, setSearchFocused] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(3);
 
   return (
     <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
@@ -30,27 +31,13 @@ const TopBar: React.FC = () => {
       <div className="flex items-center space-x-3 ml-6">
         {/* Quick Actions */}
         <div className="flex items-center space-x-1">
-          {/* Messages */}
-          <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200">
-            <MessageSquare size={18} />
-            <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
-              2
-            </span>
-          </button>
-          
-          {/* Notifications */}
-          <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200">
-            <Bell size={18} />
-            {notificationCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
-                {notificationCount}
-              </span>
-            )}
-          </button>
-          
-          {/* Help */}
-          <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200">
-            <HelpCircle size={18} />
+          {/* Pharmacy */}
+          <button 
+            onClick={() => router.push('/settings/pharmacy/edit-medication')}
+            className="p-2 text-pink-600 hover:text-pink-700 hover:bg-pink-50 rounded-xl transition-all duration-200"
+            title="Pharmacy Management"
+          >
+            <Pill size={18} />
           </button>
         </div>
         

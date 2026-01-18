@@ -162,7 +162,7 @@ export async function getBillById(billId: string): Promise<Bill> {
 
     return {
       ...bill,
-      items: items?.map(item => ({
+      items: items?.map((item: any) => ({
         id: item.id,
         description: item.description,
         quantity: item.qty,
@@ -317,10 +317,10 @@ export async function getBillingStats(): Promise<{
 
     const stats = {
       totalBills: bills?.length || 0,
-      totalRevenue: bills?.reduce((sum, bill) => sum + Number(bill.total_amount), 0) || 0,
-      pendingAmount: bills?.filter(b => b.status === 'pending' || b.status === 'partial')
-        .reduce((sum, bill) => sum + (Number(bill.total_amount) - Number(bill.paid_amount)), 0) || 0,
-      paidAmount: bills?.reduce((sum, bill) => sum + Number(bill.paid_amount), 0) || 0
+      totalRevenue: bills?.reduce((sum: number, bill: any) => sum + Number(bill.total_amount), 0) || 0,
+      pendingAmount: bills?.filter((b: any) => b.status === 'pending' || b.status === 'partial')
+        .reduce((sum: number, bill: any) => sum + (Number(bill.total_amount) - Number(bill.paid_amount)), 0) || 0,
+      paidAmount: bills?.reduce((sum: number, bill: any) => sum + Number(bill.paid_amount), 0) || 0
     };
 
     return stats;

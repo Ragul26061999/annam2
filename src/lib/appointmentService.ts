@@ -737,11 +737,10 @@ export async function getAppointments(options: {
         .from('appointments')
         .select(`
           *,
-          patient:patients(id, patient_id, name, phone, email, consulting_doctor_name),
+          patient:patients(id, patient_id, name, phone, email),
           doctor:doctors(
             id,
             specialization,
-            qualification,
             user:users(name, phone, email)
           )
         `, { count: 'exact' });
@@ -846,11 +845,10 @@ export async function getAppointmentById(appointmentId: string): Promise<Appoint
       .from('appointments')
       .select(`
         *,
-        patient:patients(id, patient_id, name, phone, email, date_of_birth, gender, address),
+        patient:patients(id, patient_id, name, phone, email),
         doctor:doctors(
           id,
           specialization,
-          qualification,
           user:users(name, phone, email)
         )
       `)
@@ -1268,7 +1266,7 @@ export async function getAvailableSlots(
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
           // Check if slot is available
-          const isBooked = existingAppointments?.some(apt => {
+          const isBooked = existingAppointments?.some((apt: { appointment_time: string; duration_minutes: number }) => {
             const aptTime = apt.appointment_time;
             const aptDuration = apt.duration_minutes || 30;
             const aptEndTime = new Date(`2000-01-01T${aptTime}`);
@@ -1319,7 +1317,7 @@ export async function getAvailableSlots(
           const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
           // Check if slot is available
-          const isBooked = existingAppointments?.some(apt => {
+          const isBooked = existingAppointments?.some((apt: any) => {
             const aptTime = apt.appointment_time;
             const aptDuration = apt.duration_minutes || 30;
             const aptEndTime = new Date(`2000-01-01T${aptTime}`);
@@ -1523,18 +1521,18 @@ export async function getAppointmentStats(
     const total = appointments?.length || 0;
 
     // For now, assume all appointments are scheduled since we don't have status mapping
-    const scheduled = appointments?.filter(apt =>
+    const scheduled = appointments?.filter((apt: any) =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] >= today
     ).length || 0;
 
     const completed = 0; // No status mapping yet
     const cancelled = 0; // No status mapping yet
 
-    const todayCount = appointments?.filter(apt =>
+    const todayCount = appointments?.filter((apt: any) =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] === today
     ).length || 0;
 
-    const upcomingCount = appointments?.filter(apt =>
+    const upcomingCount = appointments?.filter((apt: any) =>
       apt.scheduled_at && new Date(apt.scheduled_at).toISOString().split('T')[0] > today
     ).length || 0;
 

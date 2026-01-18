@@ -414,6 +414,17 @@ export async function getIPComprehensiveBilling(
       });
     }
 
+    // 7.1 Additional doctor consultations entered in IP billing
+    const { data: additionalConsultations } = await supabase
+      .from('ip_doctor_consultations')
+      .select('total_amount')
+      .eq('bed_allocation_id', bedAllocationId);
+
+    const additionalConsultationsTotal = (additionalConsultations || []).reduce(
+      (sum: number, c: any) => sum + Number(c.total_amount || 0),
+      0
+    );
+
     // 8. Get other charges (from billing_items if exists)
     const { data: otherItems } = await supabase
       .from('billing_item')
@@ -446,10 +457,14 @@ export async function getIPComprehensiveBilling(
     ];
 
     const otherChargesTotal = otherCharges.reduce((sum, item) => sum + item.amount, 0);
-    const otherBillsTotal = (otherBills || []).reduce((sum, bill) => sum + Number(bill.total_amount), 0);
+    const otherBillsTotal = (otherBills || []).reduce(
+      (sum: number, bill: any) => sum + Number(bill.total_amount),
+      0
+    );
 
     // 8. Calculate summary
-    const doctorServicesTotal = doctorServices.reduce((sum, service) => sum + service.total_amount, 0);
+    const doctorServicesTotal =
+      doctorServices.reduce((sum, service) => sum + service.total_amount, 0) + additionalConsultationsTotal;
     const grossTotal = 
       bedChargesTotal + 
       doctorConsultationTotal + 
@@ -462,7 +477,10 @@ export async function getIPComprehensiveBilling(
       otherBillsTotal;
 
     // Calculate paid amounts from Other Bills
-    const otherBillsPaidTotal = (otherBills || []).reduce((sum, bill) => sum + Number(bill.paid_amount || 0), 0);
+    const otherBillsPaidTotal = (otherBills || []).reduce(
+      (sum: number, bill: any) => sum + Number(bill.paid_amount || 0),
+      0
+    );
     
     const advancePaid = allocation.advance_amount || 0;
     const discount = 0; // Can be fetched from discharge_summaries if needed
@@ -595,8 +613,23 @@ export async function saveIPBilling(
       (sum: number, r: any) => sum + Number(r.amount || 0),
       0
     );
-    const paidAmount = (billingData.summary.advance_paid || 0) + receiptsTotal;
-    const pendingAmount = Math.max(0, (billingData.summary.gross_total || 0) - (billingData.summary.discount || 0) - paidAmount);
+    const paidAmount =
+      (billingData.summary.advance_paid || 0) +
+      receiptsTotal +
+      (billingData.summary.other_bills_paid_total || 0);
+    const pendingAmount = Math.max(
+      0,
+      (billingData.summary.gross_total || 0) - (billingData.summary.discount || 0) - paidAmount
+    );
+
+    // Align the discharge_summaries.other_amount to reflect the comprehensive billing breakdown.
+    // discharge_summaries has only a single catch-all "other_amount" column.
+    const otherAmount =
+      (billingData.summary.doctor_consultation_total || 0) +
+      (billingData.summary.doctor_services_total || 0) +
+      (billingData.summary.prescribed_medicines_total || 0) +
+      (billingData.summary.other_charges_total || 0) +
+      (billingData.summary.other_bills_total || 0);
 
     // Update discharge_summaries with billing details
     const { error } = await supabase
@@ -610,7 +643,7 @@ export async function saveIPBilling(
         pharmacy_amount: billingData.summary.pharmacy_total,
         lab_amount: billingData.summary.lab_total,
         procedure_amount: billingData.summary.radiology_total,
-        other_amount: billingData.summary.other_charges_total + billingData.summary.doctor_consultation_total,
+        other_amount: otherAmount,
         gross_amount: billingData.summary.gross_total,
         discount_amount: billingData.summary.discount,
         net_amount: billingData.summary.net_payable,

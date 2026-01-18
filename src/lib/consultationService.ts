@@ -328,8 +328,8 @@ export async function getDoctorConsultationStats(doctorId: string, dateRange?: {
     }
 
     const totalConsultations = data?.length || 0;
-    const followUpsScheduled = data?.filter(c => c.follow_up_date).length || 0;
-    const todayConsultations = data?.filter(c => 
+    const followUpsScheduled = data?.filter((c: any) => c.follow_up_date).length || 0;
+    const todayConsultations = data?.filter((c: any) => 
       new Date(c.created_at).toDateString() === new Date().toDateString()
     ).length || 0;
 

@@ -286,16 +286,21 @@ export async function getIPNurseRecords(bedAllocationId: string, dateFilter?: st
 export async function createIPNurseRecord(
   bedAllocationId: string,
   remark: string,
-  entryTime: string
-) {
+  entryTime?: string,
+  notedAt?: string
+): Promise<IPNurseRecord> {
   const { data, error } = await supabase
     .from('ip_nurse_records')
     .insert({
       bed_allocation_id: bedAllocationId,
       remark,
-      entry_time: entryTime
+      entry_time: entryTime || new Date().toISOString(),
+      noted_at: notedAt || entryTime || new Date().toISOString()
     })
-    .select()
+    .select(`
+      *,
+      creator:users(name)
+    `)
     .single();
 
   if (error) throw error;

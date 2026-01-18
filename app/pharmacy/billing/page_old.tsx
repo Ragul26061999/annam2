@@ -109,20 +109,20 @@ export default function PharmacyBillingPage() {
       const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       
       const todaysCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'completed')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => new Date(bill.created_at) >= startOfToday && bill.payment_status === 'completed')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
       
       const monthlyCollection = mappedBills
-        .filter(bill => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'completed')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => new Date(bill.created_at) >= startOfMonth && bill.payment_status === 'completed')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
       
       const pendingDue = mappedBills
-        .filter(bill => bill.payment_status === 'pending')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => bill.payment_status === 'pending')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
       
       const totalPayments = mappedBills
-        .filter(bill => bill.payment_status === 'completed')
-        .reduce((sum, bill) => sum + bill.total_amount, 0)
+        .filter((bill: any) => bill.payment_status === 'completed')
+        .reduce((sum: number, bill: any) => sum + bill.total_amount, 0)
       
       setDashboardStats({
         todaysSales: todaysCollection,

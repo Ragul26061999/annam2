@@ -27,9 +27,9 @@ import ScanDocumentUpload from '../../../components/ScanDocumentUpload';
 import { getAllDoctorsSimple } from '../../../src/lib/doctorService';
 import {
   createScanOrder,
-  createScanTestCatalogEntry,
-  getScanTestCatalog,
-  type ScanTestCatalog,
+  createLegacyScanTestCatalogEntry,
+  getLegacyScanTestCatalog,
+  type ScanTestCatalogLegacy,
 } from '../../../src/lib/labXrayService';
 import { createScanBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
 
@@ -63,7 +63,7 @@ export default function ScanOrderPage() {
     return [...rows, { catalogId: '', scanName: '', category: '', bodyPart: '', amount: 0 }];
   }, []);
 
-  const [scanCatalog, setScanCatalog] = useState<ScanTestCatalog[]>([]);
+  const [scanCatalog, setScanCatalog] = useState<ScanTestCatalogLegacy[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
 
   const [patientSearch, setPatientSearch] = useState('');
@@ -113,7 +113,7 @@ export default function ScanOrderPage() {
     (async () => {
       try {
         setLoading(true);
-        const [catalog, docs] = await Promise.all([getScanTestCatalog(), getAllDoctorsSimple()]);
+        const [catalog, docs] = await Promise.all([getLegacyScanTestCatalog(), getAllDoctorsSimple()]);
         setScanCatalog((catalog || []).filter(c => String(c.category || '').toLowerCase() !== 'other'));
         setDoctors(docs || []);
       } catch (e) {
@@ -259,7 +259,7 @@ export default function ScanOrderPage() {
 
     try {
       setCreatingScan(true);
-      const entry = await createScanTestCatalogEntry({
+      const entry = await createLegacyScanTestCatalogEntry({
         scan_name: newScanData.scanName,
         category: 'Scans',
         body_part: newScanData.bodyPart || null,

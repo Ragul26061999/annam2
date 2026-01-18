@@ -19,6 +19,7 @@ export default function NurseRecords({ bedAllocationId, date, currentUser }: Nur
   const displayDate = date || new Date().toISOString().split('T')[0];
   
   const [newRemark, setNewRemark] = useState('');
+  const [notedAt, setNotedAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -54,10 +55,14 @@ export default function NurseRecords({ bedAllocationId, date, currentUser }: Nur
         entryTime = `${displayDate}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
       }
 
-      const record = await createIPNurseRecord(bedAllocationId, newRemark, entryTime);
+      // Use custom noted_at if provided, otherwise use entryTime
+      const actualNotedAt = notedAt ? new Date(notedAt).toISOString() : entryTime;
+
+      const record = await createIPNurseRecord(bedAllocationId, newRemark, entryTime, actualNotedAt);
       
       setRecords(prev => [record, ...prev]);
       setNewRemark('');
+      setNotedAt('');
     } catch (err) {
       console.error('Failed to add nurse record', err);
     } finally {
@@ -157,22 +162,34 @@ export default function NurseRecords({ bedAllocationId, date, currentUser }: Nur
               {/* Add Remark Form */}
               <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                 <h4 className="font-semibold text-gray-800 mb-3">Add Nurse Remark</h4>
-                <div className="flex gap-2">
-                  <textarea
-                    value={newRemark}
-                    onChange={(e) => setNewRemark(e.target.value)}
-                    placeholder="Enter medication administration, care notes, or general observation..."
-                    className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    rows={2}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-gray-500" />
+                    <label className="text-sm font-medium text-gray-700">Observation Time (optional - defaults to current time)</label>
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={notedAt}
+                    onChange={(e) => setNotedAt(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
-                  <button
-                    onClick={handleAddRemark}
-                    disabled={!newRemark.trim() || submitting}
-                    className="bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700 transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] disabled:opacity-50"
-                  >
-                    {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-                    <span className="text-xs font-medium">Add</span>
-                  </button>
+                  <div className="flex gap-2">
+                    <textarea
+                      value={newRemark}
+                      onChange={(e) => setNewRemark(e.target.value)}
+                      placeholder="Enter medication administration, care notes, or general observation..."
+                      className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      rows={2}
+                    />
+                    <button
+                      onClick={handleAddRemark}
+                      disabled={!newRemark.trim() || submitting}
+                      className="bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700 transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] disabled:opacity-50"
+                    >
+                      {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
+                      <span className="text-xs font-medium">Add</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

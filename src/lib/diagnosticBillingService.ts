@@ -152,16 +152,16 @@ export async function updateDiagnosticBillPayment(
     }
 
     // Calculate new paid amount
-    const currentPaid = items.reduce((sum, item) => sum + (item.paid_amount || 0), 0);
+    const currentPaid = items.reduce((sum: number, item: any) => sum + (item.paid_amount || 0), 0);
     const newPaidAmount = currentPaid + paymentData.amount;
 
     // Determine new status
-    const totalAmount = items.reduce((sum, item) => sum + (item.total_amount || item.amount), 0);
+    const totalAmount = items.reduce((sum: number, item: any) => sum + (item.total_amount || item.amount), 0);
     const newStatus = newPaidAmount >= totalAmount ? 'paid' : 
                      newPaidAmount > 0 ? 'partial' : 'pending';
 
     // Update all items for this bill
-    const updatePromises = items.map(item =>
+    const updatePromises = items.map((item: any) =>
       supabase
         .from('diagnostic_billing_items')
         .update({
@@ -176,7 +176,7 @@ export async function updateDiagnosticBillPayment(
 
     // Return updated summary
     const updatedBills = await getDiagnosticBills();
-    return updatedBills.find(bill => bill.bill_number === billNumber) || null;
+    return updatedBills.find((bill: any) => bill.bill_number === billNumber) || null;
   } catch (error) {
     console.error('Error in updateDiagnosticBillPayment:', error);
     throw error;
@@ -205,7 +205,7 @@ export async function getDiagnosticBillingStats(): Promise<DiagnosticBillingStat
       order_type: string;
     }>();
 
-    data.forEach(item => {
+    (data || []).forEach((item: any) => {
       if (!billMap.has(item.bill_number)) {
         billMap.set(item.bill_number, {
           total_amount: item.total_amount || item.amount,
@@ -220,11 +220,11 @@ export async function getDiagnosticBillingStats(): Promise<DiagnosticBillingStat
     
     return {
       totalBills: bills.length,
-      totalRevenue: bills.reduce((sum, bill) => sum + (bill.paid_amount || 0), 0),
-      pendingBills: bills.filter(bill => bill.billing_status === 'pending').length,
-      paidBills: bills.filter(bill => bill.billing_status === 'paid').length,
-      labBills: bills.filter(bill => bill.order_type === 'lab').length,
-      radiologyBills: bills.filter(bill => bill.order_type === 'radiology').length
+      totalRevenue: bills.reduce((sum: number, bill: any) => sum + (bill.paid_amount || 0), 0),
+      pendingBills: bills.filter((bill: any) => bill.billing_status === 'pending').length,
+      paidBills: bills.filter((bill: any) => bill.billing_status === 'paid').length,
+      labBills: bills.filter((bill: any) => bill.order_type === 'lab').length,
+      radiologyBills: bills.filter((bill: any) => bill.order_type === 'radiology').length
     };
   } catch (error) {
     console.error('Error in getDiagnosticBillingStats:', error);

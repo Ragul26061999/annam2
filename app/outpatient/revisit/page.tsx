@@ -130,7 +130,7 @@ export default function OutpatientRevisitPage() {
           return;
         }
 
-        const userById = new Map((users || []).map(u => [u.id, u]));
+        const userById = new Map((users || []).map((u: any) => [u.id, u]));
         setDoctors(
           base.map(d => ({
             ...d,

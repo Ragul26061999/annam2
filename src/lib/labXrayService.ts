@@ -20,7 +20,7 @@ export interface LabTestCatalog {
   is_active: boolean;
 }
 
-export interface ScanTestCatalog {
+export interface ScanTestCatalogLegacy {
   id: string;
   scan_code: string | null;
   scan_name: string;
@@ -141,7 +141,7 @@ export async function getPatientXrayOrders(patientId: string): Promise<any[]> {
 // SCAN/OTHER CATALOG FUNCTIONS
 // ============================================
 
-export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
+export async function getLegacyScanTestCatalog(): Promise<ScanTestCatalogLegacy[]> {
   try {
     const { data, error } = await supabase
       .from('scan_test_catalog')
@@ -155,14 +155,14 @@ export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
       return [];
     }
 
-    return (data || []) as ScanTestCatalog[];
+    return (data || []) as ScanTestCatalogLegacy[];
   } catch (error) {
-    console.error('Error in getScanTestCatalog:', error);
+    console.error('Error in getLegacyScanTestCatalog:', error);
     return [];
   }
 }
 
-export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatalog>): Promise<ScanTestCatalog> {
+export async function createLegacyScanTestCatalogEntry(testData: Partial<ScanTestCatalogLegacy>): Promise<ScanTestCatalogLegacy> {
   const { data, error } = await supabase
     .from('scan_test_catalog')
     .insert([
@@ -183,7 +183,7 @@ export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatal
     throw new Error(`Failed to create scan catalog entry: ${error.message || error.code || 'Unknown error'}`);
   }
 
-  return data as ScanTestCatalog;
+  return data as ScanTestCatalogLegacy;
 }
 
 // ============================================
@@ -249,7 +249,7 @@ export async function createScanOrder(orderData: ScanOrder): Promise<any> {
   }
 }
 
-export async function getPatientScanOrders(patientId: string): Promise<any[]> {
+export async function getPatientLegacyScanOrders(patientId: string): Promise<any[]> {
   try {
     const { data: orders, error } = await supabase
       .from('scan_orders')
@@ -264,7 +264,7 @@ export async function getPatientScanOrders(patientId: string): Promise<any[]> {
 
     return orders || [];
   } catch (error) {
-    console.error('Error in getPatientScanOrders:', error);
+    console.error('Error in getPatientLegacyScanOrders:', error);
     return [];
   }
 }
@@ -316,7 +316,7 @@ export async function createLabTestCatalogEntry(testData: Partial<LabTestCatalog
     console.error('Error creating lab test:', error);
     throw new Error(`Failed to create lab test: ${error.message || error.code || 'Check console for details'}`);
   }
-  return data;
+  return data as LabTestCatalog;
 }
 
 /**
@@ -526,9 +526,9 @@ export async function getPatientLabOrders(patientId: string): Promise<any[]> {
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
-      const orderIds = orders.map(order => order.id);
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
+      const orderIds = orders.map((order: any) => order.id);
 
       const [patient, doctors, catalog, results] = await Promise.all([
         supabase
@@ -551,12 +551,12 @@ export async function getPatientLabOrders(patientId: string): Promise<any[]> {
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
         patient: patient.data,
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id),
-        results: results.data?.filter(r => r.order_id === order.id) || []
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id),
+        results: results.data?.filter((r: any) => r.order_id === order.id) || []
       }));
     }
 
@@ -608,9 +608,9 @@ export async function getLabOrders(filters?: {
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const patientIds = [...new Set(orders.map(order => order.patient_id))];
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+      const patientIds = [...new Set(orders.map((order: any) => order.patient_id))];
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
 
       const [patients, doctors, catalog] = await Promise.all([
         supabase
@@ -628,11 +628,11 @@ export async function getLabOrders(filters?: {
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
-        patient: patients.data?.find(p => p.id === order.patient_id),
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id)
+        patient: patients.data?.find((p: any) => p.id === order.patient_id),
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id)
       }));
     }
 
@@ -940,8 +940,8 @@ export async function getPatientRadiologyOrders(patientId: string): Promise<any[
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
 
       const [patient, doctors, catalog] = await Promise.all([
         supabase
@@ -952,7 +952,7 @@ export async function getPatientRadiologyOrders(patientId: string): Promise<any[
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .in('id', [...new Set([...doctorIds, ...orders.map(o => o.radiologist_id).filter(id => id !== null)])]),
+          .in('id', [...new Set([...doctorIds, ...orders.map((o: any) => o.radiologist_id).filter((id: any) => id !== null)])]),
         supabase
           .from('radiology_test_catalog')
           .select('*')
@@ -960,12 +960,12 @@ export async function getPatientRadiologyOrders(patientId: string): Promise<any[
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
         patient: patient.data,
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id),
-        radiologist: doctors.data?.find(d => d.id === order.radiologist_id)
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id),
+        radiologist: doctors.data?.find((d: any) => d.id === order.radiologist_id)
       }));
     }
 
@@ -1018,7 +1018,7 @@ export async function getRadiologyOrders(filters?: {
         console.warn('Radiology catalog not available for modality filter:', catalogError.message);
       }
 
-      const catalogIds = catalogTests?.map(test => test.id) || [];
+      const catalogIds = catalogTests?.map((test: any) => test.id) || [];
       if (catalogIds.length > 0) {
         query = query.in('test_catalog_id', catalogIds);
       }
@@ -1035,9 +1035,9 @@ export async function getRadiologyOrders(filters?: {
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const patientIds = [...new Set(orders.map(order => order.patient_id))];
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+      const patientIds = [...new Set(orders.map((order: any) => order.patient_id))];
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
 
       const [patients, doctors, catalog] = await Promise.all([
         supabase
@@ -1055,11 +1055,11 @@ export async function getRadiologyOrders(filters?: {
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
-        patient: patients.data?.find(p => p.id === order.patient_id),
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id)
+        patient: patients.data?.find((p: any) => p.id === order.patient_id),
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id)
       }));
     }
 
@@ -1244,7 +1244,7 @@ export async function getDiagnosticBillingItems(filters?: {
       );
     }
 
-    return result.map(item => ({
+    return result.map((item: any) => ({
         ...item,
         patient: item.patients // Map the joined patient data
     }));
@@ -1373,26 +1373,45 @@ export async function getDiagnosticStats(): Promise<{
 }
 
 // ============================================
-// SCAN TEST CATALOG FUNCTIONS
 // ============================================
 
 export interface ScanTestCatalog {
   id: string;
-  test_code: string;
-  test_name: string;
-  modality: string; // CT, MRI, Ultrasound, etc.
-  body_part?: string;
-  contrast_required: boolean;
-  radiation_exposure?: string; // Low, Medium, High (NULL for non-radiation scans like MRI/USG)
-  requires_sedation: boolean;
-  requires_prep: boolean;
-  prep_instructions?: string;
-  average_duration?: number; // in minutes
-  normal_turnaround_time?: number; // in hours
-  urgent_turnaround_time?: number; // in hours
-  test_cost: number;
-  is_active: boolean;
-  requires_radiologist: boolean;
+  // Legacy/active schema (most deployments)
+  scan_code?: string | null;
+  scan_name?: string;
+  category?: string;
+  body_part?: string | null;
+  test_cost?: number;
+  is_active?: boolean;
+
+  // Alternate/newer schema (some migrations)
+  test_code?: string;
+  test_name?: string;
+  modality?: string;
+
+  // Additional fields may exist depending on schema
+  [key: string]: any;
+}
+
+function normalizeScanCatalogRow(row: any): ScanTestCatalog {
+  if (!row) return row;
+  const scan_name = row.scan_name ?? row.test_name;
+  const category = row.category ?? row.modality;
+  const test_cost = Number(row.test_cost ?? 0);
+  const scan_code = row.scan_code ?? row.test_code ?? null;
+
+  return {
+    ...row,
+    scan_name,
+    category,
+    test_cost,
+    scan_code,
+    // Provide aliases for UI code that still expects these
+    test_name: row.test_name ?? scan_name,
+    modality: row.modality ?? category,
+    test_code: row.test_code ?? scan_code,
+  };
 }
 
 /**
@@ -1404,15 +1423,14 @@ export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
       .from('scan_test_catalog')
       .select('*')
       .eq('is_active', true)
-      .order('modality', { ascending: true })
-      .order('test_name', { ascending: true });
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.warn('Scan test catalog not available:', error.message);
       return [];
     }
 
-    return data || [];
+    return (data || []).map(normalizeScanCatalogRow);
   } catch (error) {
     console.error('Error in getScanTestCatalog:', error);
     return [];
@@ -1423,17 +1441,30 @@ export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
  * Create a new scan test in the catalog
  */
 export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatalog>): Promise<ScanTestCatalog> {
+  const scanName = (testData.scan_name ?? testData.test_name ?? '').toString().trim();
+  if (!scanName) {
+    throw new Error('Scan name is required');
+  }
+
+  const category = (testData.category ?? testData.modality ?? 'Scans/Other').toString().trim();
+  const testCost = Number(testData.test_cost ?? 0);
+  const scanCode = (testData.scan_code ?? testData.test_code ?? `SCN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`).toString();
+
   const { data, error } = await supabase
     .from('scan_test_catalog')
-    .insert([{      
-      contrast_required: false, // Default
-      requires_sedation: false, // Default
-      requires_prep: false, // Default
-      requires_radiologist: true, // Default
-      ...testData,
-      test_code: testData.test_code || `SCN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      is_active: true
-    }])
+    .insert([
+      {
+        // Only insert columns that exist in the legacy scan_test_catalog schema.
+        // Do NOT spread testData here, because keys like test_name/modality/test_code
+        // may not exist and will cause PostgREST schema cache errors.
+        scan_code: scanCode,
+        scan_name: scanName,
+        category,
+        body_part: testData.body_part ?? null,
+        test_cost: testCost,
+        is_active: true,
+      } as any,
+    ])
     .select()
     .single();
 
@@ -1441,7 +1472,7 @@ export async function createScanTestCatalogEntry(testData: Partial<ScanTestCatal
     console.error('Error creating scan test:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to create scan test: ${error.message || error.code || 'Unknown error'}`);
   }
-  return data;
+  return normalizeScanCatalogRow(data);
 }
 
 // ============================================
@@ -1577,9 +1608,9 @@ export async function getPatientScanOrders(patientId: string): Promise<any[]> {
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
-      const orderIds = orders.map(order => order.id);
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
+      const orderIds = orders.map((order: any) => order.id);
 
       const [patient, doctors, catalog, results] = await Promise.all([
         supabase
@@ -1602,12 +1633,12 @@ export async function getPatientScanOrders(patientId: string): Promise<any[]> {
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
         patient: patient.data,
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id),
-        results: results.data?.filter(r => r.order_id === order.id) || []
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id),
+        results: results.data?.filter((r: any) => r.order_id === order.id) || []
       }));
     }
 
@@ -1660,7 +1691,7 @@ export async function getScanOrders(filters?: {
         console.warn('Scan catalog not available for modality filter:', catalogError.message);
       }
 
-      const catalogIds = catalogTests?.map(test => test.id) || [];
+      const catalogIds = catalogTests?.map((test: any) => test.id) || [];
       if (catalogIds.length > 0) {
         query = query.in('test_catalog_id', catalogIds);
       }
@@ -1677,9 +1708,9 @@ export async function getScanOrders(filters?: {
 
     // Fetch related data separately
     if (orders && orders.length > 0) {
-      const patientIds = [...new Set(orders.map(order => order.patient_id))];
-      const doctorIds = [...new Set(orders.map(order => order.ordering_doctor_id))];
-      const catalogIds = [...new Set(orders.map(order => order.test_catalog_id))];
+      const patientIds = [...new Set(orders.map((order: any) => order.patient_id))];
+      const doctorIds = [...new Set(orders.map((order: any) => order.ordering_doctor_id))];
+      const catalogIds = [...new Set(orders.map((order: any) => order.test_catalog_id))];
 
       const [patients, doctors, catalog] = await Promise.all([
         supabase
@@ -1697,11 +1728,11 @@ export async function getScanOrders(filters?: {
       ]);
 
       // Combine the data
-      return orders.map(order => ({
+      return orders.map((order: any) => ({
         ...order,
-        patient: patients.data?.find(p => p.id === order.patient_id),
-        ordering_doctor: doctors.data?.find(d => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find(c => c.id === order.test_catalog_id)
+        patient: patients.data?.find((p: any) => p.id === order.patient_id),
+        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id)
       }));
     }
 

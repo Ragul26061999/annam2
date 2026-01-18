@@ -96,11 +96,11 @@ export default function WorkstationPage() {
       setLabReports(reportsData || []);
 
       // Calculate stats
-      const activeTests = (testsData || []).filter(test =>
+      const activeTests = (testsData || []).filter((test: any) =>
         test.status === 'in_progress' || test.status === 'pending'
       ).length;
 
-      const pendingReports = (reportsData || []).filter(report =>
+      const pendingReports = (reportsData || []).filter((report: any) =>
         report.status === 'pending' || report.reviewed_by === null
       ).length;
 

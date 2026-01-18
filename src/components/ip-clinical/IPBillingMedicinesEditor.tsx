@@ -126,7 +126,6 @@ export default function IPBillingMedicinesEditor({
                 <th className="px-4 py-3 text-center font-semibold text-gray-700">Qty</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">Unit Price</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -206,25 +205,11 @@ export default function IPBillingMedicinesEditor({
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">
                     {formatCurrency(medicine.total_price)}
                   </td>
-                  <td className="px-4 py-3 text-gray-700">
-                    {isEditing && editingIndex === index ? (
-                      <input
-                        type="text"
-                        value={medicine.notes || ''}
-                        onChange={(e) => handleUpdate(index, 'notes', e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                        placeholder="Add notes..."
-                      />
-                    ) : (
-                      <span className="text-xs">{medicine.notes || '-'}</span>
-                    )}
-                  </td>
                 </tr>
               ))}
               <tr className="bg-blue-50 font-bold">
                 <td colSpan={6} className="px-4 py-3 text-right text-gray-900">Total Medicines Cost:</td>
                 <td className="px-4 py-3 text-right text-blue-600 text-lg">{formatCurrency(totalAmount)}</td>
-                <td></td>
               </tr>
             </tbody>
           </table>

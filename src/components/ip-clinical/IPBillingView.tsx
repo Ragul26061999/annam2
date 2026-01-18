@@ -11,6 +11,8 @@ import IPBillingMedicinesEditor from './IPBillingMedicinesEditor';
 import IPBillingLabEditor from './IPBillingLabEditor';
 import IPPaymentReceiptModal from './IPPaymentReceiptModal';
 import { IPBillingMultiPagePrint } from './IPBillingMultiPagePrint';
+import IPSurgeryChargesEditor from './IPSurgeryChargesEditor';
+import IPDoctorConsultationsEditor from './IPDoctorConsultationsEditor';
 
 interface IPBillingViewProps {
   bedAllocationId: string;
@@ -30,13 +32,11 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
 
   const loadBillingData = async () => {
     setLoading(true);
-    setError(null);
     try {
       const billingData = await getIPComprehensiveBilling(bedAllocationId);
       setBilling(billingData);
     } catch (err) {
-      console.error('Failed to load billing data:', err);
-      setError('Failed to load billing data. Please try again.');
+      console.error('Error loading billing data:', err);
     } finally {
       setLoading(false);
     }
@@ -91,7 +91,8 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
         updatedBilling.summary.pharmacy_total +
         updatedBilling.summary.lab_total +
         updatedBilling.summary.radiology_total +
-        updatedBilling.summary.other_charges_total;
+        updatedBilling.summary.other_charges_total +
+        (updatedBilling.summary.other_bills_total || 0);
 
       // Recalculate net payable
       updatedBilling.summary.net_payable = 
@@ -194,6 +195,14 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
           </div>
         </div>
 
+        {/* Surgery Charges */}
+        <IPSurgeryChargesEditor
+          bedAllocationId={bedAllocationId}
+          patientId={billing.patient.id}
+          isEditable={true}
+          onUpdate={loadBillingData}
+        />
+
         {/* Bed Charges */}
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-4">
@@ -231,25 +240,31 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                 <p className="font-semibold text-gray-900">{billing.doctor_consultation.doctor_name}</p>
               </div>
               <div>
-                <p className="text-gray-600">Consultation Fee</p>
-                <p className="font-semibold text-gray-900">{formatCurrency(billing.doctor_consultation.consultation_fee)}/day</p>
+                <p className="text-gray-600">Fee / Day</p>
+                <p className="font-semibold text-gray-900">{formatCurrency(billing.doctor_consultation.consultation_fee)}</p>
               </div>
               <div>
                 <p className="text-gray-600">Days</p>
-                <p className="font-semibold text-gray-900">{billing.doctor_consultation.days} days</p>
+                <p className="font-semibold text-gray-900">{billing.doctor_consultation.days}</p>
               </div>
+            </div>
+            <div className="mt-3 flex justify-end text-sm">
+              <span className="text-gray-600 mr-2">Total:</span>
+              <span className="font-bold text-green-700">{formatCurrency(billing.doctor_consultation.total_amount)}</span>
             </div>
           </div>
         </div>
 
-        {/* Doctor Services */}
-        {billing.doctor_services.length > 0 && (
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Doctor Services</h2>
-              <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_services_total)}</span>
-            </div>
-            <div className="space-y-2">
+        {/* Doctor Services & Additional Consultations */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-900">Doctor Services & Consultations</h2>
+            <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_services_total)}</span>
+          </div>
+          
+          {billing.doctor_services.length > 0 && (
+            <div className="space-y-2 mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase">Professional Services</h3>
               {billing.doctor_services.map((service, idx) => (
                 <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <div>
@@ -262,6 +277,57 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 uppercase mb-2">Additional Doctor Consultations</h3>
+            <IPDoctorConsultationsEditor
+              bedAllocationId={bedAllocationId}
+              patientId={billing.patient.id}
+              isEditable={true}
+              onUpdate={loadBillingData}
+            />
+          </div>
+        </div>
+
+        {/* Other Bills */}
+        {billing.other_bills?.length > 0 && (
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Other Bills</h2>
+              <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.other_bills_total || 0)}</span>
+            </div>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Category</th>
+                    <th className="px-4 py-2 text-left">Description</th>
+                    <th className="px-4 py-2 text-center">Qty</th>
+                    <th className="px-4 py-2 text-right">Unit Price</th>
+                    <th className="px-4 py-2 text-right">Total</th>
+                    <th className="px-4 py-2 text-right">Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billing.other_bills.map((b: any) => (
+                    <tr key={b.id} className="border-t">
+                      <td className="px-4 py-2">{b.charge_category || '-'}</td>
+                      <td className="px-4 py-2">{b.charge_description || '-'}</td>
+                      <td className="px-4 py-2 text-center">{b.quantity ?? '-'}</td>
+                      <td className="px-4 py-2 text-right">{formatCurrency(Number(b.unit_price || 0))}</td>
+                      <td className="px-4 py-2 text-right font-semibold">{formatCurrency(Number(b.total_amount || 0))}</td>
+                      <td className="px-4 py-2 text-right">{formatCurrency(Number(b.paid_amount || 0))}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-50 font-bold">
+                    <td colSpan={4} className="px-4 py-2 text-right">Total Other Bills:</td>
+                    <td className="px-4 py-2 text-right text-blue-600">{formatCurrency(billing.summary.other_bills_total || 0)}</td>
+                    <td className="px-4 py-2 text-right text-green-700">{formatCurrency(billing.summary.other_bills_paid_total || 0)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -405,6 +471,13 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               <span className="text-gray-700">Gross Total</span>
               <span className="font-semibold text-gray-900">{formatCurrency(billing.summary.gross_total)}</span>
             </div>
+
+            {billing.summary.other_bills_total > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Other Bills Included</span>
+                <span className="font-semibold">{formatCurrency(billing.summary.other_bills_total)}</span>
+              </div>
+            )}
 
             <div className="flex justify-between text-lg">
               <span className="text-gray-700">Total Paid</span>

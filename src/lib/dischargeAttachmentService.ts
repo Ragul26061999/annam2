@@ -224,7 +224,7 @@ export function getAttachmentDownloadUrl(filePath: string): string {
 export async function ensureDischargeAttachmentBucket(): Promise<void> {
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === 'discharge-attachments') || false;
+    const bucketExists = buckets?.some((bucket: any) => bucket.name === 'discharge-attachments') || false;
     
     if (!bucketExists) {
       const { error } = await supabase.storage.createBucket('discharge-attachments', {

@@ -228,7 +228,7 @@ export default function PharmacyPage() {
           if (!medError && medicines) {
             batchesWithMedInfo = batchesWithStock.map(batch => ({
               ...batch,
-              medications: medicines.find(med => med.id === batch.medicine_id) || {
+              medications: medicines.find((med: any) => med.id === batch.medicine_id) || {
                 id: batch.medicine_id,
                 name: 'Unknown Medicine',
                 category: 'Unknown',
@@ -351,19 +351,19 @@ export default function PharmacyPage() {
         }
 
         // Filter manually for low stock items
-        const lowStockMeds = medications?.filter(med =>
+        const lowStockMeds = medications?.filter((med: any) =>
           med.available_stock > 0 && med.available_stock <= med.minimum_stock_level
         ) || []
 
         console.log('Low stock medications after filtering:', lowStockMeds.length)
 
         if (lowStockMeds.length > 0) {
-          const processedDetails = lowStockMeds.map(med => ({
+          const processedDetails = lowStockMeds.map((med: any) => ({
             ...med,
             alert_type: 'low_stock',
             shortage_quantity: Math.max(0, med.minimum_stock_level - med.available_stock),
             reorder_value: med.minimum_stock_level * 2 * (med.unit_price || 0)
-          })).sort((a, b) => (a.available_stock / a.minimum_stock_level) - (b.available_stock / b.minimum_stock_level))
+          })).sort((a: any, b: any) => (a.available_stock / a.minimum_stock_level) - (b.available_stock / b.minimum_stock_level))
 
           setStockAlertDetails(processedDetails)
           setShowStockAlertsModal(true)
@@ -395,7 +395,7 @@ export default function PharmacyPage() {
 
         // Filter manually for expired batches with stock
         const now = new Date()
-        const expiredBatches = batches?.filter(batch =>
+        const expiredBatches = batches?.filter((batch: any) =>
           batch.current_quantity > 0 && new Date(batch.expiry_date) < now
         ) || []
 
@@ -403,7 +403,7 @@ export default function PharmacyPage() {
 
         if (expiredBatches.length > 0) {
           // Fetch medication info separately
-          const medicineIds = [...new Set(expiredBatches.map(b => b.medicine_id).filter(id => id))]
+          const medicineIds = [...new Set(expiredBatches.map((b: any) => b.medicine_id).filter((id: any) => id))]
           let medicines: any[] = []
 
           if (medicineIds.length > 0) {
@@ -414,9 +414,9 @@ export default function PharmacyPage() {
             medicines = medData || []
           }
 
-          const processedDetails = expiredBatches.map(batch => ({
+          const processedDetails = expiredBatches.map((batch: any) => ({
             ...batch,
-            medications: medicines.find(med => med.id === batch.medicine_id) || {
+            medications: medicines.find((med: any) => med.id === batch.medicine_id) || {
               id: batch.medicine_id,
               name: 'Unknown Medicine',
               category: 'Unknown',
@@ -425,7 +425,7 @@ export default function PharmacyPage() {
             alert_type: 'expired',
             total_value: batch.current_quantity * (batch.selling_price || 0),
             days_expired: Math.ceil((now.getTime() - new Date(batch.expiry_date).getTime()) / (1000 * 60 * 60 * 24))
-          })).sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime())
+          })).sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime())
 
           setStockAlertDetails(processedDetails)
           setShowStockAlertsModal(true)
@@ -458,7 +458,7 @@ export default function PharmacyPage() {
         // Filter manually for expiring batches (next 30 days)
         const now = new Date()
         const thirtyDaysFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000))
-        const expiringBatches = batches?.filter(batch =>
+        const expiringBatches = batches?.filter((batch: any) =>
           batch.current_quantity > 0 &&
           new Date(batch.expiry_date) >= now &&
           new Date(batch.expiry_date) <= thirtyDaysFromNow
@@ -468,7 +468,7 @@ export default function PharmacyPage() {
 
         if (expiringBatches.length > 0) {
           // Fetch medication info separately
-          const medicineIds = [...new Set(expiringBatches.map(b => b.medicine_id).filter(id => id))]
+          const medicineIds = [...new Set(expiringBatches.map((b: any) => b.medicine_id).filter((id: any) => id))]
           let medicines: any[] = []
 
           if (medicineIds.length > 0) {
@@ -479,9 +479,9 @@ export default function PharmacyPage() {
             medicines = medData || []
           }
 
-          const processedDetails = expiringBatches.map(batch => ({
+          const processedDetails = expiringBatches.map((batch: any) => ({
             ...batch,
-            medications: medicines.find(med => med.id === batch.medicine_id) || {
+            medications: medicines.find((med: any) => med.id === batch.medicine_id) || {
               id: batch.medicine_id,
               name: 'Unknown Medicine',
               category: 'Unknown',
@@ -490,7 +490,7 @@ export default function PharmacyPage() {
             alert_type: 'expiring_soon',
             total_value: batch.current_quantity * (batch.selling_price || 0),
             days_to_expiry: Math.ceil((new Date(batch.expiry_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-          })).sort((a, b) => a.days_to_expiry - b.days_to_expiry)
+          })).sort((a: any, b: any) => a.days_to_expiry - b.days_to_expiry)
 
           setStockAlertDetails(processedDetails)
           setShowStockAlertsModal(true)

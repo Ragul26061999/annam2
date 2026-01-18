@@ -38,7 +38,7 @@ export default function DoctorOrders({ bedAllocationId, date, patientId, patient
       const data = await getIPDoctorOrders(bedAllocationId);
       // Filter by date client side (or implement date filtering in getIPDoctorOrders if preferred, but client side is fine for now as per requirement)
       // Actually, user wants "only that days records alone". So filtering is necessary.
-      const filtered = (data || []).filter(o => o.order_date.startsWith(displayDate));
+      const filtered = (data || []).filter((o: any) => o.order_date.startsWith(displayDate));
       setOrders(filtered);
     } catch (err) {
       console.error('Failed to load doctor orders', err);

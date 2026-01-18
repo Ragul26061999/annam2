@@ -226,7 +226,7 @@ export default function DischargeSummaryPage() {
                             }));
                             setPaymentSplits(rowSplits);
 
-                            const totalPaid = rowSplits.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                            const totalPaid = rowSplits.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
                             setBillingData(prev => ({
                                 ...prev,
                                 paid: totalPaid ? String(totalPaid) : ''
@@ -253,7 +253,7 @@ export default function DischargeSummaryPage() {
                             reference: String(p?.reference || '')
                         }));
                         setPaymentSplits(rowSplits);
-                        const totalPaid = rowSplits.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                        const totalPaid = rowSplits.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
                         setBillingData(prev => ({
                             ...prev,
                             paid: totalPaid ? String(totalPaid) : ''

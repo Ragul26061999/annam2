@@ -1155,10 +1155,10 @@ export async function getAllPatients(
           .in('patient_id', fetchedPatientIds)
       : { data: [] as any[] };
 
-    const admittedPatientMap = new Map((activeBedAllocations || []).map(a => [a.patient_id, a.bed_id]));
+    const admittedPatientMap = new Map((activeBedAllocations || []).map((a: any) => [a.patient_id, a.bed_id]));
 
     // Enhance patients with admission status
-    const enhancedPatients = (patients || []).map(patient => ({
+    const enhancedPatients = (patients || []).map((patient: any) => ({
       ...patient,
       is_admitted: admittedPatientMap.has(patient.id),
       bed_id: admittedPatientMap.get(patient.id),
@@ -1582,12 +1582,12 @@ export async function getDailyPatientStats(): Promise<{
 
     // Based on our logic: Outpatient = NULL or 'outpatient', Inpatient = Any non-null value (elective, emergency, etc.)
     // Today's counts
-    const outpatientToday = patientsToday.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
-    const inpatientToday = patientsToday.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
+    const outpatientToday = patientsToday.filter((p: any) => !p.admission_type || p.admission_type === 'outpatient').length;
+    const inpatientToday = patientsToday.filter((p: any) => p.admission_type && p.admission_type !== 'outpatient').length;
 
     // Total counts
-    const totalOutpatients = patientsAll.filter(p => !p.admission_type || p.admission_type === 'outpatient').length;
-    const totalInpatients = patientsAll.filter(p => p.admission_type && p.admission_type !== 'outpatient').length;
+    const totalOutpatients = patientsAll.filter((p: any) => !p.admission_type || p.admission_type === 'outpatient').length;
+    const totalInpatients = patientsAll.filter((p: any) => p.admission_type && p.admission_type !== 'outpatient').length;
 
     return {
       newToday,
