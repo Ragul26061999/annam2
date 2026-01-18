@@ -1676,190 +1676,128 @@ function OutpatientPageContent() {
               </button>
               <button
                 onClick={() => {
-                  // Print functionality using exact thermal format
+                  // ESC/POS Thermal Printer Implementation
                   const now = new Date();
                   const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-                  const thermalContent = `
-                    <html>
-                    <head>
-                      <title>Thermal Receipt - ${selectedBill.bill_id}</title>
-                      <style>
-                      @page { 
-                        margin: 2mm; 
-                        size: 77mm 297mm; 
-                      }
-                      body { 
-                        font-family: 'Times New Roman', Times, serif; 
-                        margin: 0; 
-                        padding: 5px;
-                        font-size: 14px;
-                        font-weight: bold;
-                        line-height: 1.2;
-                        width: 77mm;
-                      }
-                      .header-14cm { 
-                        font-size: 16pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .header-9cm { 
-                        font-size: 12pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .header-10cm { 
-                        font-size: 14pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .header-8cm { 
-                        font-size: 12pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .items-8cm { 
-                        font-size: 12pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .bill-info-10cm { 
-                        font-size: 12pt; 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .bill-info-bold { 
-                        font-weight: bold; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .footer-7cm { 
-                        font-size: 10pt; 
-                        font-weight: bold;
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .center { 
-                        text-align: center; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .right { 
-                        text-align: right; 
-                        font-family: 'Times New Roman', Times, serif; 
-                      }
-                      .table { 
-                        width: 100%; 
-                        border-collapse: collapse; 
-                        font-family: 'Times New Roman', Times, serif; 
-                        margin: 5px 0;
-                      }
-                      .table td { 
-                        padding: 3px 2px; 
-                        font-family: 'Times New Roman', Times, serif; 
-                        font-weight: bold;
-                      }
-                      .totals-line { 
-                        display: flex; 
-                        justify-content: space-between; 
-                        font-family: 'Times New Roman', Times, serif; 
-                        margin: 3px 0;
-                        font-weight: bold;
-                      }
-                      .footer { 
-                        margin-top: 10px; 
-                        font-family: 'Times New Roman', Times, serif; 
-                        font-weight: bold;
-                      }
-                      </style>
-                    </head>
-                    <body>
-                      <!-- Header Section -->
-                      <div class="center">
-                        <div class="header-14cm">ANNAM HOSPITAL</div>
-                        <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
-                        <div class="header-9cm">Phone- 04639 252592</div>
-                        <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
-                        <div style="margin: 5px 0; font-weight: bold;">INVOICE</div>
-                      </div>
+                  // Build ESC/POS commands for thermal printer
+                  const escPosCommands = [
+                    // Initialize printer
+                    '\x1B\x40', // ESC @ - Initialize printer
+                    '\x1B\x21\x00', // ESC ! 0 - Reset text formatting
+                    
+                    // Center align for header
+                    '\x1B\x61\x01', // ESC a 1 - Center align
+                    
+                    // Hospital header
+                    '\x1B\x45\x01', // ESC E 1 - Bold on
+                    'ANNAM HOSPITAL\n',
+                    '\x1B\x45\x00', // ESC E 0 - Bold off
+                    '2/301, Raj Kanna Nagar,\n',
+                    'Veerapandian Patanam,\n',
+                    'Tiruchendur - 628216\n',
+                    'Phone- 04639 252592\n',
+                    '\x1B\x45\x01', // Bold on
+                    'INVOICE\n',
+                    '\x1B\x45\x00', // Bold off
+                    
+                    // Left align for bill info
+                    '\x1B\x61\x00', // ESC a 0 - Left align
+                    
+                    // Bill information
+                    `Bill No  :   ${selectedBill.bill_id}\n`,
+                    `UHID         :   ${selectedBill.patient?.patient_id || 'N/A'}\n`,
+                    `Patient Name :   ${selectedBill.patient?.name || 'Unknown Patient'}\n`,
+                    `Date           :   ${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}\n`,
+                    `Sales Type :   ${(selectedBill.payment_method || 'CASH').toUpperCase()}\n`,
+                    
+                    // Items table header
+                    '\x1B\x45\x01', // Bold on
+                    'S.No   Service              Qty   Amount\n',
+                    '--------------------------------\n',
+                    '\x1B\x45\x00', // Bold off
+                    
+                    // Item row
+                    '1.     Consultation Fee     1    ' + selectedBill.total_amount.toFixed(2) + '\n',
+                    
+                    // Totals
+                    '\x1B\x45\x01', // Bold on
+                    'Subtotal: ' + selectedBill.total_amount.toFixed(2) + '\n',
+                    '------------------------\n',
+                    'Total Amount: ' + (selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2) + '\n',
+                    '\x1B\x45\x00', // Bold off
+                    
+                    // Footer
+                    '\x1B\x61\x01', // Center align
+                    'Printed on ' + printedDateTime + '\n',
+                    'Authorized Sign\n',
+                    
+                    // Cut paper
+                    '\x1B\x64\x03', // ESC d 3 - Feed 3 line breaks
+                    '\x1D\x56\x00'  // GS V 0 - Paper cut (partial cut)
+                  ].join('');
 
-                      <!-- Bill Information Section -->
-                      <div style="margin: 5px 0; font-family: 'Times New Roman', Times, serif; font-weight: bold;">
-                        <div style="font-size: 12pt; white-space: pre;">Bill No  :   ${selectedBill.bill_id}</div>
-                        <div style="font-size: 12pt; white-space: pre;">UHID         :   ${selectedBill.patient?.patient_id || 'N/A'}</div>
-                        <div style="font-size: 12pt; white-space: pre;">Patient Name :   ${selectedBill.patient?.name || 'Unknown Patient'}</div>
-                        <div style="font-size: 12pt; white-space: pre;">Date           :   ${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
-                        <div style="font-size: 12pt; white-space: pre;">Sales Type :   ${(selectedBill.payment_method || 'CASH').toUpperCase()}</div>
-                      </div>
-
-                      <!-- Items Table Section -->
-                      </div>
-
-                      <!-- Items Table Section -->
-                      <div style="margin: 5px 0;">
-                        <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: none;">
-                          <thead>
-                            <tr style="border-bottom: 1px dashed #000;">
-                              <td width="30%" class="items-8cm">S.No</td>
-                              <td width="40%" class="items-8cm">Service</td>
-                              <td width="15%" class="items-8cm text-center">Qty</td>
-                              <td width="15%" class="items-8cm text-right">Amt</td>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td class="items-8cm">1.</td>
-                              <td class="items-8cm">Consultation Fee</td>
-                              <td class="items-8cm text-center">1</td>
-                              <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <!-- Totals Section -->
-                      <div style="margin: 5px 0;">
-                        <div class="totals-line items-8cm">
-                          <span>Taxable Amount</span>
-                          <span>${selectedBill.total_amount.toFixed(2)}</span>
-                        </div>
-                        <div class="totals-line items-8cm">
-                          <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-                          <span>${selectedBill.discount_amount.toFixed(2)}</span>
-                        </div>
-                        <div class="totals-line items-8cm">
-                          <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-                          <span>0.00</span>
-                        </div>
-                        <div class="totals-line header-8cm">
-                          <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-                          <span>0.00</span>
-                        </div>
-                        <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
-                          <span>Total Amount</span>
-                          <span>${selectedBill.total_amount.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      <!-- Footer Section -->
-                      <div class="footer">
-                        <div style="text-align: center; margin-top: 20px; font-size: 10pt;">
-                          <div style="border-top: 1px dashed #000; width: 60%; margin: 0 auto; padding-top: 5px;">
-                            Authorized Sign
-                          </div>
-                        </div>
-                      </div>
-
-                      <script>
-                        window.onload = function() {
-                          window.print();
-                        }
-                      </script>
-                    </body>
-                    </html>
-                  `;
-
+                  // Send to thermal printer via browser print API
                   const printWindow = window.open('', '_blank', 'width=400,height=600');
                   if (printWindow) {
-                    printWindow.document.write(thermalContent);
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>Thermal Receipt - ${selectedBill.bill_id}</title>
+                          <style>
+                            @page { margin: 2mm; size: 77mm 297mm; }
+                            body { 
+                              font-family: 'Verdana', sans-serif; 
+                              margin: 0; 
+                              padding: 5px;
+                              font-size: 12px;
+                              font-weight: bold;
+                              line-height: 1.1;
+                              width: 77mm;
+                            }
+                            .center { text-align: center; }
+                            .left { text-align: left; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="center">
+                            <div>ANNAM HOSPITAL</div>
+                            <div>2/301, Raj Kanna Nagar,</div>
+                            <div>Veerapandian Patanam,</div>
+                            <div>Tiruchendur - 628216</div>
+                            <div>Phone- 04639 252592</div>
+                            <div style="margin-top: 5px;">INVOICE</div>
+                          </div>
+                          <div class="left" style="margin-top: 5px;">
+                            <div>Bill No  :   ${selectedBill.bill_id}</div>
+                            <div>UHID         :   ${selectedBill.patient?.patient_id || 'N/A'}</div>
+                            <div>Patient Name :   ${selectedBill.patient?.name || 'Unknown Patient'}</div>
+                            <div>Date           :   ${new Date(selectedBill.bill_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ${new Date(selectedBill.bill_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                            <div>Sales Type :   ${(selectedBill.payment_method || 'CASH').toUpperCase()}</div>
+                          </div>
+                          <div style="margin-top: 5px;">
+                            <div>S.No   Service              Qty   Amount</div>
+                            <div>--------------------------------</div>
+                            <div>1.     Consultation Fee     1    ${selectedBill.total_amount.toFixed(2)}</div>
+                          </div>
+                          <div style="margin-top: 5px;">
+                            <div>Subtotal: ${selectedBill.total_amount.toFixed(2)}</div>
+                            <div>------------------------</div>
+                            <div>Total Amount: ${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</div>
+                          </div>
+                          <div class="center" style="margin-top: 10px;">
+                            <div>Printed on ${printedDateTime}</div>
+                            <div>Authorized Sign</div>
+                          </div>
+                        </body>
+                      </html>
+                    `);
                     printWindow.document.close();
+                    
+                    // Alternative: Try to use Web Bluetooth or USB if available
+                    if ((navigator as any).bluetooth) {
+                      console.log('Web Bluetooth available - could implement direct thermal printer connection');
+                    }
                   }
                 }}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
