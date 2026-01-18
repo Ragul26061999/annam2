@@ -15,7 +15,9 @@ import {
   Hash,
   AlertCircle,
   Loader2,
-  Trash2
+  Trash2,
+  Check,
+  X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 
@@ -32,6 +34,8 @@ interface MedicationBatch {
   supplier_name?: string;
   status: string;
   is_active: boolean;
+  edited?: boolean;
+  verified?: boolean;
 }
 
 interface Medication {
@@ -323,6 +327,92 @@ const EditMedicationPage = () => {
     }
   };
 
+  const handleBatchEditToggle = async (batch: MedicationBatch, medicationId: string) => {
+    try {
+      const newEditedState = !batch.edited;
+      
+      // Update local state immediately for seamless UI
+      setMedications(prev => prev.map(med => {
+        if (med.id === medicationId) {
+          const updatedBatches = med.batches?.map(b => 
+            b.id === batch.id ? { ...b, edited: newEditedState } : b
+          ) || [];
+          return { ...med, batches: updatedBatches };
+        }
+        return med;
+      }));
+
+      // Update database
+      const { error } = await supabase
+        .from('medicine_batches')
+        .update({ 
+          edited: newEditedState,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', batch.id);
+
+      if (error) {
+        // Revert local state if database update fails
+        setMedications(prev => prev.map(med => {
+          if (med.id === medicationId) {
+            const updatedBatches = med.batches?.map(b => 
+              b.id === batch.id ? { ...b, edited: batch.edited } : b
+            ) || [];
+            return { ...med, batches: updatedBatches };
+          }
+          return med;
+        }));
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error updating batch edit status:', error);
+      alert('Failed to update batch edit status. Please try again.');
+    }
+  };
+
+  const handleBatchVerifiedToggle = async (batch: MedicationBatch, medicationId: string) => {
+    try {
+      const newVerifiedState = !batch.verified;
+      
+      // Update local state immediately for seamless UI
+      setMedications(prev => prev.map(med => {
+        if (med.id === medicationId) {
+          const updatedBatches = med.batches?.map(b => 
+            b.id === batch.id ? { ...b, verified: newVerifiedState } : b
+          ) || [];
+          return { ...med, batches: updatedBatches };
+        }
+        return med;
+      }));
+
+      // Update database
+      const { error } = await supabase
+        .from('medicine_batches')
+        .update({ 
+          verified: newVerifiedState,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', batch.id);
+
+      if (error) {
+        // Revert local state if database update fails
+        setMedications(prev => prev.map(med => {
+          if (med.id === medicationId) {
+            const updatedBatches = med.batches?.map(b => 
+              b.id === batch.id ? { ...b, verified: batch.verified } : b
+            ) || [];
+            return { ...med, batches: updatedBatches };
+          }
+          return med;
+        }));
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error updating batch verified status:', error);
+      alert('Failed to update batch verified status. Please try again.');
+    }
+  };
+
   const filteredMedications = medications.filter(med => {
     const matchesSearchTerm = 
       med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -499,21 +589,24 @@ const EditMedicationPage = () => {
                       <div className="space-y-2">
                         {medication.batches.map((batch) => {
                           const isBatchMatch = searchTerm && batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase());
+                          const cardColor = batch.edited ? 'border-red-400 bg-red-50' : 
+                                         batch.verified ? 'border-green-400 bg-green-50' : 
+                                         isBatchMatch ? 'border-purple-400 bg-purple-50' : 
+                                         'border-gray-200 hover:border-purple-300';
+                          
                           return (
                           <div
                             key={batch.id}
-                            className={`bg-white rounded-lg p-4 border transition-colors ${
-                              isBatchMatch 
-                                ? 'border-purple-400 bg-purple-50 shadow-md' 
-                                : 'border-gray-200 hover:border-purple-300'
+                            className={`rounded-lg p-4 border transition-colors ${
+                              cardColor + (isBatchMatch && !batch.edited && !batch.verified ? ' shadow-md' : '')
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <div className="grid grid-cols-6 gap-4 flex-1">
+                              <div className="grid grid-cols-8 gap-4 flex-1">
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">Batch Number</div>
                                   <div className={`font-semibold ${
-                                    isBatchMatch ? 'text-purple-700 bg-purple-100 px-2 py-1 rounded' : 'text-gray-900'
+                                    isBatchMatch && !batch.edited && !batch.verified ? 'text-purple-700 bg-purple-100 px-2 py-1 rounded' : 'text-gray-900'
                                   }`}>
                                     {batch.batch_number}
                                   </div>
@@ -553,6 +646,34 @@ const EditMedicationPage = () => {
                                   }`}>
                                     {batch.status}
                                   </span>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">Edited</div>
+                                  <button
+                                    onClick={() => handleBatchEditToggle(batch, medication.id)}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      batch.edited 
+                                        ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    {batch.edited ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                                    {batch.edited ? 'Yes' : 'No'}
+                                  </button>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">Verified</div>
+                                  <button
+                                    onClick={() => handleBatchVerifiedToggle(batch, medication.id)}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      batch.verified 
+                                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    {batch.verified ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                                    {batch.verified ? 'Yes' : 'No'}
+                                  </button>
                                 </div>
                               </div>
                               
