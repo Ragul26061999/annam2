@@ -74,10 +74,57 @@ const EditMedicationPage = () => {
   const [deletingBatch, setDeletingBatch] = useState<{batch: MedicationBatch, medicationId: string} | null>(null);
   const [deletingMedication, setDeletingMedication] = useState<Medication | null>(null);
   const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
+  const [batchSearchTriggered, setBatchSearchTriggered] = useState<string>('');
 
   useEffect(() => {
     fetchMedications();
   }, []);
+
+  // Load batches when searching by batch number pattern (only once per search term)
+  useEffect(() => {
+    if (searchTerm.trim() && 
+        searchTerm.match(/^[a-zA-Z0-9\-_]+$/) && 
+        searchTerm !== batchSearchTriggered) {
+      
+      setBatchSearchTriggered(searchTerm);
+      
+      // Load batches for medications that don't have them loaded yet
+      const medicationsWithoutBatches = medications.filter(med => !med.batches);
+      
+      // Load batches one by one to avoid overwhelming the database
+      const loadBatchesSequentially = async () => {
+        for (const med of medicationsWithoutBatches) {
+          if (!loadingBatches) { // Stop if another batch loading is in progress
+            await fetchBatches(med.id);
+          }
+        }
+      };
+      
+      if (medicationsWithoutBatches.length > 0) {
+        loadBatchesSequentially();
+      }
+    } else if (!searchTerm.trim()) {
+      // Reset the trigger when search is cleared
+      setBatchSearchTriggered('');
+    }
+  }, [searchTerm, batchSearchTriggered, medications, loadingBatches]);
+
+  // Auto-expand medications when searching by batch number
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      const medicationsWithMatchingBatches = medications.filter(med => 
+        med.batches && med.batches.some(batch => 
+          batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+      
+      // Expand the first medication with matching batches
+      if (medicationsWithMatchingBatches.length > 0) {
+        const firstMedication = medicationsWithMatchingBatches[0];
+        setExpandedMedication(firstMedication.id);
+      }
+    }
+  }, [searchTerm, medications]);
 
   const fetchMedications = async () => {
     try {
@@ -276,11 +323,27 @@ const EditMedicationPage = () => {
     }
   };
 
-  const filteredMedications = medications.filter(med =>
-    med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    med.combination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    med.generic_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMedications = medications.filter(med => {
+    const matchesSearchTerm = 
+      med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      med.combination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      med.generic_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // If no search term, return all medications
+    if (!searchTerm.trim()) return matchesSearchTerm;
+    
+    // If medication matches search term, include it
+    if (matchesSearchTerm) return true;
+    
+    // Check if any batch matches the search term
+    if (med.batches && med.batches.length > 0) {
+      return med.batches.some(batch => 
+        batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    return false;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
@@ -314,7 +377,7 @@ const EditMedicationPage = () => {
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search medications by name, combination, or generic name..."
+              placeholder="Search medications by name, combination, generic name, or batch number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -355,6 +418,13 @@ const EditMedicationPage = () => {
                           {medication.combination && (
                             <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
                               {medication.combination}
+                            </span>
+                          )}
+                          {searchTerm && medication.batches && medication.batches.some(batch => 
+                            batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase())
+                          ) && (
+                            <span className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                              Batch Match
                             </span>
                           )}
                         </div>
@@ -427,16 +497,26 @@ const EditMedicationPage = () => {
                       </div>
                     ) : medication.batches && medication.batches.length > 0 ? (
                       <div className="space-y-2">
-                        {medication.batches.map((batch) => (
+                        {medication.batches.map((batch) => {
+                          const isBatchMatch = searchTerm && batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase());
+                          return (
                           <div
                             key={batch.id}
-                            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-purple-300 transition-colors"
+                            className={`bg-white rounded-lg p-4 border transition-colors ${
+                              isBatchMatch 
+                                ? 'border-purple-400 bg-purple-50 shadow-md' 
+                                : 'border-gray-200 hover:border-purple-300'
+                            }`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="grid grid-cols-6 gap-4 flex-1">
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">Batch Number</div>
-                                  <div className="font-semibold text-gray-900">{batch.batch_number}</div>
+                                  <div className={`font-semibold ${
+                                    isBatchMatch ? 'text-purple-700 bg-purple-100 px-2 py-1 rounded' : 'text-gray-900'
+                                  }`}>
+                                    {batch.batch_number}
+                                  </div>
                                 </div>
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">Quantity</div>
@@ -492,7 +572,8 @@ const EditMedicationPage = () => {
                             </div>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500">
