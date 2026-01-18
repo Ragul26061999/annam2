@@ -77,12 +77,6 @@ const Sidebar: React.FC = () => {
       color: 'text-purple-600'
     },
     {
-      href: '/revisit',
-      label: 'Revisit',
-      icon: <RefreshCw size={18} />,
-      color: 'text-cyan-600'
-    },
-    {
       href: '/appointments',
       label: 'All Appointments',
       icon: <Stethoscope size={18} />,
