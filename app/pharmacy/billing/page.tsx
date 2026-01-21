@@ -483,30 +483,31 @@ export default function PharmacyBillingPage() {
         <head>
           <title>Thermal Receipt - ${selectedBill.bill_number}</title>
           <style>
-            @page { margin: 5mm; size: 77mm 297mm; }
+            @page { margin: 3mm; size: 77mm 297mm; }
             body { 
-              font-family: 'Times New Roman', Times, serif; 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
               margin: 0; 
-              padding: 10px;
-              font-size: 12px;
+              padding: 5px;
+              font-size: 14px;
               line-height: 1.2;
               width: 77mm;
             }
-            .header-14cm { font-size: 14pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .header-9cm { font-size: 9pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .header-10cm { font-size: 10pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .header-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .items-8cm { font-size: 8pt; font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .bill-info-10cm { font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
-            .bill-info-bold { font-weight: bold; font-family: 'Times New Roman', Times, serif; }
-            .footer-7cm { font-size: 7pt; font-family: 'Times New Roman', Times, serif; }
-            .center { text-align: center; font-family: 'Times New Roman', Times, serif; }
-            .right { text-align: right; font-family: 'Times New Roman', Times, serif; }
-            .table { width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; }
-            .table td { padding: 2px; font-family: 'Times New Roman', Times, serif; }
-            .totals-line { display: flex; justify-content: space-between; font-family: 'Times New Roman', Times, serif; }
-            .footer { margin-top: 20px; font-family: 'Times New Roman', Times, serif; }
-            .signature-area { margin-top: 30px; font-family: 'Times New Roman', Times, serif; }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
           </style>
         </head>
         <body>
@@ -559,6 +560,161 @@ export default function PharmacyBillingPage() {
             <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
               <span>${subtotal.toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+              <span>${discount.toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+              <span>${(tax / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+              <span>${(tax / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${selectedBill.total_amount.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Pharmacist Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
+    }
+  };
+
+  const showThermalPreviewWithLogo = () => {
+    if (!selectedBill || !viewItems.length) return;
+
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    // Get patient UHID
+    const patientUhid = selectedBill.patient_uhid || 'WALK-IN';
+
+    // Get sales type
+    let salesType = selectedBill.payment_method?.toUpperCase() || 'CASH';
+    if (salesType === 'CREDIT') {
+      salesType = 'CREDIT';
+    }
+
+    // Generate items HTML
+    const itemsHtml = viewItems.map((item: any, index: number) => `
+      <tr>
+        <td class="items-8cm">${index + 1}.</td>
+        <td class="items-8cm">${item.description || item.name || 'Unknown'}</td>
+        <td class="items-8cm text-center">${item.qty || 1}</td>
+        <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    // Calculate totals
+    const subtotal = selectedBill.subtotal ?? viewItems.reduce((s: number, it: any) => s + Number(it.total_amount || 0), 0);
+    const discount = selectedBill.discount || 0;
+    const tax = selectedBill.tax ?? Math.max(selectedBill.total_amount - (subtotal - discount), 0);
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${selectedBill.bill_number}</title>
+          <style>
+            @page { margin: 1mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
+              margin: 0; 
+              padding: 2px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .logo { width: 300px; height: auto; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <img src="/logo/annamPharmacy.png" alt="ANNAM LOGO" class="logo" />
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_number}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.customer_name}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.created_at).toLocaleDateString()} ${new Date(selectedBill.created_at).toLocaleTimeString()}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${salesType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Drug Name</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line items-8cm">
+              <span>Taxable Amount</span>
+              <span>${(subtotal - discount).toFixed(2)}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
@@ -1127,6 +1283,7 @@ export default function PharmacyBillingPage() {
             <div className="mt-4 flex gap-3">
               <button onClick={printBill} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download / Print</button>
               <button onClick={showThermalPreview} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Thermal Preview</button>
+              <button onClick={showThermalPreviewWithLogo} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Thermal 2</button>
               <button onClick={() => setShowViewModal(false)} className="px-4 py-2 border rounded-lg">Close</button>
             </div>
           </div>
