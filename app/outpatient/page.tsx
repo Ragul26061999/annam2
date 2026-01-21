@@ -471,13 +471,12 @@ function OutpatientPageContent() {
             .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
             .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
             .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .logo { width: 300px; height: auto; margin-bottom: 5px; }
+            .logo { width: 350px; height: auto; margin-bottom: 5px; }
           </style>
         </head>
         <body>
           <div class="center">
-            <img src="/logo/annamHospital-bg.png" alt="ANNAM LOGO" class="logo" />
-            <div class="header-14cm">ANNAM HOSPITAL</div>
+            <img src="/logo/annamHospital-bk.png" alt="ANNAM LOGO" class="logo" />
             <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
             <div class="header-9cm">Phone- 04639 252592</div>
             <div style="margin-top: 5px; font-weight: bold;">OUTPATIENT BILL</div>
