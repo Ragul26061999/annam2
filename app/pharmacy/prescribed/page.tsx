@@ -376,10 +376,12 @@ export default function PrescribedListPage() {
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      <span>Dr. {prescription.doctor_name}</span>
-                    </div>
+                    {prescription.doctor_name && (
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        <span>Dr. {prescription.doctor_name}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
                       <span>{new Date(prescription.prescription_date).toLocaleDateString()}</span>

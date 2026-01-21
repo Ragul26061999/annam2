@@ -34,6 +34,7 @@ import AddStaffModal from '@/src/components/AddStaffModal';
 import EditStaffModal from '@/src/components/EditStaffModal';
 import ViewStaffModal from '@/src/components/ViewStaffModal';
 import StaffAttendanceModal from '@/src/components/StaffAttendanceModal';
+import CreateAccountModal from '@/src/components/CreateAccountModal';
 
 interface StaffStats {
   totalStaff: number;
@@ -78,6 +79,7 @@ export default function StaffPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+  const [isCreateAccountModalOpen, setIsCreateAccountModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
   const fetchStaffData = useCallback(async (forceRefresh = false) => {
@@ -416,6 +418,17 @@ export default function StaffPage() {
                     <td className="px-8 py-6 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
+                          className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-green-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedStaff(staff);
+                            setIsCreateAccountModalOpen(true);
+                          }}
+                          title="Create Login Account"
+                        >
+                          <UserPlus size={18} />
+                        </button>
+                        <button 
                           className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-gray-400 hover:text-orange-500 transition-all"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -601,6 +614,20 @@ export default function StaffPage() {
         staff={filteredStaff}
         onSuccess={() => fetchStaffData(true)}
       />
+
+      {/* Create Account Modal */}
+      {selectedStaff && (
+        <CreateAccountModal
+          isOpen={isCreateAccountModalOpen}
+          onClose={() => setIsCreateAccountModalOpen(false)}
+          onSuccess={() => fetchStaffData(true)}
+          entityId={selectedStaff.id}
+          entityType="staff"
+          name={selectedStaff.name || ''}
+          role={selectedStaff.role || ''}
+          initialEmail={selectedStaff.email || ''}
+        />
+      )}
 
       {/* Error Toast (if any) */}
       {error && (

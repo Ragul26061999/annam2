@@ -29,11 +29,13 @@ import {
   Activity
 } from 'lucide-react';
 import { getDashboardData, DashboardData } from '../../src/lib/dashboardService';
+import { getCurrentUserProfile } from '../../src/lib/supabase';
 
 export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -47,6 +49,11 @@ export default function Dashboard() {
       try {
         setLoading(true);
         setError(null);
+
+        // Fetch user profile
+        const userProfile = await getCurrentUserProfile();
+        setUser(userProfile);
+
         const data = await getDashboardData();
         setDashboardData(data);
       } catch (err) {
@@ -116,7 +123,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Welcome back, Dr. Selvan</p>
+          <p className="text-gray-500 mt-1">Welcome back, {user?.name || 'Doctor'}</p>
         </div>
         <div className="flex items-center space-x-3">
           <div className="bg-white rounded-xl px-3 py-2 shadow-sm border border-gray-200">

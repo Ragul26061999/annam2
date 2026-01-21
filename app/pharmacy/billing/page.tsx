@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Search,
@@ -15,9 +15,11 @@ import {
   Eye,
   Download,
   Edit,
-  X
+  X,
+  Trash2
 } from 'lucide-react'
 import { supabase } from '@/src/lib/supabase'
+import { getCurrentUserProfile } from '@/src/lib/supabase'
 
 interface PharmacyBill {
   id: string
@@ -29,9 +31,12 @@ interface PharmacyBill {
   discount: number
   tax: number
   total_amount: number
+  amount_paid: number
   payment_method: string
   payment_status: string
   created_at: string
+  staff_id?: string
+  staff_name?: string
 }
 
 interface DashboardStats {
@@ -60,6 +65,20 @@ export default function PharmacyBillingPage() {
   // Payment details for split payments
   const [paymentDetails, setPaymentDetails] = useState<any[]>([])
   const [paymentDetailsLoading, setPaymentDetailsLoading] = useState(false)
+  // Pending bills modal state
+  const [showPendingModal, setShowPendingModal] = useState(false)
+  const [pendingBills, setPendingBills] = useState<any[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
+  // Current user state for admin check
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  // Mark as paid modal state
+  const [showMarkPaidModal, setShowMarkPaidModal] = useState(false)
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState<PharmacyBill | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [paymentReference, setPaymentReference] = useState('')
+  const [markingPaid, setMarkingPaid] = useState(false)
 
   // Advanced Filters
   const [attrFilterCategory, setAttrFilterCategory] = useState('') // 'name', 'combination', 'dosage_form', 'manufacturer'
@@ -83,6 +102,23 @@ export default function PharmacyBillingPage() {
   useEffect(() => {
     loadBillingData()
     loadMedications()
+    
+    // Load current user for admin check
+    const loadCurrentUser = async () => {
+      try {
+        const user = await getCurrentUserProfile()
+        setCurrentUser(user)
+        // Check if user is admin (you can adjust this logic based on your role system)
+        const adminRoles = ['admin', 'administrator', 'md', 'superadmin', 'Administrator']
+        setIsAdmin(adminRoles.includes(user?.role?.toLowerCase()) || adminRoles.includes(user?.role) || false)
+      } catch (error) {
+        console.error('Error loading current user:', error)
+        setIsAdmin(false)
+      }
+    }
+    
+    loadCurrentUser()
+    
       ; (async () => {
         try {
           const { data } = await supabase.from('hospital_settings').select('*').eq('id', 1).maybeSingle()
@@ -171,9 +207,11 @@ export default function PharmacyBillingPage() {
           discount,
           tax,
           total,
+          amount_paid,
           payment_method,
           payment_status,
-          created_at
+          created_at,
+          staff_id
         `)
         .order('created_at', { ascending: false })
 
@@ -201,23 +239,82 @@ export default function PharmacyBillingPage() {
         }
       }
 
-      // Map bills data with proper formatting and resolved UHIDs
-      const mappedBills = (billsData || []).map((bill: any) => ({
-        id: bill.id,
-        bill_number: bill.bill_number || `#${bill.id.slice(-8)}`,
-        customer_name: bill.customer_name || 'Unknown',
-        patient_uhid: bill.customer_type === 'patient'
-          ? (patientsMap[bill.patient_id]?.patient_id || 'Unknown')
-          : '',
-        customer_type: bill.customer_type || 'patient',
-        subtotal: bill.subtotal || 0,
-        discount: bill.discount || 0,
-        tax: bill.tax || 0,
-        total_amount: bill.total || 0,
-        payment_method: bill.payment_method || 'cash',
-        payment_status: bill.payment_status || 'paid',
-        created_at: bill.created_at
-      }))
+      // Resolve staff names in a separate safe query
+      const staffIds = Array.from(new Set((billsData || [])
+        .map((b: any) => b.staff_id)
+        .filter((id: string | null) => !!id)))
+
+      let staffMap: Record<string, { first_name: string; last_name: string; employee_id: string; full_name: string }> = {}
+      if (staffIds.length > 0) {
+        const { data: staffData, error: staffError } = await supabase
+          .from('staff')
+          .select('id, first_name, last_name, employee_id')
+          .in('id', staffIds as string[])
+
+        if (!staffError && staffData) {
+          staffMap = staffData.reduce((acc: any, s: any) => {
+            const fullName = `${s.first_name || ''} ${s.last_name || ''}`.trim()
+            acc[s.id] = { 
+              first_name: s.first_name || '',
+              last_name: s.last_name || '',
+              employee_id: s.employee_id || '',
+              full_name: fullName || s.employee_id || 'Unknown Staff'
+            }
+            return acc
+          }, {})
+        } else {
+          console.warn('Staff lookup skipped due to error:', staffError)
+        }
+      }
+
+      // Helper function to determine payment status with roundoff consideration
+      const getPaymentStatusWithRoundoff = (totalAmount: number, amountPaid: number, currentStatus: string, paymentMethod: string) => {
+        // If already marked as paid, keep it as paid
+        if (currentStatus === 'paid') return 'paid';
+        
+        // For credit payments, always keep as pending until explicitly marked as paid
+        if (paymentMethod === 'credit') return 'pending';
+        
+        // If no amount paid, it's pending
+        if (!amountPaid || amountPaid <= 0) return 'pending';
+        
+        // Consider roundoff tolerance (within 0.05 rupee difference for very small differences)
+        const difference = Math.abs(totalAmount - amountPaid);
+        const isFullyPaid = difference <= 0.05; // Reduced tolerance for small differences
+        
+        return isFullyPaid ? 'paid' : 'partial';
+      };
+
+      // Map bills data with proper formatting and resolved UHIDs and staff names
+      const mappedBills = (billsData || []).map((bill: any) => {
+        const totalAmount = bill.total || 0;
+        const amountPaid = bill.amount_paid || 0;
+        const currentStatus = bill.payment_status || 'pending';
+        const paymentMethod = bill.payment_method || 'cash';
+        
+        // Determine correct payment status considering roundoff and payment method
+        const correctedStatus = getPaymentStatusWithRoundoff(totalAmount, amountPaid, currentStatus, paymentMethod);
+        
+        return {
+          id: bill.id,
+          bill_number: bill.bill_number || `#${bill.id.slice(-8)}`,
+          customer_name: bill.customer_name || 'Unknown',
+          patient_uhid: bill.customer_type === 'patient'
+            ? (patientsMap[bill.patient_id]?.patient_id || 'Unknown')
+            : '',
+          customer_type: bill.customer_type || 'patient',
+          subtotal: bill.subtotal || 0,
+          discount: bill.discount || 0,
+          tax: bill.tax || 0,
+          total_amount: totalAmount,
+          amount_paid: amountPaid,
+          payment_method: paymentMethod,
+          payment_status: correctedStatus,
+          created_at: bill.created_at,
+          staff_id: bill.staff_id,
+          staff_name: staffMap[bill.staff_id]?.full_name || 'Unknown Staff'
+        };
+      })
 
       setBills(mappedBills)
 
@@ -280,10 +377,232 @@ export default function PharmacyBillingPage() {
     }
   }
 
+  const openMarkPaidModal = (bill: PharmacyBill) => {
+    setSelectedBillForPayment(bill)
+    setPaymentAmount('')
+    setPaymentMethod('cash')
+    setPaymentReference('')
+    setShowMarkPaidModal(true)
+  }
+
+  const handleMarkAsPaid = async () => {
+    if (!selectedBillForPayment || !paymentAmount || parseFloat(paymentAmount) <= 0) {
+      alert('Please enter a valid payment amount')
+      return
+    }
+
+    const amount = parseFloat(paymentAmount)
+    const totalAmount = selectedBillForPayment.total_amount || 0
+    const currentPaid = selectedBillForPayment.amount_paid || 0
+    const remainingBalance = totalAmount - currentPaid
+
+    // Prevent overpayment
+    if (amount > remainingBalance) {
+      alert(`Payment amount (₹${amount.toFixed(2)}) exceeds remaining balance (₹${remainingBalance.toFixed(2)}). Please enter a valid amount.`)
+      return
+    }
+
+    try {
+      setMarkingPaid(true)
+      const newTotalPaid = currentPaid + amount
+
+      console.log('Recording payment:', {
+        billId: selectedBillForPayment.id,
+        amount: amount,
+        method: paymentMethod,
+        reference: paymentReference,
+        currentUser: currentUser,
+        totalAmount: totalAmount,
+        currentPaid: currentPaid,
+        newTotalPaid: newTotalPaid,
+        remainingBalance: remainingBalance
+      })
+
+      // Update billing table with correct payment status
+      let paymentStatus = 'partial'
+      const difference = Math.abs(totalAmount - newTotalPaid)
+      
+      // Use same roundoff tolerance as the status function
+      if (difference <= 0.05 || newTotalPaid >= totalAmount) {
+        paymentStatus = 'paid'
+      }
+
+      const { error: billingError } = await supabase
+        .from('billing')
+        .update({ 
+          payment_status: paymentStatus,
+          amount_paid: newTotalPaid,
+          payment_method: paymentMethod,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedBillForPayment.id)
+
+      if (billingError) {
+        console.error('Billing update error:', billingError)
+        throw billingError
+      }
+
+      // Insert payment record with correct column names
+      const paymentData: any = {
+        billing_id: selectedBillForPayment.id,
+        method: paymentMethod,
+        amount: amount,
+        reference: paymentReference || null,
+        received_at: new Date().toISOString(),
+        paid_at: new Date().toISOString()
+      }
+
+      // Only add received_by if we have a valid user UUID
+      if (currentUser?.id && currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+        paymentData.received_by = currentUser.id
+      }
+
+      console.log('Payment data to insert:', paymentData)
+
+      // Try to insert payment record
+      let paymentError = null
+      try {
+        const result = await supabase
+          .from('billing_payments')
+          .insert(paymentData)
+        paymentError = result.error
+      } catch (err) {
+        console.error('Payment insert exception:', err)
+        paymentError = err
+      }
+
+      // If there's an error with received_by, try without it
+      if (paymentError) {
+        console.log('Error with payment data, trying without received_by field')
+        const simplePaymentData = {
+          billing_id: selectedBillForPayment.id,
+          method: paymentMethod,
+          amount: amount,
+          reference: paymentReference || null,
+          received_at: new Date().toISOString(),
+          paid_at: new Date().toISOString()
+        }
+        
+        console.log('Simple payment data:', simplePaymentData)
+        
+        const { error: simplePaymentError } = await supabase
+          .from('billing_payments')
+          .insert(simplePaymentData)
+        
+        if (simplePaymentError) {
+          console.error('Simple payment insert error:', simplePaymentError)
+          throw simplePaymentError
+        }
+      }
+
+      await loadBillingData()
+      setShowMarkPaidModal(false)
+      setSelectedBillForPayment(null)
+      
+      // Show appropriate success message
+      if (paymentStatus === 'paid') {
+        alert('Payment recorded successfully! Bill marked as fully paid.')
+      } else {
+        alert(`Partial payment of ₹${amount.toFixed(2)} recorded successfully. Remaining balance: ₹${(totalAmount - newTotalPaid).toFixed(2)}`)
+      }
+    } catch (err: any) {
+      console.error('Full error object:', err)
+      setError('Failed to record payment: ' + (err?.message || JSON.stringify(err)))
+      alert('Failed to record payment: ' + (err?.message || 'Unknown error'))
+    } finally {
+      setMarkingPaid(false)
+    }
+  }
+
+  const handleDeleteBill = async (billId: string, billNumber: string) => {
+    if (!confirm(`Are you sure you want to delete bill ${billNumber}? This action cannot be undone and will permanently remove all bill data.`)) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      
+      // First delete related billing items
+      const { error: itemsError } = await supabase
+        .from('billing_item')
+        .delete()
+        .eq('billing_id', billId)
+
+      if (itemsError) throw itemsError
+
+      // Then delete related billing payments
+      const { error: paymentsError } = await supabase
+        .from('billing_payments')
+        .delete()
+        .eq('billing_id', billId)
+
+      if (paymentsError) throw paymentsError
+
+      // Finally delete the bill itself
+      const { error: billError } = await supabase
+        .from('billing')
+        .delete()
+        .eq('id', billId)
+
+      if (billError) throw billError
+
+      await loadBillingData()
+      alert('Bill deleted successfully!')
+    } catch (err: any) {
+      setError('Failed to delete bill: ' + (err?.message || 'Unknown error'))
+      console.error('Error deleting bill:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleEditPaymentMethod = (bill: PharmacyBill) => {
     setSelectedBill(bill)
     setNewPaymentMethod(bill.payment_method)
     setShowPaymentEditModal(true)
+  }
+
+  const openPendingBillsModal = async () => {
+    setShowPendingModal(true)
+    setPendingLoading(true)
+
+    try {
+      // Get all bills with pending or partial payment status
+      const pendingBillsData = bills.filter(bill => 
+        bill.payment_status === 'pending' || bill.payment_status === 'partial'
+      )
+
+      // Fetch bill items for each pending bill
+      const billsWithItems = await Promise.all(
+        pendingBillsData.map(async (bill) => {
+          try {
+            const { data: itemsData, error: itemsError } = await supabase
+              .from('billing_item')
+              .select('*')
+              .eq('billing_id', bill.id)
+
+            return {
+              ...bill,
+              items: itemsData || [],
+              itemsError: itemsError
+            }
+          } catch (error) {
+            console.error(`Error fetching items for bill ${bill.id}:`, error)
+            return {
+              ...bill,
+              items: [],
+              itemsError: error
+            }
+          }
+        })
+      )
+
+      setPendingBills(billsWithItems)
+    } catch (error) {
+      console.error('Error loading pending bills:', error)
+    } finally {
+      setPendingLoading(false)
+    }
   }
 
   const openViewBill = async (bill: PharmacyBill) => {
@@ -850,6 +1169,8 @@ export default function PharmacyBillingPage() {
         return 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium'
       case 'pending':
         return 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium'
+      case 'partial':
+        return 'bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs font-medium'
       case 'cancelled':
         return 'bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium'
       default:
@@ -930,7 +1251,7 @@ export default function PharmacyBillingPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 cursor-pointer hover:shadow-md transition-shadow duration-200" onClick={openPendingBillsModal}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Pending Due</p>
@@ -978,6 +1299,7 @@ export default function PharmacyBillingPage() {
           >
             <option value="all">All Status</option>
             <option value="paid">Paid</option>
+            <option value="partial">Partial</option>
             <option value="pending">Pending</option>
             <option value="cancelled">Cancelled</option>
           </select>
@@ -1220,6 +1542,17 @@ export default function PharmacyBillingPage() {
               )}
               <div><span className="font-medium">Date:</span> {new Date(selectedBill.created_at).toLocaleString()}</div>
               <div><span className="font-medium">Payment Status:</span> <span className={getStatusBadge(selectedBill.payment_status)}>{selectedBill.payment_status}</span></div>
+              {selectedBill.staff_name && (
+                <div><span className="font-medium">Billed By:</span> {selectedBill.staff_name}</div>
+              )}
+              {(selectedBill.amount_paid !== undefined && selectedBill.amount_paid !== selectedBill.total_amount) && (
+                <div className="col-span-2">
+                  <span className="font-medium">Payment:</span> ₹{selectedBill.amount_paid?.toFixed(2) || '0.00'} / ₹{selectedBill.total_amount?.toFixed(2) || '0.00'}
+                  {selectedBill.payment_status === 'partial' && (
+                    <span className="ml-2 text-orange-600 text-xs">(Roundoff applied)</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Payment Details */}
@@ -1284,6 +1617,15 @@ export default function PharmacyBillingPage() {
               <button onClick={printBill} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download / Print</button>
               <button onClick={showThermalPreview} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Thermal Preview</button>
               <button onClick={showThermalPreviewWithLogo} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Thermal 2</button>
+              {isAdmin && (
+                <button 
+                  onClick={() => handleDeleteBill(selectedBill.id, selectedBill.bill_number)} 
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Bill
+                </button>
+              )}
               <button onClick={() => setShowViewModal(false)} className="px-4 py-2 border rounded-lg">Close</button>
             </div>
           </div>
@@ -1352,6 +1694,250 @@ export default function PharmacyBillingPage() {
               >
                 {updatingPayment ? 'Updating...' : 'Update'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Bills Modal */}
+      {showPendingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPendingModal(false)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Pending Bills</h3>
+              <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowPendingModal(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[60vh]">
+              {pendingLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : pendingBills.length === 0 ? (
+                <div className="text-center py-8">
+                  <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">No Pending Bills</h4>
+                  <p className="text-gray-600">All bills have been paid or settled.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pendingBills.map((bill) => (
+                    <div key={bill.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">Bill {bill.bill_number}</h4>
+                          <p className="text-sm text-gray-600">{bill.customer_name}</p>
+                          {bill.patient_uhid && (
+                            <p className="text-sm text-gray-500">UHID: {bill.patient_uhid}</p>
+                          )}
+                          <p className="text-xs text-gray-500">
+                            {new Date(bill.created_at).toLocaleDateString()} at {new Date(bill.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(bill.payment_status)}`}>
+                            {bill.payment_status}
+                          </span>
+                          <p className="text-lg font-bold text-gray-900 mt-1">₹{bill.total_amount?.toFixed(2) || '0.00'}</p>
+                          {bill.amount_paid !== undefined && bill.amount_paid !== bill.total_amount && (
+                            <p className="text-sm text-gray-500">Paid: ₹{bill.amount_paid?.toFixed(2) || '0.00'}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Bill Items */}
+                      <div className="border-t pt-3">
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Items</h5>
+                        <div className="space-y-1">
+                          {bill.items && bill.items.length > 0 ? (
+                            bill.items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-gray-600">{item.description || 'Unknown Item'}</span>
+                                <span className="text-gray-900">Qty: {item.qty || 1} × ₹{Number(item.unit_amount || 0).toFixed(2)}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-gray-500">No items found</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 mt-3 pt-3 border-t">
+                        <button
+                          onClick={() => {
+                            openViewBill(bill)
+                            setShowPendingModal(false)
+                          }}
+                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => openMarkPaidModal(bill)}
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                        >
+                          Mark as Paid
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteBill(bill.id, bill.bill_number)}
+                            className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-600">
+                  Total Pending: {pendingBills.length} bills
+                </div>
+                <div className="text-sm font-semibold text-orange-600">
+                  Total Amount: ₹{pendingBills.reduce((sum, bill) => sum + (bill.total_amount || 0), 0).toFixed(2)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark as Paid Modal */}
+      {showMarkPaidModal && selectedBillForPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowMarkPaidModal(false)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Mark Bill as Paid</h3>
+              <button
+                onClick={() => {
+                  setShowMarkPaidModal(false)
+                  setSelectedBillForPayment(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Bill: <span className="font-medium">{selectedBillForPayment.bill_number}</span>
+                </p>
+                <p className="text-sm text-gray-600 mb-2">
+                  Customer: <span className="font-medium">{selectedBillForPayment.customer_name}</span>
+                </p>
+                <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-600">Total Amount:</span>
+                    <span className="font-bold text-lg text-blue-600">₹{selectedBillForPayment.total_amount?.toFixed(2) || '0.00'}</span>
+                  </div>
+                  {selectedBillForPayment.amount_paid && selectedBillForPayment.amount_paid > 0 && (
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-600">Already Paid:</span>
+                      <span className="font-medium text-green-600">₹{selectedBillForPayment.amount_paid?.toFixed(2) || '0.00'}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                    <span className="text-sm text-gray-600">Remaining Balance:</span>
+                    <span className="font-bold text-orange-600">
+                      ₹{Math.max(0, (selectedBillForPayment.total_amount || 0) - (selectedBillForPayment.amount_paid || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Amount *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    const amount = parseFloat(value) || 0
+                    const totalAmount = selectedBillForPayment.total_amount || 0
+                    const currentPaid = selectedBillForPayment.amount_paid || 0
+                    const remainingBalance = totalAmount - currentPaid
+                    
+                    // Prevent entering amount greater than remaining balance
+                    if (amount > remainingBalance) {
+                      setPaymentAmount(remainingBalance.toString())
+                    } else {
+                      setPaymentAmount(value)
+                    }
+                  }}
+                  placeholder="Enter payment amount"
+                  max={Math.max(0, (selectedBillForPayment.total_amount || 0) - (selectedBillForPayment.amount_paid || 0))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Maximum payment: ₹{Math.max(0, (selectedBillForPayment.total_amount || 0) - (selectedBillForPayment.amount_paid || 0)).toFixed(2)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Method *
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="gpay">GPay</option>
+                  <option value="ghpay">GHPay</option>
+                  <option value="credit">Credit</option>
+                  <option value="insurance">Insurance</option>
+                  <option value="others">Others</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reference Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder="Transaction reference, cheque number, etc."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <button
+                  onClick={() => {
+                    setShowMarkPaidModal(false)
+                    setSelectedBillForPayment(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMarkAsPaid}
+                  disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || markingPaid}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {markingPaid ? 'Processing...' : 'Record Payment'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase'
 import { generateBillNumber } from '@/src/lib/billingService';
+import { getCurrentUserProfile } from '@/src/lib/supabase';
 import {
   Search,
   Plus,
@@ -98,6 +99,41 @@ function NewBillingPageInner() {
     { method: 'cash', amount: 0, reference: '' }
   ]);
   const [staffId, setStaffId] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentStaff, setCurrentStaff] = useState<any>(null);
+
+  // Load current user on component mount
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await getCurrentUserProfile();
+        setCurrentUser(user);
+        
+        // Find corresponding staff record for this user
+        if (user?.id) {
+          const { data: staffData, error: staffError } = await supabase
+            .from('staff')
+            .select('id, first_name, last_name, employee_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+          
+          if (staffError) {
+            console.error('Error finding staff record:', staffError);
+            // If no staff record found, we'll handle this gracefully
+            setStaffId(user.id); // Fallback to user ID
+          } else if (staffData) {
+            setCurrentStaff(staffData);
+            setStaffId(staffData.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current user:', error);
+      }
+    };
+    
+    loadCurrentUser();
+  }, []);
   // Smooth typing buffer for payment amounts per row
   const [paymentAmountInputs, setPaymentAmountInputs] = useState<string[]>([]);
   // Initialize/expand buffer when modal opens
@@ -1099,12 +1135,16 @@ function NewBillingPageInner() {
           <div className="flex flex-col gap-4">
             {/* Sales Entry Information (Customer + Bill Info) */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
-              <StaffSelect
-                value={staffId}
-                onChange={setStaffId}
-                label="Billed By (Staff)"
-                required
-              />
+              {/* Billed By - Display current user instead of dropdown */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Billed By (Staff)</label>
+                <div className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700">
+                  {currentStaff ? 
+                    `${currentStaff.first_name} ${currentStaff.last_name}`.trim() || currentStaff.employee_id || 'Staff Member' :
+                    currentUser?.name || 'Loading...'
+                  }
+                </div>
+              </div>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <User className="h-5 w-5 text-blue-600" />
