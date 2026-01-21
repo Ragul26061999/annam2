@@ -426,6 +426,135 @@ function OutpatientPageContent() {
       doctorName.includes(searchTerm.toLowerCase());
   });
 
+  const showThermalPreviewWithLogo = () => {
+    if (!selectedBill) return;
+
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    // Get patient UHID
+    const patientUhid = selectedBill.patient?.patient_id || 'WALK-IN';
+
+    // Get sales type
+    let salesType = selectedBill.payment_method?.toUpperCase() || 'CASH';
+    if (salesType === 'CREDIT') {
+      salesType = 'CREDIT';
+    }
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${selectedBill.bill_id}</title>
+          <style>
+            @page { margin: 1mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
+              margin: 0; 
+              padding: 2px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .logo { width: 300px; height: auto; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <img src="/logo/annamHospital-bg.png" alt="ANNAM LOGO" class="logo" />
+            <div class="header-14cm">ANNAM HOSPITAL</div>
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div style="margin-top: 5px; font-weight: bold;">OUTPATIENT BILL</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.bill_id}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.patient?.name || 'Unknown Patient'}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${new Date(selectedBill.bill_date).toLocaleDateString()} ${new Date(selectedBill.bill_date).toLocaleTimeString()}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Payment Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${salesType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Service</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              <tr>
+                <td class="items-8cm">1.</td>
+                <td class="items-8cm">Consultation Fee</td>
+                <td class="items-8cm text-center">1</td>
+                <td class="items-8cm text-right">${Number(selectedBill.total_amount || 0).toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Authorized Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
+    }
+  };
+
   const handlePrintBill = (patient: any) => {
     // Format the current date and time
     const now = new Date();
@@ -1673,6 +1802,13 @@ function OutpatientPageContent() {
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Close
+              </button>
+              <button
+                onClick={showThermalPreviewWithLogo}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                <Printer size={16} className="inline mr-2" />
+                Thermal 2
               </button>
               <button
                 onClick={() => {
