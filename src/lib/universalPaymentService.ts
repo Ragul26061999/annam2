@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { generateSequentialBillNumber } from './billNumberGenerator';
 
 function supabaseErrorToString(err: unknown): string {
   if (!err) return 'Unknown error';
@@ -79,17 +80,14 @@ export interface PaymentReceipt {
 }
 
 // Generate unique bill number - using same format as pharmacy billing
-export function generateBillNumber(prefix: string): string {
-  const now = new Date();
-  const yearShort = now.getFullYear().toString().slice(-2); // e.g., "2025" -> "25"
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `${prefix}${yearShort}-${random}`;
+export async function generateBillNumber(prefix: string): Promise<string> {
+  return generateSequentialBillNumber(prefix);
 }
 
 // Create universal bill for any service
 export async function createUniversalBill(data: PaymentData): Promise<PaymentRecord> {
   try {
-    const bill_id = generateBillNumber('BILL');
+    const bill_id = await generateBillNumber('OP');
     
     // Create main billing record
     const { data: billing, error: billingError } = await supabase

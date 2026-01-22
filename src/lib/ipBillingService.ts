@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { generateSequentialBillNumber } from './billNumberGenerator';
 
 // =====================================================
 // INTERFACES AND TYPES
@@ -652,6 +653,28 @@ export async function saveIPBilling(
       }, {
         onConflict: 'allocation_id'
       });
+
+    // Save to billing table to reserve the bill number and ensure sequence continuity
+    if (billingData.bill_number) {
+      const { error: billError } = await supabase
+        .from('billing')
+        .upsert({
+          bill_number: billingData.bill_number,
+          patient_id: billingData.patient.id,
+          encounter_id: bedAllocationId,
+          bill_date: new Date().toISOString(),
+          total_amount: billingData.summary.net_payable,
+          paid_amount: paidAmount,
+          status: pendingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending'
+        }, {
+          onConflict: 'bill_number'
+        });
+        
+      if (billError) {
+        console.error('Error saving to billing table:', billError);
+        // Don't throw here to avoid blocking discharge summary save, but log it
+      }
+    }
 
     if (error) {
       console.error('Error saving IP billing:', error);

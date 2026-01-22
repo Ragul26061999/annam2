@@ -14,11 +14,13 @@ import {
   Save,
   Loader2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Printer
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../../../src/lib/patientService';
 import { addToQueue } from '../../../src/lib/outpatientQueueService';
 import StaffSelect from '../../../src/components/StaffSelect';
+import BarcodeModal from '../../../src/components/BarcodeModal';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -38,6 +40,8 @@ export default function QuickRegisterPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queueNumber, setQueueNumber] = useState<number | null>(null);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+  const [registeredPatient, setRegisteredPatient] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     registrationDate: new Date().toISOString().split('T')[0],
@@ -195,12 +199,10 @@ export default function QuickRegisterPage() {
 
         if (queueResult.success && queueResult.queueEntry) {
           setQueueNumber(queueResult.queueEntry.queue_number);
+          setRegisteredPatient(result.patient);
           setIsSuccess(true);
-
-          // Redirect after 3 seconds
-          setTimeout(() => {
-            router.push('/outpatient?tab=queue');
-          }, 3000);
+          
+          // No auto-redirect to allow printing
         } else {
           throw new Error('Failed to add patient to queue');
         }
@@ -239,8 +241,38 @@ export default function QuickRegisterPage() {
               <p className="text-4xl font-bold text-orange-600">{queueNumber}</p>
             </div>
           )}
-          <p className="text-sm text-gray-500">Redirecting to queue...</p>
+          
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => setShowBarcodeModal(true)}
+              className="w-full py-3 px-4 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <Printer className="h-5 w-5" />
+              Print Barcode
+            </button>
+            
+            <button
+              onClick={() => router.push('/outpatient?tab=queue')}
+              className="w-full py-3 px-4 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Go to Queue
+            </button>
+            
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-3 px-4 text-orange-600 font-semibold hover:bg-orange-50 rounded-lg transition-colors"
+            >
+              Register Another Patient
+            </button>
+          </div>
         </div>
+        
+        {showBarcodeModal && registeredPatient && (
+          <BarcodeModal
+            patient={registeredPatient}
+            onClose={() => setShowBarcodeModal(false)}
+          />
+        )}
       </div>
     );
   }

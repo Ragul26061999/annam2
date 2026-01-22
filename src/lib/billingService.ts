@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { generateSequentialBillNumber } from './billNumberGenerator';
 
 export interface BillingItem {
   id?: string;
@@ -36,36 +37,11 @@ export interface Bill {
 
 /**
  * Generate a unique bill number
- * Simple Format: AP{YY}-{Sequence}
- *   - Prefix "AP" for pharmacy
- *   - {YY} = last two digits of the year (e.g., 2025 -> 25)
- *   - {Sequence} = simple running number for that year
- * Example: AP25-1, AP25-2, ...
+ * Format: AP{YYMM}-{Sequence}
+ * Example: AP2601-0001
  */
 export async function generateBillNumber(): Promise<string> {
-  const now = new Date();
-  const fullYear = now.getFullYear().toString();
-  const yearShort = fullYear.slice(-2); // e.g. "2025" -> "25"
-  const prefix = `AP${yearShort}`;
-
-  try {
-    // Count existing bills for this year to get a simple linear sequence
-    const { count, error } = await supabase
-      .from('billing')
-      .select('id', { count: 'exact', head: true })
-      .like('bill_number', `${prefix}%`);
-
-    if (error) {
-      console.error('Error getting bill count for bill number generation:', error);
-      throw new Error('Failed to generate bill number');
-    }
-
-    const sequence = (count || 0) + 1;
-    return `${prefix}-${sequence}`;
-  } catch (error) {
-    console.error('Error generating bill number:', error);
-    throw error;
-  }
+  return generateSequentialBillNumber('AP');
 }
 
 /**
