@@ -9,12 +9,20 @@ const PharmacySettingsPage = () => {
 
   const pharmacyOptions = [
     {
-      id: 'upload-bulk',
-      title: 'Upload Bulk Medications',
-      description: 'Import multiple medications from CSV or Excel file',
+      id: 'upload-medications',
+      title: 'Upload Medications',
+      description: 'Import medications from CSV file with real-time stats and preview',
       icon: Upload,
       color: 'from-blue-500 to-cyan-500',
-      href: '/settings/pharmacy/upload-bulk'
+      href: '/settings/pharmacy/upload-medications'
+    },
+    {
+      id: 'upload-batches',
+      title: 'Upload Batches',
+      description: 'Import medication batches from Drug Stock CSV',
+      icon: Package,
+      color: 'from-green-500 to-emerald-500',
+      href: '/settings/pharmacy/upload-batches'
     },
     {
       id: 'edit-medication',

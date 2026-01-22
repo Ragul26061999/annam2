@@ -372,10 +372,13 @@ const Sidebar: React.FC = () => {
 
       {/* Bottom Actions */}
       <div className="px-2 py-3 border-t border-gray-100 space-y-1">
-        <button className="w-full flex items-center px-3 py-2.5 text-gray-600 hover:bg-gradient-to-r hover:from-blue-100 hover:to-purple-100 hover:text-gray-900 rounded-xl transition-all duration-200">
+        <Link 
+          href="/settings"
+          className="w-full flex items-center px-3 py-2.5 text-gray-600 hover:bg-gradient-to-r hover:from-blue-100 hover:to-purple-100 hover:text-gray-900 rounded-xl transition-all duration-200"
+        >
           <Settings size={18} />
           {!isCollapsed && <span className="ml-3 font-medium text-sm">Settings</span>}
-        </button>
+        </Link>
 
         <button
           onClick={handleLogout}

@@ -2,6 +2,7 @@
 export default {
   content: [
     './app/**/*.{js,ts,jsx,tsx}',
+    '!./app/api/**/*',
     './components/**/*.{js,ts,jsx,tsx}',
     './src/**/*.{js,ts,jsx,tsx}',
   ],

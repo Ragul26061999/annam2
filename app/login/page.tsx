@@ -20,7 +20,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await signInWithEmail(email, password);
+      let loginEmail = email.trim();
+      // Check if input is only digits (mobile number)
+      if (/^\d+$/.test(loginEmail)) {
+        loginEmail = `${loginEmail}@annammultispecialityhospital.com`;
+      }
+
+      const { data, error } = await signInWithEmail(loginEmail, password);
       
       if (error) {
         setError(error.message || 'Failed to sign in');
@@ -72,7 +78,7 @@ export default function LoginPage() {
             {/* Email field */}
             <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
-                Email Address
+                Email or Mobile Number
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -82,13 +88,13 @@ export default function LoginPage() {
                 </div>
                 <input
                   id="email"
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onFocus={() => setFocusedField('email')}
                   onBlur={() => setFocusedField(null)}
                   className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-300 hover:bg-gray-100"
-                  placeholder="selvan@annam.com"
+                  placeholder="user@example.com or 9876543210"
                   required
                 />
               </div>

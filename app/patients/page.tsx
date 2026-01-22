@@ -31,6 +31,7 @@ import { getAllPatients, updatePatientStatus, updatePatientCriticalStatus, updat
 import { supabase } from '../../src/lib/supabase';
 import AdmissionModal from '../../src/components/AdmissionModal';
 import DischargeModal from '../../src/components/DischargeModal';
+import CreateAccountModal from '@/src/components/CreateAccountModal';
 
 interface Patient {
   id: string;
@@ -115,6 +116,8 @@ export default function PatientsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCreateAccountModalOpen, setIsCreateAccountModalOpen] = useState(false);
+  const [selectedPatientForAccount, setSelectedPatientForAccount] = useState<Patient | null>(null);
 
   useEffect(() => {
     fetchPatients();
@@ -309,6 +312,12 @@ export default function PatientsPage() {
 
   const toggleDropdown = (patientId: string) => {
     setOpenDropdownId(openDropdownId === patientId ? null : patientId);
+  };
+
+  const openCreateAccountModal = (patient: Patient) => {
+    setSelectedPatientForAccount(patient);
+    setIsCreateAccountModalOpen(true);
+    setOpenDropdownId(null);
   };
 
   const getInitials = (name: string) => {
@@ -565,6 +574,13 @@ export default function PatientsPage() {
                           >
                             <Edit3 size={14} />
                             Edit Patient
+                          </button>
+                          <button
+                            onClick={() => openCreateAccountModal(patient)}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <UserPlus size={14} />
+                            Create Account
                           </button>
                           <div className="border-t border-gray-200 my-1"></div>
                           <button
@@ -841,6 +857,20 @@ export default function PatientsPage() {
           }}
           patient={selectedPatientForAdmission}
           onSuccess={handleAdmissionSuccess}
+        />
+      )}
+
+      {/* Create Account Modal */}
+      {selectedPatientForAccount && (
+        <CreateAccountModal
+          isOpen={isCreateAccountModalOpen}
+          onClose={() => setIsCreateAccountModalOpen(false)}
+          onSuccess={() => fetchPatients()}
+          entityId={selectedPatientForAccount.id}
+          entityType="patient"
+          name={selectedPatientForAccount.name}
+          role="Patient"
+          initialEmail={selectedPatientForAccount.email}
         />
       )}
 

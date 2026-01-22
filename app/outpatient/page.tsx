@@ -450,12 +450,16 @@ function OutpatientPageContent() {
             body { 
               font-family: 'Verdana', sans-serif; 
               font-weight: bold;
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
               margin: 0; 
               padding: 2px;
               font-size: 14px;
               line-height: 1.2;
               width: 77mm;
             }
+            html, body { background: #fff; }
             .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
             .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
             .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
@@ -539,9 +543,28 @@ function OutpatientPageContent() {
           </div>
 
           <script>
-            window.onload = function() {
-              window.print();
-            }
+            (function() {
+              function triggerPrint() {
+                try {
+                  window.focus();
+                } catch (e) {}
+                setTimeout(function() {
+                  window.print();
+                }, 250);
+              }
+
+              window.onafterprint = function() {
+                try {
+                  window.close();
+                } catch (e) {}
+              };
+
+              if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                triggerPrint();
+              } else {
+                document.addEventListener('DOMContentLoaded', triggerPrint);
+              }
+            })();
           </script>
         </body>
       </html>
@@ -584,12 +607,16 @@ function OutpatientPageContent() {
             }
             body { 
               font-family: 'Times New Roman', Times, serif; 
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
               margin: 0; 
               padding: 10px;
               font-size: 14px;
               line-height: 1.2;
               width: 77mm;
             }
+            html, body { background: #fff; }
             .header-14cm { 
               font-size: 16pt; 
               font-weight: bold; 

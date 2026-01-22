@@ -21,6 +21,7 @@ import { motion } from 'framer-motion';
 import { getAllDoctorsSimple, getDeletedDoctorsSimple, restoreDoctor, reorderDoctorSortOrder, createDoctor, updateDoctor, getAllSpecializations, addSpecialization, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, listDoctorDocuments, uploadDoctorDocument, type Doctor, type DoctorRegistrationData, type DoctorDocument } from '../../src/lib/doctorService';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
+import CreateAccountModal from '@/src/components/CreateAccountModal';
 
 // Color theme helpers for mixed color cards
 const getCardGradient = (doctorId: string | undefined) => {
@@ -198,6 +199,7 @@ export default function DoctorsPage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [isCreateAccountModalOpen, setIsCreateAccountModalOpen] = useState(false);
   const [viewTab, setViewTab] = useState<'overview' | 'appointments' | 'payments'>('overview');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
@@ -553,6 +555,11 @@ export default function DoctorsPage() {
     setShowViewModal(true);
     setViewTab('overview');
     setAppointments([]);
+  };
+
+  const openCreateAccountModal = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setIsCreateAccountModalOpen(true);
   };
 
   const loadDoctorAppointments = async (doctor: Doctor) => {
@@ -1075,6 +1082,20 @@ export default function DoctorsPage() {
         onAddDepartment={handleCreateDepartment}
         onAddSpecialization={handleCreateSpecialization}
       />
+
+      {/* Create Account Modal */}
+      {selectedDoctor && (
+        <CreateAccountModal
+          isOpen={isCreateAccountModalOpen}
+          onClose={() => setIsCreateAccountModalOpen(false)}
+          onSuccess={() => loadDoctors()}
+          entityId={selectedDoctor.id}
+          entityType="doctor"
+          name={selectedDoctor.user?.name || 'Unknown'}
+          role="Doctor"
+          initialEmail={selectedDoctor.user?.email}
+        />
+      )}
 
       {/* Schedule Modal */}
       {showScheduleModal && selectedDoctor && (
