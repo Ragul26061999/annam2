@@ -558,7 +558,7 @@ export default function OutpatientContent() {
 
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <Link
-                    href={`/patients/${patient.patient_id}`}
+                    href={`/patients/${patient.id}`}
                     className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center gap-1"
                   >
                     View Details

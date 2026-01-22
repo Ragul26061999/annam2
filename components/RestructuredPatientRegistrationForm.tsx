@@ -55,7 +55,7 @@ interface RegistrationFormData {
 }
 
 interface RestructuredPatientRegistrationFormProps {
-  onComplete: (result: { uhid: string; patientName: string; qrCode?: string }) => void;
+  onComplete: (result: { uhid: string; patientName: string; qrCode?: string; patientId?: string }) => void;
   onCancel: () => void;
   admissionType?: 'outpatient' | 'inpatient' | 'emergency';
   singlePageMode?: boolean;
@@ -311,7 +311,8 @@ export default function RestructuredPatientRegistrationForm({
       onComplete({
         uhid: previewUHID,
         patientName: patientData?.name || `${formData.firstName} ${formData.lastName}`.trim(),
-        qrCode: patientData?.qr_code
+        qrCode: patientData?.qr_code,
+        patientId: patientId
       });
     } catch (error) {
       console.error('Error creating appointment:', error);
@@ -391,7 +392,8 @@ export default function RestructuredPatientRegistrationForm({
       onComplete({
         uhid: previewUHID,
         patientName: `${formData.firstName} ${formData.lastName}`.trim(),
-        qrCode: result.qrCode // Assuming result contains QR code if generated or we fetch it
+        qrCode: result.qrCode, // Assuming result contains QR code if generated or we fetch it
+        patientId: newPatientId
       });
 
     } catch (error) {

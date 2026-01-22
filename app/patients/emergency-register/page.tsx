@@ -30,6 +30,7 @@ export default function EmergencyPatientRegisterPage() {
   const [registrationResult, setRegistrationResult] = useState<{
     success: boolean;
     uhid?: string;
+    patient?: any;
     credentials?: { email: string; password: string };
     error?: string;
   } | null>(null);
@@ -226,7 +227,7 @@ export default function EmergencyPatientRegisterPage() {
           {/* Action Buttons */}
           <div className="flex gap-3">
             <button
-              onClick={() => router.push(`/patients/${registrationResult.uhid}`)}
+              onClick={() => router.push(`/patients/${registrationResult.patient?.id || registrationResult.uhid}`)}
               className="flex-1 bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
             >
               View Patient Details

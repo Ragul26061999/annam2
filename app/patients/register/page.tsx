@@ -11,6 +11,7 @@ export default function PatientRegisterPage() {
   const [registrationResult, setRegistrationResult] = useState<{
     success: boolean;
     uhid?: string;
+    patient?: any;
     credentials?: { email: string; password: string };
     error?: string;
     registrationTime?: string;
@@ -173,7 +174,7 @@ export default function PatientRegisterPage() {
               View All Patients
             </button>
             <button
-              onClick={() => router.push(`/patients/${registrationResult.uhid}`)}
+              onClick={() => router.push(`/patients/${registrationResult.patient?.id || registrationResult.uhid}`)}
               className="btn-secondary"
             >
               View Patient Record

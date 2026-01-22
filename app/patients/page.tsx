@@ -745,14 +745,14 @@ export default function PatientsPage() {
               </div>
 
               <div className="flex gap-2">
-                <Link href={`/patients/${patient.patient_id}`} className="flex-1">
+                <Link href={`/patients/${patient.id}`} className="flex-1">
                   <button className="w-full flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
                     <Eye size={14} className="mr-1" />
                     View
                   </button>
                 </Link>
                 <button
-                  onClick={() => router.push(`/patients/${patient.patient_id}/edit`)}
+                  onClick={() => router.push(`/patients/${patient.id}/edit`)}
                   className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 py-2 px-3 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors"
                 >
                   <Edit3 size={14} className="mr-1" />
@@ -799,13 +799,13 @@ export default function PatientsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="inline-flex items-center gap-2">
                           <button
-                            onClick={() => router.push(`/patients/${patient.patient_id}`)}
+                            onClick={() => router.push(`/patients/${patient.id}`)}
                             className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 text-sm font-medium hover:bg-orange-100"
                           >
                             View
                           </button>
                           <button
-                            onClick={() => router.push(`/patients/${patient.patient_id}/edit`)}
+                            onClick={() => router.push(`/patients/${patient.id}/edit`)}
                             className="px-3 py-1.5 rounded-lg bg-gray-50 text-gray-700 text-sm font-medium hover:bg-gray-100"
                           >
                             Edit

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Upload, Edit3, Settings as SettingsIcon } from 'lucide-react';
+import { Package, Upload, Edit3, Settings as SettingsIcon, Users } from 'lucide-react';
 
 const SettingsPage = () => {
   const router = useRouter();
@@ -15,6 +15,14 @@ const SettingsPage = () => {
       icon: Package,
       color: 'from-pink-500 to-rose-500',
       href: '/settings/pharmacy'
+    },
+    {
+      id: 'patient-management',
+      title: 'Patient Management',
+      description: 'Manage patient records and data imports',
+      icon: Users,
+      color: 'from-blue-500 to-indigo-500',
+      href: '/settings/patient-management'
     }
   ];
 

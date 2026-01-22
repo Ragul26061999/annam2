@@ -459,7 +459,7 @@ export default function PatientDisplayPage() {
                   </span>
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/patients/${patient.patient_id}`}
+                      href={`/patients/${patient.id}`}
                       className="text-orange-600 hover:text-orange-700 text-sm font-bold flex items-center gap-1"
                     >
                       View Details

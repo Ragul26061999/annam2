@@ -926,39 +926,46 @@ export async function validateUHIDUnique(uhid: string): Promise<boolean> {
 /**
  * Get patient by UHID with comprehensive data
  */
-export async function getPatientByUHID(uhid: string): Promise<any> {
+export async function getPatientByUHID(idOrUhid: string): Promise<any> {
   try {
     // Validate UHID format
-    if (!uhid || typeof uhid !== 'string' || uhid.trim() === '') {
-      throw new Error('Invalid UHID provided');
+    if (!idOrUhid || typeof idOrUhid !== 'string' || idOrUhid.trim() === '') {
+      throw new Error('Invalid ID provided');
     }
 
-    const trimmedUHID = uhid.trim();
+    const trimmedID = idOrUhid.trim();
 
-    const { data: patient, error } = await supabase
+    let query = supabase
       .from('patients')
-      .select('*, staff:staff_id(first_name, last_name, employee_id)')
-      .eq('patient_id', trimmedUHID)
-      .single();
+      .select('*, staff:staff_id(first_name, last_name, employee_id)');
+
+    // Check if the ID is a UUID (database ID)
+    if (trimmedID.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      query = query.eq('id', trimmedID);
+    } else {
+      query = query.eq('patient_id', trimmedID);
+    }
+
+    const { data: patient, error } = await query.single();
 
     if (error) {
-      console.error('Error fetching patient by UHID:', error);
+      console.error('Error fetching patient:', error);
       const errorMessage = error?.message || error?.code || String(error) || 'Unknown database error';
       // Handle case where patient is not found
       if (error.code === 'PGRST116') {
-        throw new Error(`Patient with UHID ${trimmedUHID} not found`);
+        throw new Error(`Patient with ID ${trimmedID} not found`);
       }
       throw new Error(`Database error while fetching patient: ${errorMessage}`);
     }
 
     // Handle case where patient is null but no error was thrown
     if (!patient) {
-      throw new Error(`Patient with UHID ${trimmedUHID} not found`);
+      throw new Error(`Patient with ID ${trimmedID} not found`);
     }
 
     return patient;
   } catch (error) {
-    console.error('Error fetching patient by UHID:', error);
+    console.error('Error fetching patient:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to fetch patient: ${errorMessage}`);
   }
@@ -1082,14 +1089,20 @@ export async function getPatientWithRelatedData(uhid: string): Promise<any> {
  * Update patient information
  */
 export async function updatePatientRecord(
-  uhid: string,
+  idOrUhid: string,
   updateData: any
 ): Promise<any> {
   try {
-    const { data: patient, error } = await supabase
-      .from('patients')
-      .update(updateData)
-      .eq('patient_id', uhid)
+    let query = supabase.from('patients').update(updateData);
+    
+    // Check if the ID is a UUID (database ID)
+    if (idOrUhid.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      query = query.eq('id', idOrUhid);
+    } else {
+      query = query.eq('patient_id', idOrUhid);
+    }
+
+    const { data: patient, error } = await query
       .select()
       .single();
 

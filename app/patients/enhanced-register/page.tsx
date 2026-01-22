@@ -12,10 +12,11 @@ export default function EnhancedPatientRegisterPage() {
     uhid: string;
     patientName: string;
     qrCode?: string;
+    patientId?: string;
     registrationTime?: string;
   } | null>(null);
 
-  const handleRegistrationComplete = (result: { uhid: string; patientName: string; qrCode?: string }) => {
+  const handleRegistrationComplete = (result: { uhid: string; patientName: string; qrCode?: string; patientId?: string }) => {
     setRegistrationResult({
       ...result,
       registrationTime: new Date().toLocaleTimeString()
@@ -93,7 +94,7 @@ export default function EnhancedPatientRegisterPage() {
               View All Patients
             </button>
             <button
-              onClick={() => router.push(`/patients/${registrationResult.uhid}`)}
+              onClick={() => router.push(`/patients/${registrationResult.patientId || registrationResult.uhid}`)}
               className="btn-secondary"
             >
               View Patient Record
