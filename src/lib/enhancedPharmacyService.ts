@@ -67,6 +67,8 @@ export interface DrugPurchaseItem {
   unit_price: number;
   mrp: number;
   discount_percent: number;
+  discount_amount?: number;
+  taxable_amount?: number;
   gst_percent: number;
   cgst_percent: number;
   sgst_percent: number;
@@ -75,6 +77,8 @@ export interface DrugPurchaseItem {
   total_amount: number;
   hsn_code?: string;
   rack_location?: string;
+  free_expiry_date?: string;
+  free_mrp?: number;
 }
 
 export interface PurchaseReturn {
@@ -438,19 +442,32 @@ export async function getDrugPurchaseById(id: string): Promise<DrugPurchase | nu
     }
 
     // Get purchase items
-    const { data: items } = await supabase
+    const { data: items, error: itemsError } = await supabase
       .from('drug_purchase_items')
       .select(`
         *,
-        medication:medications(id, name, medicine_code, generic_name)
+        medication:medications(id, name, medication_code, generic_name)
       `)
       .eq('purchase_id', id);
 
+    if (itemsError) {
+      console.error('Error fetching purchase items:', JSON.stringify(itemsError, null, 2));
+    }
+
     return {
       ...purchase,
+      subtotal: Number(purchase.taxable_amount || 0),
+      total_gst: Number(purchase.total_tax || 0),
+      total_amount: Number(purchase.total_amount || 0),
+      discount_amount: Number(purchase.discount_amount || 0),
       items: items?.map((item: any) => ({
         ...item,
-        medication_name: item.medication?.name || ''
+        medication_name: item.medication?.name || '',
+        unit_price: Number(item.purchase_rate || 0),
+        mrp: Number(item.mrp || 0),
+        total_amount: Number(item.total_amount || 0),
+        gst_amount: (Number(item.cgst_amount || 0) + Number(item.sgst_amount || 0) + Number(item.igst_amount || 0)),
+        gst_percent: (Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0) + Number(item.igst_percent || 0))
       })) || []
     };
   } catch (error) {
@@ -464,10 +481,7 @@ export async function createDrugPurchase(
   items: DrugPurchaseItem[]
 ): Promise<DrugPurchase | null> {
   try {
-    // Generate purchase number
-    const { data: purchaseNumber } = await supabase.rpc('generate_purchase_number');
-
-    // Calculate totals
+    // Calculate totals (client-side safety)
     let subtotal = 0;
     let totalGst = 0;
 
@@ -479,89 +493,28 @@ export async function createDrugPurchase(
 
     const totalAmount = subtotal + totalGst + (purchase.other_charges || 0) - (purchase.discount_amount || 0);
 
-    // Create purchase record
-    const { data: purchaseData, error: purchaseError } = await supabase
-      .from('drug_purchases')
-      .insert({
-        purchase_number: purchaseNumber || `PUR-${Date.now()}`,
-        supplier_id: purchase.supplier_id,
-        invoice_number: purchase.invoice_number,
-        invoice_date: purchase.invoice_date,
-        purchase_date: purchase.purchase_date || new Date().toISOString().split('T')[0],
-        subtotal,
-        discount_amount: purchase.discount_amount || 0,
-        cgst_amount: purchase.cgst_amount || totalGst / 2,
-        sgst_amount: purchase.sgst_amount || totalGst / 2,
-        igst_amount: purchase.igst_amount || 0,
-        total_gst: totalGst,
-        other_charges: purchase.other_charges || 0,
-        total_amount: totalAmount,
-        payment_status: purchase.payment_status || 'pending',
-        payment_mode: purchase.payment_mode || 'credit',
-        paid_amount: purchase.paid_amount || 0,
-        due_date: purchase.due_date,
-        remarks: purchase.remarks,
-        received_by: purchase.received_by,
-        status: purchase.status || 'received'
+    const res = await fetch('/api/pharmacy/purchases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        purchase: {
+          ...purchase,
+          subtotal,
+          total_gst: totalGst,
+          total_amount: totalAmount
+        },
+        items
       })
-      .select()
-      .single();
-
-    if (purchaseError) {
-      console.error('Error creating purchase:', purchaseError);
-      throw purchaseError;
-    }
-
-    // Create purchase items (triggers will update stock)
-    const itemsToInsert = items.map(item => ({
-      purchase_id: purchaseData.id,
-      medication_id: item.medication_id,
-      batch_number: item.batch_number,
-      manufacturing_date: item.manufacturing_date,
-      expiry_date: item.expiry_date,
-      quantity: item.quantity,
-      free_quantity: item.free_quantity || 0,
-      unit_price: item.unit_price,
-      mrp: item.mrp,
-      discount_percent: item.discount_percent || 0,
-      gst_percent: item.gst_percent || 12,
-      cgst_percent: item.cgst_percent || 6,
-      sgst_percent: item.sgst_percent || 6,
-      igst_percent: item.igst_percent || 0,
-      gst_amount: item.gst_amount || 0,
-      total_amount: item.total_amount,
-      hsn_code: item.hsn_code,
-      rack_location: item.rack_location
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('drug_purchase_items')
-      .insert(itemsToInsert);
-
-    if (itemsError) {
-      console.error('Error creating purchase items:', itemsError);
-      // Rollback purchase
-      await supabase.from('drug_purchases').delete().eq('id', purchaseData.id);
-      throw itemsError;
-    }
-
-    // Add to GST ledger
-    await addToGSTLedger({
-      transaction_date: purchaseData.purchase_date,
-      transaction_type: 'purchase',
-      reference_type: 'drug_purchase',
-      reference_id: purchaseData.id,
-      reference_number: purchaseData.purchase_number,
-      party_name: (await getSupplierById(purchase.supplier_id!))?.name,
-      party_gstin: (await getSupplierById(purchase.supplier_id!))?.gstin,
-      taxable_amount: subtotal,
-      cgst_amount: purchase.cgst_amount || totalGst / 2,
-      sgst_amount: purchase.sgst_amount || totalGst / 2,
-      total_gst: totalGst,
-      total_amount: totalAmount
     });
 
-    return purchaseData;
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = json?.error || 'Failed to create purchase';
+      console.error('Error creating purchase (API):', json);
+      throw new Error(errMsg);
+    }
+
+    return (json?.purchase as DrugPurchase) || null;
   } catch (error) {
     console.error('Error in createDrugPurchase:', error);
     throw error;
@@ -1698,7 +1651,7 @@ export async function getDrugStockReport(filters?: {
     let query = supabase
       .from('medications')
       .select(`
-        id, medicine_code, name, generic_name, category, manufacturer,
+        id, medication_code, name, generic_name, category, manufacturer,
         dosage_form, strength, unit, available_stock, minimum_stock_level,
         purchase_price, selling_price, mrp, status
       `)

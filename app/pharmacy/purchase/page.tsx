@@ -3,20 +3,13 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
-  Plus, Search, Filter, Eye, Edit, Trash2, Package, 
-  Calendar, FileText, IndianRupee, ChevronLeft, ChevronRight,
-  Download, Printer, CheckCircle, Clock, XCircle
+  Plus, Search, Eye, Printer, XCircle
 } from 'lucide-react'
 import {
-  getSuppliers,
   getDrugPurchases,
-  createDrugPurchase,
-  Supplier,
-  DrugPurchase,
-  DrugPurchaseItem
+  getDrugPurchaseById,
+  DrugPurchase
 } from '@/src/lib/enhancedPharmacyService'
-import { getMedications } from '@/src/lib/pharmacyService'
-import { supabase } from '@/src/lib/supabase'
 
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-IN', {
@@ -34,26 +27,28 @@ const formatDate = (dateStr: string): string => {
   })
 }
 
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'received':
+      return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">Received</span>
+    case 'verified':
+      return <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">Verified</span>
+    case 'draft':
+      return <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800">Draft</span>
+    case 'cancelled':
+      return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800">Cancelled</span>
+    default:
+      return <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800">{status}</span>
+  }
+}
+
 export default function DrugPurchasePage() {
   const router = useRouter()
   const [purchases, setPurchases] = useState<DrugPurchase[]>([])
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [medications, setMedications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
   const [selectedPurchase, setSelectedPurchase] = useState<DrugPurchase | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
   
-  // Form state
-  const [formData, setFormData] = useState({
-    supplier_id: '',
-    invoice_number: '',
-    invoice_date: '',
-    purchase_date: new Date().toISOString().split('T')[0],
-    payment_mode: 'credit' as const,
-    remarks: ''
-  })
-  
-  const [items, setItems] = useState<DrugPurchaseItem[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
 
@@ -64,14 +59,8 @@ export default function DrugPurchasePage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [purchasesData, suppliersData, medsData] = await Promise.all([
-        getDrugPurchases({ status: filterStatus || undefined }),
-        getSuppliers({ status: 'active' }),
-        getMedications()
-      ])
+      const purchasesData = await getDrugPurchases({ status: filterStatus || undefined })
       setPurchases(purchasesData)
-      setSuppliers(suppliersData)
-      setMedications(medsData)
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -79,124 +68,19 @@ export default function DrugPurchasePage() {
     }
   }
 
-  const addItem = () => {
-    setItems([...items, {
-      medication_id: '',
-      batch_number: '',
-      expiry_date: '',
-      quantity: 0,
-      free_quantity: 0,
-      unit_price: 0,
-      mrp: 0,
-      discount_percent: 0,
-      gst_percent: 12,
-      cgst_percent: 6,
-      sgst_percent: 6,
-      igst_percent: 0,
-      gst_amount: 0,
-      total_amount: 0
-    }])
-  }
-
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index))
-  }
-
-  const updateItem = (index: number, field: string, value: any) => {
-    const newItems = [...items]
-    newItems[index] = { ...newItems[index], [field]: value }
-    
-    // Recalculate totals
-    const item = newItems[index]
-    const subtotal = item.quantity * item.unit_price
-    const discountedAmount = subtotal * (1 - (item.discount_percent || 0) / 100)
-    const gstAmount = discountedAmount * (item.gst_percent || 0) / 100
-    item.gst_amount = gstAmount
-    item.total_amount = discountedAmount + gstAmount
-    
-    // Auto-fill medication details
-    if (field === 'medication_id') {
-      const med = medications.find(m => m.id === value)
-      if (med) {
-        item.unit_price = med.purchase_price || 0
-        item.mrp = med.mrp || med.selling_price || 0
-        item.gst_percent = med.gst_percent || 12
-        item.cgst_percent = med.cgst_percent || 6
-        item.sgst_percent = med.sgst_percent || 6
-      }
-    }
-    
-    setItems(newItems)
-  }
-
-  const calculateTotals = () => {
-    const subtotal = items.reduce((sum, item) => {
-      return sum + (item.quantity * item.unit_price * (1 - (item.discount_percent || 0) / 100))
-    }, 0)
-    const totalGst = items.reduce((sum, item) => sum + (item.gst_amount || 0), 0)
-    const grandTotal = subtotal + totalGst
-    return { subtotal, totalGst, grandTotal }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!formData.supplier_id || items.length === 0) {
-      alert('Please select a supplier and add at least one item')
-      return
-    }
-
+  const handleViewPurchase = async (id: string) => {
+    setLoadingDetails(true)
     try {
-      const { subtotal, totalGst, grandTotal } = calculateTotals()
-      
-      await createDrugPurchase({
-        ...formData,
-        subtotal,
-        total_gst: totalGst,
-        total_amount: grandTotal,
-        status: 'received'
-      }, items)
-
-      alert('Purchase created successfully!')
-      setShowForm(false)
-      setFormData({
-        supplier_id: '',
-        invoice_number: '',
-        invoice_date: '',
-        purchase_date: new Date().toISOString().split('T')[0],
-        payment_mode: 'credit',
-        remarks: ''
-      })
-      setItems([])
-      loadData()
+      const purchase = await getDrugPurchaseById(id)
+      if (purchase) {
+        setSelectedPurchase(purchase)
+      }
     } catch (error) {
-      console.error('Error creating purchase:', error)
-      alert('Failed to create purchase')
+      console.error('Error fetching purchase details:', error)
+    } finally {
+      setLoadingDetails(false)
     }
   }
-
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      received: 'bg-green-100 text-green-800',
-      verified: 'bg-blue-100 text-blue-800',
-      cancelled: 'bg-red-100 text-red-800'
-    }
-    const icons: Record<string, React.ReactNode> = {
-      draft: <Clock className="w-3 h-3 mr-1" />,
-      received: <CheckCircle className="w-3 h-3 mr-1" />,
-      verified: <CheckCircle className="w-3 h-3 mr-1" />,
-      cancelled: <XCircle className="w-3 h-3 mr-1" />
-    }
-    return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.draft}`}>
-        {icons[status]}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
-  }
-
-  const { subtotal, totalGst, grandTotal } = calculateTotals()
 
   if (loading) {
     return (
@@ -215,8 +99,8 @@ export default function DrugPurchasePage() {
           <p className="text-gray-600">Manage drug purchases and GRN entries</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700"
+          onClick={() => router.push('/pharmacy/purchase/new')}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />
           New Purchase
@@ -304,8 +188,9 @@ export default function DrugPurchasePage() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => setSelectedPurchase(purchase)}
+                      onClick={() => handleViewPurchase(purchase.id)}
                       className="text-blue-600 hover:text-blue-800"
+                      disabled={loadingDetails}
                     >
                       <Eye className="w-4 h-4" />
                     </button>
@@ -327,275 +212,100 @@ export default function DrugPurchasePage() {
         </table>
       </div>
 
-      {/* New Purchase Form Modal */}
-      {showForm && (
+      {/* View Modal */}
+      {selectedPurchase && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-auto p-4">
-          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold">New Drug Purchase</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700">
+          <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0">
+              <h2 className="text-xl font-bold">Purchase Details: {selectedPurchase.purchase_number}</h2>
+              <button onClick={() => setSelectedPurchase(null)} className="text-gray-500 hover:text-gray-700">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Purchase Header */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div className="p-6 overflow-auto">
+              {/* Header Info */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 bg-gray-50 p-4 rounded-lg">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
-                  <select
-                    value={formData.supplier_id}
-                    onChange={(e) => setFormData({...formData, supplier_id: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.supplier_code})</option>
-                    ))}
-                  </select>
+                    <p className="text-sm text-gray-500 mb-1">Supplier</p>
+                    <p className="font-medium text-gray-900">{(selectedPurchase.supplier as any)?.name}</p>
+                    <p className="text-xs text-gray-500">{(selectedPurchase.supplier as any)?.supplier_code}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
-                  <input
-                    type="text"
-                    value={formData.invoice_number}
-                    onChange={(e) => setFormData({...formData, invoice_number: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                    placeholder="Supplier invoice number"
-                  />
+                    <p className="text-sm text-gray-500 mb-1">Invoice Info</p>
+                    <p className="font-medium text-gray-900">{selectedPurchase.invoice_number || '-'}</p>
+                    <p className="text-xs text-gray-500">{formatDate(selectedPurchase.purchase_date)}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Date</label>
-                  <input
-                    type="date"
-                    value={formData.invoice_date}
-                    onChange={(e) => setFormData({...formData, invoice_date: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                  />
+                    <p className="text-sm text-gray-500 mb-1">Payment</p>
+                    <p className="font-medium text-gray-900 capitalize">{selectedPurchase.payment_mode || '-'}</p>
+                    <p className="text-xs text-gray-500 capitalize">{selectedPurchase.payment_status || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date *</label>
-                  <input
-                    type="date"
-                    value={formData.purchase_date}
-                    onChange={(e) => setFormData({...formData, purchase_date: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
-                  <select
-                    value={formData.payment_mode}
-                    onChange={(e) => setFormData({...formData, payment_mode: e.target.value as any})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="credit">Credit</option>
-                    <option value="cash">Cash</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="online">Online</option>
-                    <option value="upi">UPI</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
-                  <input
-                    type="text"
-                    value={formData.remarks}
-                    onChange={(e) => setFormData({...formData, remarks: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-                    placeholder="Optional notes"
-                  />
+                    <p className="text-sm text-gray-500 mb-1">Total Amount</p>
+                    <p className="font-bold text-lg text-blue-600">{formatCurrency(selectedPurchase.total_amount)}</p>
+                    <p className="text-xs text-gray-500">GST: {formatCurrency(selectedPurchase.total_gst)}</p>
                 </div>
               </div>
 
               {/* Items Table */}
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium">Purchase Items</h3>
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    className="bg-green-600 text-white px-3 py-1 rounded-lg flex items-center text-sm hover:bg-green-700"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Add Item
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border">
+              <h3 className="text-lg font-semibold mb-4">Purchase Items</h3>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Medicine</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Batch</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Expiry</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Qty</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Free</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Rate</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">MRP</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Disc%</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">GST%</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left">Total</th>
-                        <th className="px-2 py-2 text-xs font-medium text-gray-500 text-left"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item, index) => (
-                        <tr key={index} className="border-t">
-                          <td className="px-2 py-2">
-                            <select
-                              value={item.medication_id}
-                              onChange={(e) => updateItem(index, 'medication_id', e.target.value)}
-                              className="w-full border rounded px-2 py-1 text-sm"
-                              required
-                            >
-                              <option value="">Select</option>
-                              {medications.map(m => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="text"
-                              value={item.batch_number}
-                              onChange={(e) => updateItem(index, 'batch_number', e.target.value)}
-                              className="w-24 border rounded px-2 py-1 text-sm"
-                              placeholder="Batch#"
-                              required
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="date"
-                              value={item.expiry_date}
-                              onChange={(e) => updateItem(index, 'expiry_date', e.target.value)}
-                              className="w-32 border rounded px-2 py-1 text-sm"
-                              required
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.quantity || ''}
-                              onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                              className="w-16 border rounded px-2 py-1 text-sm"
-                              min="1"
-                              required
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.free_quantity || ''}
-                              onChange={(e) => updateItem(index, 'free_quantity', parseInt(e.target.value) || 0)}
-                              className="w-14 border rounded px-2 py-1 text-sm"
-                              min="0"
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.unit_price || ''}
-                              onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                              className="w-20 border rounded px-2 py-1 text-sm"
-                              step="0.01"
-                              required
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.mrp || ''}
-                              onChange={(e) => updateItem(index, 'mrp', parseFloat(e.target.value) || 0)}
-                              className="w-20 border rounded px-2 py-1 text-sm"
-                              step="0.01"
-                              required
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.discount_percent || ''}
-                              onChange={(e) => updateItem(index, 'discount_percent', parseFloat(e.target.value) || 0)}
-                              className="w-14 border rounded px-2 py-1 text-sm"
-                              step="0.1"
-                              max="100"
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              value={item.gst_percent || ''}
-                              onChange={(e) => updateItem(index, 'gst_percent', parseFloat(e.target.value) || 0)}
-                              className="w-14 border rounded px-2 py-1 text-sm"
-                              step="0.1"
-                            />
-                          </td>
-                          <td className="px-2 py-2 text-sm font-medium">
-                            {formatCurrency(item.total_amount || 0)}
-                          </td>
-                          <td className="px-2 py-2">
-                            <button
-                              type="button"
-                              onClick={() => removeItem(index)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {items.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
-                            No items added. Click "Add Item" to start.
-                          </td>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Medicine</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Free</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">MRP</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">GST%</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                         </tr>
-                      )}
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {selectedPurchase.items?.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.medication_name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500">{item.batch_number}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500">{formatDate(item.expiry_date)}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900 text-right">{item.quantity}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500 text-right">{item.free_quantity || 0}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(item.unit_price)}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500 text-right">{formatCurrency(item.mrp)}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500 text-right">{item.gst_percent}%</td>
+                                <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">{formatCurrency(item.total_amount)}</td>
+                            </tr>
+                        ))}
                     </tbody>
-                  </table>
-                </div>
+                    <tfoot className="bg-gray-50">
+                        <tr>
+                            <td colSpan={8} className="px-4 py-3 text-right font-medium text-gray-900">Subtotal</td>
+                            <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(selectedPurchase.subtotal)}</td>
+                        </tr>
+                         <tr>
+                            <td colSpan={8} className="px-4 py-3 text-right font-medium text-gray-900">Total GST</td>
+                            <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(selectedPurchase.total_gst)}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan={8} className="px-4 py-3 text-right font-bold text-gray-900">Grand Total</td>
+                            <td className="px-4 py-3 text-right font-bold text-blue-600">{formatCurrency(selectedPurchase.total_amount)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
               </div>
+            </div>
 
-              {/* Totals */}
-              <div className="flex justify-end">
-                <div className="w-72 bg-gray-50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Total GST:</span>
-                    <span>{formatCurrency(totalGst)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg border-t pt-2">
-                    <span>Grand Total:</span>
-                    <span>{formatCurrency(grandTotal)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Form Actions */}
-              <div className="flex justify-end gap-4 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            <div className="border-t px-6 py-4 bg-gray-50 flex justify-end">
+                <button 
+                    onClick={() => setSelectedPurchase(null)}
+                    className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                 >
-                  Cancel
+                    Close
                 </button>
-                <button
-                  type="submit"
-                  disabled={items.length === 0}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Save Purchase
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
