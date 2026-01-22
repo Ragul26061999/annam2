@@ -467,7 +467,7 @@ export async function getDrugPurchaseById(id: string): Promise<DrugPurchase | nu
         mrp: Number(item.mrp || 0),
         total_amount: Number(item.total_amount || 0),
         gst_amount: (Number(item.cgst_amount || 0) + Number(item.sgst_amount || 0) + Number(item.igst_amount || 0)),
-        gst_percent: (Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0) + Number(item.igst_percent || 0))
+        gst_percent: item.gst_percent ? Number(item.gst_percent) : (Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0) + Number(item.igst_percent || 0))
       })) || []
     };
   } catch (error) {
