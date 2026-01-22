@@ -802,7 +802,7 @@ export default function PharmacyBillingPage() {
         <head>
           <title>Thermal Receipt - ${selectedBill.bill_number}</title>
           <style>
-            @page { margin: 3mm; size: 77mm 297mm; }
+            @page { margin: 5mm 8mm 5mm 5mm; size: 85mm 297mm; }
             body { 
               font-family: 'Verdana', sans-serif; 
               font-weight: bold;
@@ -810,7 +810,7 @@ export default function PharmacyBillingPage() {
               padding: 5px;
               font-size: 14px;
               line-height: 1.2;
-              width: 77mm;
+              width: 85mm;
             }
             .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
             .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
@@ -834,7 +834,7 @@ export default function PharmacyBillingPage() {
             <div class="header-14cm">ANNAM PHARMACY</div>
             <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
             <div class="header-9cm">Phone- 04639 252592</div>
-            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div class="footer-7cm">Gst No: 33AJWPR2713G2ZZ</div>
             <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
           </div>
           
@@ -956,7 +956,7 @@ export default function PharmacyBillingPage() {
         <head>
           <title>Thermal Receipt - ${selectedBill.bill_number}</title>
           <style>
-            @page { margin: 1mm; size: 77mm 297mm; }
+            @page { margin: 3mm 8mm 3mm 3mm; size: 85mm 297mm; }
             body { 
               font-family: 'Verdana', sans-serif; 
               font-weight: bold;
@@ -964,7 +964,7 @@ export default function PharmacyBillingPage() {
               padding: 2px;
               font-size: 14px;
               line-height: 1.2;
-              width: 77mm;
+              width: 85mm;
             }
             .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
             .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
@@ -989,7 +989,7 @@ export default function PharmacyBillingPage() {
             <img src="/logo/annamPharmacy.png" alt="ANNAM LOGO" class="logo" />
             <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
             <div class="header-9cm">Phone- 04639 252592</div>
-            <div class="header-10cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div class="footer-7cm">Gst No: 33AJWPR2713G2ZZ</div>
             <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
           </div>
           
