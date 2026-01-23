@@ -1003,35 +1003,54 @@ export async function getAppointmentDetails(appointmentId: string): Promise<{
   }
 }
 
-/**
+/** 
  * Update appointment status
  */
 export async function updateAppointmentStatus(
   appointmentId: string,
   status: 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled'
 ): Promise<Appointment> {
+
   try {
+    try {
+      const { data: appointment, error } = await supabase
+        .from('appointment')
+        .update({ status })
+        .eq('id', appointmentId)
+        .select('*')
+        .single();
+
+      if (!error && appointment) {
+        return appointment as any;
+      }
+    } catch (appointmentTableError) {
+      console.warn('Error updating status in appointment table:', appointmentTableError);
+    }
+
     const { data: appointment, error } = await supabase
       .from('appointments')
       .update({ status })
       .eq('appointment_id', appointmentId)
-      .select(`
-        *,
-        patient:patients(id, patient_id, name, phone, email),
-        doctor:doctors(
-          id,
-          specialization,
-          user:users(name, phone, email)
-        )
-      `)
+      .select('*')
       .single();
 
-    if (error) {
-      console.error('Error updating appointment status:', error);
-      throw new Error(`Failed to update appointment status: ${error.message}`);
+    if (!error && appointment) {
+      return appointment as any;
     }
 
-    return appointment;
+    const { data: appointmentById, error: idError } = await supabase
+      .from('appointments')
+      .update({ status })
+      .eq('id', appointmentId)
+      .select('*')
+      .single();
+
+    if (idError) {
+      console.error('Error updating appointment status:', idError);
+      throw new Error(`Failed to update appointment status: ${idError.message}`);
+    }
+
+    return appointmentById as any;
   } catch (error) {
     console.error('Error updating appointment status:', error);
     throw error;

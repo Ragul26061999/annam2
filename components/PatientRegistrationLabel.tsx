@@ -38,7 +38,7 @@ export default function PatientRegistrationLabel({
           <title>Patient Label - ${uhid}</title>
           <style>
             @page {
-              size: 85mm 54mm;
+              size: 54mm 85mm;
               margin: 0;
             }
             
@@ -46,8 +46,10 @@ export default function PatientRegistrationLabel({
               body {
                 margin: 0;
                 padding: 0;
-                width: 85mm;
-                height: 54mm;
+                width: 54mm;
+                height: 85mm;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
               }
               
               .no-print {
@@ -55,8 +57,8 @@ export default function PatientRegistrationLabel({
               }
               
               .label-container {
-                width: 85mm !important;
-                height: 54mm !important;
+                width: 54mm !important;
+                height: 85mm !important;
                 padding: 4mm !important;
                 border: 1px solid #000 !important;
                 position: relative !important;
@@ -131,17 +133,55 @@ export default function PatientRegistrationLabel({
         </head>
         <body>
           ${labelContent}
+          <script>
+            (function() {
+              function safePrint() {
+                try {
+                  window.focus();
+                  window.print();
+                } finally {
+                  setTimeout(function(){ window.close(); }, 200);
+                }
+              }
+
+              function waitForImagesThenPrint() {
+                try {
+                  var imgs = Array.prototype.slice.call(document.images || []);
+                  if (imgs.length === 0) return safePrint();
+
+                  var pending = 0;
+                  function done() {
+                    pending--;
+                    if (pending <= 0) safePrint();
+                  }
+
+                  imgs.forEach(function(img) {
+                    if (img.complete) return;
+                    pending++;
+                    img.addEventListener('load', done);
+                    img.addEventListener('error', done);
+                  });
+
+                  if (pending === 0) safePrint();
+                  // fallback timeout (printer drivers sometimes never trigger load events)
+                  setTimeout(safePrint, 600);
+                } catch (e) {
+                  setTimeout(safePrint, 200);
+                }
+              }
+
+              if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                setTimeout(waitForImagesThenPrint, 50);
+              } else {
+                window.addEventListener('load', function(){ setTimeout(waitForImagesThenPrint, 50); });
+              }
+            })();
+          </script>
         </body>
       </html>
     `);
     
     printWindow.document.close();
-    
-    // Wait for content to load before printing
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
   };
 
   return (

@@ -1,10 +1,9 @@
 import React from 'react';
-import { RouteComponentProps } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
 
-interface DashboardLayoutProps extends RouteComponentProps {
+interface DashboardLayoutProps {
   children?: React.ReactNode;
   onLogout: () => void;
 }

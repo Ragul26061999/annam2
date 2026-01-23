@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { NavLink, useHistory, useLocation } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Users, 
@@ -22,16 +23,16 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const history = useHistory();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const isActive = (path: string) => {
-    return location.pathname.includes(path);
+    return pathname?.includes(path);
   };
 
   const handleLogout = () => {
     onLogout();
-    history.push('/login');
+    router.push('/login');
   };
 
   return (
@@ -61,78 +62,78 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
-        <NavLink to="/dashboard" className={isActive('/dashboard') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/dashboard" className={isActive('/dashboard') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-blue-100">
             <LayoutDashboard className="text-blue-500" size={20} />
           </div>
           {!isCollapsed && <span>Dashboard</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/patients" className={isActive('/patients') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/patients" className={isActive('/patients') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-green-100">
             <Users className="text-green-500" size={20} />
           </div>
           {!isCollapsed && <span>Patients</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/doctors" className={isActive('/doctors') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/doctors" className={isActive('/doctors') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-orange-100">
             <Stethoscope className="text-orange-500" size={20} />
           </div>
           {!isCollapsed && <span>Doctors</span>}
-        </NavLink>
+        </Link>
 
-        <NavLink to="/staff" className={isActive('/staff') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/staff" className={isActive('/staff') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-red-100">
             <UsersRound className="text-red-500" size={20} />
           </div>
           {!isCollapsed && <span>Staff</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/appointments" className={isActive('/appointments') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/appointments" className={isActive('/appointments') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-purple-100">
             <Calendar className="text-purple-500" size={20} />
           </div>
           {!isCollapsed && <span>Appointments</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/workstation" className={isActive('/workstation') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/workstation" className={isActive('/workstation') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-teal-100">
             <UserCog className="text-teal-500" size={20} />
           </div>
           {!isCollapsed && <span>Workstation</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/pharmacy" className={isActive('/pharmacy') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/pharmacy" className={isActive('/pharmacy') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-pink-100">
             <Pill className="text-pink-500" size={20} />
           </div>
           {!isCollapsed && <span>Pharmacy</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/beds" className={isActive('/beds') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/beds" className={isActive('/beds') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-yellow-100">
             <Bed className="text-yellow-500" size={20} />
           </div>
           {!isCollapsed && <span>Bed Management</span>}
-        </NavLink>
+        </Link>
         
-        <NavLink to="/other-bills" className={isActive('/other-bills') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/other-bills" className={isActive('/other-bills') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-cyan-100">
             <FileText className="text-cyan-500" size={20} />
           </div>
           {!isCollapsed && <span>Other Bills</span>}
-        </NavLink>
+        </Link>
       </nav>
       
       {/* Bottom Actions */}
       <div className="mt-auto pt-4 border-t border-gray-200">
-        <NavLink to="/settings" className={isActive('/settings') ? 'nav-link active' : 'nav-link'}>
+        <Link href="/settings" className={isActive('/settings') ? 'nav-link active' : 'nav-link'}>
           <div className="neu-icon bg-indigo-100">
             <Settings className="text-indigo-500" size={20} />
           </div>
           {!isCollapsed && <span>Settings</span>}
-        </NavLink>
+        </Link>
         <button 
           onClick={handleLogout}
           className="nav-link w-full text-left"

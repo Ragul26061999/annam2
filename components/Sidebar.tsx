@@ -46,11 +46,14 @@ interface NavItem {
 const Sidebar: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
   React.useEffect(() => {
-    getCurrentUserProfile().then(setUser);
+    getCurrentUserProfile()
+      .then(setUser)
+      .finally(() => setLoading(false));
   }, []);
 
   const navItems: NavItem[] = [
@@ -210,7 +213,7 @@ const Sidebar: React.FC = () => {
   };
 
   const filteredNavItems = navItems.filter(item => {
-    if (!user) return false;
+    if (!user) return item.href === '/dashboard';
     const role = user.role?.toLowerCase();
     
     // MD and Admin have full access
@@ -271,8 +274,13 @@ const Sidebar: React.FC = () => {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto custom-scrollbar">
-        {/* Check if user has pharmacy-related role */}
-        {user && user.role?.toLowerCase() === 'pharmacist' ? (
+        {loading ? (
+          <div className="space-y-2 px-2">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : user && user.role?.toLowerCase() === 'pharmacist' ? (
           // Show pharmacy-specific navigation
           pharmacyNavItems.map((item) => {
             const isActive = pathname && (pathname === item.href || (item.href.includes('?') && pathname.includes(item.href.split('?')[0])));
@@ -358,15 +366,25 @@ const Sidebar: React.FC = () => {
       {/* User Profile Section */}
       {!isCollapsed && (
         <div className="px-2 py-3 border-t border-gray-100">
-          <div className="flex items-center space-x-3 p-2.5 bg-gray-50 rounded-xl">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-xs">
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
+          {loading ? (
+            <div className="flex items-center space-x-3 p-2.5 bg-gray-50 rounded-xl animate-pulse">
+              <div className="w-8 h-8 bg-gray-200 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-gray-200 rounded w-20" />
+                <div className="h-3 bg-gray-200 rounded w-16" />
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="font-semibold text-gray-900 text-sm truncate w-32">{user?.name || 'Loading...'}</p>
-              <p className="text-xs text-gray-500 capitalize">{user?.role || 'Guest'}</p>
+          ) : (
+            <div className="flex items-center space-x-3 p-2.5 bg-gray-50 rounded-xl">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-xs">
+                {user?.name?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900 text-sm truncate w-32">{user?.name || 'Guest'}</p>
+                <p className="text-xs text-gray-500 capitalize">{user?.role || 'Visitor'}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

@@ -19,7 +19,6 @@ import {
   Loader2,
   Hash,
   FileText,
-  DollarSign,
   Trash2
 } from 'lucide-react';
 import NewAppointmentBookingForm from '../../components/NewAppointmentBookingForm';
@@ -28,7 +27,6 @@ import ClinicalEntryForm from '../../components/ClinicalEntryForm';
 import ClinicalEntryForm2 from '../../components/ClinicalEntryForm2';
 import AppointmentDetailsModal from '../../components/AppointmentDetailsModal';
 import { getAppointments, updateAppointmentStatus, deleteAppointment, getAppointmentStats, type Appointment } from '../../src/lib/appointmentService';
-import { createAppointmentBill } from '../../src/lib/billingService';
 
 interface AppointmentStats {
   total: number;
@@ -62,9 +60,8 @@ export default function AppointmentsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'completed' | 'cancelled'>('today');
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [completingAppointment, setCompletingAppointment] = useState<string | null>(null);
   const [deletingAppointment, setDeletingAppointment] = useState<string | null>(null);
@@ -88,13 +85,34 @@ export default function AppointmentsPage() {
     try {
       setLoading(true);
       setError(null);
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const requestDate = activeTab === 'today' ? today : undefined;
+      const requestStatus = activeTab === 'completed' ? 'completed' : activeTab === 'cancelled' ? 'cancelled' : undefined;
+
       const response = await getAppointments({
-        date: selectedDate,
+        date: requestDate,
         searchTerm: searchTerm || undefined,
-        status: statusFilter === 'all' ? undefined : statusFilter,
+        status: requestStatus,
         limit: 50
       });
-      setAppointments(response.appointments);
+
+      let nextAppointments = response.appointments;
+
+      if (activeTab === 'upcoming') {
+        nextAppointments = (nextAppointments || []).filter((apt) => {
+          const aptDate = apt.appointment_date;
+          if (!aptDate) return false;
+          return aptDate > today && !['completed', 'cancelled'].includes(apt.status);
+        });
+      }
+
+      if (activeTab === 'today') {
+        nextAppointments = (nextAppointments || []).filter((apt) => apt.appointment_date === today);
+      }
+
+      setAppointments(nextAppointments);
     } catch (error) {
       console.error('Error fetching appointments:', error);
       setError('Failed to load appointments. Please try again.');
@@ -148,15 +166,7 @@ export default function AppointmentsPage() {
   const handleCompleteAppointment = async (appointment: Appointment) => {
     try {
       setCompletingAppointment(appointment.id);
-      
-      // Create bill for the appointment
-      await createAppointmentBill(
-        appointment.id,
-        appointment.patient_id,
-        appointment.doctor_id,
-        appointment.encounter?.id
-      );
-      
+
       // Update appointment status to completed
       await updateAppointmentStatus(appointment.id, 'completed');
       
@@ -166,7 +176,7 @@ export default function AppointmentsPage() {
       
       // Show success message
       setError(null);
-      alert('Appointment completed and bill generated successfully!');
+      alert('Appointment completed successfully!');
     } catch (error: any) {
       console.error('Error completing appointment:', error);
       setError(error.message || 'Failed to complete appointment. Please try again.');
@@ -233,7 +243,7 @@ export default function AppointmentsPage() {
   useEffect(() => {
     fetchAppointments();
     fetchStats();
-  }, [selectedDate, searchTerm, statusFilter]);
+  }, [searchTerm, activeTab]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -345,6 +355,33 @@ export default function AppointmentsPage() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setActiveTab('today')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === 'today' ? 'bg-orange-500 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setActiveTab('upcoming')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === 'upcoming' ? 'bg-orange-500 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}
+          >
+            Upcoming
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === 'completed' ? 'bg-orange-500 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}
+          >
+            Completed
+          </button>
+          <button
+            onClick={() => setActiveTab('cancelled')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === 'cancelled' ? 'bg-orange-500 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}
+          >
+            Cancelled
+          </button>
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -357,29 +394,6 @@ export default function AppointmentsPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
             />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex items-center px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white">
-              <Calendar size={16} className="mr-2" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-transparent focus:outline-none"
-              />
-            </div>
-            <select 
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="all">All Status</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="in_progress">In Progress</option>
-            </select>
           </div>
         </div>
       </div>
@@ -499,13 +513,13 @@ export default function AppointmentsPage() {
                             onClick={() => handleCompleteAppointment(appointment)}
                             disabled={completingAppointment === appointment.id}
                             className="flex items-center space-x-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
-                            title="Complete appointment and generate bill"
+                            title="Complete appointment"
                           >
                             {completingAppointment === appointment.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               <>
-                                <DollarSign size={14} />
+                                <CheckCircle size={14} />
                                 <span>Complete</span>
                               </>
                             )}
