@@ -3,14 +3,15 @@ import QRCode from 'qrcode';
 /**
  * Generate QR code as data URL for a given UHID
  * @param uhid - Unique Hospital ID
+ * @param width - Optional width parameter (default: 200)
  * @returns Promise with QR code data URL
  */
-export async function generateQRCode(uhid: string): Promise<string> {
+export async function generateQRCode(uhid: string, width: number = 200): Promise<string> {
   try {
     const qrCodeDataUrl = await QRCode.toDataURL(uhid, {
       errorCorrectionLevel: 'H',
       type: 'image/png',
-      width: 200,
+      width,
       margin: 1,
       color: {
         dark: '#000000',

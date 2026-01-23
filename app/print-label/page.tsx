@@ -6,38 +6,48 @@ import { useSearchParams } from 'next/navigation';
 
 function LabelContent() {
   const searchParams = useSearchParams();
-  const url = searchParams?.get('url') || 'http://localhost:3000/patients/bc646a12-482e-474e-8284-436b9fb8c420';
   const name = searchParams?.get('name') || 'MR. ATHIBAN JOE';
   const uhid = searchParams?.get('uhid') || '24-25/3243';
   const date = searchParams?.get('date') || '23-Jan-2026';
-  const orientation = (searchParams?.get('orientation') || 'portrait').toLowerCase();
+  const orientation = (searchParams?.get('orientation') || 'landscape').toLowerCase();
   const flip = (searchParams?.get('flip') || '0').toLowerCase();
-  const copies = Math.max(1, Math.min(2, Number(searchParams?.get('copies') || '1')));
+  const cols = Math.max(1, Math.min(2, Number(searchParams?.get('cols') || '2')));
+  const rows = Math.max(1, Math.min(2, Number(searchParams?.get('rows') || '1')));
 
+  // Fixed label size per requirement
   const isLandscape = orientation === 'landscape';
-  const pageWidth = isLandscape ? '5cm' : '3.5cm';
-  const pageHeight = isLandscape ? '3.5cm' : '5cm';
+  const labelWidthMm = isLandscape ? 50 : 35;
+  const labelHeightMm = isLandscape ? 35 : 50;
+  const pageWidth = `${labelWidthMm}mm`;
+  const pageHeight = `${labelHeightMm}mm`;
+
+  // Sheet size: label size times rows/cols
+  const sheetWidth = `${labelWidthMm * cols}mm`;
+  const sheetHeight = `${labelHeightMm * rows}mm`;
+
+  // QR should encode UHID (not URL/ID)
+  const qrValue = uhid;
+
+  // Bigger QR code (px). 96 DPI is typical browser print; we scale from mm.
+  const mmToPx = (mm: number) => Math.round((mm * 96) / 25.4);
+  const qrSizePx = Math.max(110, Math.min(220, Math.round(mmToPx(labelHeightMm * 0.88))));
+
   const rotateDeg = flip === '180' ? '180deg' : '0deg';
 
-  const sheetWidth = copies === 2
-    ? (isLandscape ? '10cm' : '7cm')
-    : pageWidth;
-  const sheetHeight = pageHeight;
-
   const Label = () => (
-    <div className="print-area bg-white overflow-hidden relative font-sans text-black">
+    <div className="print-area bg-white overflow-hidden font-sans text-black" style={{ display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <div className="text-[6px] font-bold text-center uppercase tracking-tighter w-full pt-1 leading-tight">
+      <div className="text-[6px] font-bold text-center uppercase tracking-tighter w-full pt-1 leading-tight" style={{ flex: '0 0 auto' }}>
         ANNAM MULTISPECIALITY HOSPITAL
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-row items-center justify-start px-1 h-[65%] w-full">
+      <div className="flex flex-row items-center justify-start px-1 w-full" style={{ flex: '1 1 auto' }}>
         {/* QR Code (Left) */}
         <div className="flex-shrink-0 pt-0.5">
           <QRCodeSVG
-            value={url}
-            size={60} // Optimized for 3.5cm height
+            value={qrValue}
+            size={qrSizePx}
             level="M"
           />
         </div>
@@ -56,10 +66,8 @@ function LabelContent() {
       </div>
 
       {/* Footer */}
-      <div className="absolute bottom-1 left-1 right-1">
-        <div className="text-[7px] font-bold uppercase truncate leading-tight">
-          NAME: {name}
-        </div>
+      <div className="px-1 pb-1" style={{ flex: '0 0 auto' }}>
+        <div className="text-[7px] font-bold uppercase truncate leading-tight">NAME: {name}</div>
       </div>
     </div>
   );
@@ -104,13 +112,24 @@ function LabelContent() {
           <button
             onClick={() => {
               const next = new URL(window.location.href);
-              const curr = Number(next.searchParams.get('copies') || '1') === 2 ? '1' : '2';
-              next.searchParams.set('copies', curr);
+              const currCols = Number(next.searchParams.get('cols') || '2') === 2 ? '1' : '2';
+              next.searchParams.set('cols', currCols);
               window.location.href = next.toString();
             }}
             className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 font-medium"
           >
-            {copies === 2 ? '1 Label' : '2 Labels'}
+            {cols === 2 ? '1 Column' : '2 Columns'}
+          </button>
+          <button
+            onClick={() => {
+              const next = new URL(window.location.href);
+              const currRows = Number(next.searchParams.get('rows') || '2') === 2 ? '1' : '2';
+              next.searchParams.set('rows', currRows);
+              window.location.href = next.toString();
+            }}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 font-medium"
+          >
+            {rows === 2 ? '1 Row' : '2 Rows'}
           </button>
           <button
             onClick={() => window.print()}
@@ -123,21 +142,25 @@ function LabelContent() {
 
       {/* The Print Sheet */}
       <div className="print-sheet bg-transparent">
-        <Label />
-        {copies === 2 && <Label />}
+        {Array.from({ length: rows * cols }).map((_, idx) => (
+          <React.Fragment key={idx}>
+            <Label />
+          </React.Fragment>
+        ))}
       </div>
 
       <style jsx global>{`
         .print-sheet {
           width: ${sheetWidth};
           height: ${sheetHeight};
-          display: flex;
-          flex-direction: row;
-          align-items: stretch;
-          justify-content: flex-start;
+          display: grid;
+          grid-template-columns: repeat(${cols}, ${pageWidth});
+          grid-template-rows: repeat(${rows}, ${pageHeight});
           gap: 0;
           box-sizing: border-box;
           background: transparent;
+          transform: rotate(${rotateDeg});
+          transform-origin: center;
         }
 
         .print-area {
@@ -145,8 +168,6 @@ function LabelContent() {
           height: ${pageHeight};
           border: 1px dashed #ccc; /* Border for preview only */
           box-sizing: border-box;
-          transform: rotate(${rotateDeg});
-          transform-origin: center;
         }
 
         @media print {

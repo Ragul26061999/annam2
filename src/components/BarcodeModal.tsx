@@ -34,13 +34,8 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
   const handlePrint2 = async () => {
     try {
       setIsGeneratingQr(true);
-      // Use window.location.origin to build the URL if possible, or fallback to localhost
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-      // Assuming patient has an 'id' field for the UUID, otherwise fallback to patient_id
-      const patientUuid = patient.id || patient.patient_id; 
-      const url = `${origin}/patients/${patientUuid}`;
-      
-      const qrDataUrl = await generateQRCode(url);
+      const patientUuid = patient.id || patient.patient_id;
+      const qrDataUrl = await generateQRCode(patient.patient_id, 512);
       const currentDate = formatDate(new Date().toISOString());
 
       const printWindow = window.open('', '_blank');
@@ -56,17 +51,26 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
             <title>Patient Label - ${patient.patient_id}</title>
             <style>
               @page {
-                size: 5cm 3.5cm;
+                size: 10cm 3.5cm;
                 margin: 0;
               }
               
               body {
                 margin: 0;
                 padding: 0;
-                width: 5cm;
+                width: 10cm;
                 height: 3.5cm;
                 font-family: sans-serif;
                 background: white;
+              }
+
+              .sheet {
+                width: 10cm;
+                height: 3.5cm;
+                display: flex;
+                flex-direction: row;
+                align-items: stretch;
+                justify-content: flex-start;
               }
 
               .label-container {
@@ -86,7 +90,7 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
                 text-transform: uppercase;
                 letter-spacing: -0.02em;
                 width: 100%;
-                padding-top: 2px;
+                padding-top: 4px;
                 line-height: 1.1;
               }
 
@@ -103,12 +107,12 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
 
               .qr-code {
                 flex-shrink: 0;
-                padding-top: 2px;
+                padding-top: 18px;
               }
 
               .qr-code img {
-                width: 60px;
-                height: 60px;
+                width: 26mm;
+                height: 26mm;
               }
 
               .details {
@@ -134,7 +138,7 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
               }
 
               .detail-value {
-                font-size: 8px;
+                font-size: 10px;
                 font-weight: bold;
                 color: #000;
                 line-height: 1;
@@ -142,13 +146,13 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
 
               .footer {
                 position: absolute;
-                bottom: 4px;
+                bottom: 2px;
                 left: 4px;
                 right: 4px;
               }
 
               .patient-name {
-                font-size: 7px;
+                font-size: 8px;
                 font-weight: bold;
                 text-transform: uppercase;
                 white-space: nowrap;
@@ -159,31 +163,70 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
             </style>
           </head>
           <body>
-            <div class="label-container">
-              <div class="header">
-                ANNAM MULTISPECIALITY HOSPITAL
-              </div>
-
-              <div class="content">
-                <div class="qr-code">
-                  <img src="${qrDataUrl}" alt="QR" />
+            <div class="sheet">
+              <div class="label-container">
+                <div class="header">
+                  ANNAM MULTISPECIALITY HOSPITAL
                 </div>
 
-                <div class="details">
-                  <div class="detail-item">
-                    <span class="detail-label">UHID:</span>
-                    <span class="detail-value">${patient.patient_id}</span>
+                <div class="content">
+                  <div class="qr-code">
+                    <img src="${qrDataUrl}" alt="QR" />
                   </div>
-                  <div class="detail-item">
-                    <span class="detail-label">DATE:</span>
-                    <span class="detail-value">${currentDate}</span>
+
+                  <div class="details">
+                    <div class="detail-item">
+                      <span class="detail-label">UHID:</span>
+                      <span class="detail-value">${patient.patient_id}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">DATE:</span>
+                      <span class="detail-value">${currentDate}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">AGE:</span>
+                      <span class="detail-value">${patient.age || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="footer">
+                  <div class="patient-name">
+                    NAME: ${patient.name}
                   </div>
                 </div>
               </div>
 
-              <div class="footer">
-                <div class="patient-name">
-                  NAME: ${patient.name}
+              <div class="label-container">
+                <div class="header">
+                  ANNAM MULTISPECIALITY HOSPITAL
+                </div>
+
+                <div class="content">
+                  <div class="qr-code">
+                    <img src="${qrDataUrl}" alt="QR" />
+                  </div>
+
+                  <div class="details">
+                    <div class="detail-item">
+                      <span class="detail-label">UHID:</span>
+                      <span class="detail-value">${patient.patient_id}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">DATE:</span>
+                      <span class="detail-value">${currentDate}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">AGE:</span>
+                      <span class="detail-value">${patient.age || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="footer">
+                  <div class="patient-name">
+                    NAME: ${patient.name}
+                  </div>
                 </div>
               </div>
             </div>
@@ -206,118 +249,6 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
     } finally {
       setIsGeneratingQr(false);
     }
-  };
-
-  const handlePrint = () => {
-    const printContent = document.getElementById('barcode-print-area');
-    if (!printContent) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow popups to print');
-      return;
-    }
-
-    const fullPrintableWidthMm = 44;
-    const halfWidthMm = 22;
-
-    const contentHtml = printContent.innerHTML;
-
-    const placementHtml = (() => {
-      if (printPlacement === 'left') {
-        return `<div class="print-row"><div class="barcode-label">${contentHtml}</div></div>`;
-      }
-      if (printPlacement === 'right') {
-        return `<div class="print-row"><div class="spacer"></div><div class="barcode-label">${contentHtml}</div></div>`;
-      }
-      return `<div class="print-row"><div class="barcode-label">${contentHtml}</div><div class="barcode-label">${contentHtml}</div></div>`;
-    })();
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Patient Barcode - ${patient.patient_id}</title>
-          <style>
-            @page {
-              size: ${fullPrintableWidthMm}mm auto;
-              margin: 0;
-            }
-
-            @media print {
-              html, body {
-                margin: 0;
-                padding: 0;
-                width: ${fullPrintableWidthMm}mm;
-              }
-
-              .print-row {
-                width: ${fullPrintableWidthMm}mm;
-                display: flex;
-                flex-direction: row;
-                align-items: flex-start;
-                justify-content: flex-start;
-              }
-
-              .spacer {
-                width: ${halfWidthMm}mm;
-                flex: 0 0 ${halfWidthMm}mm;
-              }
-
-              .barcode-label {
-                width: ${halfWidthMm}mm;
-                box-sizing: border-box;
-                padding: 2mm;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 2mm;
-                flex: 0 0 ${halfWidthMm}mm;
-              }
-
-              .barcode-label * {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-
-              .barcode-label .patient-name {
-                font-size: 9pt;
-                font-weight: 700;
-                color: #000;
-                text-align: center;
-              }
-
-              .barcode-label .patient-meta {
-                font-size: 7pt;
-                color: #444;
-                text-align: center;
-              }
-
-              .barcode-label svg {
-                max-width: 100%;
-                height: auto;
-              }
-            }
-
-            body {
-              font-family: Arial, sans-serif;
-            }
-          </style>
-        </head>
-        <body>
-          ${placementHtml}
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    }, 250);
   };
 
   return (
@@ -378,19 +309,12 @@ export default function BarcodeModal({ patient, onClose }: BarcodeModalProps) {
               Cancel
             </button>
             <button 
-              onClick={handlePrint}
-              className="flex-1 py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Printer className="h-4 w-4" />
-              Print
-            </button>
-            <button 
               onClick={handlePrint2}
               disabled={isGeneratingQr}
               className="flex-1 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <QrCode className="h-4 w-4" />
-              {isGeneratingQr ? '...' : 'Print 2'}
+              {isGeneratingQr ? '...' : 'Print'}
             </button>
           </div>
         </div>
