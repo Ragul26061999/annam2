@@ -90,8 +90,23 @@ export const getCurrentUserProfile = async () => {
 
   console.log('User profile query result:', { userProfile, error });
 
-  if (error) {
-    console.error('Error fetching user profile:', error);
+  if (error || !userProfile) {
+    console.error('Error fetching user profile or profile not found:', error);
+    
+    // Fallback: Construct a profile from Auth user metadata if available
+    if (user) {
+      console.warn('Using fallback user profile from Auth metadata');
+      return {
+        id: user.id, // Use auth ID as ID since we don't have a user record ID
+        auth_id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+        role: user.user_metadata?.role || 'patient', // Default to patient if role is missing
+        status: 'active',
+        created_at: user.created_at
+      };
+    }
+    
     return null;
   }
 
