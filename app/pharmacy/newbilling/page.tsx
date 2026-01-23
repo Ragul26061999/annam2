@@ -46,6 +46,7 @@ interface MedicineBatch {
   medicine_id: string;
   status: string;
   batch_barcode?: string;
+  legacy_code?: string | null;
 }
 
 interface BillItem {
@@ -578,7 +579,7 @@ function NewBillingPageInner() {
     run();
   }, [patientSearch, customer.type]);
 
-  // Filter medicines based on search (including batch number and barcode); guard undefined fields
+  // Filter medicines based on search (including batch number, barcode, and legacy code); guard undefined fields
   // Only show results when there is a search term (hide catalogue by default)
   const searchTermTrimmed = (searchTerm || '').trim();
   const filteredMedicines = searchTermTrimmed.length === 0
@@ -598,10 +599,11 @@ function NewBillingPageInner() {
         manufacturer.includes(term) ||
         category.includes(term) ||
         unit.includes(term);
-      // Also match batch_number and batch_barcode
+      // Also match batch_number, batch_barcode, and legacy_code
       const batchMatch = Array.isArray(medicine.batches) && medicine.batches.some((b) =>
         (b.batch_number || '').toLowerCase().includes(term) ||
-        (b.batch_barcode || '').toLowerCase().includes(term)
+        (b.batch_barcode || '').toLowerCase().includes(term) ||
+        ((b.legacy_code || '') as string).toLowerCase().includes(term)
       );
       return baseMatch || batchMatch;
     });

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Edit3, Package, ArrowLeft } from 'lucide-react';
+import { Upload, Edit3, Package, ArrowLeft, CheckSquare } from 'lucide-react';
 
 const PharmacySettingsPage = () => {
   const router = useRouter();
@@ -31,6 +31,14 @@ const PharmacySettingsPage = () => {
       icon: Edit3,
       color: 'from-purple-500 to-pink-500',
       href: '/settings/pharmacy/edit-medication'
+    },
+    {
+      id: 'batch-validation',
+      title: 'Batch Validation',
+      description: 'Validate batch number, count and legacy code',
+      icon: CheckSquare,
+      color: 'from-amber-500 to-orange-500',
+      href: '/batch-validation'
     }
   ];
 
