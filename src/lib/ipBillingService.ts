@@ -234,6 +234,24 @@ export async function getIPComprehensiveBilling(
     const dischargeDate = allocation.discharge_date || new Date().toISOString();
     const totalDays = calculateDays(admissionDate, dischargeDate);
 
+    const admissionDateOnly = String(admissionDate).split('T')[0];
+    const dischargeDateOnly = String(dischargeDate).split('T')[0];
+
+    // Optional overrides from discharge_summaries. This can fail with 400 if
+    // columns/migrations are not applied yet; in that case, we just ignore.
+    let dischargeSummary: any = null;
+    try {
+      const { data: ds, error: dsError } = await supabase
+        .from('discharge_summaries')
+        .select('bed_days, bed_daily_rate, bed_total, doctor_consultation_days, doctor_consultation_fee, doctor_consultation_total')
+        .eq('allocation_id', bedAllocationId)
+        .maybeSingle();
+
+      if (!dsError) dischargeSummary = ds;
+    } catch (e) {
+      dischargeSummary = null;
+    }
+
     // 2. Get doctor consultation details
     const { data: doctor } = await supabase
       .from('doctors')
@@ -242,34 +260,32 @@ export async function getIPComprehensiveBilling(
       .single();
 
     const doctorName = doctor?.user?.[0]?.name || 'Consulting Doctor';
-    const consultationFee = doctor?.consultation_fee || 500;
-    const doctorConsultationTotal = consultationFee * totalDays;
+    const defaultConsultationFee = doctor?.consultation_fee || 500;
+    const doctorConsultDays = Number(dischargeSummary?.doctor_consultation_days ?? totalDays);
+    const consultationFee = Number(dischargeSummary?.doctor_consultation_fee ?? defaultConsultationFee);
+    const doctorConsultationTotal = Number(dischargeSummary?.doctor_consultation_total ?? (consultationFee * doctorConsultDays));
 
     // 3. Get bed charges
-    const bedDailyRate = bed?.daily_rate || 1000;
-    const bedChargesTotal = bedDailyRate * totalDays;
+    const defaultBedDailyRate = bed?.daily_rate || 1000;
+    const bedDays = Number(dischargeSummary?.bed_days ?? totalDays);
+    const bedDailyRate = Number(dischargeSummary?.bed_daily_rate ?? defaultBedDailyRate);
+    const bedChargesTotal = Number(dischargeSummary?.bed_total ?? (bedDailyRate * bedDays));
 
     // 4. Get pharmacy billing
-    const { data: pharmacyBills } = await supabase
-      .from('pharmacy_billing')
-      .select(`
-        *,
-        items:pharmacy_billing_items(*)
-      `)
+    // NOTE: Some DBs define bill_date as DATE (not timestamptz). Using date-only strings avoids 400.
+    // Also, embedding items requires FK relationships; if not present PostgREST returns 400.
+    const { data: pharmacyBills, error: pharmacyError } = await supabase
+      .from('pharmacy_bills')
+      .select('bill_number, bill_date, total_amount')
       .eq('patient_id', patient.id)
-      .gte('bill_date', admissionDate)
-      .lte('bill_date', dischargeDate);
+      .gte('bill_date', admissionDateOnly)
+      .lte('bill_date', dischargeDateOnly);
 
-    const pharmacyBilling: IPPharmacyBilling[] = (pharmacyBills || []).map((bill: any) => ({
+    const pharmacyBilling: IPPharmacyBilling[] = (pharmacyError ? [] : (pharmacyBills || [])).map((bill: any) => ({
       bill_number: bill.bill_number,
       bill_date: bill.bill_date,
-      items: (bill.items || []).map((item: any) => ({
-        medicine_name: item.medicine_name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total: item.total_amount
-      })),
-      total_amount: bill.total_amount
+      items: [],
+      total_amount: Number(bill.total_amount || 0)
     }));
 
     const pharmacyTotal = pharmacyBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
@@ -378,22 +394,19 @@ export async function getIPComprehensiveBilling(
     const doctorServices: IPDoctorService[] = [];
     
     // Get doctor orders/procedures during IP stay
-    const { data: doctorOrders } = await supabase
-      .from('doctor_orders')
-      .select(`
-        *,
-        doctor:doctors(user:users(name))
-      `)
-      .eq('patient_id', patient.id)
+    const { data: doctorOrders, error: doctorOrdersError } = await supabase
+      .from('ip_doctor_orders')
+      .select('*')
+      .eq('bed_allocation_id', bedAllocationId)
       .gte('created_at', admissionDate)
       .lte('created_at', dischargeDate);
 
-    if (doctorOrders && doctorOrders.length > 0) {
+    if (!doctorOrdersError && doctorOrders && doctorOrders.length > 0) {
       // Group by doctor and calculate totals
       const doctorMap = new Map<string, { name: string; services: any[] }>();
       
       doctorOrders.forEach((order: any) => {
-        const doctorName = order.doctor?.user?.[0]?.name || 'Unknown Doctor';
+        const doctorName = 'Unknown Doctor';
         if (!doctorMap.has(doctorName)) {
           doctorMap.set(doctorName, { name: doctorName, services: [] });
         }
@@ -427,11 +440,17 @@ export async function getIPComprehensiveBilling(
     );
 
     // 8. Get other charges (from billing_items if exists)
-    const { data: otherItems } = await supabase
-      .from('billing_item')
-      .select('*')
-      .eq('reference_id', bedAllocationId)
-      .eq('reference_type', 'ip_admission');
+    let otherItems: any[] = [];
+    try {
+      // In this DB, billing_item uses ref_id to link to IP stay / other references.
+      const { data: oi, error: oiError } = await supabase
+        .from('billing_item')
+        .select('*')
+        .eq('ref_id', bedAllocationId);
+      if (!oiError) otherItems = oi || [];
+    } catch (e) {
+      otherItems = [];
+    }
 
     // 9. Get Other Bills for this patient during IP stay
     const { data: otherBills } = await supabase
@@ -515,13 +534,13 @@ export async function getIPComprehensiveBilling(
       bed_charges: {
         bed_type: bed?.bed_type || 'General Ward',
         daily_rate: bedDailyRate,
-        days: totalDays,
+        days: bedDays,
         total_amount: bedChargesTotal
       },
       doctor_consultation: {
         doctor_name: doctorName,
         consultation_fee: consultationFee,
-        days: totalDays,
+        days: doctorConsultDays,
         total_amount: doctorConsultationTotal
       },
       doctor_services: doctorServices,
@@ -632,53 +651,56 @@ export async function saveIPBilling(
       (billingData.summary.other_charges_total || 0) +
       (billingData.summary.other_bills_total || 0);
 
-    // Update discharge_summaries with billing details
-    const { error } = await supabase
-      .from('discharge_summaries')
-      .upsert({
-        allocation_id: bedAllocationId,
-        patient_id: billingData.patient.id,
-        bed_days: billingData.admission.total_days,
-        bed_daily_rate: billingData.bed_charges.daily_rate,
-        bed_total: billingData.summary.bed_charges_total,
-        pharmacy_amount: billingData.summary.pharmacy_total,
-        lab_amount: billingData.summary.lab_total,
-        procedure_amount: billingData.summary.radiology_total,
-        other_amount: otherAmount,
-        gross_amount: billingData.summary.gross_total,
-        discount_amount: billingData.summary.discount,
-        net_amount: billingData.summary.net_payable,
-        paid_amount: paidAmount,
-        pending_amount: pendingAmount
-      }, {
-        onConflict: 'allocation_id'
-      });
+    // Avoid upsert(onConflict) here because PostgREST returns 400 if the unique constraint
+    // doesn't exist in the deployed DB (common when migrations drift).
+    const dischargeDateOnly = String(billingData.admission.discharge_date || new Date().toISOString()).split('T')[0];
+    const admissionDateOnly = String(billingData.admission.admission_date || new Date().toISOString()).split('T')[0];
 
-    // Save to billing table to reserve the bill number and ensure sequence continuity
-    if (billingData.bill_number) {
-      const { error: billError } = await supabase
-        .from('billing')
-        .upsert({
-          bill_number: billingData.bill_number,
-          patient_id: billingData.patient.id,
-          encounter_id: bedAllocationId,
-          bill_date: new Date().toISOString(),
-          total_amount: billingData.summary.net_payable,
-          paid_amount: paidAmount,
-          status: pendingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending'
-        }, {
-          onConflict: 'bill_number'
-        });
-        
-      if (billError) {
-        console.error('Error saving to billing table:', billError);
-        // Don't throw here to avoid blocking discharge summary save, but log it
-      }
+    const dischargePayload: any = {
+      allocation_id: bedAllocationId,
+      patient_id: billingData.patient.id,
+      discharge_date: dischargeDateOnly,
+      admission_date: admissionDateOnly,
+      bed_days: billingData.bed_charges.days,
+      bed_daily_rate: billingData.bed_charges.daily_rate,
+      bed_total: billingData.summary.bed_charges_total,
+      doctor_consultation_days: billingData.doctor_consultation.days,
+      doctor_consultation_fee: billingData.doctor_consultation.consultation_fee,
+      doctor_consultation_total: billingData.doctor_consultation.total_amount,
+      pharmacy_amount: billingData.summary.pharmacy_total,
+      lab_amount: billingData.summary.lab_total,
+      procedure_amount: billingData.summary.radiology_total,
+      other_amount: otherAmount,
+      gross_amount: billingData.summary.gross_total,
+      discount_amount: billingData.summary.discount,
+      net_amount: billingData.summary.net_payable,
+      paid_amount: paidAmount,
+      pending_amount: pendingAmount,
+    };
+
+    const { data: existingSummary, error: existingSummaryError } = await supabase
+      .from('discharge_summaries')
+      .select('id')
+      .eq('allocation_id', bedAllocationId)
+      .maybeSingle();
+
+    let dischargeError: any = null;
+    if (!existingSummaryError && existingSummary?.id) {
+      const { error: updErr } = await supabase
+        .from('discharge_summaries')
+        .update(dischargePayload)
+        .eq('id', existingSummary.id);
+      dischargeError = updErr;
+    } else {
+      const { error: insErr } = await supabase
+        .from('discharge_summaries')
+        .insert(dischargePayload);
+      dischargeError = insErr;
     }
 
-    if (error) {
-      console.error('Error saving IP billing:', error);
-      throw error;
+    if (dischargeError) {
+      console.error('Error saving IP billing:', dischargeError);
+      throw dischargeError;
     }
   } catch (error) {
     console.error('Error in saveIPBilling:', error);

@@ -13,13 +13,16 @@ import {
   AlertCircle,
   CheckCircle,
   Stethoscope,
-  IndianRupee
+  IndianRupee,
+  Printer,
+  ScanBarcode
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../../../src/lib/supabase';
 import { updateQueueStatus } from '../../../../src/lib/outpatientQueueService';
 import { createAppointment, type AppointmentData } from '../../../../src/lib/appointmentService';
 import { createOPConsultationBill } from '../../../../src/lib/universalPaymentService';
+import { generateBarcodeForPatient, generatePrintableBarcodeData } from '../../../../src/lib/barcodeUtils';
 import StaffSelect from '../../../../src/components/StaffSelect';
 
 export default function EnterVitalsPage() {
@@ -35,6 +38,7 @@ export default function EnterVitalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [createdBill, setCreatedBill] = useState<any>(null);
 
   const [vitalsData, setVitalsData] = useState({
     height: '',
@@ -339,6 +343,7 @@ export default function EnterVitalsPage() {
             vitalsData.staffId || undefined
           );
           console.log('OP consultation bill created successfully:', bill.id);
+          setCreatedBill(bill);
         } else if (consultationFee > 0 && !createdAppointmentId) {
           console.warn('Skipped bill creation because appointment was not created');
         } else {
@@ -353,9 +358,9 @@ export default function EnterVitalsPage() {
       setSuccess(true);
 
       // Redirect after 2 seconds
-      setTimeout(() => {
-        router.push('/outpatient?vitals=completed');
-      }, 2000);
+      // setTimeout(() => {
+      //   router.push('/outpatient?vitals=completed');
+      // }, 2000);
     } catch (err) {
       console.error('Error saving vitals:', err);
       console.error('Error type:', typeof err);
@@ -383,6 +388,185 @@ export default function EnterVitalsPage() {
     );
   }
 
+  const showThermalPreviewWithLogo = () => {
+    if (!createdBill) return;
+
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    // Get patient UHID
+    const patientUhid = patient?.patient_id || 'WALK-IN';
+    
+    // Get payment status
+    let paymentType = createdBill.payment_status?.toUpperCase() || 'CASH';
+    if (createdBill.payment_status === 'paid') {
+      paymentType = 'PAID';
+    } else if (createdBill.payment_status === 'pending') {
+      paymentType = 'PENDING';
+    }
+
+    const itemsHtml = createdBill.items?.map((item: any, index: number) => `
+      <tr>
+        <td class="items-8cm">${index + 1}.</td>
+        <td class="items-8cm">${item.service_name || item.description || 'Consultation'}</td>
+        <td class="items-8cm text-center">${item.quantity || 1}</td>
+        <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
+      </tr>
+    `).join('') || '';
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${createdBill.bill_id}</title>
+          <style>
+            @page { margin: 1mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
+              margin: 0; 
+              padding: 2px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 77mm;
+            }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .logo { width: 350px; height: auto; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <img src="/logo/annamHospital-bk.png" alt="ANNAM LOGO" class="logo" />
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div style="margin-top: 5px; font-weight: bold;">OP CONSULTATION BILL</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${createdBill.bill_id}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patient?.name || 'Unknown Patient'}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${new Date(createdBill.created_at).toLocaleDateString()} ${new Date(createdBill.created_at).toLocaleTimeString()}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Payment Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${paymentType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="10%" class="items-8cm">S.No</td>
+                <td width="60%" class="items-8cm">Service</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${Number(createdBill.total_amount || 0).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Authorized Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
+    }
+  };
+
+  const handlePrintBarcode = async () => {
+    if (!patient) return;
+
+    try {
+      const uhid = patient.patient_id || 'UNKNOWN';
+      const patientName = patient.name || 'Unknown Patient';
+      
+      const barcodeId = await generateBarcodeForPatient(patientId);
+      
+      const printData = generatePrintableBarcodeData(uhid, barcodeId, patientName);
+      
+      const printWindow = window.open('', '_blank', 'width=600,height=400');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Patient Barcode - ${patientName}</title>
+              <style>
+                body { margin: 0; padding: 20px; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                @media print {
+                  body { margin: 0; padding: 0; display: block; }
+                  .print-container { page-break-inside: avoid; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="print-container">
+                ${printData}
+              </div>
+              <script>
+                window.onload = function() {
+                  window.print();
+                }
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
+    } catch (err) {
+      console.error('Error printing barcode:', err);
+      alert('Failed to generate barcode for printing');
+    }
+  };
+
   if (success) {
     return (
       <div className="min-h-screen bg-orange-50/30 py-8 px-6 flex items-center justify-center">
@@ -392,7 +576,31 @@ export default function EnterVitalsPage() {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Vitals Saved Successfully!</h2>
           <p className="text-gray-600 mb-6">Patient registration is now complete.</p>
-          <div className="text-sm text-gray-500">Redirecting to outpatient dashboard...</div>
+          
+          {createdBill && (
+            <button
+              onClick={showThermalPreviewWithLogo}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg mb-4"
+            >
+              <Printer className="h-5 w-5" />
+              <span>Print OP Bill</span>
+            </button>
+          )}
+
+          <button
+            onClick={handlePrintBarcode}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg mb-4"
+          >
+            <ScanBarcode className="h-5 w-5" />
+            <span>Print Barcode for UHID</span>
+          </button>
+
+          <button
+             onClick={() => router.push('/outpatient?vitals=completed')}
+             className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-semibold transition-colors"
+          >
+             Go to Dashboard
+          </button>
         </div>
       </div>
     );

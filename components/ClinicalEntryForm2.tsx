@@ -8,6 +8,8 @@ import {
   Calendar,
   Plus,
   Trash2,
+  ChevronDown,
+  ChevronUp,
   Save,
   Loader2,
   CheckCircle,
@@ -26,6 +28,7 @@ import {
   createLabTestCatalogEntry,
   type LabTestCatalog
 } from '../src/lib/labXrayService';
+import { createPrescription, type PrescriptionData } from '../src/lib/prescriptionService';
 
 interface ClinicalEntryForm2Props {
   isOpen: boolean;
@@ -137,6 +140,18 @@ export default function ClinicalEntryForm2({
     treatment_plan: ''
   });
 
+  // Map form fields to DB columns
+  const mapClinicalNotesToDB = (notes: ClinicalNotes) => ({
+    chief_complaint: notes.present_complaints,
+    history_of_present_illness: notes.history_present_illness,
+    physical_examination: notes.examination_notes,
+    assessment: notes.provisional_diagnosis,
+    clinical_impression: notes.investigation_summary,
+    differential_diagnosis: null, // array, not used in form yet
+    doctor_notes: Object.values(notes).filter(v => v).join('\n\n'),
+    follow_up_notes: null
+  });
+
   // Lab Tests State
   const [labCatalog, setLabCatalog] = useState<LabTestCatalog[]>([]);
   const [selectedLabTests, setSelectedLabTests] = useState<LabTestSelection[]>([
@@ -172,6 +187,7 @@ export default function ClinicalEntryForm2({
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
+  const [expandedPrescriptionIndexes, setExpandedPrescriptionIndexes] = useState<number[]>([]);
 
   // Follow-up State
   const [followUp, setFollowUp] = useState({
@@ -261,14 +277,55 @@ export default function ClinicalEntryForm2({
       stock_quantity: medication.available_stock || 0
     };
     
-    setPrescriptions([...prescriptions, newItem]);
+    setPrescriptions((prev) => {
+      const next = [...prev, newItem];
+      const newIndex = next.length - 1;
+      setExpandedPrescriptionIndexes((expanded) => Array.from(new Set([...expanded, newIndex])));
+      return next;
+    });
     setSearchTerm('');
     setSearchResults([]);
-    setShowMedicationSearch(false);
+    setShowMedicationSearch(true);
+  };
+
+  const togglePrescriptionExpanded = (index: number) => {
+    setExpandedPrescriptionIndexes((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const removePrescriptionAtIndex = (index: number) => {
+    setPrescriptions((prev) => prev.filter((_, i) => i !== index));
+    setExpandedPrescriptionIndexes((prev) =>
+      prev
+        .filter((i) => i !== index)
+        .map((i) => (i > index ? i - 1 : i))
+    );
   };
 
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
     return frequencyTimes.length * durationDays;
+  };
+
+  const formatFrequency = (frequencyTimes: string[]) => {
+    if (!frequencyTimes || frequencyTimes.length === 0) return '';
+    return frequencyTimes.join(', ');
+  };
+
+  const formatMealTiming = (mealTiming: string) => {
+    if (!mealTiming) return null;
+    switch (mealTiming) {
+      case 'before_meal':
+        return 'before food';
+      case 'after_meal':
+        return 'after food';
+      case 'with_meal':
+        return 'with food';
+      case 'empty_stomach':
+        return 'empty stomach';
+      default:
+        return mealTiming;
+    }
   };
 
   const updatePrescriptionItem = (index: number, field: keyof PrescriptionItem, value: any) => {
@@ -457,10 +514,7 @@ export default function ClinicalEntryForm2({
       setError(null);
 
       // Save Clinical Notes
-      const notesData = {
-        ...clinicalNotes,
-        doctor_notes: Object.values(clinicalNotes).filter(v => v).join('\n\n')
-      };
+      const notesData = mapClinicalNotesToDB(clinicalNotes);
 
       if (notesData.doctor_notes) {
         const { error: notesError } = await supabase
@@ -479,74 +533,148 @@ export default function ClinicalEntryForm2({
       // Save Lab Tests
       const validLabRows = selectedLabTests.filter(t => t.testId);
       if (validLabRows.length > 0) {
-        const labRecords = validLabRows.map(t => ({
-          encounter_id: encounterId,
-          appointment_id: appointmentId,
-          patient_id: patientId,
-          doctor_id: doctorId,
-          lab_test_catalog_id: t.testId,
-          test_type: 'LAB',
-          test_name: t.testName,
-          test_category: t.groupName,
-          urgency: labUrgency,
-          clinical_indication: t.clinicalIndication,
-          special_instructions: t.specialInstructions
-        }));
+        try {
+          const labRecords = validLabRows.map((t, idx) => {
+            const now = new Date();
+            const today = now.toISOString().slice(0, 10).replace(/-/g, '');
+            const ms = String(now.getMilliseconds()).padStart(3, '0');
+            const orderNumber = `LAB-${today}-${String(idx + 1).padStart(4, '0')}-${ms}`;
+            return {
+              order_number: orderNumber,
+              encounter_id: encounterId,
+              appointment_id: appointmentId,
+              patient_id: patientId,
+              ordering_doctor_id: doctorId,
+              test_catalog_id: t.testId,
+              clinical_indication: t.clinicalIndication || 'N/A',
+              special_instructions: t.specialInstructions,
+              urgency: labUrgency
+            };
+          });
 
-        const { error: labError } = await supabase
-          .from('lab_orders')
-          .insert(labRecords);
+          const { error: labError } = await supabase
+            .from('lab_test_orders')
+            .insert(labRecords);
 
-        if (labError) throw labError;
+          if (labError) {
+            try {
+              console.error('Lab test orders error:', {
+                message: labError?.message,
+                details: labError?.details,
+                hint: labError?.hint,
+                code: labError?.code,
+                raw: labError,
+                stringified: JSON.stringify(labError, (key, value) => {
+                  if (typeof value === 'function') return '[Function]';
+                  if (value instanceof Error) return value.toString();
+                  return value;
+                }, 2),
+                keys: Object.getOwnPropertyNames(labError || {}),
+                constructor: labError?.constructor?.name
+              });
+              console.dir(labError, { depth: 3 });
+            } catch (logErr) {
+              console.error('Failed to log lab error:', logErr);
+              console.error('Original lab error:', labError);
+            }
+            throw labError;
+          }
+        } catch (labErr: any) {
+          console.error('Failed to save lab tests:', labErr);
+          // Continue without failing the entire form
+        }
       }
 
       // Save X-ray Orders
       const validXrayRows = selectedXrayTests.filter(t => t.testId);
       if (validXrayRows.length > 0) {
-        const xrayRecords = validXrayRows.map(t => ({
-          encounter_id: encounterId,
-          appointment_id: appointmentId,
-          patient_id: patientId,
-          doctor_id: doctorId,
-          radiology_test_catalog_id: t.testId,
-          scan_type: t.groupName,
-          scan_name: t.testName,
-          body_part: t.bodyPart,
-          urgency: xrayUrgency,
-          clinical_indication: t.clinicalIndication,
-          special_instructions: t.specialInstructions
-        }));
+        try {
+          const xrayRecords = validXrayRows.map((t, idx) => {
+            const now = new Date();
+            const today = now.toISOString().slice(0, 10).replace(/-/g, '');
+            const ms = String(now.getMilliseconds()).padStart(3, '0');
+            const orderNumber = `RAD-${today}-${String(idx + 1).padStart(4, '0')}-${ms}`;
+            return {
+              order_number: orderNumber,
+              encounter_id: encounterId,
+              appointment_id: appointmentId,
+              patient_id: patientId,
+              ordering_doctor_id: doctorId,
+              test_catalog_id: t.testId,
+              clinical_indication: t.clinicalIndication || 'N/A',
+              special_instructions: t.specialInstructions,
+              body_part: t.bodyPart,
+              urgency: xrayUrgency
+            };
+          });
 
-        const { error: xrayError } = await supabase
-          .from('xray_orders')
-          .insert(xrayRecords);
+          const { error: xrayError } = await supabase
+            .from('radiology_test_orders')
+            .insert(xrayRecords);
 
-        if (xrayError) throw xrayError;
+          if (xrayError) {
+            try {
+              console.error('Radiology test orders error:', {
+                message: xrayError?.message,
+                details: xrayError?.details,
+                hint: xrayError?.hint,
+                code: xrayError?.code,
+                raw: xrayError,
+                stringified: JSON.stringify(xrayError, (key, value) => {
+                  if (typeof value === 'function') return '[Function]';
+                  if (value instanceof Error) return value.toString();
+                  return value;
+                }, 2),
+                keys: Object.getOwnPropertyNames(xrayError || {}),
+                constructor: xrayError?.constructor?.name
+              });
+              console.dir(xrayError, { depth: 3 });
+            } catch (logErr) {
+              console.error('Failed to log xray error:', logErr);
+              console.error('Original xray error:', xrayError);
+            }
+            throw xrayError;
+          }
+        } catch (xrayErr: any) {
+          console.error('Failed to save x-ray orders:', xrayErr);
+          // Continue without failing the entire form
+        }
       }
 
       // Save Prescriptions
       if (prescriptions.length > 0) {
-        const prescriptionRecords = prescriptions.map(prescription => ({
-          encounter_id: encounterId,
-          appointment_id: appointmentId,
-          patient_id: patientId,
-          doctor_id: doctorId,
-          status: 'pending',
+        console.log('Prescription save context:', {
+          encounterId,
+          appointmentId,
+          patientId,
+          doctorId,
+          prescriptionsCount: prescriptions.length
+        });
+
+        const medicines = prescriptions.map(prescription => ({
           medication_id: prescription.medication_id,
-          medication_name: prescription.medication_name,
-          generic_name: prescription.generic_name,
-          dosage: prescription.dosage,
-          frequency_times: prescription.frequency_times,
-          meal_timing: prescription.meal_timing,
+          medicine_name: prescription.medication_name,
+          dosage: prescription.dosage || 'As prescribed',
+          frequency: formatFrequency(prescription.frequency_times),
           duration: `${prescription.duration_days} days`,
-          quantity: prescription.quantity,
-          instructions: prescription.instructions
+          quantity: prescription.auto_calculate_quantity
+            ? calculateAutoQuantity(prescription.frequency_times, prescription.duration_days)
+            : prescription.quantity,
+          instructions: prescription.instructions || ''
         }));
 
-        const { error: prescriptionsError } = await supabase
-          .from('prescription_orders')
-          .insert(prescriptionRecords);
+        const prescriptionData: PrescriptionData = {
+          patient_id: patientId,
+          doctor_id: doctorId,
+          appointment_id: appointmentId,
+          encounter_id: encounterId,
+          medicines,
+          instructions: 'Prescribed during clinical encounter'
+        };
 
+        console.log('Prescription data to save:', prescriptionData);
+
+        const { error: prescriptionsError } = await createPrescription(prescriptionData);
         if (prescriptionsError) throw prescriptionsError;
       }
 
@@ -565,14 +693,64 @@ export default function ClinicalEntryForm2({
         if (followUpError) throw followUpError;
       }
 
+      // Update appointment status to completed
+      const completedAppointmentStatusId = '5ccb55a0-46cd-4610-8d70-b1049de293ef';
+      const { error: appointmentStatusError } = await supabase
+        .from('appointment')
+        .update({ status_id: completedAppointmentStatusId })
+        .eq('id', appointmentId);
+
+      if (appointmentStatusError) {
+        console.error('Failed to update appointment status:', {
+          message: appointmentStatusError?.message,
+          details: appointmentStatusError?.details,
+          hint: appointmentStatusError?.hint,
+          code: appointmentStatusError?.code,
+          raw: appointmentStatusError,
+          stringified: JSON.stringify(appointmentStatusError, (key, value) => {
+            if (typeof value === 'function') return '[Function]';
+            if (value instanceof Error) return value.toString();
+            return value;
+          }, 2),
+          keys: Object.getOwnPropertyNames(appointmentStatusError || {}),
+          constructor: appointmentStatusError?.constructor?.name
+        });
+        // Don't fail the whole operation, just log it
+      }
+
       setSuccess(true);
       setTimeout(() => {
         onSuccess?.();
         onClose();
       }, 1500);
     } catch (err: any) {
-      console.error('Error saving clinical data:', err);
-      setError(err.message || 'Failed to save clinical data');
+      const supabaseError = err;
+      // Guaranteed fallback logging
+      console.error('Raw error object:', supabaseError);
+      console.dir(supabaseError, { depth: 5 });
+      
+      try {
+        console.error('Error saving clinical data:', {
+          message: supabaseError?.message,
+          details: supabaseError?.details,
+          hint: supabaseError?.hint,
+          code: supabaseError?.code,
+          raw: supabaseError,
+          stringified: JSON.stringify(supabaseError, (key, value) => {
+            if (typeof value === 'function') return '[Function]';
+            if (value instanceof Error) return value.toString();
+            return value;
+          }, 2),
+          keys: Object.getOwnPropertyNames(supabaseError || {}),
+          constructor: supabaseError?.constructor?.name
+        });
+        console.dir(supabaseError, { depth: 3 });
+      } catch (logErr) {
+        console.error('Failed to log error details:', logErr);
+        console.error('Original error:', supabaseError);
+        console.dir(supabaseError, { depth: 3 });
+      }
+      setError(supabaseError?.message || 'Failed to save clinical data');
     } finally {
       setLoading(false);
     }
@@ -1095,44 +1273,75 @@ export default function ClinicalEntryForm2({
                 {prescriptions.length > 0 && (
                   <div className="space-y-4">
                     {prescriptions.map((item, index) => (
-                      <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
-                            {item.generic_name && (
-                              <p className="text-sm text-gray-600">{item.generic_name}</p>
-                            )}
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => togglePrescriptionExpanded(index)}
+                          className="w-full p-4 flex items-start justify-between hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex-1 pr-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
+                                {item.generic_name && (
+                                  <p className="text-sm text-gray-600">{item.generic_name}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-2 py-0.5 text-xs rounded-full border ${
+                                    item.stock_quantity > 10
+                                      ? 'bg-green-50 border-green-200 text-green-700'
+                                      : item.stock_quantity > 0
+                                        ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                                        : 'bg-red-50 border-red-200 text-red-700'
+                                  }`}
+                                >
+                                  Stock: {item.stock_quantity}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePrescriptionAtIndex(index);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 text-xs text-gray-500">
+                              {item.frequency_times.length > 0 ? `Freq: ${item.frequency_times.join(', ')}` : 'Freq: —'}
+                              {' • '}
+                              {item.duration_days ? `Duration: ${item.duration_days}d` : 'Duration: —'}
+                            </div>
                           </div>
-                          <button
-                            onClick={() => setPrescriptions(prescriptions.filter((_, i) => i !== index))}
-                            className="text-red-500 hover:text-red-700 p-1"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        
-                        {/* Stock Information */}
-                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-blue-800">Current Stock:</span>
-                            <span className={`text-sm font-bold ${item.stock_quantity > 10 ? 'text-green-600' : item.stock_quantity > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {item.stock_quantity} units available
-                            </span>
+
+                          <div className="pt-1 text-gray-500">
+                            {expandedPrescriptionIndexes.includes(index) ? (
+                              <ChevronUp className="h-5 w-5" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5" />
+                            )}
                           </div>
                         </div>
 
+                        {expandedPrescriptionIndexes.includes(index) && (
+                          <div className="p-4 border-t border-gray-200">
+                        
+                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-blue-800">Current Stock:</span>
+                                <span className={`text-sm font-bold ${item.stock_quantity > 10 ? 'text-green-600' : item.stock_quantity > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                  {item.stock_quantity} units available
+                                </span>
+                              </div>
+                            </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Dosage *</label>
-                            <input
-                              type="text"
-                              value={item.dosage}
-                              onChange={(e) => updatePrescriptionItem(index, 'dosage', e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                              placeholder="e.g., 500mg, 1 tablet"
-                            />
-                          </div>
-                          
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">Duration (Days) *</label>
                             <input
@@ -1225,6 +1434,8 @@ export default function ClinicalEntryForm2({
                             data-allow-enter="true"
                           />
                         </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

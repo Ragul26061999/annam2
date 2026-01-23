@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Printer, DollarSign } from 'lucide-react';
+import { Loader2, Printer, DollarSign, Edit2, Save, X, Wallet } from 'lucide-react';
 import { 
   getIPComprehensiveBilling, 
   saveIPBilling,
@@ -7,9 +7,16 @@ import {
   IPComprehensiveBilling,
   IPPrescribedMedicine
 } from '../../lib/ipBillingService';
+import {
+  getBillingSummary,
+  getTotalAvailableAdvance
+} from '../../lib/ipFlexibleBillingService';
 import IPBillingMedicinesEditor from './IPBillingMedicinesEditor';
 import IPBillingLabEditor from './IPBillingLabEditor';
 import IPPaymentReceiptModal from './IPPaymentReceiptModal';
+import IPAdvanceReceiptModal from './IPAdvanceReceiptModal';
+import IPBillWisePaymentModal from './IPBillWisePaymentModal';
+import OtherBillsPaymentModal from '../OtherBillsPaymentModal';
 import { IPBillingMultiPagePrint } from './IPBillingMultiPagePrint';
 import IPSurgeryChargesEditor from './IPSurgeryChargesEditor';
 import IPDoctorConsultationsEditor from './IPDoctorConsultationsEditor';
@@ -25,10 +32,36 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
   const [billing, setBilling] = useState<IPComprehensiveBilling | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [showBillWisePaymentModal, setShowBillWisePaymentModal] = useState(false);
+  const [showOtherBillPaymentModal, setShowOtherBillPaymentModal] = useState(false);
+  const [selectedOtherBill, setSelectedOtherBill] = useState<any | null>(null);
+  const [availableAdvance, setAvailableAdvance] = useState(0);
+  const [flexibleBillingSummary, setFlexibleBillingSummary] = useState<any>(null);
+
+  const [editingBedCharges, setEditingBedCharges] = useState(false);
+  const [editingDoctorConsultation, setEditingDoctorConsultation] = useState(false);
+  const [bedChargesDraft, setBedChargesDraft] = useState<{ daily_rate: number; days: number } | null>(null);
+  const [doctorConsultDraft, setDoctorConsultDraft] = useState<{ consultation_fee: number; days: number } | null>(null);
 
   useEffect(() => {
     loadBillingData();
+    loadFlexibleBillingData();
   }, [bedAllocationId]);
+
+  const loadFlexibleBillingData = async () => {
+    try {
+      const [summary, advance] = await Promise.all([
+        getBillingSummary(bedAllocationId),
+        getTotalAvailableAdvance(bedAllocationId)
+      ]);
+      setFlexibleBillingSummary(summary);
+      setAvailableAdvance(advance);
+    } catch (err) {
+      console.error('Error loading flexible billing data:', err);
+      // Don't show error - new system might not be active yet
+    }
+  };
 
   const loadBillingData = async () => {
     setLoading(true);
@@ -46,6 +79,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
     try {
       await saveIPBilling(bedAllocationId, updatedBilling);
       setBilling(updatedBilling);
+      await loadFlexibleBillingData();
     } catch (err) {
       console.error('Failed to save billing:', err);
       throw err;
@@ -61,6 +95,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
         medicines
       );
       await loadBillingData();
+      await loadFlexibleBillingData();
     } catch (err) {
       console.error('Failed to save medicines:', err);
       throw err;
@@ -116,6 +151,135 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
     }).format(amount);
   };
 
+  const recalculateBillingTotals = (b: IPComprehensiveBilling): IPComprehensiveBilling => {
+    const bedTotal = Number(b.bed_charges.daily_rate || 0) * Number(b.bed_charges.days || 0);
+    const docTotal = Number(b.doctor_consultation.consultation_fee || 0) * Number(b.doctor_consultation.days || 0);
+
+    const bed_charges = { ...b.bed_charges, total_amount: bedTotal };
+    const doctor_consultation = { ...b.doctor_consultation, total_amount: docTotal };
+
+    const otherBillsTotal = (b.other_bills || []).reduce(
+      (sum: number, ob: any) => sum + Number(ob.total_amount || 0),
+      0
+    );
+    const otherBillsPaidTotal = (b.other_bills || []).reduce(
+      (sum: number, ob: any) => sum + Number(ob.paid_amount || 0),
+      0
+    );
+    const receiptsTotal = (b.payment_receipts || []).reduce(
+      (sum: number, r: any) => sum + Number(r.amount || 0),
+      0
+    );
+
+    const summary = {
+      ...b.summary,
+      bed_charges_total: bedTotal,
+      doctor_consultation_total: docTotal,
+      other_bills_total: otherBillsTotal,
+      other_bills_paid_total: otherBillsPaidTotal,
+    };
+
+    const grossTotal =
+      (summary.bed_charges_total || 0) +
+      (summary.doctor_consultation_total || 0) +
+      (summary.doctor_services_total || 0) +
+      (summary.prescribed_medicines_total || 0) +
+      (summary.pharmacy_total || 0) +
+      (summary.lab_total || 0) +
+      (summary.radiology_total || 0) +
+      (summary.other_charges_total || 0) +
+      (summary.other_bills_total || 0);
+
+    const paidTotal =
+      (summary.advance_paid || 0) +
+      receiptsTotal +
+      (summary.other_bills_paid_total || 0);
+
+    const pendingAmount = Math.max(0, grossTotal - (summary.discount || 0) - paidTotal);
+    const netPayable = grossTotal - (summary.advance_paid || 0) - (summary.discount || 0);
+
+    const updatedSummary = {
+      ...summary,
+      gross_total: grossTotal,
+      paid_total: paidTotal,
+      net_payable: netPayable,
+      pending_amount: pendingAmount,
+    };
+
+    const status: IPComprehensiveBilling['status'] =
+      pendingAmount <= 0 ? 'paid' : paidTotal > 0 ? 'partial' : 'pending';
+
+    return {
+      ...b,
+      bed_charges,
+      doctor_consultation,
+      summary: updatedSummary,
+      status,
+    };
+  };
+
+  const handleStartEditBedCharges = () => {
+    if (!billing) return;
+    setBedChargesDraft({
+      daily_rate: Number(billing.bed_charges.daily_rate || 0),
+      days: Number(billing.bed_charges.days || 0),
+    });
+    setEditingBedCharges(true);
+  };
+
+  const handleCancelEditBedCharges = () => {
+    setEditingBedCharges(false);
+    setBedChargesDraft(null);
+  };
+
+  const handleSaveBedCharges = async () => {
+    if (!billing || !bedChargesDraft) return;
+    const updatedBilling = recalculateBillingTotals({
+      ...billing,
+      bed_charges: {
+        ...billing.bed_charges,
+        daily_rate: Number(bedChargesDraft.daily_rate || 0),
+        days: Number(bedChargesDraft.days || 0),
+      },
+    });
+
+    await handleSaveBilling(updatedBilling);
+    setEditingBedCharges(false);
+    setBedChargesDraft(null);
+    await loadBillingData();
+  };
+
+  const handleStartEditDoctorConsultation = () => {
+    if (!billing) return;
+    setDoctorConsultDraft({
+      consultation_fee: Number(billing.doctor_consultation.consultation_fee || 0),
+      days: Number(billing.doctor_consultation.days || 0),
+    });
+    setEditingDoctorConsultation(true);
+  };
+
+  const handleCancelEditDoctorConsultation = () => {
+    setEditingDoctorConsultation(false);
+    setDoctorConsultDraft(null);
+  };
+
+  const handleSaveDoctorConsultation = async () => {
+    if (!billing || !doctorConsultDraft) return;
+    const updatedBilling = recalculateBillingTotals({
+      ...billing,
+      doctor_consultation: {
+        ...billing.doctor_consultation,
+        consultation_fee: Number(doctorConsultDraft.consultation_fee || 0),
+        days: Number(doctorConsultDraft.days || 0),
+      },
+    });
+
+    await handleSaveBilling(updatedBilling);
+    setEditingDoctorConsultation(false);
+    setDoctorConsultDraft(null);
+    await loadBillingData();
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex justify-center items-center">
@@ -154,16 +318,36 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               </p>
             </div>
             <div className="flex gap-3">
+              {availableAdvance > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-semibold">
+                  <Wallet className="h-4 w-4" />
+                  Advance: {formatCurrency(availableAdvance)}
+                </div>
+              )}
               <button
-                onClick={() => setShowPaymentModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md"
+                onClick={() => setShowAdvanceModal(true)}
+                className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold shadow-md"
+              >
+                <Wallet className="h-5 w-5" />
+                Receive Advance
+              </button>
+              <button
+                onClick={() => setShowBillWisePaymentModal(true)}
+                className="flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md"
               >
                 <DollarSign className="h-5 w-5" />
-                Receive Payment
+                Pay Bills
+              </button>
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md"
+              >
+                <DollarSign className="h-5 w-5" />
+                Quick Payment
               </button>
               <button
                 onClick={() => window.print()}
-                className="flex items-center gap-2 px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-2 px-4 py-3 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold shadow-md"
               >
                 <Printer className="h-5 w-5" />
                 Print Bill
@@ -207,7 +391,35 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-gray-900">Bed Charges</h2>
-            <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.bed_charges_total)}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.bed_charges_total)}</span>
+              {!editingBedCharges ? (
+                <button
+                  onClick={handleStartEditBedCharges}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white text-blue-600 rounded-lg shadow-sm border border-gray-200 hover:bg-blue-50 transition-colors"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Edit
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveBedCharges}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save
+                  </button>
+                  <button
+                    onClick={handleCancelEditBedCharges}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="bg-blue-50 p-4 rounded-lg">
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -217,11 +429,33 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               </div>
               <div>
                 <p className="text-gray-600">Daily Rate</p>
-                <p className="font-semibold text-gray-900">{formatCurrency(billing.bed_charges.daily_rate)}/day</p>
+                {editingBedCharges ? (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bedChargesDraft?.daily_rate ?? 0}
+                    onChange={(e) => setBedChargesDraft(prev => ({ daily_rate: Number(e.target.value || 0), days: prev?.days ?? billing.bed_charges.days }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-900">{formatCurrency(billing.bed_charges.daily_rate)}/day</p>
+                )}
               </div>
               <div>
                 <p className="text-gray-600">Days</p>
-                <p className="font-semibold text-gray-900">{billing.bed_charges.days} days</p>
+                {editingBedCharges ? (
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={bedChargesDraft?.days ?? 0}
+                    onChange={(e) => setBedChargesDraft(prev => ({ daily_rate: prev?.daily_rate ?? billing.bed_charges.daily_rate, days: Number(e.target.value || 0) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-900">{billing.bed_charges.days} days</p>
+                )}
               </div>
             </div>
           </div>
@@ -231,7 +465,35 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-gray-900">Doctor Consultation</h2>
-            <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_consultation_total)}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_consultation_total)}</span>
+              {!editingDoctorConsultation ? (
+                <button
+                  onClick={handleStartEditDoctorConsultation}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white text-blue-600 rounded-lg shadow-sm border border-gray-200 hover:bg-blue-50 transition-colors"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Edit
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveDoctorConsultation}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save
+                  </button>
+                  <button
+                    onClick={handleCancelEditDoctorConsultation}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="bg-green-50 p-4 rounded-lg">
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -241,11 +503,33 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               </div>
               <div>
                 <p className="text-gray-600">Fee / Day</p>
-                <p className="font-semibold text-gray-900">{formatCurrency(billing.doctor_consultation.consultation_fee)}</p>
+                {editingDoctorConsultation ? (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={doctorConsultDraft?.consultation_fee ?? 0}
+                    onChange={(e) => setDoctorConsultDraft(prev => ({ consultation_fee: Number(e.target.value || 0), days: prev?.days ?? billing.doctor_consultation.days }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-900">{formatCurrency(billing.doctor_consultation.consultation_fee)}</p>
+                )}
               </div>
               <div>
                 <p className="text-gray-600">Days</p>
-                <p className="font-semibold text-gray-900">{billing.doctor_consultation.days}</p>
+                {editingDoctorConsultation ? (
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={doctorConsultDraft?.days ?? 0}
+                    onChange={(e) => setDoctorConsultDraft(prev => ({ consultation_fee: prev?.consultation_fee ?? billing.doctor_consultation.consultation_fee, days: Number(e.target.value || 0) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-900">{billing.doctor_consultation.days}</p>
+                )}
               </div>
             </div>
             <div className="mt-3 flex justify-end text-sm">
@@ -308,6 +592,9 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                     <th className="px-4 py-2 text-right">Unit Price</th>
                     <th className="px-4 py-2 text-right">Total</th>
                     <th className="px-4 py-2 text-right">Paid</th>
+                    <th className="px-4 py-2 text-right">Balance</th>
+                    <th className="px-4 py-2 text-center">Status</th>
+                    <th className="px-4 py-2 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -319,12 +606,43 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                       <td className="px-4 py-2 text-right">{formatCurrency(Number(b.unit_price || 0))}</td>
                       <td className="px-4 py-2 text-right font-semibold">{formatCurrency(Number(b.total_amount || 0))}</td>
                       <td className="px-4 py-2 text-right">{formatCurrency(Number(b.paid_amount || 0))}</td>
+                      <td className="px-4 py-2 text-right">{formatCurrency(Number(b.balance_amount ?? (Number(b.total_amount || 0) - Number(b.paid_amount || 0))))}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          b.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
+                          b.payment_status === 'partial' ? 'bg-orange-100 text-orange-800' :
+                          b.payment_status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {(b.payment_status || 'pending').toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {b.payment_status !== 'paid' && b.payment_status !== 'cancelled' && Number(b.balance_amount ?? (Number(b.total_amount || 0) - Number(b.paid_amount || 0))) > 0 ? (
+                          <button
+                            onClick={() => {
+                              setSelectedOtherBill(b);
+                              setShowOtherBillPaymentModal(true);
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                            Receive
+                          </button>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-gray-50 font-bold">
                     <td colSpan={4} className="px-4 py-2 text-right">Total Other Bills:</td>
                     <td className="px-4 py-2 text-right text-blue-600">{formatCurrency(billing.summary.other_bills_total || 0)}</td>
                     <td className="px-4 py-2 text-right text-green-700">{formatCurrency(billing.summary.other_bills_paid_total || 0)}</td>
+                    <td className="px-4 py-2 text-right text-orange-700">
+                      {formatCurrency(Math.max(0, (billing.summary.other_bills_total || 0) - (billing.summary.other_bills_paid_total || 0)))}
+                    </td>
+                    <td colSpan={2} className="px-4 py-2" />
                   </tr>
                 </tbody>
               </table>
@@ -540,6 +858,35 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                 </div>
               </div>
             )}
+
+            {/* Flexible Billing Summary (if available) */}
+            {flexibleBillingSummary && (
+              <div className="mt-4 bg-purple-50 rounded-lg border border-purple-200 overflow-hidden">
+                <div className="px-4 py-3 bg-purple-100 border-b border-purple-200">
+                  <h3 className="font-bold text-purple-900">Bill-wise Payment Summary</h3>
+                </div>
+                <div className="p-4 space-y-2">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Total Advance:</span>
+                      <span className="ml-2 font-semibold text-purple-700">{formatCurrency(flexibleBillingSummary.total_advance)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Available Advance:</span>
+                      <span className="ml-2 font-semibold text-purple-700">{formatCurrency(flexibleBillingSummary.available_advance)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Gross Total:</span>
+                      <span className="ml-2 font-semibold text-gray-900">{formatCurrency(flexibleBillingSummary.gross_total)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Paid Total:</span>
+                      <span className="ml-2 font-semibold text-green-700">{formatCurrency(flexibleBillingSummary.paid_total)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -556,8 +903,58 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
         patientName={billing.patient.name}
         totalAmount={billing.summary.gross_total}
         pendingAmount={billing.summary.pending_amount}
-        onPaymentSuccess={loadBillingData}
+        onPaymentSuccess={() => {
+          loadBillingData();
+          loadFlexibleBillingData();
+        }}
       />
+
+      {/* Advance Receipt Modal */}
+      <IPAdvanceReceiptModal
+        isOpen={showAdvanceModal}
+        onClose={() => setShowAdvanceModal(false)}
+        bedAllocationId={bedAllocationId}
+        patientId={billing.patient.id}
+        patientName={billing.patient.name}
+        onSuccess={() => {
+          loadFlexibleBillingData();
+        }}
+      />
+
+      {/* Bill-wise Payment Modal */}
+      <IPBillWisePaymentModal
+        isOpen={showBillWisePaymentModal}
+        onClose={() => setShowBillWisePaymentModal(false)}
+        bedAllocationId={bedAllocationId}
+        patientId={billing.patient.id}
+        patientName={billing.patient.name}
+        onPaymentSuccess={() => {
+          loadBillingData();
+          loadFlexibleBillingData();
+        }}
+      />
+
+      {showOtherBillPaymentModal && selectedOtherBill && (
+        <OtherBillsPaymentModal
+          isOpen={showOtherBillPaymentModal}
+          onClose={() => {
+            setShowOtherBillPaymentModal(false);
+            setSelectedOtherBill(null);
+          }}
+          bill={{
+            id: selectedOtherBill.id,
+            bill_number: selectedOtherBill.bill_number,
+            total_amount: Number(selectedOtherBill.total_amount || 0),
+            balance_amount: Number(selectedOtherBill.balance_amount ?? (Number(selectedOtherBill.total_amount || 0) - Number(selectedOtherBill.paid_amount || 0))),
+            payment_status: selectedOtherBill.payment_status,
+          }}
+          onSuccess={() => {
+            setShowOtherBillPaymentModal(false);
+            setSelectedOtherBill(null);
+            loadBillingData();
+          }}
+        />
+      )}
     </>
   );
 }

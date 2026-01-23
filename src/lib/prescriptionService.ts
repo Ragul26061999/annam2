@@ -56,6 +56,7 @@ export interface PrescriptionData {
   patient_id: string;
   doctor_id: string;
   appointment_id?: string;
+  encounter_id?: string;
   medicines: PrescriptionMedicine[];
   instructions?: string;
 }
@@ -138,47 +139,41 @@ export async function createPrescription(prescriptionData: PrescriptionData): Pr
   try {
     const prescriptionId = await generatePrescriptionId();
     
-    // First create the prescription
-    const { data: prescriptionResult, error: prescriptionError } = await supabase
-      .from('prescriptions')
-      .insert({
-        prescription_id: prescriptionId,
-        patient_id: prescriptionData.patient_id,
-        doctor_id: prescriptionData.doctor_id,
-        appointment_id: prescriptionData.appointment_id,
-        instructions: prescriptionData.instructions,
-        status: 'active'
-      })
-      .select('*')
-      .single();
+    // First create the prescription using RPC to bypass schema cache
+    const { data: rpcResult, error: prescriptionError } = await supabase
+      .rpc('create_prescription_with_items', {
+        p_prescription_id: prescriptionId,
+        p_patient_id: prescriptionData.patient_id,
+        p_doctor_id: prescriptionData.doctor_id,
+        p_appointment_id: prescriptionData.appointment_id,
+        p_instructions: prescriptionData.instructions,
+        p_medications: JSON.stringify(prescriptionData.medicines),
+        p_encounter_id: prescriptionData.encounter_id || null
+      });
 
     if (prescriptionError) {
-      console.error('Error creating prescription:', prescriptionError);
+      console.error('Error creating prescription:', {
+        message: prescriptionError?.message,
+        details: prescriptionError?.details,
+        hint: prescriptionError?.hint,
+        code: prescriptionError?.code,
+        raw: prescriptionError,
+        stringified: JSON.stringify(prescriptionError, (key, value) => {
+          if (typeof value === 'function') return '[Function]';
+          if (value instanceof Error) return value.toString();
+          return value;
+        }, 2),
+        keys: Object.getOwnPropertyNames(prescriptionError || {}),
+        constructor: prescriptionError?.constructor?.name
+      });
       return { prescription: null, error: prescriptionError };
     }
 
-    // Then create prescription items
-    const prescriptionItems = prescriptionData.medicines.map(medicine => ({
-      prescription_id: prescriptionResult.id,
-      medication_id: medicine.medication_id,
-      quantity: medicine.quantity,
-      dosage: medicine.dosage,
-      frequency: medicine.frequency,
-      duration: medicine.duration,
-      instructions: medicine.instructions,
-      status: 'pending'
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('prescription_items')
-      .insert(prescriptionItems);
-
-    if (itemsError) {
-      console.error('Error creating prescription items:', itemsError);
-      // Rollback prescription creation
-      await supabase.from('prescriptions').delete().eq('id', prescriptionResult.id);
-      return { prescription: null, error: itemsError };
+    if (!rpcResult || rpcResult.length === 0 || !rpcResult[0].success) {
+      return { prescription: null, error: { message: rpcResult?.[0]?.error_message || 'Unknown error' } };
     }
+
+    const prescriptionIdResult = rpcResult[0].prescription_id;
 
     // Fetch the complete prescription with related data
     const { data, error } = await supabase
@@ -192,18 +187,45 @@ export async function createPrescription(prescriptionData: PrescriptionData): Pr
           specialization,
           user:users(name, phone, email)
         ),
-        appointment:appointments(id, appointment_id, appointment_date, appointment_time),
         prescription_items(
           *,
-          medication:medications(id, name, generic_name, strength, unit_price)
+          medication:medications(id, name, generic_name, strength, selling_price)
         )
       `)
-      .eq('id', prescriptionResult.id)
+      .eq('id', prescriptionIdResult)
       .single();
 
     if (error) {
-      console.error('Error fetching created prescription:', error);
-      return { prescription: null, error };
+      console.error('Error fetching created prescription:', {
+        message: (error as any)?.message,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+        code: (error as any)?.code,
+        raw: error,
+        stringified: JSON.stringify(error, (key, value) => {
+          if (typeof value === 'function') return '[Function]';
+          if (value instanceof Error) return value.toString();
+          return value;
+        }, 2),
+        keys: Object.getOwnPropertyNames(error || {}),
+        constructor: (error as any)?.constructor?.name
+      });
+      return {
+        prescription: {
+          id: prescriptionIdResult,
+          prescription_id: prescriptionId,
+          patient_id: prescriptionData.patient_id,
+          doctor_id: prescriptionData.doctor_id,
+          appointment_id: prescriptionData.appointment_id,
+          issue_date: '',
+          medicines: prescriptionData.medicines,
+          instructions: prescriptionData.instructions,
+          status: 'active',
+          created_at: '',
+          updated_at: ''
+        } as any,
+        error: null
+      };
     }
 
     // Transform prescription_items to medicines format for backward compatibility
@@ -260,10 +282,9 @@ export async function getPrescriptions(options: {
           specialization,
           user:users(name, phone, email)
         ),
-        appointment:appointments(id, appointment_id, appointment_date, appointment_time),
         prescription_items(
           *,
-          medication:medications(id, name, generic_name, strength, unit_price)
+          medication:medications(id, name, generic_name, strength, selling_price)
         )
       `, { count: 'exact' });
 
@@ -354,10 +375,9 @@ export async function getPrescriptionById(prescriptionId: string): Promise<{ pre
           qualification,
           user:users(name, phone, email)
         ),
-        appointment:appointments(id, appointment_id, appointment_date, appointment_time, diagnosis),
         prescription_items(
           *,
-          medication:medications(id, name, generic_name, strength, unit_price)
+          medication:medications(id, name, generic_name, strength, selling_price)
         )
       `)
       .eq('id', prescriptionId)
@@ -439,8 +459,7 @@ export async function getPatientPrescriptions(patientId: string): Promise<{ pres
           doctor_id,
           specialization,
           user:users(name, phone, email)
-        ),
-        appointment:appointments(id, appointment_id, appointment_date, appointment_time)
+        )
       `)
       .eq('patient_id', patientId)
       .order('created_at', { ascending: false });
@@ -467,7 +486,6 @@ export async function getDoctorPrescriptions(doctorId: string): Promise<{ prescr
       .select(`
         *,
         patient:patients(id, patient_id, name, phone, email),
-        appointment:appointments(id, appointment_id, appointment_date, appointment_time)
       `)
       .eq('doctor_id', doctorId)
       .order('created_at', { ascending: false });
@@ -601,7 +619,7 @@ export async function updatePrescriptionMedicines(
         ),
         prescription_items(
           *,
-          medication:medications(id, name, generic_name, strength, unit_price)
+          medication:medications(id, name, generic_name, strength, selling_price)
         )
       `)
       .eq('id', prescriptionId)

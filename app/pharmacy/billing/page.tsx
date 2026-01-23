@@ -277,11 +277,17 @@ export default function PharmacyBillingPage() {
         
         // If no amount paid, it's pending
         if (!amountPaid || amountPaid <= 0) return 'pending';
-        
-        // Consider roundoff tolerance (within 0.05 rupee difference for very small differences)
+
+        // Roundoff handling:
+        // Example: payable total 144.36 might be rounded and collected as 144.00.
+        // Treat as fully paid if amountPaid matches the nearest whole-rupee payable.
+        const roundedPayable = Math.round(totalAmount);
+        const matchesRoundedPayable = Math.abs(roundedPayable - amountPaid) <= 0.01;
+
+        // Also allow tiny floating point differences (e.g. 0.01-0.05)
         const difference = Math.abs(totalAmount - amountPaid);
-        const isFullyPaid = difference <= 0.05; // Reduced tolerance for small differences
-        
+        const isFullyPaid = matchesRoundedPayable || difference <= 0.05;
+
         return isFullyPaid ? 'paid' : 'partial';
       };
 
@@ -315,6 +321,36 @@ export default function PharmacyBillingPage() {
           staff_name: staffMap[bill.staff_id]?.full_name || 'Unknown Staff'
         };
       })
+
+      // Auto-correct DB payment_status for non-credit bills that qualify as paid after roundoff.
+      // This ensures UI + reports reflect "paid" instead of lingering "partial".
+      try {
+        const idsToMarkPaid = (billsData || [])
+          .filter((bill: any) => {
+            const totalAmount = bill.total || 0;
+            const amountPaid = bill.amount_paid || 0;
+            const currentStatus = bill.payment_status || 'pending';
+            const paymentMethod = bill.payment_method || 'cash';
+            if (paymentMethod === 'credit') return false;
+            if (currentStatus === 'paid') return false;
+            const correctedStatus = getPaymentStatusWithRoundoff(totalAmount, amountPaid, currentStatus, paymentMethod);
+            return correctedStatus === 'paid';
+          })
+          .map((b: any) => b.id);
+
+        if (idsToMarkPaid.length > 0) {
+          const { error: updErr } = await supabase
+            .from('billing')
+            .update({ payment_status: 'paid' })
+            .in('id', idsToMarkPaid);
+
+          if (updErr) {
+            console.warn('Failed to auto-correct payment_status to paid:', updErr);
+          }
+        }
+      } catch (autoFixErr) {
+        console.warn('Auto-correct payment_status error:', autoFixErr);
+      }
 
       setBills(mappedBills)
 

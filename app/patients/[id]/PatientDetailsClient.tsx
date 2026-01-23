@@ -57,6 +57,7 @@ import ClinicalRecordsModal from '../../../src/components/ip-clinical/ClinicalRe
 import { PatientBillingPrint } from '../../../src/components/PatientBillingPrint';
 import BarcodeModal from '../../../src/components/BarcodeModal';
 import { getPatientCompleteHistory, PatientTimelineEvent, PatientTimelineEventType } from '../../../src/lib/patientTimelineService';
+import { getPharmacyBills } from '../../../src/lib/pharmacyService';
 
 interface Patient {
   id: string;
@@ -203,6 +204,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [xrayOrders, setXrayOrders] = useState<any[]>([]);
   const [scanOrders, setScanOrders] = useState<any[]>([]);
+  const [pharmacyBills, setPharmacyBills] = useState<any[]>([]);
+  const [expandedPharmacyBills, setExpandedPharmacyBills] = useState<Set<string>>(new Set());
+  const [pharmacyBillItems, setPharmacyBillItems] = useState<Record<string, any[]>>({});
+  const [pharmacyBillItemsLoading, setPharmacyBillItemsLoading] = useState<Record<string, boolean>>({});
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [completeHistory, setCompleteHistory] = useState<PatientTimelineEvent[]>([]);
@@ -364,6 +369,15 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
         setScanOrders([]);
       }
 
+      // Fetch pharmacy bills (OP/Pharmacy) for this patient
+      try {
+        const bills = await getPharmacyBills(patientData.id);
+        setPharmacyBills(bills || []);
+      } catch (pharmacyErr) {
+        console.warn('Failed to load pharmacy bills:', pharmacyErr);
+        setPharmacyBills([]);
+      }
+
       // Timeline will be loaded on demand
     } catch (err) {
       console.error('Error fetching patient data:', err);
@@ -473,6 +487,109 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
     return n.toLocaleString('en-IN');
+  };
+
+  const togglePharmacyBill = async (billId: string) => {
+    setExpandedPharmacyBills(prev => {
+      const next = new Set(prev);
+      if (next.has(billId)) next.delete(billId);
+      else next.add(billId);
+      return next;
+    });
+
+    if (pharmacyBillItems[billId]) return;
+    if (pharmacyBillItemsLoading[billId]) return;
+
+    setPharmacyBillItemsLoading(prev => ({ ...prev, [billId]: true }));
+    try {
+      // NOTE: billing_item has no FK to medications in this DB, so we cannot use embedded
+      // select like `medicine:medications(name)`.
+      const baseSelect = 'id, description, qty, unit_amount, total_amount, batch_number, expiry_date, medicine_id';
+
+      // Schema compatibility: some deployments use billing_id, others use bill_id.
+      const r1 = await supabase
+        .from('billing_item')
+        .select(baseSelect)
+        .eq('billing_id', billId)
+        .order('id', { ascending: true });
+
+      const materializeItems = async (rows: any[]) => {
+        const medIds = Array.from(new Set((rows || []).map(r => r.medicine_id).filter(Boolean)));
+        let medMap: Record<string, { name?: string }> = {};
+        if (medIds.length > 0) {
+          const medsRes = await supabase
+            .from('medications')
+            .select('id, name')
+            .in('id', medIds as string[]);
+
+          if (medsRes.error) {
+            console.warn('Failed to load medications for billing items:', {
+              message: (medsRes.error as any)?.message,
+              details: (medsRes.error as any)?.details,
+              hint: (medsRes.error as any)?.hint,
+              code: (medsRes.error as any)?.code,
+              raw: medsRes.error,
+              stringified: JSON.stringify(medsRes.error)
+            });
+          } else {
+            medMap = (medsRes.data || []).reduce((acc: any, m: any) => {
+              acc[m.id] = { name: m.name };
+              return acc;
+            }, {});
+          }
+        }
+
+        return (rows || []).map((r: any) => ({
+          ...r,
+          medicine: r.medicine_id ? medMap[r.medicine_id] || null : null
+        }));
+      };
+
+      if (!r1.error) {
+        const merged = await materializeItems(r1.data || []);
+        setPharmacyBillItems(prev => ({ ...prev, [billId]: merged }));
+        return;
+      }
+
+      // Retry fallback
+      const r2 = await supabase
+        .from('billing_item')
+        .select(baseSelect)
+        .eq('bill_id', billId)
+        .order('id', { ascending: true });
+
+      if (r2.error) {
+        console.error('Failed to load pharmacy bill items:', {
+          primary: {
+            message: (r1.error as any)?.message,
+            details: (r1.error as any)?.details,
+            hint: (r1.error as any)?.hint,
+            code: (r1.error as any)?.code,
+            raw: r1.error
+          },
+          fallback: {
+            message: (r2.error as any)?.message,
+            details: (r2.error as any)?.details,
+            hint: (r2.error as any)?.hint,
+            code: (r2.error as any)?.code,
+            raw: r2.error
+          },
+          stringified: {
+            primary: JSON.stringify(r1.error),
+            fallback: JSON.stringify(r2.error)
+          }
+        });
+        setPharmacyBillItems(prev => ({ ...prev, [billId]: [] }));
+      } else {
+        const merged = await materializeItems(r2.data || []);
+        setPharmacyBillItems(prev => ({ ...prev, [billId]: merged }));
+      }
+    } catch (e) {
+      console.error('Failed to load pharmacy bill items:', e);
+      setPharmacyBillItems(prev => ({ ...prev, [billId]: [] }));
+    } finally {
+      setPharmacyBillItemsLoading(prev => ({ ...prev, [billId]: false }));
+    }
   };
 
   if (loading) {
@@ -1519,16 +1636,52 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     const ipBalance = comprehensiveBilling?.summary.pending_amount || 0;
 
                     // 3. Lab & Radiology Billing (included in comprehensive billing)
-                    const labTotal = comprehensiveBilling?.summary.lab_total || 0;
-                    const radTotal = comprehensiveBilling?.summary.radiology_total || 0;
+                    const hasComprehensiveIp = Boolean(comprehensiveBilling);
+
+                    const opLabTotal = (labOrders || []).reduce((sum: number, o: any) => {
+                      const cost = o?.test_catalog?.test_cost ?? o?.amount ?? o?.test_cost;
+                      return sum + (Number(cost) || 0);
+                    }, 0);
+
+                    const opRadiologyTotal = (radiologyOrders || []).reduce((sum: number, o: any) => {
+                      const cost = o?.test_catalog?.test_cost ?? o?.amount ?? o?.test_cost;
+                      return sum + (Number(cost) || 0);
+                    }, 0);
+
+                    const opScanTotal = (scanOrders || []).reduce((sum: number, o: any) => {
+                      const cost = o?.test_catalog?.test_cost ?? o?.amount ?? o?.test_cost;
+                      return sum + (Number(cost) || 0);
+                    }, 0);
+
+                    const opXrayTotal = (xrayOrders || []).reduce((sum: number, o: any) => {
+                      const cost = o?.amount ?? o?.total_amount ?? o?.test_cost;
+                      return sum + (Number(cost) || 0);
+                    }, 0);
+
+                    const labTotal = hasComprehensiveIp ? (comprehensiveBilling?.summary.lab_total || 0) : opLabTotal;
+                    const radTotal = hasComprehensiveIp
+                      ? (comprehensiveBilling?.summary.radiology_total || 0)
+                      : (opRadiologyTotal + opScanTotal + opXrayTotal);
                     const diagTotal = labTotal + radTotal;
-                    const diagPaid = 0; // Included in IP billing payments
-                    const diagBalance = 0; // Included in IP billing balance
+
+                    const pharmacyTotal = hasComprehensiveIp
+                      ? (comprehensiveBilling?.summary.pharmacy_total || 0)
+                      : (pharmacyBills || []).reduce((sum: number, b: any) => {
+                        const amt = b?.total_amount ?? b?.subtotal ?? b?.grand_total;
+                        return sum + (Number(amt) || 0);
+                      }, 0);
+
+                    const diagPaid = 0;
+                    const diagBalance = 0;
 
                     // Grand Totals
-                    const overallFee = regTotal + ipTotal;
+                    const overallFee = hasComprehensiveIp
+                      ? (regTotal + ipTotal)
+                      : (regTotal + diagTotal + pharmacyTotal);
                     const totalPaid = regPaid + ipPaid;
-                    const totalRemaining = regBalance + ipBalance;
+                    const totalRemaining = hasComprehensiveIp
+                      ? (regBalance + ipBalance)
+                      : (regBalance + diagTotal + pharmacyTotal);
 
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1538,7 +1691,8 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                           <div className="mt-2 text-xs text-gray-400 flex gap-2">
                              <span>Reg: ₹{formatMoney(regTotal)}</span> • 
                              <span>IP: ₹{formatMoney(ipTotal)}</span> • 
-                             <span>Diag: ₹{formatMoney(diagTotal)}</span>
+                             <span>Diag: ₹{formatMoney(diagTotal)}</span> •
+                             <span>Pharm: ₹{formatMoney(pharmacyTotal)}</span>
                           </div>
                         </div>
                         <div className="bg-green-500/20 backdrop-blur-sm p-6 rounded-2xl border border-green-500/30">
@@ -1560,6 +1714,134 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                       </div>
                     );
                   })()}
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <h5 className="font-bold text-gray-900 mb-4 text-sm uppercase flex items-center gap-2">
+                    <Pill size={16} /> Pharmacy Transactions
+                  </h5>
+
+                  {(() => {
+                    const bills = pharmacyBills || [];
+
+                    const normalizeStatus = (bill: any) => {
+                      const method = String(bill?.payment_method || '').toLowerCase();
+                      if (method === 'credit') return 'pending';
+
+                      const total = Number(bill?.total_amount ?? bill?.total ?? bill?.subtotal ?? 0) || 0;
+                      const paid = Number(bill?.amount_paid ?? 0) || 0;
+                      if (!paid || paid <= 0) return 'pending';
+
+                      const roundedPayable = Math.round(total);
+                      const matchesRounded = Math.abs(roundedPayable - paid) <= 0.01;
+                      const tinyDiff = Math.abs(total - paid) <= 0.05;
+
+                      return (matchesRounded || tinyDiff) ? 'paid' : 'partial';
+                    };
+
+                    const totalBills = bills.length;
+                    const totalAmount = bills.reduce((s: number, b: any) => s + (Number(b?.total_amount ?? b?.total ?? b?.subtotal ?? 0) || 0), 0);
+                    const paidAmount = bills
+                      .filter((b: any) => normalizeStatus(b) === 'paid')
+                      .reduce((s: number, b: any) => s + (Number(b?.total_amount ?? b?.total ?? b?.subtotal ?? 0) || 0), 0);
+                    const pendingAmount = Math.max(0, totalAmount - paidAmount);
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                        <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100">
+                          <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Total Bills</p>
+                          <p className="text-2xl font-black text-gray-900">{totalBills}</p>
+                        </div>
+                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1">Total Amount</p>
+                          <p className="text-2xl font-black text-gray-900">₹{formatMoney(totalAmount)}</p>
+                        </div>
+                        <div className="bg-green-50 p-5 rounded-2xl border border-green-100">
+                          <p className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-1">Paid</p>
+                          <p className="text-2xl font-black text-gray-900">₹{formatMoney(paidAmount)}</p>
+                        </div>
+                        <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100">
+                          <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Pending</p>
+                          <p className="text-2xl font-black text-gray-900">₹{formatMoney(pendingAmount)}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {pharmacyBills.length === 0 ? (
+                    <div className="text-sm text-gray-600">No pharmacy bills found.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {pharmacyBills.map((bill: any) => {
+                        const billId = bill.id;
+                        const isOpen = expandedPharmacyBills.has(billId);
+                        const items = pharmacyBillItems[billId];
+                        const isLoading = Boolean(pharmacyBillItemsLoading[billId]);
+                        const total = Number(bill.total_amount ?? bill.total ?? bill.subtotal ?? 0) || 0;
+                        const status = String(bill.payment_status || '').toLowerCase() || 'pending';
+
+                        return (
+                          <div key={billId} className="rounded-2xl border border-gray-200 overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => togglePharmacyBill(billId)}
+                              className="w-full px-5 py-4 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between"
+                            >
+                              <div className="text-left">
+                                <div className="font-bold text-gray-900">{bill.bill_number || billId}</div>
+                                <div className="text-xs text-gray-500">
+                                  {new Date(bill.created_at || bill.bill_date || Date.now()).toLocaleString()}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                  <div className="font-bold text-gray-900">₹{formatMoney(total)}</div>
+                                  <div className="text-xs text-gray-500 uppercase">{status}</div>
+                                </div>
+                                <ChevronRight className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                              </div>
+                            </button>
+
+                            {isOpen && (
+                              <div className="p-5 bg-white">
+                                {isLoading ? (
+                                  <div className="text-sm text-gray-600">Loading items...</div>
+                                ) : (items && items.length > 0 ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                      <thead>
+                                        <tr className="text-xs uppercase text-gray-500 border-b">
+                                          <th className="py-2 pr-4 text-left">Item</th>
+                                          <th className="py-2 pr-4 text-right">Qty</th>
+                                          <th className="py-2 pr-4 text-right">Rate</th>
+                                          <th className="py-2 text-right">Amount</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y">
+                                        {items.map((it: any) => (
+                                          <tr key={it.id} className="hover:bg-gray-50">
+                                            <td className="py-2 pr-4">
+                                              <div className="font-semibold text-gray-900">{it.medicine?.name || it.description || 'Item'}</div>
+                                              <div className="text-xs text-gray-500">{it.batch_number ? `Batch: ${it.batch_number}` : ''}</div>
+                                            </td>
+                                            <td className="py-2 pr-4 text-right">{Number(it.qty || 0)}</td>
+                                            <td className="py-2 pr-4 text-right">₹{formatMoney(Number(it.unit_amount || 0))}</td>
+                                            <td className="py-2 text-right font-bold">₹{formatMoney(Number(it.total_amount || 0))}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-gray-600">No items found for this bill.</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-orange-50/30 p-8 rounded-3xl border-2 border-orange-100 border-dashed">

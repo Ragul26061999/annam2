@@ -119,9 +119,23 @@ function NewBillingPageInner() {
             .single();
           
           if (staffError) {
-            console.error('Error finding staff record:', staffError);
-            // If no staff record found, we'll handle this gracefully
-            setStaffId(user.id); // Fallback to user ID
+            console.error('Error finding staff record:', {
+              message: (staffError as any)?.message,
+              details: (staffError as any)?.details,
+              hint: (staffError as any)?.hint,
+              code: (staffError as any)?.code,
+              raw: staffError,
+              stringified: JSON.stringify(staffError, (key, value) => {
+                if (typeof value === 'function') return '[Function]';
+                if (value instanceof Error) return value.toString();
+                return value;
+              }, 2),
+              keys: Object.getOwnPropertyNames(staffError || {}),
+              constructor: (staffError as any)?.constructor?.name
+            });
+            // No staff mapping found; do NOT fall back to user.id (billing.staff_id must reference staff.id)
+            setCurrentStaff(null);
+            setStaffId('');
           } else if (staffData) {
             setCurrentStaff(staffData);
             setStaffId(staffData.id);
@@ -754,6 +768,35 @@ function NewBillingPageInner() {
       // Generate bill number using our simplified format
       const billNumber = await generateBillNumber();
 
+      // Validate staff_id to prevent FK violations (billing.staff_id -> staff.id)
+      let validatedStaffId: string | null = null;
+      if (staffId) {
+        const { data: staffCheck, error: staffCheckError } = await supabase
+          .from('staff')
+          .select('id')
+          .eq('id', staffId)
+          .maybeSingle();
+
+        if (staffCheckError) {
+          console.error('Error validating staffId before billing insert:', {
+            message: (staffCheckError as any)?.message,
+            details: (staffCheckError as any)?.details,
+            hint: (staffCheckError as any)?.hint,
+            code: (staffCheckError as any)?.code,
+            raw: staffCheckError
+          });
+        }
+
+        if (staffCheck?.id) {
+          validatedStaffId = staffCheck.id;
+        } else {
+          console.warn('Invalid staffId detected; inserting billing with staff_id = NULL to avoid FK violation', {
+            staffId,
+            currentUserId: currentUser?.id
+          });
+        }
+      }
+
       // Create pharmacy bill (handle prod schema differences: total_amount vs total)
       let billData: any = null;
       {
@@ -769,7 +812,7 @@ function NewBillingPageInner() {
           customer_name: customer.name.trim(),
           customer_phone: customer.type === 'patient' ? (customer.phone ?? null) : (customer.phone ?? '').trim(),
           customer_type: customer.type,
-          staff_id: staffId || null
+          staff_id: validatedStaffId
         } as any;
 
         // Attempt 1: insert with total_amount
@@ -834,6 +877,43 @@ function NewBillingPageInner() {
         if (payErr) throw payErr;
       }
 
+      // Roundoff payment-status correction:
+      // If payable total is e.g. 144.36 and collected is 144.00, treat as paid.
+      try {
+        const { data: latestBillRow, error: latestBillErr } = await supabase
+          .from('billing')
+          .select('id, total_amount, total, amount_paid, payment_method, payment_status')
+          .eq('id', billData!.id)
+          .single();
+
+        if (latestBillErr) {
+          console.warn('Failed to re-check billing totals for roundoff status:', latestBillErr);
+        } else if (latestBillRow) {
+          const total = Number((latestBillRow as any).total_amount ?? (latestBillRow as any).total ?? 0) || 0;
+          const paid = Number((latestBillRow as any).amount_paid ?? 0) || 0;
+          const method = String((latestBillRow as any).payment_method ?? '').toLowerCase();
+          const currentStatus = String((latestBillRow as any).payment_status ?? '').toLowerCase();
+
+          const roundedPayable = Math.round(total);
+          const matchesRoundedPayable = Math.abs(roundedPayable - paid) <= 0.01;
+          const tinyDiff = Math.abs(total - paid) <= 0.05;
+          const shouldMarkPaid = method !== 'credit' && currentStatus !== 'paid' && paid > 0 && (matchesRoundedPayable || tinyDiff);
+
+          if (shouldMarkPaid) {
+            const { error: updErr } = await supabase
+              .from('billing')
+              .update({ payment_status: 'paid' })
+              .eq('id', billData!.id);
+
+            if (updErr) {
+              console.warn('Failed to update payment_status to paid after roundoff check:', updErr);
+            }
+          }
+        }
+      } catch (roundoffErr) {
+        console.warn('Roundoff payment-status correction error:', roundoffErr);
+      }
+
       // Stock transactions and inventory adjustments are handled automatically by database triggers
 
       // Show success modal with receipt (snapshot payments for printing)
@@ -849,46 +929,6 @@ function NewBillingPageInner() {
       });
       setShowBillSuccess(true);
       setShowPaymentModal(false);
-
-      if (linkedPrescriptionId) {
-        try {
-          // Mark prescription items dispensed based on billed medicines
-          for (const bi of billItems) {
-            const matched = linkedPrescriptionItems.find(li => li.medication_id === bi.medicine.id);
-            if (!matched) continue;
-
-            const nextDispensedQty = Math.min(
-              Number(matched.quantity) || 0,
-              (Number(matched.dispensed_quantity) || 0) + (Number(bi.quantity) || 0)
-            );
-            const { error: itemUpdErr } = await supabase
-              .from('prescription_items')
-              .update({
-                status: 'dispensed',
-                dispensed_quantity: nextDispensedQty
-              })
-              .eq('id', matched.prescription_item_id);
-            if (itemUpdErr) throw itemUpdErr;
-          }
-
-          // If all items are dispensed, update prescription header
-          const { data: remaining, error: remErr } = await supabase
-            .from('prescription_items')
-            .select('id, status')
-            .eq('prescription_id', linkedPrescriptionId);
-          if (remErr) throw remErr;
-          const allDispensed = (remaining || []).length > 0 && (remaining || []).every((r: any) => r.status === 'dispensed');
-          if (allDispensed) {
-            const { error: prescUpdErr } = await supabase
-              .from('prescriptions')
-              .update({ status: 'dispensed' })
-              .eq('id', linkedPrescriptionId);
-            if (prescUpdErr) throw prescUpdErr;
-          }
-        } catch (statusErr: any) {
-          console.error('Failed to update prescription status after billing - Details:', JSON.stringify(statusErr, null, 2));
-        }
-      }
 
       // Reset form
       setBillItems([]);
@@ -1062,6 +1102,158 @@ function NewBillingPageInner() {
     `;
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(thermalContent);
+      printWindow.document.close();
+    }
+  };
+
+  const showThermalPreviewWithLogo = () => {
+    if (!generatedBill) return;
+
+    const now = new Date();
+    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    const patientUhid = customer.type === 'patient' ? customer.patient_id : 'WALK-IN';
+
+    let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
+    if (salesType === 'CREDIT') {
+      salesType = 'CREDIT';
+    }
+
+    const itemsHtml = generatedBill.items.map((item: any, index: number) => `
+      <tr>
+        <td class="items-8cm">${index + 1}.</td>
+        <td class="items-8cm">${item.medicine?.name || item.name}</td>
+        <td class="items-8cm text-center">${item.quantity}</td>
+        <td class="items-8cm text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const subtotal = Number(generatedBill.totals?.subtotal || 0);
+    const discount = Number(generatedBill.totals?.discountAmount || 0);
+    const tax = Number(generatedBill.totals?.taxAmount || 0);
+    const totalAmount = Number(generatedBill.totals?.totalAmount || 0);
+
+    const thermalContent = `
+      <html>
+        <head>
+          <title>Thermal Receipt - ${generatedBill.bill_number}</title>
+          <style>
+            @page { margin: 3mm 8mm 3mm 3mm; size: 85mm 297mm; }
+            body { 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
+              margin: 0; 
+              padding: 2px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 85mm;
+            }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .logo { width: 300px; height: auto; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <img src="/logo/annamPharmacy.png" alt="ANNAM LOGO" class="logo" />
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div class="footer-7cm">Gst No: 33AJWPR2713G2ZZ</div>
+            <div style="margin-top: 5px; font-weight: bold;">INVOICE</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${generatedBill.bill_number}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${customer.name}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${formatISTDate(getISTDate())} ${formatISTTime(getISTDate())}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Sales Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${salesType}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Drug Name</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line items-8cm">
+              <span>Taxable Amount</span>
+              <span>${(subtotal - discount).toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
+              <span>${discount.toFixed(2)}</span>
+            </div>
+            <div class="totals-line items-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
+              <span>${(tax / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-8cm">
+              <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
+              <span>${(tax / 2).toFixed(2)}</span>
+            </div>
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${totalAmount.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${printedDateTime}</span>
+              <span>Pharmacist Sign</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=450,height=650');
     if (printWindow) {
       printWindow.document.write(thermalContent);
       printWindow.document.close();
@@ -1631,7 +1823,7 @@ function NewBillingPageInner() {
                     {billTotals.taxAmount > 0 && (
                       <div className="flex justify-between">
                         <span className="text-slate-600">Tax ({billTotals.taxPercent}%)</span>
-                        <span className="font-medium text-slate-900">₹{Math.round(billTotals.taxAmount)}</span>
+                        <span className="text-lg font-semibold text-emerald-600">₹{Math.round(billTotals.taxAmount)}</span>
                       </div>
                     )}
                     <div className="mt-2 flex items-center justify-between border-top border-emerald-200 pt-1">
@@ -1985,6 +2177,13 @@ function NewBillingPageInner() {
                 >
                   <Eye className="w-4 h-4" />
                   Thermal Preview
+                </button>
+                <button
+                  onClick={() => showThermalPreviewWithLogo()}
+                  className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Thermal 2
                 </button>
                 <button
                   onClick={() => setShowBillSuccess(false)}
