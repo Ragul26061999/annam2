@@ -1479,20 +1479,6 @@ function NewBillingPageInner() {
                 </div>
               </div>
             </div>
-            {/* Hospital Details trigger */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Hospital Details (for Receipt)</h2>
-                <p className="text-xs text-slate-500">Configure header, address, phone and GST for the printed invoice.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowHospitalModal(true)}
-                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-              >
-                Edit Details
-              </button>
-            </div>
           </div>
         )}
 
@@ -1922,9 +1908,9 @@ function NewBillingPageInner() {
                 <p className="text-xs text-slate-500">Add items to see billing details.</p>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                    <h4 className="text-xs font-semibold text-slate-700 mb-3">Discount & Tax</h4>
-                    <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <h4 className="text-xs font-semibold text-slate-700 mb-2">Discount & Tax</h4>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
                         <label className="block text-[11px] font-medium text-slate-600 mb-1">Discount Type</label>
                         <select
@@ -1971,7 +1957,7 @@ function NewBillingPageInner() {
                           placeholder="0"
                         />
                       </div>
-                      <div className="col-span-2">
+                      <div>
                         <label className="block text-[11px] font-medium text-slate-600 mb-1">GST / Tax (%)</label>
                         <input
                           type="number"
@@ -1991,7 +1977,6 @@ function NewBillingPageInner() {
                             }
                           }}
                           className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="18"
                         />
                       </div>
                     </div>
