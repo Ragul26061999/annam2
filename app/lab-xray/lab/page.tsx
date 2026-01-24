@@ -31,8 +31,11 @@ import {
 import { supabase } from '../../../src/lib/supabase';
 import { SearchableSelect } from '../../../src/components/ui/SearchableSelect';
 import {
-    getLabTestCatalog,
     createLabTestOrder,
+    createGroupedLabOrder,
+    getLabTestCatalog,
+    getDiagnosticGroupItems,
+    getDiagnosticGroups,
     createLabTestCatalogEntry,
     LabTestCatalog
 } from '../../../src/lib/labXrayService';
@@ -66,6 +69,12 @@ export default function LabOrderPage() {
     // Master Data
     const [labCatalog, setLabCatalog] = useState<LabTestCatalog[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
+
+    // Group Selection
+    const [useGroup, setUseGroup] = useState(false);
+    const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+    const [selectedGroupId, setSelectedGroupId] = useState('');
+    const [groupLoading, setGroupLoading] = useState(false);
 
     // Search States
     const [uhidSearch, setUhidSearch] = useState('');
@@ -109,6 +118,29 @@ export default function LabOrderPage() {
     useEffect(() => {
         loadInitialData();
     }, []);
+
+    useEffect(() => {
+        if (!useGroup) return;
+        (async () => {
+            setGroupLoading(true);
+            try {
+                const groups = await getDiagnosticGroups({ is_active: true });
+                const labGroups = (groups || []).filter((g: any) => {
+                    const serviceTypes: string[] = Array.isArray(g.service_types) ? g.service_types : [];
+                    // If service_types not set, fall back to category
+                    if (serviceTypes.length === 0) {
+                        return String(g.category || '').toLowerCase() === 'lab' || String(g.category || '').toLowerCase() === 'mixed';
+                    }
+                    return serviceTypes.includes('lab');
+                });
+                setAvailableGroups(labGroups);
+            } catch (e) {
+                setAvailableGroups([]);
+            } finally {
+                setGroupLoading(false);
+            }
+        })();
+    }, [useGroup]);
 
     useEffect(() => {
         const total = selectedTests.reduce((sum, test) => sum + test.amount, 0);
@@ -303,6 +335,40 @@ export default function LabOrderPage() {
         setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
+    const applyGroupToSelection = async (groupId: string) => {
+        if (!groupId) return;
+        setGroupLoading(true);
+        setError(null);
+        try {
+            const groupItems = await getDiagnosticGroupItems(groupId);
+            const labItems = (groupItems || []).filter((it: any) => String(it.service_type) === 'lab');
+            const selections: TestSelection[] = labItems
+                .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                .map((it: any) => {
+                    const test = labCatalog.find(t => t.id === it.catalog_id);
+                    return {
+                        testId: it.catalog_id,
+                        testName: test?.test_name || '',
+                        groupName: test?.category || 'N/A',
+                        amount: test?.test_cost || 0
+                    };
+                })
+                .filter(s => Boolean(s.testId));
+
+            setSelectedTests(ensureTrailingEmptyRow(selections.length ? selections : [{ testId: '', testName: '', groupName: '', amount: 0 }]));
+        } catch (e: any) {
+            setError(e?.message || 'Failed to load group items');
+        } finally {
+            setGroupLoading(false);
+        }
+    };
+
+    const clearGroupSelection = () => {
+        setSelectedGroupId('');
+        setUseGroup(false);
+        setSelectedTests([{ testId: '', testName: '', groupName: '', amount: 0 }]);
+    };
+
     const handleTestChange = (index: number, testId: string) => {
         const test = labCatalog.find(t => t.id === testId);
         if (!test) return;
@@ -329,14 +395,7 @@ export default function LabOrderPage() {
             setError('Please search and select a patient first.');
             return;
         }
-        if (!orderingDoctorId) {
-            setError('Please select an ordering doctor.');
-            return;
-        }
-        if (!staffId) {
-            setError('Please select the staff member processing this order.');
-            return;
-        }
+        // Remove required validation for ordering doctor and staff - make them optional
         const filledTests = selectedTests.filter(t => t.testId);
         if (filledTests.length === 0) {
             setError('Please add at least one test.');
@@ -347,20 +406,40 @@ export default function LabOrderPage() {
         setError(null);
 
         try {
-            // Create lab test orders
-            const orderPromises = filledTests.map(test =>
-                createLabTestOrder({
+            let orders;
+            
+            // Use grouped orders if multiple tests selected
+            if (filledTests.length > 1) {
+                const groupedOrder = await createGroupedLabOrder({
                     patient_id: patientDetails.id,
-                    ordering_doctor_id: orderingDoctorId,
-                    test_catalog_id: test.testId,
+                    ordering_doctor_id: orderingDoctorId || undefined,
                     clinical_indication: clinicalIndication,
                     urgency: urgency,
-                    status: 'ordered',
-                    staff_id: staffId
-                })
-            );
+                    service_items: filledTests.map((test, index) => ({
+                        service_type: 'lab',
+                        catalog_id: test.testId,
+                        item_name: test.testName,
+                        sort_order: index
+                    })),
+                    group_name: `Lab Order - ${new Date().toLocaleDateString()}`
+                });
+                orders = [groupedOrder];
+            } else {
+                // Create individual lab test orders for single test
+                const orderPromises = filledTests.map(test =>
+                    createLabTestOrder({
+                        patient_id: patientDetails.id,
+                        ordering_doctor_id: orderingDoctorId || undefined,
+                        test_catalog_id: test.testId,
+                        clinical_indication: clinicalIndication,
+                        urgency: urgency,
+                        status: 'ordered',
+                        staff_id: staffId || undefined
+                    })
+                );
+                orders = await Promise.all(orderPromises);
+            }
 
-            const orders = await Promise.all(orderPromises);
             setCreatedOrders(orders);
 
             // Create bill for the lab tests
@@ -581,6 +660,57 @@ export default function LabOrderPage() {
                             </div>
 
                             <div className="p-6">
+                                {/* Group selector (optional) */}
+                                <div className="mb-5 p-4 bg-white border border-slate-200 rounded-2xl">
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                            <input
+                                                type="checkbox"
+                                                checked={useGroup}
+                                                onChange={(e) => {
+                                                    const next = e.target.checked;
+                                                    setUseGroup(next);
+                                                    if (!next) {
+                                                        setSelectedGroupId('');
+                                                    }
+                                                }}
+                                            />
+                                            Use Group
+                                        </label>
+
+                                        {useGroup && (
+                                            <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                                                <select
+                                                    value={selectedGroupId}
+                                                    onChange={async (e) => {
+                                                        const id = e.target.value;
+                                                        setSelectedGroupId(id);
+                                                        await applyGroupToSelection(id);
+                                                    }}
+                                                    className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                                >
+                                                    <option value="">Select Group...</option>
+                                                    {availableGroups.map((g: any) => (
+                                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={clearGroupSelection}
+                                                    className="px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-200 transition-all"
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {useGroup && (
+                                        <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                                            {groupLoading ? 'Loading groups/items…' : 'Selecting a group will auto-fill tests. You can remove any test row to opt-out per test.'}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div className="space-y-4">
                                     <AnimatePresence>
                                         {selectedTests.map((test, index) => (
@@ -652,7 +782,7 @@ export default function LabOrderPage() {
                                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ordering Doctor</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ordering Doctor (Optional)</label>
                                             <select
                                                 value={orderingDoctorId}
                                                 onChange={(e) => setOrderingDoctorId(e.target.value)}
@@ -668,8 +798,8 @@ export default function LabOrderPage() {
                                             <StaffSelect
                                                 value={staffId}
                                                 onChange={setStaffId}
-                                                label="Ordered By (Staff)"
-                                                required
+                                                label="Ordered By (Staff) (Optional)"
+                                                required={false}
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -695,7 +825,7 @@ export default function LabOrderPage() {
                                                 onAttachmentChange={() => {
                                                     // Refresh attachments if needed
                                                 }}
-                                                showFileBrowser={true}
+                                                showFileBrowser={false}
                                             />
                                         </div>
                                     </div>

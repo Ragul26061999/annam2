@@ -79,6 +79,40 @@ export interface PaymentReceipt {
   created_at: string;
 }
 
+async function getBillingLineTypeId(code: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('ref_code')
+      .select('id')
+      .eq('domain', 'billing_line')
+      .eq('code', code)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return null;
+    return data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function paymentItemTypeToBillingLineCode(itemType: PaymentItem['item_type']): string {
+  switch (itemType) {
+    case 'lab_test':
+      return 'lab';
+    case 'medicine':
+      return 'medicine';
+    case 'procedure':
+      return 'procedure';
+    case 'accommodation':
+      return 'stay';
+    case 'radiology':
+    case 'service':
+    default:
+      return 'service';
+  }
+}
+
 // Generate unique bill number - using same format as pharmacy billing
 export async function generateBillNumber(prefix: string): Promise<string> {
   return generateSequentialBillNumber(prefix);
@@ -111,6 +145,56 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
     if (billingError) {
       console.error('Error creating billing record:', billingError);
       throw new Error(`Failed to create billing record: ${supabaseErrorToString(billingError)}`);
+    }
+
+    // Persist bill line items into billing_item (pharmacy-style)
+    try {
+      const distinctCodes = Array.from(
+        new Set((data.items || []).map(i => paymentItemTypeToBillingLineCode(i.item_type)))
+      );
+
+      const codeToIdEntries = await Promise.all(
+        distinctCodes.map(async (code) => ({ code, id: await getBillingLineTypeId(code) }))
+      );
+
+      const codeToId = new Map<string, string>();
+      for (const entry of codeToIdEntries) {
+        if (entry.id) codeToId.set(entry.code, entry.id);
+      }
+
+      const fallbackLineTypeId = codeToId.get('service') || (await getBillingLineTypeId('service'));
+      if (!fallbackLineTypeId) {
+        throw new Error('Missing billing_line ref_code for service');
+      }
+
+      const rows = (data.items || []).map((it) => {
+        const code = paymentItemTypeToBillingLineCode(it.item_type);
+        const lineTypeId = codeToId.get(code) || fallbackLineTypeId;
+        return {
+          billing_id: billing.id,
+          line_type_id: lineTypeId,
+          ref_id: it.reference_id || null,
+          description: it.service_name,
+          qty: Number(it.quantity) || 1,
+          unit_amount: Number(it.unit_rate) || 0,
+          total_amount: Number(it.total_amount) || 0,
+          updated_at: new Date().toISOString(),
+        };
+      });
+
+      if (rows.length) {
+        const { error: lineError } = await supabase
+          .from('billing_item')
+          .insert(rows);
+
+        if (lineError) {
+          throw new Error(`Failed to create billing items: ${supabaseErrorToString(lineError)}`);
+        }
+      }
+    } catch (e) {
+      // Rollback header if line items fail
+      await supabase.from('billing').delete().eq('id', billing.id);
+      throw e;
     }
 
     // Map DB row to PaymentRecord shape expected by UI.

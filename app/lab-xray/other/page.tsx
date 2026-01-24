@@ -314,7 +314,7 @@ export default function OtherOrderPage() {
           createScanOrder({
             encounter_id: encounterId,
             patient_id: patientDetails.id,
-            doctor_id: orderingDoctorId,
+            ordering_doctor_id: orderingDoctorId,
             scan_type: 'Other',
             scan_name: i.name,
             urgency,

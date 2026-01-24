@@ -43,10 +43,13 @@ import {
   deleteLabOrder,
   deleteRadiologyOrder,
   deleteScanOrder,
-  getDiagnosticBillingItems
+  getDiagnosticBillsFromBilling
 } from '../../src/lib/labXrayService';
 import { supabase } from '../../src/lib/supabase';
 import BillingList from './components/BillingList';
+import DiagnosticGroups from './components/DiagnosticGroups';
+import GroupedLabServices from './components/GroupedLabServices';
+import OrdersFromBilling from './components/OrdersFromBilling';
 import {
   BarChart,
   Bar,
@@ -80,7 +83,7 @@ const COLORS = ['#14b8a6', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444'];
 
 export default function LabXRayPage() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'management'>('management');
-  const [activeSubTab, setActiveSubTab] = useState<'lab' | 'radiology' | 'scan' | 'billing'>('lab');
+  const [activeSubTab, setActiveSubTab] = useState<'orders' | 'billing' | 'groups' | 'lab' | 'radiology' | 'scan'>('orders');
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [scanOrders, setScanOrders] = useState<any[]>([]);
@@ -126,7 +129,7 @@ export default function LabXRayPage() {
         getLabOrders(),
         getRadiologyOrders(),
         getScanOrders(),
-        getDiagnosticBillingItems()
+        getDiagnosticBillsFromBilling({})
       ]);
 
       setLabOrders(lab || []);
@@ -568,6 +571,48 @@ export default function LabXRayPage() {
             {/* Sub Tabs for Management */}
             <div className="flex border-b border-gray-200">
               <button
+                onClick={() => setActiveSubTab('orders')}
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'orders'
+                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Activity size={18} />
+                  ORDERS
+                </div>
+                {activeSubTab === 'orders' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-indigo-600" />}
+              </button>
+              
+              <button
+                onClick={() => setActiveSubTab('billing')}
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'billing'
+                  ? 'border-green-600 text-green-600 bg-green-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard size={18} />
+                  BILLING
+                </div>
+                {activeSubTab === 'billing' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-green-600" />}
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('groups')}
+                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'groups'
+                  ? 'border-gray-900 text-gray-900 bg-gray-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText size={18} />
+                  GROUPS
+                </div>
+                {activeSubTab === 'groups' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-gray-900" />}
+              </button>
+
+              <button
                 onClick={() => setActiveSubTab('lab')}
                 className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'lab'
                   ? 'border-teal-600 text-teal-600 bg-teal-50/50'
@@ -615,23 +660,10 @@ export default function LabXRayPage() {
                 </div>
                 {activeSubTab === 'scan' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-purple-600" />}
               </button>
-              <button
-                onClick={() => setActiveSubTab('billing')}
-                className={`px-8 py-4 text-sm font-bold transition-all border-b-2 relative ${activeSubTab === 'billing'
-                  ? 'border-green-600 text-green-600 bg-green-50/50'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-              >
-                <div className="flex items-center gap-2">
-                  <CreditCard size={18} />
-                  BILLING
-                </div>
-                {activeSubTab === 'billing' && <motion.div layoutId="activeSubTabUnderline" className="absolute bottom-0 left-0 w-full h-[2px] bg-green-600" />}
-              </button>
             </div>
 
             {/* Controls */}
-            {activeSubTab !== 'billing' && (
+            {activeSubTab !== 'billing' && activeSubTab !== 'groups' && activeSubTab !== 'orders' && (
               <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4.5 w-4.5 text-gray-400" />
@@ -673,7 +705,18 @@ export default function LabXRayPage() {
               <BillingList items={billingItems} onRefresh={() => loadData(true)} />
             )}
 
-            {activeSubTab !== 'billing' && (
+            {activeSubTab === 'groups' && (
+              <div className="space-y-6">
+                <GroupedLabServices />
+                <DiagnosticGroups />
+              </div>
+            )}
+
+            {activeSubTab === 'orders' && (
+              <OrdersFromBilling items={billingItems} onRefresh={() => loadData(true)} />
+            )}
+
+            {activeSubTab !== 'billing' && activeSubTab !== 'groups' && activeSubTab !== 'orders' && (
             <div className="space-y-4">
               {filteredOrders.length === 0 ? (
                 <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-gray-200">

@@ -33,6 +33,8 @@ import {
     getScanTestCatalog,
     createScanTestOrder,
     createScanTestCatalogEntry,
+    getDiagnosticGroups,
+    getDiagnosticGroupItems,
     ScanTestCatalog
 } from '../../../src/lib/labXrayService';
 import { createScanBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
@@ -59,6 +61,10 @@ export default function ScanOrderPage() {
     // Master Data
     const [scanCatalog, setScanCatalog] = useState<ScanTestCatalog[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
+    const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+    const [selectedGroupId, setSelectedGroupId] = useState('');
+    const [groupLoading, setGroupLoading] = useState(false);
+    const [useGroup, setUseGroup] = useState(false);
 
     // Search States
     const [uhidSearch, setUhidSearch] = useState('');
@@ -102,6 +108,28 @@ export default function ScanOrderPage() {
     useEffect(() => {
         loadInitialData();
     }, []);
+
+    useEffect(() => {
+        if (!useGroup) return;
+        (async () => {
+            setGroupLoading(true);
+            try {
+                const groups = await getDiagnosticGroups({ is_active: true });
+                const scanGroups = (groups || []).filter((g: any) => {
+                    const serviceTypes: string[] = Array.isArray(g.service_types) ? g.service_types : [];
+                    if (serviceTypes.length === 0) {
+                        return String(g.category || '').toLowerCase() === 'scan' || String(g.category || '').toLowerCase() === 'mixed';
+                    }
+                    return serviceTypes.includes('scan');
+                });
+                setAvailableGroups(scanGroups);
+            } catch {
+                setAvailableGroups([]);
+            } finally {
+                setGroupLoading(false);
+            }
+        })();
+    }, [useGroup]);
 
     useEffect(() => {
         const total = selectedTests.reduce((sum, test) => sum + test.amount, 0);
@@ -317,38 +345,31 @@ export default function ScanOrderPage() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!patientDetails.id) {
-            setError('Please search and select a patient first.');
-            return;
-        }
-        if (!orderingDoctorId) {
-            setError('Please select an ordering doctor.');
-            return;
-        }
-        if (!staffId) {
-            setError('Please select the staff member processing this order.');
-            return;
-        }
-        if (selectedTests.some(t => !t.testId)) {
-            setError('Please select all tests or remove empty rows.');
-            return;
-        }
+e.preventDefault();
+if (!patientDetails.id) {
+setError('Please search and select a patient first.');
+return;
+}
+// Remove required validation for ordering doctor and staff - make them optional
+if (selectedTests.some(t => !t.testId)) {
+setError('Please select all tests or remove empty rows.');
+return;
+}
 
-        setSubmitting(true);
-        setError(null);
+setSubmitting(true);
+setError(null);
 
-        try {
+try {
             // Create scan test orders
             const orderPromises = selectedTests.map(test =>
                 createScanTestOrder({
                     patient_id: patientDetails.id,
-                    ordering_doctor_id: orderingDoctorId,
+                    ordering_doctor_id: orderingDoctorId || undefined, // Make optional
                     test_catalog_id: test.testId,
                     clinical_indication: clinicalIndication,
                     urgency: urgency,
                     status: 'ordered',
-                    staff_id: staffId
+                    staff_id: staffId || undefined // Make optional
                 })
             );
 
@@ -380,6 +401,40 @@ export default function ScanOrderPage() {
         // Even if payment is cancelled/skipped, show success modal because orders were created
         setShowPaymentModal(false);
         setSuccess(true);
+    };
+
+    const applyGroupToSelection = async (groupId: string) => {
+        if (!groupId) return;
+        setGroupLoading(true);
+        setError(null);
+        try {
+            const groupItems = await getDiagnosticGroupItems(groupId);
+            const scanItems = (groupItems || []).filter((it: any) => String(it.service_type) === 'scan');
+            const selections: TestSelection[] = scanItems
+                .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                .map((it: any) => {
+                    const test = scanCatalog.find(t => t.id === it.catalog_id);
+                    return {
+                        testId: it.catalog_id,
+                        testName: test?.test_name || test?.scan_name || '',
+                        groupName: test?.modality || test?.category || 'N/A',
+                        amount: test?.test_cost || 0
+                    };
+                })
+                .filter(s => Boolean(s.testId));
+
+            setSelectedTests(selections.length ? selections : [{ testId: '', testName: '', groupName: '', amount: 0 }]);
+        } catch (e: any) {
+            setError(e?.message || 'Failed to load group items');
+        } finally {
+            setGroupLoading(false);
+        }
+    };
+
+    const clearGroupSelection = () => {
+        setSelectedGroupId('');
+        setUseGroup(false);
+        setSelectedTests([{ testId: '', testName: '', groupName: '', amount: 0 }]);
     };
 
     if (loading) {
@@ -544,37 +599,88 @@ export default function ScanOrderPage() {
                         </div>
                     </div>
 
-                    {/* Right: Test Selection & Billing (2/3) */}
-                    <div className="lg:col-span-2 flex flex-col gap-6">
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col"
-                        >
-                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600">
-                                        <Scissors size={20} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-bold text-slate-900">Scan Test Selection</h2>
-                                        <p className="text-slate-400 text-xs font-medium">Add required diagnostics for clinical analysis</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setShowNewTestModal(true)}
-                                        className="flex items-center gap-2 px-4 py-2 border-2 border-purple-600 text-purple-600 rounded-xl text-sm font-bold hover:bg-purple-50 transition-all"
-                                    >
-                                        <Scissors size={18} />
-                                        New Catalog Entry
-                                    </button>
-                                </div>
-                            </div>
 
-                            <div className="p-6">
+                        {/* Right: Test Selection & Billing (2/3) */}
+                        <div className="lg:col-span-2 flex flex-col gap-6">
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col"
+                            >
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600">
+                                            <Scissors size={20} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-bold text-slate-900">Scan Test Selection</h2>
+                                            <p className="text-slate-400 text-xs font-medium">Add required diagnostics for clinical analysis</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setShowNewTestModal(true)}
+                                            className="flex items-center gap-2 px-4 py-2 border-2 border-purple-600 text-purple-600 rounded-xl text-sm font-bold hover:bg-purple-50 transition-all"
+                                        >
+                                            <Scissors size={18} />
+                                            New Catalog Entry
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="p-6">
+                                    {/* Group selector (optional) */}
+                                    <div className="mb-5 p-4 bg-white border border-slate-200 rounded-2xl">
+                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={useGroup}
+                                                    onChange={(e) => {
+                                                        const next = e.target.checked;
+                                                        setUseGroup(next);
+                                                        if (!next) setSelectedGroupId('');
+                                                    }}
+                                                />
+                                                Use Group
+                                            </label>
+
+                                            {useGroup && (
+                                                <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                                                    <select
+                                                        value={selectedGroupId}
+                                                        onChange={async (e) => {
+                                                            const id = e.target.value;
+                                                            setSelectedGroupId(id);
+                                                            await applyGroupToSelection(id);
+                                                        }}
+                                                        className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                    >
+                                                        <option value="">Select Group...</option>
+                                                        {availableGroups.map((g: any) => (
+                                                            <option key={g.id} value={g.id}>{g.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearGroupSelection}
+                                                        className="px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-200 transition-all"
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {useGroup && (
+                                            <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                                                {groupLoading ? 'Loading groups/items…' : 'Selecting a group will auto-fill tests. You can remove any row to opt-out per test.'}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <div className="space-y-4">
-                                    <AnimatePresence>
+
                                         {selectedTests.map((test, index) => (
                                             <motion.div
                                                 key={`test-${index}`}
@@ -638,13 +744,11 @@ export default function ScanOrderPage() {
                                                 </div>
                                             </motion.div>
                                         ))}
-                                    </AnimatePresence>
-                                </div>
 
                                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ordering Doctor</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ordering Doctor (Optional)</label>
                                             <select
                                                 value={orderingDoctorId}
                                                 onChange={(e) => setOrderingDoctorId(e.target.value)}
@@ -660,8 +764,8 @@ export default function ScanOrderPage() {
                                             <StaffSelect
                                                 value={staffId}
                                                 onChange={setStaffId}
-                                                label="Ordered By (Staff)"
-                                                required
+                                                label="Ordered By (Staff) (Optional)"
+                                                required={false}
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -687,7 +791,7 @@ export default function ScanOrderPage() {
                                                 onAttachmentChange={() => {
                                                     // Refresh attachments if needed
                                                 }}
-                                                showFileBrowser={true}
+                                                showFileBrowser={false}
                                             />
                                         </div>
                                     </div>

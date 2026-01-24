@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/src/lib/supabase'
 import { getCurrentUserProfile } from '@/src/lib/supabase'
+import BillEditModal from '@/src/components/BillEditModal'
 
 interface PharmacyBill {
   id: string
@@ -83,6 +84,11 @@ export default function PharmacyBillingPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [paymentReference, setPaymentReference] = useState('')
   const [markingPaid, setMarkingPaid] = useState(false)
+
+  // Bill Edit Modal state
+  const [showBillEditModal, setShowBillEditModal] = useState(false)
+  const [selectedBillForEdit, setSelectedBillForEdit] = useState<PharmacyBill | null>(null)
+  const [editingBill, setEditingBill] = useState(false)
 
   // Advanced Filters
   const [attrFilterCategory, setAttrFilterCategory] = useState('') // 'name', 'combination', 'dosage_form', 'manufacturer'
@@ -273,11 +279,11 @@ export default function PharmacyBillingPage() {
 
       // Helper function to determine payment status with roundoff consideration
       const getPaymentStatusWithRoundoff = (totalAmount: number, amountPaid: number, currentStatus: string, paymentMethod: string) => {
-        // If already marked as paid, keep it as paid
-        if (currentStatus === 'paid') return 'paid';
-        
-        // For credit payments, always keep as pending until explicitly marked as paid
+        // For credit payments, always keep as pending until explicitly marked as paid through payment system
         if (paymentMethod === 'credit') return 'pending';
+        
+        // If already marked as paid and not credit, keep it as paid
+        if (currentStatus === 'paid') return 'paid';
         
         // If no amount paid, it's pending
         if (!amountPaid || amountPaid <= 0) return 'pending';
@@ -362,7 +368,31 @@ export default function PharmacyBillingPage() {
 
       // Auto-correct DB payment_status for non-credit bills that qualify as paid after roundoff.
       // This ensures UI + reports reflect "paid" instead of lingering "partial".
+      // Also fix credit bills that were incorrectly marked as paid
       try {
+        // Fix credit bills that were incorrectly marked as paid
+        const creditBillsToFix = (billsData || [])
+          .filter((bill: any) => {
+            const paymentMethod = bill.payment_method || 'cash';
+            const currentStatus = bill.payment_status || 'pending';
+            return paymentMethod === 'credit' && currentStatus === 'paid';
+          })
+          .map((b: any) => b.id);
+
+        if (creditBillsToFix.length > 0) {
+          const { error: creditFixErr } = await supabase
+            .from('billing')
+            .update({ payment_status: 'pending' })
+            .in('id', creditBillsToFix);
+
+          if (creditFixErr) {
+            console.warn('Failed to fix credit bill payment_status to pending:', creditFixErr);
+          } else {
+            console.log(`Fixed ${creditBillsToFix.length} credit bills to pending status`);
+          }
+        }
+
+        // Auto-correct non-credit bills to paid if they qualify
         const idsToMarkPaid = (billsData || [])
           .filter((bill: any) => {
             const totalAmount = bill.total || 0;
@@ -634,6 +664,79 @@ export default function PharmacyBillingPage() {
     setSelectedBill(bill)
     setNewPaymentMethod(bill.payment_method)
     setShowPaymentEditModal(true)
+  }
+
+  const openEditBillModal = (bill: PharmacyBill) => {
+    if (bill.payment_status !== 'pending') {
+      alert('Only pending bills can be edited')
+      return
+    }
+    setSelectedBillForEdit(bill)
+    setShowBillEditModal(true)
+  }
+
+  const handleSaveBillEdit = async (updatedBill: any, updatedItems: any[]) => {
+    if (!selectedBillForEdit) return
+
+    try {
+      setEditingBill(true)
+
+      // Update bill header
+      const { error: billError } = await supabase
+        .from('billing')
+        .update({
+          subtotal: updatedBill.subtotal,
+          tax: updatedBill.tax,
+          total: updatedBill.total,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedBillForEdit.id)
+
+      if (billError) {
+        console.error('Bill update error details:', billError)
+        throw billError
+      }
+
+      // Delete existing items
+      const { error: deleteError } = await supabase
+        .from('billing_item')
+        .delete()
+        .eq('billing_id', selectedBillForEdit.id)
+
+      if (deleteError) {
+        console.error('Delete items error details:', deleteError)
+        throw deleteError
+      }
+
+      // Insert updated items
+      const itemsToInsert = updatedItems.map(item => ({
+        billing_id: selectedBillForEdit.id,
+        description: item.description,
+        qty: item.qty,
+        unit_amount: item.unit_amount,
+        total_amount: item.total_amount,
+        medicine_id: item.medicine_id || null
+      }))
+
+      console.log('Items to insert:', itemsToInsert)
+
+      const { error: insertError } = await supabase
+        .from('billing_item')
+        .insert(itemsToInsert)
+
+      if (insertError) {
+        console.error('Insert items error details:', insertError)
+        throw insertError
+      }
+
+      await loadBillingData()
+      alert('Bill updated successfully!')
+    } catch (err: any) {
+      setError('Failed to update bill: ' + (err?.message || 'Unknown error'))
+      console.error('Error updating bill:', err)
+    } finally {
+      setEditingBill(false)
+    }
   }
 
   const openPendingBillsModal = async () => {
@@ -1614,13 +1717,24 @@ export default function PharmacyBillingPage() {
                       <button className="text-green-600 hover:text-green-800" onClick={(e) => { e.stopPropagation(); (async () => { await openViewBill(bill); setTimeout(() => printBill(), 150); })(); }} title="Download / Print">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleEditPaymentMethod(bill) }}
-                        className="text-purple-600 hover:text-purple-800"
-                        title="Edit Payment Method"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
+                      {bill.payment_status === 'pending' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditBillModal(bill) }}
+                          className="text-indigo-600 hover:text-indigo-800"
+                          title="Edit Bill Items"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
+                      {(bill.payment_method === 'split' || bill.payment_method === 'credit') && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleEditPaymentMethod(bill) }}
+                          className="text-purple-600 hover:text-purple-800"
+                          title="Edit Payment Method"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                        </button>
+                      )}
                       {bill.payment_status === 'pending' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleSettlePayment(bill.id) }}
@@ -1840,9 +1954,25 @@ export default function PharmacyBillingPage() {
               <p className="text-sm text-gray-600 mb-2">
                 Bill: <span className="font-medium">{selectedBill.bill_number}</span>
               </p>
+              <p className="text-sm text-gray-600 mb-2">
+                Customer: <span className="font-medium">{selectedBill.customer_name}</span>
+              </p>
               <p className="text-sm text-gray-600 mb-4">
                 Current Method: <span className="font-medium capitalize">{selectedBill.payment_method}</span>
               </p>
+
+              <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Total Amount:</span>
+                  <span className="font-bold text-blue-600">₹{selectedBill.total_amount?.toFixed(2) || '0.00'}</span>
+                </div>
+                {selectedBill.amount_paid && selectedBill.amount_paid > 0 && (
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-sm text-gray-600">Amount Paid:</span>
+                    <span className="font-medium text-green-600">₹{selectedBill.amount_paid?.toFixed(2) || '0.00'}</span>
+                  </div>
+                )}
+              </div>
 
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 New Payment Method
@@ -1854,12 +1984,39 @@ export default function PharmacyBillingPage() {
               >
                 <option value="">Select payment method</option>
                 <option value="cash">Cash</option>
-                <option value="gpay">GPay</option>
                 <option value="card">Card</option>
                 <option value="upi">UPI</option>
+                <option value="gpay">GPay</option>
+                <option value="ghpay">GHPay</option>
                 <option value="credit">Credit</option>
+                <option value="split">Split Payment</option>
+                <option value="insurance">Insurance</option>
                 <option value="others">Others</option>
               </select>
+
+              {newPaymentMethod === 'split' && (
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Split Payment:</strong> This will allow multiple payment methods for this bill. You can add individual payments through the "Mark as Paid" option.
+                  </p>
+                </div>
+              )}
+
+              {newPaymentMethod === 'credit' && (
+                <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-sm text-orange-800">
+                    <strong>Credit Payment:</strong> This will mark the bill as credit and keep it in pending status until payment is received.
+                  </p>
+                </div>
+              )}
+
+              {selectedBill.payment_method === 'credit' && newPaymentMethod !== 'credit' && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Note:</strong> Changing from Credit to another method will require payment settlement.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -2127,6 +2284,19 @@ export default function PharmacyBillingPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bill Edit Modal */}
+      {showBillEditModal && selectedBillForEdit && (
+        <BillEditModal
+          bill={selectedBillForEdit}
+          isOpen={showBillEditModal}
+          onClose={() => {
+            setShowBillEditModal(false)
+            setSelectedBillForEdit(null)
+          }}
+          onSave={handleSaveBillEdit}
+        />
       )}
     </div>
   )

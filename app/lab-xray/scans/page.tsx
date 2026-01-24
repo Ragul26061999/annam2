@@ -330,7 +330,7 @@ export default function ScanOrderPage() {
           createScanOrder({
             encounter_id: encounterId,
             patient_id: patientDetails.id,
-            doctor_id: orderingDoctorId,
+            ordering_doctor_id: orderingDoctorId,
             scan_type: s.category || 'Scans/Other',
             scan_name: s.scanName,
             body_part: s.bodyPart || undefined,

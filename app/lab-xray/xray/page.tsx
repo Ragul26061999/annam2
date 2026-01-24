@@ -33,6 +33,8 @@ import {
     getRadiologyTestCatalog,
     createRadiologyTestOrder,
     createRadiologyTestCatalogEntry,
+    getDiagnosticGroups,
+    getDiagnosticGroupItems,
     RadiologyTestCatalog
 } from '../../../src/lib/labXrayService';
 import { createRadiologyBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
@@ -65,6 +67,12 @@ export default function XrayOrderPage() {
     // Master Data
     const [radCatalog, setRadCatalog] = useState<RadiologyTestCatalog[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
+
+    // Group Selection
+    const [useGroup, setUseGroup] = useState(false);
+    const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+    const [selectedGroupId, setSelectedGroupId] = useState('');
+    const [groupLoading, setGroupLoading] = useState(false);
 
     // Search States
     const [uhidSearch, setUhidSearch] = useState('');
@@ -108,6 +116,28 @@ export default function XrayOrderPage() {
     useEffect(() => {
         loadInitialData();
     }, []);
+
+    useEffect(() => {
+        if (!useGroup) return;
+        (async () => {
+            setGroupLoading(true);
+            try {
+                const groups = await getDiagnosticGroups({ is_active: true });
+                const radGroups = (groups || []).filter((g: any) => {
+                    const serviceTypes: string[] = Array.isArray(g.service_types) ? g.service_types : [];
+                    if (serviceTypes.length === 0) {
+                        return String(g.category || '').toLowerCase() === 'radiology' || String(g.category || '').toLowerCase() === 'mixed';
+                    }
+                    return serviceTypes.includes('radiology') || serviceTypes.includes('xray');
+                });
+                setAvailableGroups(radGroups);
+            } catch {
+                setAvailableGroups([]);
+            } finally {
+                setGroupLoading(false);
+            }
+        })();
+    }, [useGroup]);
 
     useEffect(() => {
         const total = selectedTests.reduce((sum, test) => sum + test.amount, 0);
@@ -281,6 +311,45 @@ export default function XrayOrderPage() {
         setSelectedTests(ensureTrailingEmptyRow(newTests));
     };
 
+    const applyGroupToSelection = async (groupId: string) => {
+        if (!groupId) return;
+        setGroupLoading(true);
+        setError(null);
+        try {
+            const groupItems = await getDiagnosticGroupItems(groupId);
+            const radItems = (groupItems || []).filter((it: any) => {
+                const t = String(it.service_type);
+                return t === 'radiology' || t === 'xray';
+            });
+
+            const selections: TestSelection[] = radItems
+                .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                .map((it: any) => {
+                    const test = radCatalog.find(t => t.id === it.catalog_id);
+                    return {
+                        testId: it.catalog_id,
+                        testName: test?.test_name || '',
+                        groupName: test?.modality || 'X-Ray',
+                        bodyPart: test?.body_part || '',
+                        amount: test?.test_cost || 0
+                    };
+                })
+                .filter(s => Boolean(s.testId));
+
+            setSelectedTests(ensureTrailingEmptyRow(selections.length ? selections : [{ testId: '', testName: '', groupName: '', bodyPart: '', amount: 0 }]));
+        } catch (e: any) {
+            setError(e?.message || 'Failed to load group items');
+        } finally {
+            setGroupLoading(false);
+        }
+    };
+
+    const clearGroupSelection = () => {
+        setSelectedGroupId('');
+        setUseGroup(false);
+        setSelectedTests([{ testId: '', testName: '', groupName: '', bodyPart: '', amount: 0 }]);
+    };
+
     const handleTestChange = (index: number, testId: string) => {
         const test = radCatalog.find(t => t.id === testId);
         if (!test) return;
@@ -308,14 +377,7 @@ export default function XrayOrderPage() {
             setError('Please search and select a patient first.');
             return;
         }
-        if (!orderingDoctorId) {
-            setError('Please select an ordering doctor.');
-            return;
-        }
-        if (!staffId) {
-            setError('Please select the staff member processing this order.');
-            return;
-        }
+        // Remove required validation for ordering doctor and staff - make them optional
         const filledTests = selectedTests.filter(t => t.testId);
         if (filledTests.length === 0) {
             setError('Please add at least one radiology scan.');
@@ -330,13 +392,13 @@ export default function XrayOrderPage() {
             const orderPromises = filledTests.map(test =>
                 createRadiologyTestOrder({
                     patient_id: patientDetails.id,
-                    ordering_doctor_id: orderingDoctorId,
+                    ordering_doctor_id: orderingDoctorId || undefined, // Make optional
                     test_catalog_id: test.testId,
                     clinical_indication: clinicalIndication,
                     urgency: urgency,
                     status: 'ordered',
                     body_part: test.bodyPart,
-                    staff_id: staffId
+                    staff_id: staffId || undefined // Make optional
                 })
             );
 
@@ -531,6 +593,55 @@ export default function XrayOrderPage() {
                             </div>
 
                             <div className="p-7 flex-1 space-y-6 overflow-y-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-slate-200">
+                                {/* Group selector (optional) */}
+                                <div className="p-4 bg-white border border-slate-200 rounded-2xl">
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                            <input
+                                                type="checkbox"
+                                                checked={useGroup}
+                                                onChange={(e) => {
+                                                    const next = e.target.checked;
+                                                    setUseGroup(next);
+                                                    if (!next) setSelectedGroupId('');
+                                                }}
+                                            />
+                                            Use Group
+                                        </label>
+
+                                        {useGroup && (
+                                            <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                                                <select
+                                                    value={selectedGroupId}
+                                                    onChange={async (e) => {
+                                                        const id = e.target.value;
+                                                        setSelectedGroupId(id);
+                                                        await applyGroupToSelection(id);
+                                                    }}
+                                                    className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none"
+                                                >
+                                                    <option value="">Select Group...</option>
+                                                    {availableGroups.map((g: any) => (
+                                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={clearGroupSelection}
+                                                    className="px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-200 transition-all"
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {useGroup && (
+                                        <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                                            {groupLoading ? 'Loading groups/items…' : 'Selecting a group will auto-fill tests. You can remove any row to opt-out per test.'}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <AnimatePresence>
                                     {selectedTests.map((test, index) => (
                                         <motion.div
@@ -617,7 +728,7 @@ export default function XrayOrderPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
                                     <div className="space-y-6">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referring Physician</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referring Physician (Optional)</label>
                                             <select
                                                 value={orderingDoctorId}
                                                 onChange={(e) => setOrderingDoctorId(e.target.value)}
@@ -633,8 +744,8 @@ export default function XrayOrderPage() {
                                             <StaffSelect
                                                 value={staffId}
                                                 onChange={setStaffId}
-                                                label="Ordered By (Staff)"
-                                                required
+                                                label="Ordered By (Staff) (Optional)"
+                                                required={false}
                                             />
                                         </div>
                                         <div className="space-y-2">

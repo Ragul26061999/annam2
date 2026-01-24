@@ -20,6 +20,195 @@ export interface LabTestCatalog {
   is_active: boolean;
 }
 
+// ============================================
+// GROUPED LAB ORDERS
+// ============================================
+
+export interface GroupedLabOrder {
+  id: string;
+  group_name_snapshot?: string;
+  patient_id: string;
+  encounter_id?: string;
+  appointment_id?: string;
+  ordering_doctor_id?: string;
+  clinical_indication?: string;
+  urgency?: 'routine' | 'urgent' | 'stat' | 'emergency';
+  status: string;
+  is_ip: boolean;
+  bed_allocation_id?: string;
+  billing_id?: string;
+  created_at: string;
+  updated_at: string;
+  items: GroupedLabOrderItem[];
+  attachments: LabXrayAttachment[];
+}
+
+export interface GroupedLabOrderItem {
+  id: string;
+  group_order_id: string;
+  service_type: 'lab' | 'radiology' | 'scan' | 'xray';
+  catalog_id: string;
+  item_name_snapshot: string;
+  selected: boolean;
+  status: string;
+  sort_order: number;
+  legacy_lab_test_order_id?: string;
+  legacy_radiology_test_order_id?: string;
+  legacy_scan_order_id?: string;
+  legacy_xray_order_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LabXrayAttachment {
+  id: string;
+  patient_id: string;
+  group_order_id?: string;
+  lab_order_id?: string;
+  radiology_order_id?: string;
+  test_name: string;
+  test_type: string;
+  file_name: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  file_url?: string;
+  uploaded_by?: string;
+  uploaded_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateGroupedLabOrderParams {
+  patient_id: string;
+  encounter_id?: string;
+  appointment_id?: string;
+  ordering_doctor_id?: string;
+  clinical_indication?: string;
+  urgency?: 'routine' | 'urgent' | 'stat' | 'emergency';
+  service_items: {
+    service_type: 'lab' | 'radiology' | 'scan' | 'xray';
+    catalog_id: string;
+    item_name: string;
+    sort_order?: number;
+  }[];
+  is_ip?: boolean;
+  bed_allocation_id?: string;
+  group_id?: string;
+  group_name?: string;
+}
+
+// ============================================
+// BILLING (billing + billing_item)
+// ============================================
+
+export interface BillingLineItem {
+  id: string;
+  billing_id: string;
+  description: string;
+  qty: number;
+  unit_amount: number;
+  total_amount: number;
+  ref_id?: string | null;
+}
+
+export interface DiagnosticBill {
+  id: string;
+  bill_no?: string | null;
+  bill_number?: string | null;
+  patient_id?: string | null;
+  created_at?: string;
+  issued_at?: string;
+  payment_status?: string;
+  payment_method?: string | null;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  total?: number;
+  bill_type?: string | null;
+  patient?: any;
+  items: BillingLineItem[];
+}
+
+export async function getDiagnosticBillsFromBilling(filters?: {
+  bill_type?: 'lab' | 'radiology' | 'scan' | 'diagnostics';
+  payment_status?: string;
+  searchTerm?: string;
+}): Promise<DiagnosticBill[]> {
+  try {
+    let billTypes: string[] = ['lab', 'radiology'];
+    if (filters?.bill_type) {
+      billTypes = [filters.bill_type];
+    }
+
+    let query = supabase
+      .from('billing')
+      .select(`
+        *,
+        patient:patients(id, patient_id, name, phone, gender, date_of_birth)
+      `)
+      .in('bill_type', billTypes)
+      .order('created_at', { ascending: false });
+
+    if (filters?.payment_status && filters.payment_status !== 'all') {
+      query = query.eq('payment_status', filters.payment_status);
+    }
+
+    const { data: bills, error } = await query;
+    if (error) {
+      console.warn('Billing table not available:', error.message);
+      return [];
+    }
+
+    let result = bills || [];
+
+    if (filters?.searchTerm) {
+      const term = filters.searchTerm.toLowerCase();
+      result = result.filter((b: any) =>
+        String(b.bill_no || b.bill_number || '').toLowerCase().includes(term) ||
+        b.patient?.name?.toLowerCase().includes(term) ||
+        b.patient?.patient_id?.toLowerCase().includes(term)
+      );
+    }
+
+    const billIds = result.map((b: any) => b.id);
+    if (!billIds.length) return [];
+
+    const { data: lines, error: lineError } = await supabase
+      .from('billing_item')
+      .select('*')
+      .in('billing_id', billIds)
+      .order('created_at', { ascending: true });
+
+    if (lineError) {
+      console.warn('Billing items table not available:', lineError.message);
+    }
+
+    const byBill = new Map<string, BillingLineItem[]>();
+    (lines || []).forEach((row: any) => {
+      const arr = byBill.get(row.billing_id) || [];
+      arr.push({
+        id: row.id,
+        billing_id: row.billing_id,
+        description: row.description,
+        qty: Number(row.qty) || 0,
+        unit_amount: Number(row.unit_amount) || 0,
+        total_amount: Number(row.total_amount) || 0,
+        ref_id: row.ref_id,
+      });
+      byBill.set(row.billing_id, arr);
+    });
+
+    return result.map((b: any) => ({
+      ...b,
+      items: byBill.get(b.id) || [],
+    }));
+  } catch (e) {
+    console.error('Error in getDiagnosticBillsFromBilling:', e);
+    return [];
+  }
+}
+
 export interface ScanTestCatalogLegacy {
   id: string;
   scan_code: string | null;
@@ -52,7 +241,7 @@ export interface LabTestOrder {
   patient_id: string;
   encounter_id?: string;
   appointment_id?: string;
-  ordering_doctor_id: string;
+  ordering_doctor_id?: string;
   test_catalog_id: string;
   clinical_indication: string;
   provisional_diagnosis?: string;
@@ -70,7 +259,7 @@ export interface ScanOrder {
   encounter_id: string;
   appointment_id?: string;
   patient_id: string;
-  doctor_id: string;
+  ordering_doctor_id?: string;
   scan_type: string;
   scan_name: string;
   body_part?: string;
@@ -88,7 +277,7 @@ export interface RadiologyTestOrder {
   patient_id: string;
   encounter_id?: string;
   appointment_id?: string;
-  ordering_doctor_id: string;
+  ordering_doctor_id?: string;
   test_catalog_id: string;
   clinical_indication: string;
   provisional_diagnosis?: string;
@@ -115,6 +304,261 @@ export interface LabTestResult {
   is_abnormal?: boolean;
   abnormal_flag?: string;
   technician_notes?: string;
+}
+
+export interface DiagnosticGroup {
+  id: string;
+  name: string;
+  category: string;
+  is_active: boolean;
+  service_types?: Array<'lab' | 'radiology' | 'scan' | 'xray'>;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DiagnosticGroupItem {
+  id: string;
+  group_id: string;
+  service_type: 'lab' | 'radiology' | 'scan' | 'xray';
+  catalog_id: string;
+  default_selected: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+async function tryGetAuthUserId(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) return null;
+    return data.user.id;
+  } catch {
+    return null;
+  }
+}
+
+async function tryGetAppUserId(): Promise<string | null> {
+  try {
+    const authId = await tryGetAuthUserId();
+    if (!authId) return null;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('auth_id', authId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return null;
+    return data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================
+// DIAGNOSTIC GROUPS (TEMPLATES)
+// ============================================
+
+export async function getDiagnosticGroups(filters?: {
+  is_active?: boolean;
+}): Promise<DiagnosticGroup[]> {
+  try {
+    let query = supabase
+      .from('diagnostic_groups')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (typeof filters?.is_active === 'boolean') {
+      query = query.eq('is_active', filters.is_active);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching diagnostic groups:', error);
+      throw new Error(`Failed to fetch groups: ${error.message}`);
+    }
+    return (data || []) as DiagnosticGroup[];
+  } catch (error) {
+    console.error('Error in getDiagnosticGroups:', error);
+    throw error;
+  }
+}
+
+export async function createDiagnosticGroup(payload: {
+  name: string;
+  category?: string;
+  service_types?: Array<'lab' | 'radiology' | 'scan' | 'xray'>;
+}): Promise<DiagnosticGroup> {
+  try {
+    const createdBy = await tryGetAppUserId();
+    const { data, error } = await supabase
+      .from('diagnostic_groups')
+      .insert([
+        {
+          name: payload.name,
+          category: payload.category || 'Lab',
+          service_types: payload.service_types || [],
+          created_by: createdBy,
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error creating diagnostic group:', error);
+      throw new Error(`Failed to create group: ${error.message}`);
+    }
+    return data as DiagnosticGroup;
+  } catch (error) {
+    console.error('Error in createDiagnosticGroup:', error);
+    throw error;
+  }
+}
+
+export async function updateDiagnosticGroup(
+  groupId: string,
+  updates: Partial<Pick<DiagnosticGroup, 'name' | 'category' | 'is_active' | 'service_types'>>
+): Promise<DiagnosticGroup> {
+  try {
+    const { data, error } = await supabase
+      .from('diagnostic_groups')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', groupId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error updating diagnostic group:', error);
+      throw new Error(`Failed to update group: ${error.message}`);
+    }
+    return data as DiagnosticGroup;
+  } catch (error) {
+    console.error('Error in updateDiagnosticGroup:', error);
+    throw error;
+  }
+}
+
+export async function deleteDiagnosticGroup(groupId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('diagnostic_groups')
+      .delete()
+      .eq('id', groupId);
+
+    if (error) {
+      console.error('Error deleting diagnostic group:', error);
+      throw new Error(`Failed to delete group: ${error.message}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('Error in deleteDiagnosticGroup:', error);
+    throw error;
+  }
+}
+
+export async function getDiagnosticGroupItems(groupId: string): Promise<DiagnosticGroupItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('diagnostic_group_items')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching diagnostic group items:', error);
+      throw new Error(`Failed to fetch group items: ${error.message}`);
+    }
+    return (data || []) as DiagnosticGroupItem[];
+  } catch (error) {
+    console.error('Error in getDiagnosticGroupItems:', error);
+    throw error;
+  }
+}
+
+export async function createDiagnosticGroupItem(payload: {
+  group_id: string;
+  service_type: DiagnosticGroupItem['service_type'];
+  catalog_id: string;
+  default_selected?: boolean;
+  sort_order?: number;
+}): Promise<DiagnosticGroupItem> {
+  try {
+    const { data, error } = await supabase
+      .from('diagnostic_group_items')
+      .insert([
+        {
+          group_id: payload.group_id,
+          service_type: payload.service_type,
+          catalog_id: payload.catalog_id,
+          default_selected: payload.default_selected ?? true,
+          sort_order: payload.sort_order ?? 0,
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error creating diagnostic group item:', error);
+      throw new Error(`Failed to create group item: ${error.message}`);
+    }
+    return data as DiagnosticGroupItem;
+  } catch (error) {
+    console.error('Error in createDiagnosticGroupItem:', error);
+    throw error;
+  }
+}
+
+export async function updateDiagnosticGroupItem(
+  itemId: string,
+  updates: Partial<Pick<DiagnosticGroupItem, 'default_selected' | 'sort_order'>>
+): Promise<DiagnosticGroupItem> {
+  try {
+    const { data, error } = await supabase
+      .from('diagnostic_group_items')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error updating diagnostic group item:', error);
+      throw new Error(`Failed to update group item: ${error.message}`);
+    }
+    return data as DiagnosticGroupItem;
+  } catch (error) {
+    console.error('Error in updateDiagnosticGroupItem:', error);
+    throw error;
+  }
+}
+
+export async function deleteDiagnosticGroupItem(itemId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('diagnostic_group_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) {
+      console.error('Error deleting diagnostic group item:', error);
+      throw new Error(`Failed to delete group item: ${error.message}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('Error in deleteDiagnosticGroupItem:', error);
+    throw error;
+  }
 }
 
 export async function getPatientXrayOrders(patientId: string): Promise<any[]> {
@@ -196,7 +640,7 @@ export async function createScanOrder(orderData: ScanOrder): Promise<any> {
       encounter_id: orderData.encounter_id,
       appointment_id: orderData.appointment_id || null,
       patient_id: orderData.patient_id,
-      doctor_id: orderData.doctor_id,
+      doctor_id: orderData.ordering_doctor_id,
       scan_type: orderData.scan_type,
       scan_name: orderData.scan_name,
       body_part: orderData.body_part || null,
@@ -484,7 +928,7 @@ export async function createLabTestOrder(orderData: LabTestOrder): Promise<any> 
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('lab_test_catalog')
@@ -686,7 +1130,7 @@ export async function updateLabOrderStatus(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('lab_test_catalog')
@@ -898,7 +1342,7 @@ export async function createRadiologyTestOrder(orderData: RadiologyTestOrder): P
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('radiology_test_catalog')
@@ -1104,7 +1548,7 @@ export async function updateRadiologyOrder(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('radiology_test_catalog')
@@ -1497,7 +1941,7 @@ export interface ScanTestOrder {
   patient_id: string;
   encounter_id?: string;
   appointment_id?: string;
-  ordering_doctor_id: string;
+  ordering_doctor_id?: string;
   test_catalog_id: string;
   clinical_indication: string;
   provisional_diagnosis?: string;
@@ -1566,7 +2010,7 @@ export async function createScanTestOrder(orderData: ScanTestOrder): Promise<any
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('scan_test_catalog')
@@ -1777,7 +2221,7 @@ export async function updateScanOrder(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.ordering_doctor_id)
+          .eq('id', order.doctor_id)
           .single(),
         supabase
           .from('scan_test_catalog')
@@ -1841,5 +2285,193 @@ export async function getScanOrdersForAnalytics(): Promise<any[]> {
   } catch (error) {
     console.error('Error in getScanOrdersForAnalytics:', error);
     return [];
+  }
+}
+
+// ============================================
+// GROUPED LAB ORDER FUNCTIONS
+// ============================================
+
+export async function createGroupedLabOrder(params: CreateGroupedLabOrderParams): Promise<GroupedLabOrder> {
+  try {
+    const { data, error } = await supabase.rpc('create_grouped_lab_order', {
+      p_patient_id: params.patient_id,
+      p_encounter_id: params.encounter_id || null,
+      p_appointment_id: params.appointment_id || null,
+      p_ordering_doctor_id: params.ordering_doctor_id || null,
+      p_clinical_indication: params.clinical_indication || null,
+      p_urgency: params.urgency || 'routine',
+      p_service_items: JSON.stringify(params.service_items),
+      p_is_ip: params.is_ip || false,
+      p_bed_allocation_id: params.bed_allocation_id || null,
+      p_group_id: params.group_id || null,
+      p_group_name: params.group_name || null
+    });
+
+    if (error) {
+      console.error('Failed to create grouped lab order:', error);
+      throw new Error(`Failed to create grouped lab order: ${error.message}`);
+    }
+
+    // Fetch the complete grouped order with items and attachments
+    return await getGroupedLabOrder(data);
+  } catch (error) {
+    console.error('Error in createGroupedLabOrder:', error);
+    throw error;
+  }
+}
+
+export async function getGroupedLabOrder(groupOrderId: string): Promise<GroupedLabOrder> {
+  try {
+    const { data: groupOrder, error: groupError } = await supabase
+      .from('diagnostic_group_orders')
+      .select('*')
+      .eq('id', groupOrderId)
+      .single();
+
+    if (groupError) {
+      console.error('Failed to fetch grouped lab order:', groupError);
+      throw new Error(`Failed to fetch grouped lab order: ${groupError.message}`);
+    }
+
+    // Fetch items
+    const { data: items, error: itemsError } = await supabase
+      .from('diagnostic_group_order_items')
+      .select('*')
+      .eq('group_order_id', groupOrderId)
+      .order('sort_order');
+
+    if (itemsError) {
+      console.error('Failed to fetch grouped lab order items:', itemsError);
+      throw new Error(`Failed to fetch grouped lab order items: ${itemsError.message}`);
+    }
+
+    // Fetch attachments
+    const { data: attachments, error: attachmentsError } = await supabase
+      .from('lab_xray_attachments')
+      .select('*')
+      .eq('group_order_id', groupOrderId)
+      .order('created_at', { ascending: false });
+
+    if (attachmentsError) {
+      console.error('Failed to fetch grouped lab order attachments:', attachmentsError);
+      throw new Error(`Failed to fetch grouped lab order attachments: ${attachmentsError.message}`);
+    }
+
+    return {
+      ...groupOrder,
+      items: items || [],
+      attachments: attachments || []
+    };
+  } catch (error) {
+    console.error('Error in getGroupedLabOrder:', error);
+    throw error;
+  }
+}
+
+export async function getGroupedLabOrdersForPatient(patientId: string): Promise<GroupedLabOrder[]> {
+  try {
+    const { data: groupOrders, error } = await supabase
+      .from('diagnostic_group_orders')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Failed to fetch grouped lab orders for patient:', error);
+      throw new Error(`Failed to fetch grouped lab orders for patient: ${error.message}`);
+    }
+
+    // Fetch items and attachments for all orders
+    const ordersWithDetails = await Promise.all(
+      (groupOrders || []).map(async (order: any) => {
+        const [items, attachments] = await Promise.all([
+          supabase
+            .from('diagnostic_group_order_items')
+            .select('*')
+            .eq('group_order_id', order.id)
+            .order('sort_order'),
+          supabase
+            .from('lab_xray_attachments')
+            .select('*')
+            .eq('group_order_id', order.id)
+            .order('created_at', { ascending: false })
+        ]);
+
+        return {
+          ...order,
+          items: items.data || [],
+          attachments: attachments.data || []
+        };
+      })
+    );
+
+    return ordersWithDetails;
+  } catch (error) {
+    console.error('Error in getGroupedLabOrdersForPatient:', error);
+    throw error;
+  }
+}
+
+export async function addGroupLabAttachment(
+  groupOrderId: string,
+  patientId: string,
+  fileName: string,
+  filePath: string,
+  fileType: string,
+  fileSize: number,
+  fileUrl?: string,
+  uploadedBy?: string
+): Promise<LabXrayAttachment> {
+  try {
+    const { data, error } = await supabase.rpc('add_group_lab_attachment', {
+      p_group_order_id: groupOrderId,
+      p_patient_id: patientId,
+      p_file_name: fileName,
+      p_file_path: filePath,
+      p_file_type: fileType,
+      p_file_size: fileSize,
+      p_file_url: fileUrl || null,
+      p_uploaded_by: uploadedBy || null
+    });
+
+    if (error) {
+      console.error('Failed to add group lab attachment:', error);
+      throw new Error(`Failed to add group lab attachment: ${error.message}`);
+    }
+
+    // Fetch the complete attachment record
+    const { data: attachment, error: fetchError } = await supabase
+      .from('lab_xray_attachments')
+      .select('*')
+      .eq('id', data)
+      .single();
+
+    if (fetchError) {
+      console.error('Failed to fetch attachment record:', fetchError);
+      throw new Error(`Failed to fetch attachment record: ${fetchError.message}`);
+    }
+
+    return attachment;
+  } catch (error) {
+    console.error('Error in addGroupLabAttachment:', error);
+    throw error;
+  }
+}
+
+export async function deleteGroupLabAttachment(attachmentId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('lab_xray_attachments')
+      .delete()
+      .eq('id', attachmentId);
+
+    if (error) {
+      console.error('Failed to delete group lab attachment:', error);
+      throw new Error(`Failed to delete group lab attachment: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('Error in deleteGroupLabAttachment:', error);
+    throw error;
   }
 }
