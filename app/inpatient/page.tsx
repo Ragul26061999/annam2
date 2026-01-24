@@ -73,67 +73,105 @@ export default function InpatientPage() {
     try {
       setLoading(true);
 
-      // Get dashboard stats
-      const dashboardStats = await getDashboardStats();
+      // Add a timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Loading timeout')), 15000) // 15 second timeout
+      );
 
-      // Get bed stats
-      const bedStats = await getBedStats();
+      // Make all API calls in parallel for better performance
+      const results = await Promise.race([
+        Promise.allSettled([
+          getDashboardStats(),
+          getBedStats(),
+          getBedAllocations({
+            status: statusFilter === 'all' ? undefined : statusFilter,
+            limit: 100
+          }),
+          getBedAllocations({
+            status: undefined, // Get all statuses
+            limit: 500 // Increase limit to get more historical records
+          }),
+          getAvailableBeds()
+        ]),
+        timeoutPromise
+      ]);
 
-      // Get active bed allocations (for overview tab)
-      const allocationResponse = await getBedAllocations({
-        status: statusFilter === 'all' ? undefined : statusFilter,
-        limit: 100
-      });
+      // Handle results with fallbacks
+      const [
+        dashboardStats,
+        bedStats,
+        allocationResponse,
+        allAllocationResponse,
+        available
+      ] = results as PromiseSettledResult<any>[];
 
-      // Get ALL bed allocations (for billing tab - includes discharged and transferred)
-      const allAllocationResponse = await getBedAllocations({
-        status: undefined, // Get all statuses
-        limit: 500 // Increase limit to get more historical records
-      });
-
-      // Get available beds
-      const available = await getAvailableBeds();
+      const dashboardData = dashboardStats.status === 'fulfilled' ? dashboardStats.value : { admittedPatients: 0, criticalPatients: 0 };
+      const bedData = bedStats.status === 'fulfilled' ? bedStats.value : { total: 0, occupied: 0, available: 0, occupancyRate: 0 };
+      const allocationData = allocationResponse.status === 'fulfilled' ? allocationResponse.value : { allocations: [] };
+      const allAllocationData = allAllocationResponse.status === 'fulfilled' ? allAllocationResponse.value : { allocations: [] };
+      const availableData = available.status === 'fulfilled' ? available.value : [];
 
       // Calculate today's admissions
       const today = new Date().toISOString().split('T')[0];
-      const todayAdmissions = allocationResponse.allocations.filter(
-        a => a.admission_date?.startsWith(today)
+      const todayAdmissions = allocationData.allocations.filter(
+        (a: any) => a.admission_date?.startsWith(today)
       ).length;
 
       setStats({
-        admittedPatients: dashboardStats.admittedPatients || 0,
-        criticalPatients: dashboardStats.criticalPatients || 0,
-        totalBeds: bedStats.total || dashboardStats.totalBeds || 0,
-        occupiedBeds: bedStats.occupied || dashboardStats.occupiedBeds || 0,
-        availableBeds: bedStats.available || dashboardStats.availableBeds || 0,
-        occupancyRate: bedStats.occupancyRate || dashboardStats.bedOccupancyRate || 0,
+        admittedPatients: dashboardData.admittedPatients || 0,
+        criticalPatients: dashboardData.criticalPatients || 0,
+        totalBeds: bedData.total || 0,
+        occupiedBeds: bedData.occupied || 0,
+        availableBeds: bedData.available || 0,
+        occupancyRate: bedData.occupancyRate || 0,
         todayAdmissions,
         pendingDischarges: 0
       });
 
-      setAllocations(allocationResponse.allocations);
-      setAllAllocations(allAllocationResponse.allocations); // Set all allocations for billing tab
+      setAllocations(allocationData.allocations);
+      setAllAllocations(allAllocationData.allocations);
 
-      try {
-        const allocationIds = (allocationResponse.allocations || []).map(a => a.id);
-        const map = await getDischargeSummaryIdsByAllocations(allocationIds);
-        setDischargeSummaryByAllocation(map);
-      } catch (e) {
-        console.error('Error loading discharge summaries for allocations:', e);
-        setDischargeSummaryByAllocation({});
+      // Load discharge summaries separately to avoid blocking main content
+      if (allocationData.allocations.length > 0) {
+        try {
+          const allocationIds = allocationData.allocations.map((a: any) => a.id);
+          const map = await getDischargeSummaryIdsByAllocations(allocationIds);
+          setDischargeSummaryByAllocation(map);
+        } catch (e) {
+          console.error('Error loading discharge summaries for allocations:', e);
+          setDischargeSummaryByAllocation({});
+        }
       }
-      setAvailableBedsList(available);
+      
+      setAvailableBedsList(availableData);
       
       // Set default selected patient for pharmacy recommendations
-      if (allocationResponse.allocations.length > 0 && !selectedPatientForPharmacy) {
-        setSelectedPatientForPharmacy(allocationResponse.allocations[0].patient_id);
+      if (allocationData.allocations.length > 0 && !selectedPatientForPharmacy) {
+        setSelectedPatientForPharmacy(allocationData.allocations[0].patient_id);
       }
       
       setError(null);
     } catch (err) {
       console.error('Error loading inpatient data:', err);
-      setError('Failed to load inpatient data. The system may be experiencing connectivity issues.');
-      // Still set loading to false to prevent infinite loading state
+      if (err instanceof Error && err.message === 'Loading timeout') {
+        setError('Loading is taking too long. Please check your connection and try again.');
+      } else {
+        setError('Failed to load inpatient data. The system may be experiencing connectivity issues.');
+      }
+      // Set default values to prevent empty state
+      setStats({
+        admittedPatients: 0,
+        criticalPatients: 0,
+        totalBeds: 0,
+        occupiedBeds: 0,
+        availableBeds: 0,
+        occupancyRate: 0,
+        todayAdmissions: 0,
+        pendingDischarges: 0
+      });
+      setAllocations([]);
+      setAllAllocations([]);
+      setAvailableBedsList([]);
     } finally {
       setLoading(false);
     }
@@ -224,8 +262,19 @@ export default function InpatientPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-purple-500 mb-4" />
+        <p className="text-gray-600 mb-2">Loading inpatient data...</p>
+        <p className="text-sm text-gray-500">This may take a few moments</p>
+        <button
+          onClick={() => {
+            setLoading(false);
+            setError('Loading was cancelled. Please try again.');
+          }}
+          className="mt-4 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+        >
+          Cancel Loading
+        </button>
       </div>
     );
   }
@@ -856,57 +905,21 @@ export default function InpatientPage() {
                             </button>
                           </Link>
 
+                          <Link href={`/inpatient/billing-breakdown/${allocation.id}`}>
+                            <button 
+                              className="text-xs px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors flex items-center gap-1"
+                              title="View Department-wise Breakdown Bill"
+                            >
+                              <FileText size={14} />
+                              Breakdown Bill
+                            </button>
+                          </Link>
+
                           <Link href={`/patients/${allocation.patient_id}`}>
                             <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
                               <Eye size={18} />
                             </button>
                           </Link>
-
-                          {dischargeSummaryByAllocation[allocation.id] && (
-                            <Link href={`/inpatient/discharge/${allocation.id}?view=1`}>
-                              <button
-                                className="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-1"
-                                title="View Discharge Summary"
-                              >
-                                <Eye size={14} />
-                                View Summary
-                              </button>
-                            </Link>
-                          )}
-
-                          {(allocation.status === 'active' || allocation.status === 'allocated') && (
-                            <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&subtab=discharge`}>
-                              <button
-                                className="text-xs px-3 py-1.5 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 transition-colors flex items-center gap-1"
-                                title="Discharge Summary 2.0"
-                              >
-                                <FileText size={14} />
-                                Discharge Summary 2.0
-                              </button>
-                            </Link>
-                          )}
-
-                          <Link href={`/patients/${allocation.patient_id}?tab=clinical-records&allocation=${allocation.id}`}>
-                            <button
-                              className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1"
-                              title="Clinical Records"
-                            >
-                              <ClipboardList size={14} />
-                              Clinical Records
-                            </button>
-                          </Link>
-
-                          {(allocation.status === 'active' || allocation.status === 'allocated') && (
-                            <Link href={`/inpatient/discharge/${allocation.id}`}>
-                              <button
-                                className="text-xs px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
-                                title="Discharge Patient"
-                              >
-                                <LogOut size={14} />
-                                Discharge
-                              </button>
-                            </Link>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -920,18 +933,31 @@ export default function InpatientPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
-            <div>
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <p className="text-sm text-red-700">{error}</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+              <div>
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
             </div>
-            <button
-              onClick={() => setError(null)}
-              className="ml-auto text-red-500 hover:text-red-700"
-            >
-              <XCircle className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setError(null);
+                  loadInpatientData();
+                }}
+                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       )}
