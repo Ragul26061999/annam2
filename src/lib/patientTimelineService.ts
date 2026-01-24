@@ -37,6 +37,7 @@ export type PatientTimelineEvent = {
   link?: string;
   bedAllocationId?: string;
   content?: string;
+  data?: any;
 };
 
 function asIsoOrEmpty(d: any): string {
@@ -144,16 +145,30 @@ export async function getPatientCompleteHistory(params: {
     });
   });
 
-  (params.labOrders || []).forEach((o: any) => {
+  (() => {
+    const labOrders = Array.isArray(params.labOrders) ? params.labOrders : [];
+    if (labOrders.length === 0) return;
+
+    const sorted = labOrders
+      .slice()
+      .sort((a: any, b: any) => {
+        const at = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bt = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        return bt - at;
+      });
+
+    const latest = sorted[0];
+    const date = asIsoOrEmpty(latest?.created_at);
+
     events.push({
-      id: `lab_${o?.id}`,
+      id: `lab_all_${params.patientUuid}`,
       type: 'lab',
-      title: o?.test_catalog?.test_name ? String(o.test_catalog.test_name) : 'Lab Order',
-      subtitle: o?.status ? `Status: ${String(o.status)}` : undefined,
-      date: asIsoOrEmpty(o?.created_at),
-      link: o?.id ? `/lab-xray/order/${o.id}` : undefined,
+      title: 'Lab - All Orders',
+      subtitle: `${sorted.length} orders`,
+      date,
+      data: { kind: 'lab_all_orders', orders: sorted },
     });
-  });
+  })();
 
   (params.radiologyOrders || []).forEach((o: any) => {
     events.push({
@@ -165,6 +180,79 @@ export async function getPatientCompleteHistory(params: {
       link: o?.id ? `/lab-xray/order/${o.id}` : undefined,
     });
   });
+
+  // Lab billing events: one per bill (bill_type='lab'), with services and attachments
+  await (async () => {
+    const labOrders = Array.isArray(params.labOrders) ? params.labOrders : [];
+    if (labOrders.length === 0) return;
+
+    // Fetch lab billing records for this patient
+    const billingResult = await supabase
+      .from('billing')
+      .select('id, bill_number, bill_no, bill_type, issued_at, total, payment_status, patient_id')
+      .eq('patient_id', params.patientUuid)
+      .eq('bill_type', 'lab')
+      .order('issued_at', { ascending: false });
+
+    if (billingResult.error || !billingResult.data) return;
+
+    const labBills = billingResult.data;
+    if (labBills.length === 0) return;
+
+    // For each lab bill, fetch its items and attachments
+    const [billingItemsResult, attachmentsResult] = await Promise.allSettled([
+      supabase
+        .from('billing_item')
+        .select('*')
+        .in('billing_id', labBills.map((b: any) => b.id)),
+      supabase
+        .from('lab_xray_attachments')
+        .select('*')
+        .in('billing_id', labBills.map((b: any) => b.id))
+        .order('uploaded_at', { ascending: false })
+    ]);
+
+    const itemsByBill: Record<string, any[]> = {};
+    if (billingItemsResult.status === 'fulfilled' && billingItemsResult.value.data) {
+      (billingItemsResult.value.data || []).forEach((it: any) => {
+        const bid = it.billing_id;
+        if (!bid) return;
+        itemsByBill[bid] = itemsByBill[bid] || [];
+        itemsByBill[bid].push(it);
+      });
+    }
+
+    const attachmentsByBill: Record<string, any[]> = {};
+    if (attachmentsResult.status === 'fulfilled' && attachmentsResult.value.data) {
+      (attachmentsResult.value.data || []).forEach((att: any) => {
+        const bid = att.billing_id;
+        if (!bid) return;
+        attachmentsByBill[bid] = attachmentsByBill[bid] || [];
+        attachmentsByBill[bid].push(att);
+      });
+    }
+
+    // Emit one timeline event per lab bill
+    for (const bill of labBills) {
+      const items = itemsByBill[bill.id] || [];
+      const attachments = attachmentsByBill[bill.id] || [];
+      const billNo = bill.bill_number || bill.bill_no || `Bill ${bill.id}`;
+
+      events.push({
+        id: `lab_bill_${bill.id}`,
+        type: 'lab',
+        title: `Lab Bill #${billNo}`,
+        subtitle: `${items.length} services${attachments.length > 0 ? ` • ${attachments.length} files` : ''}`,
+        date: asIsoOrEmpty(bill.issued_at),
+        data: {
+          kind: 'lab_bill',
+          bill,
+          items,
+          attachments
+        }
+      });
+    }
+  })();
 
   (params.xrayOrders || []).forEach((o: any, idx: number) => {
     events.push({

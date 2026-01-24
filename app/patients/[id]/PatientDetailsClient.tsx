@@ -36,7 +36,8 @@ import {
   FolderOpen,
   Microscope,
   Radiation,
-  Printer
+  Printer,
+  Paperclip
 } from 'lucide-react';
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
@@ -58,6 +59,7 @@ import { PatientBillingPrint } from '../../../src/components/PatientBillingPrint
 import BarcodeModal from '../../../src/components/BarcodeModal';
 import { getPatientCompleteHistory, PatientTimelineEvent, PatientTimelineEventType } from '../../../src/lib/patientTimelineService';
 import { getPharmacyBills } from '../../../src/lib/pharmacyService';
+import LabXrayAttachments from '../../../src/components/LabXrayAttachments';
 
 interface Patient {
   id: string;
@@ -217,8 +219,32 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [dateTo, setDateTo] = useState('');
   const [selectedServices, setSelectedServices] = useState<PatientTimelineEventType[]>([]);
   const [expandedIPSections, setExpandedIPSections] = useState<Set<string>>(new Set());
+  const [expandedDateSections, setExpandedDateSections] = useState<Set<string>>(new Set());
+  const [expandedLabSections, setExpandedLabSections] = useState<Set<string>>(new Set());
   const [completeHistoryLoading, setCompleteHistoryLoading] = useState(false);
   const [timelineLoaded, setTimelineLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!timelineLoaded) return;
+    if (expandedDateSections.size > 0) return;
+    if (!Array.isArray(filteredHistory) || filteredHistory.length === 0) return;
+
+    const toIstDateKey = (iso: string) => {
+      try {
+        const d = new Date(iso);
+        // YYYY-MM-DD in IST
+        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      } catch {
+        return 'Unknown';
+      }
+    };
+
+    const keys = new Set<string>();
+    for (const ev of filteredHistory) {
+      keys.add(ev?.date ? toIstDateKey(ev.date) : 'Unknown');
+    }
+    if (keys.size > 0) setExpandedDateSections(keys);
+  }, [timelineLoaded, filteredHistory, expandedDateSections.size]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -1052,7 +1078,81 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
 
                           allEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-                          return allEvents.map((e: any) => {
+                          const toIstDateKey = (iso: string) => {
+                            try {
+                              const d = new Date(iso);
+                              // YYYY-MM-DD in IST
+                              return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                            } catch {
+                              return 'Unknown';
+                            }
+                          };
+
+                          const toIstDateLabel = (dateKey: string) => {
+                            if (dateKey === 'Unknown') return 'Unknown Date';
+                            try {
+                              const d = new Date(`${dateKey}T00:00:00`);
+                              return d.toLocaleDateString('en-IN', {
+                                weekday: 'short',
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                timeZone: 'Asia/Kolkata',
+                              });
+                            } catch {
+                              return dateKey;
+                            }
+                          };
+
+                          const groupedByDate: Record<string, any[]> = {};
+                          for (const ev of allEvents) {
+                            const key = ev?.date ? toIstDateKey(ev.date) : 'Unknown';
+                            if (!groupedByDate[key]) groupedByDate[key] = [];
+                            groupedByDate[key].push(ev);
+                          }
+
+                          const dateKeys = Object.keys(groupedByDate).sort((a, b) => {
+                            const at = a === 'Unknown' ? 0 : new Date(`${a}T00:00:00`).getTime();
+                            const bt = b === 'Unknown' ? 0 : new Date(`${b}T00:00:00`).getTime();
+                            return bt - at;
+                          });
+
+                          return dateKeys.map((dateKey) => {
+                            const isDateExpanded = expandedDateSections.has(dateKey);
+                            const dayEvents = groupedByDate[dateKey] || [];
+
+                            return (
+                              <div key={dateKey} className="relative">
+                                <div className="flex gap-4">
+                                  <div className="relative flex flex-col items-center">
+                                    <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-white shadow-lg z-10">
+                                      <Calendar className="h-3.5 w-3.5" />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 pb-4">
+                                    <button
+                                      onClick={() => {
+                                        const next = new Set(expandedDateSections);
+                                        if (isDateExpanded) next.delete(dateKey);
+                                        else next.add(dateKey);
+                                        setExpandedDateSections(next);
+                                      }}
+                                      className="w-full text-left bg-gray-50 hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-all"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <p className="text-base font-bold text-gray-900">{toIstDateLabel(dateKey)}</p>
+                                            <span className="px-2 py-0.5 bg-gray-200 text-gray-800 text-xs font-medium rounded-full">{dayEvents.length} events</span>
+                                          </div>
+                                        </div>
+                                        <ChevronRight className={`h-5 w-5 text-gray-600 transition-transform ${isDateExpanded ? 'rotate-90' : ''}`} />
+                                      </div>
+                                    </button>
+
+                                    {isDateExpanded && (
+                                      <div className="mt-3 ml-4 space-y-2 border-l-2 border-gray-200 pl-4">
+                                        {dayEvents.map((e: any) => {
                             const getEventColor = (type: PatientTimelineEventType) => {
                               const colors: Record<PatientTimelineEventType, string> = {
                                 registration: 'bg-gray-500',
@@ -1176,6 +1276,109 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                               );
                             }
 
+                            if (e.type === 'lab' && (e as any)?.data?.kind === 'lab_bill') {
+                              const labKey = `lab_bill_${e.id}`;
+                              const isExpanded = expandedLabSections.has(labKey);
+                              const bill = (e as any)?.data?.bill;
+                              const items = (e as any)?.data?.items || [];
+                              const attachments = (e as any)?.data?.attachments || [];
+                              const billNo = bill?.bill_number || bill?.bill_no || `Bill ${bill.id}`;
+
+                              return (
+                                <div key={e.id} className="relative flex gap-4">
+                                  <div className="relative flex flex-col items-center">
+                                    <div className="w-10 h-10 rounded-full bg-cyan-600 flex items-center justify-center text-white shadow-lg z-10">
+                                      <Microscope className="h-3.5 w-3.5" />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 pb-4">
+                                    <button
+                                      onClick={() => {
+                                        const next = new Set(expandedLabSections);
+                                        if (isExpanded) next.delete(labKey);
+                                        else next.add(labKey);
+                                        setExpandedLabSections(next);
+                                      }}
+                                      className="w-full text-left bg-cyan-50 hover:bg-cyan-100 rounded-xl p-4 border border-cyan-200 transition-all"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <p className="text-sm font-bold text-cyan-900">Lab Bill #{billNo}</p>
+                                            <span className="px-2 py-0.5 bg-cyan-200 text-cyan-900 text-xs font-medium rounded-full">{items.length} services</span>
+                                            {attachments.length > 0 && (
+                                              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{attachments.length} files</span>
+                                            )}
+                                          </div>
+                                          <p className="text-xs text-cyan-800">{formatDateTime(e.date)}</p>
+                                        </div>
+                                        <ChevronRight className={`h-5 w-5 text-cyan-700 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                      </div>
+                                    </button>
+
+                                    {isExpanded && (
+                                      <div className="mt-3 space-y-4">
+                                        {/* Services List */}
+                                        {items.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Services</h4>
+                                            <div className="space-y-2">
+                                              {items.map((it: any) => (
+                                                <div key={it.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                                  <div>
+                                                    <p className="font-medium text-gray-900">{it.description}</p>
+                                                    <p className="text-sm text-gray-600">Qty: {it.qty} • Unit: ₹{Number(it.unit_amount || 0).toFixed(2)}</p>
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <p className="font-medium text-gray-900">₹{Number(it.total_amount || 0).toFixed(2)}</p>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Attachments */}
+                                        {attachments.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Attachments</h4>
+                                            <div className="space-y-2">
+                                              {attachments.map((att: any) => (
+                                                <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                                  <div className="flex items-center gap-2 min-w-0">
+                                                    <Paperclip className="w-4 h-4 text-blue-600" />
+                                                    <div className="min-w-0">
+                                                      <p className="font-medium text-gray-900 truncate">{att.file_name}</p>
+                                                      <p className="text-sm text-gray-600">
+                                                        {(Number(att.file_size || 0) / 1024).toFixed(1)} KB • {att.file_type}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                    {att.file_url ? (
+                                                      <a
+                                                        href={att.file_url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="px-3 py-2 rounded-xl bg-gray-100 text-gray-900 text-xs font-black hover:bg-gray-200 inline-flex items-center gap-2"
+                                                      >
+                                                        <Eye size={16} />
+                                                        Open
+                                                      </a>
+                                                    ) : null}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }
+
                             return (
                               <div key={e.id} className="relative flex gap-4">
                                 <div className="relative flex flex-col items-center">
@@ -1207,6 +1410,13 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                         )}
                                       </div>
                                     </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>

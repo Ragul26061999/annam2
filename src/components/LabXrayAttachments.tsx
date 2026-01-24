@@ -35,6 +35,7 @@ interface LabXrayAttachmentsProps {
   uploadedBy?: string;
   onAttachmentChange?: () => void;
   showFileBrowser?: boolean;
+  readOnly?: boolean;
 }
 
 export default function LabXrayAttachments({ 
@@ -45,7 +46,8 @@ export default function LabXrayAttachments({
   testName = '',
   uploadedBy, 
   onAttachmentChange,
-  showFileBrowser = true
+  showFileBrowser = true,
+  readOnly = false
 }: LabXrayAttachmentsProps) {
   const [attachments, setAttachments] = useState<LabXrayAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -237,7 +239,7 @@ export default function LabXrayAttachments({
   return (
     <div className="space-y-4">
       {/* Upload Section */}
-      {showFileBrowser && (
+      {showFileBrowser && !readOnly && (
         <div 
           className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
             dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
@@ -299,7 +301,7 @@ export default function LabXrayAttachments({
       )}
 
       {/* Search and Filter */}
-      {showFileBrowser && attachments.length > 0 && (
+      {showFileBrowser && !readOnly && attachments.length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -392,13 +394,15 @@ export default function LabXrayAttachments({
                   >
                     <Download className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => handleDelete(attachment.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleDelete(attachment.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
