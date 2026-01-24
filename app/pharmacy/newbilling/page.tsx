@@ -243,7 +243,7 @@ function NewBillingPageInner() {
     discountType: 'amount',
     discountValue: 0,
     discountAmount: 0,
-    taxPercent: 18, // Default GST
+    taxPercent: 5, // Default GST changed to 5%
     taxAmount: 0,
     totalAmount: 0
   });
@@ -265,6 +265,10 @@ function NewBillingPageInner() {
     gstNumber: 'GST29ABCDE1234F1Z5'
   });
   const [showHospitalModal, setShowHospitalModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'compact' | 'detailed'>('compact');
+  const [selectedPatientIndex, setSelectedPatientIndex] = useState(0);
+  const [selectedMedicineIndex, setSelectedMedicineIndex] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const embedded = false;
   const [phoneError, setPhoneError] = useState<string>('');
   const printCss = `
@@ -360,6 +364,110 @@ function NewBillingPageInner() {
       font-size: 9px;
     }
   `;
+
+  // Keyboard navigation functions
+  const handlePatientKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (patientResults.length === 0) return;
+      e.preventDefault();
+      setShowPatientDropdown(true);
+    }
+    if (!showPatientDropdown || patientResults.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        setSelectedPatientIndex(prev => (prev + 1) % patientResults.length);
+        break;
+      case 'ArrowUp':
+        setSelectedPatientIndex(prev => (prev - 1 + patientResults.length) % patientResults.length);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (patientResults[selectedPatientIndex]) {
+          const p = patientResults[selectedPatientIndex];
+          setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+          setPatientSearch(`${p.name} · ${p.patient_id}`);
+          setShowPatientDropdown(false);
+          setSelectedPatientIndex(0);
+          // Focus to medication search
+          setTimeout(() => {
+            const medicineInput = document.querySelector('input[placeholder*="medicine"]') as HTMLInputElement;
+            if (medicineInput) {
+              medicineInput.focus();
+            }
+          }, 100);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowPatientDropdown(false);
+        setSelectedPatientIndex(0);
+        break;
+    }
+  };
+
+  const handleMedicineKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Move focus to quantity input
+      const qtyInput = document.querySelector('input[placeholder*="Quantity"]') as HTMLInputElement;
+      if (qtyInput) {
+        qtyInput.focus();
+        qtyInput.select();
+      }
+      return;
+    }
+    if (!showMedicineDropdown || filteredMedicines.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setShowMedicineDropdown(true);
+        setSelectedMedicineIndex(prev => (prev + 1) % filteredMedicines.length);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setShowMedicineDropdown(true);
+        setSelectedMedicineIndex(prev => (prev - 1 + filteredMedicines.length) % filteredMedicines.length);
+        break;
+      case 'Enter':
+        // Handled above; move to quantity
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowMedicineDropdown(false);
+        setSelectedMedicineIndex(0);
+        break;
+    }
+  };
+
+  const handleQuantityKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Add item with current quantity and reset
+      if (searchTerm && filteredMedicines.length > 0) {
+        const medicine = filteredMedicines[0];
+        const batch = medicine.batches[0];
+        if (batch) {
+          addToBill(medicine, batch);
+          setSearchTerm('');
+          setQuantity(1);
+          setSelectedMedicineIndex(0);
+          setShowMedicineDropdown(false);
+          // Focus back to medicine search
+          setTimeout(() => {
+            const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+            if (medicineInput) {
+              (medicineInput as HTMLElement).focus();
+            }
+          }, 100);
+        }
+      }
+    }
+  };
+
+  // Medicine dropdown state
+  const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
 
   // Utility: get QR image URL for given data
   const getQrUrl = (data: string, size: number = 200) => {
@@ -1365,7 +1473,7 @@ function NewBillingPageInner() {
                 <div className="flex items-center gap-3">
                   <span className="text-slate-500">Items:</span>
                   <span className="font-semibold text-slate-900">{billItems.length}</span>
-                  <span className="h-6 w-px bg-slate-200" />
+                  <span className="h-6 w-px bg-slate-200 ml-2" />
                   <span className="text-slate-500">Total:</span>
                   <span className="text-lg font-semibold text-emerald-600">₹{Math.round(billTotals.totalAmount)}</span>
                 </div>
@@ -1400,105 +1508,136 @@ function NewBillingPageInner() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-6 mt-2">
+        <div className="flex flex-col gap-4 mt-2">
+          {/* View Toggle Bar */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-slate-900">Pharmacy Billing</h1>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-100">
+                  {customer.type === 'patient' ? 'Patient' : 'Walk-in'}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500">Items:</span>
+                  <span className="font-semibold text-slate-900">{billItems.length}</span>
+                  <span className="h-6 w-px bg-slate-200 ml-2" />
+                  <span className="text-slate-500">Total:</span>
+                  <span className="text-lg font-semibold text-emerald-600">₹{Math.round(billTotals.totalAmount)}</span>
+                </div>
+                <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('compact')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      viewMode === 'compact'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Compact
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('detailed')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      viewMode === 'detailed'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Detailed
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
           {/* Left side: Sales Entry + Medicine */}
           <div className="flex flex-col gap-4">
-            {/* Sales Entry Information (Customer + Bill Info) */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
-              {/* Billed By - Display current user instead of dropdown */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Billed By (Staff)</label>
-                <div className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700">
-                  {currentStaff ? 
+            {/* Customer Information Section */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <User className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Customer Information</h2>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Billed by: {currentStaff ? 
                     `${currentStaff.first_name} ${currentStaff.last_name}`.trim() || currentStaff.employee_id || 'Staff Member' :
                     currentUser?.name || 'Loading...'
                   }
                 </div>
               </div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <User className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Sales Entry Information</h2>
-                </div>
-              </div>
 
               {/* Customer / Patient Block */}
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Customer Type</label>
-                  <select
-                    value={customer.type}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        // Move focus to the next input field based on customer type
-                        const nextElement = customer.type === 'patient'
-                          ? document.querySelector('input[placeholder="Start typing to search registered patients..."]')
-                          : document.querySelector('input[placeholder="Enter customer name"]');
-                        if (nextElement) {
-                          (nextElement as HTMLElement).focus();
-                        }
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
+                    <select
+                      value={customer.type}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                        setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
                       }
-                    }}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="patient">Patient</option>
-                    <option value="walk_in">Walk-in</option>
-                  </select>
-                </div>
-                {customer.type === 'patient' ? (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Search Patient (name / UHID)</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={patientSearch}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            setPatientSearch(e.target.value);
-                            setShowPatientDropdown(true);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const container = e.currentTarget.closest('.space-y-3');
-                              const nextElement = container?.querySelectorAll('input')[1];
-                              if (nextElement) {
-                                (nextElement as HTMLElement).focus();
-                              }
-                            }
-                          }}
-                          placeholder="Start typing to search registered patients..."
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        {showPatientDropdown && patientResults.length > 0 && (
-                          <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
-                            {patientResults.map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => {
-                                  setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
-                                  setPatientSearch(`${p.name} · ${p.patient_id}`);
-                                  setShowPatientDropdown(false);
-                                }}
-                                className="w-full text-left px-3 py-2 hover:bg-slate-50"
-                              >
-                                <div className="text-xs">
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="patient">Patient</option>
+                      <option value="walk_in">Walk-in</option>
+                    </select>
+                  </div>
+
+                  {customer.type === 'patient' ? (
+                    <>
+                      <div className="col-span-4">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Search Patient</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={patientSearch}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              setPatientSearch(e.target.value);
+                              setShowPatientDropdown(true);
+                              setSelectedPatientIndex(0);
+                            }}
+                            onKeyDown={handlePatientKeyDown}
+                            onFocus={() => setShowPatientDropdown(true)}
+                            placeholder="Search by name, UHID, or mobile..."
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                          {showPatientDropdown && patientResults.length > 0 && (
+                            <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                              {patientResults.map((p, index) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+                                    setPatientSearch(`${p.name} · ${p.patient_id}`);
+                                    setShowPatientDropdown(false);
+                                    setSelectedPatientIndex(0);
+                                    // Focus to medication search
+                                    setTimeout(() => {
+                                      const medicineInput = document.querySelector('input[placeholder*="medicine"]') as HTMLInputElement;
+                                      if (medicineInput) {
+                                        medicineInput.focus();
+                                      }
+                                    }, 100);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs ${
+                                    index === selectedPatientIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
+                                  }`}
+                                >
                                   <div className="font-medium text-slate-900">{p.name}</div>
                                   <div className="text-slate-500">UHID: {p.patient_id}</div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                                  {p.phone && <div className="text-slate-400">📱 {p.phone}</div>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
+                      <div className="col-span-3">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Patient Name</label>
                         <input
                           type="text"
@@ -1506,20 +1645,11 @@ function NewBillingPageInner() {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setCustomer({ ...customer, name: e.target.value })
                           }
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const container = e.currentTarget.closest('.grid');
-                              const nextElement = container?.querySelectorAll('input')[1];
-                              if (nextElement) {
-                                (nextElement as HTMLElement).focus();
-                              }
-                            }
-                          }}
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700"
+                          readOnly
                         />
                       </div>
-                      <div>
+                      <div className="col-span-3">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
                         <input
                           type="text"
@@ -1527,178 +1657,158 @@ function NewBillingPageInner() {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setCustomer({ ...customer, phone: e.target.value })
                           }
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const searchInput = document.querySelector('input[placeholder="Search by name, code, manufacturer, or batch number..."]');
-                              if (searchInput) {
-                                (searchInput as HTMLElement).focus();
-                              }
-                            }
-                          }}
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700"
+                          readOnly
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="col-span-5">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
+                        <input
+                          type="text"
+                          value={customer.name}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, name: e.target.value })
+                          }
+                          placeholder="Enter customer name"
                           className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-1">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
-                      <input
-                        type="text"
-                        value={customer.name}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          setCustomer({ ...customer, name: e.target.value })
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const container = e.currentTarget.closest('.grid');
-                            const nextElement = container?.querySelectorAll('input')[1];
-                            if (nextElement) {
-                              (nextElement as HTMLElement).focus();
-                            }
-                          }
-                        }}
-                        placeholder="Enter customer name"
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div className="col-span-1">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
-                      <input
-                        type="text"
-                        value={customer.phone || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const raw = e.target.value;
-                          const digits = raw.replace(/\D/g, '');
-                          setCustomer({ ...customer, phone: raw });
-                          setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const searchInput = document.querySelector('input[placeholder="Search by name, code, manufacturer, or batch number..."]');
-                            if (searchInput) {
-                              (searchInput as HTMLElement).focus();
-                            }
-                          }
-                        }}
-                        placeholder="Enter phone number"
-                        className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
-                      />
-                      {phoneError && (
-                        <p className="mt-1 text-xs text-red-600">{phoneError}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Medicine Search Row inside Sales Entry */}
-              <div className="mt-5 border-t border-dashed border-slate-200 pt-4">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Medicine Search (Barcode / Name)</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, code, manufacturer, or batch number..."
-                    value={searchTerm}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        // Focus stays on search or moves to first bill item quantity if exists
-                        const firstQuantityInput = document.querySelector('.max-h-72 input[type="number"]');
-                        if (firstQuantityInput) {
-                          (firstQuantityInput as HTMLElement).focus();
-                        }
-                      }
-                    }}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Medicine Catalogue below Sales Entry */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Package className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Medicine Catalogue</h2>
-                </div>
-                <span className="text-xs text-slate-500">Select batch and add items to bill</span>
-              </div>
-              <div className="border border-slate-100 rounded-xl max-h-[420px] overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-y-auto">
-                  {loading ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2" />
-                      Loading medicines...
-                    </div>
-                  ) : searchTermTrimmed.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
-                      <Search className="h-10 w-10 text-slate-200 mb-2" />
-                      Search by name, code, batch number, or barcode
-                    </div>
-                  ) : filteredMedicines.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
-                      <Package className="h-10 w-10 text-slate-200 mb-2" />
-                      No medicines found for "{searchTermTrimmed}"
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {filteredMedicines.map((medicine) => (
-                        <div key={medicine.id} className="px-4 py-3 hover:bg-slate-50 transition-colors">
-                          <div className="flex items-start justify-between gap-4 mb-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-medium text-sm text-slate-900 truncate">{medicine.name}</h3>
-                                <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
-                                  {medicine.category}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                                <span>Code: {medicine.medicine_code}</span>
-                                <span>Manufacturer: {medicine.manufacturer}</span>
-                                <span>Unit: {medicine.unit}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-2 space-y-1">
-                            {/* Show all batches for matched medicine - no secondary filtering */}
-                            {medicine.batches.map((batch) => (
-                              <div
-                                key={batch.id}
-                                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-[11px] border border-slate-100"
-                              >
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600">
-                                  <span className="font-medium text-slate-800">Batch: {batch.batch_number}</span>
-                                  <span>Exp: {new Date(batch.expiry_date).toLocaleDateString()}</span>
-                                  <span>Stock: {batch.current_quantity}</span>
-                                  <span className="font-semibold text-emerald-600">₹{batch.selling_price}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => addToBill(medicine, batch)}
-                                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                                >
-                                  <Plus className="h-3 w-3" />
-                                  Add Item
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                      <div className="col-span-5">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
+                        <input
+                          type="text"
+                          value={customer.phone || ''}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            const raw = e.target.value;
+                            const digits = raw.replace(/\D/g, '');
+                            setCustomer({ ...customer, phone: raw });
+                            setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
+                          }}
+                          placeholder="Enter phone number"
+                          className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
+                        />
+                        {phoneError && (
+                          <p className="mt-1 text-xs text-red-600">{phoneError}</p>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
+            </div> {/* Added closing div tag here */}
+            {/* Single Row Billing Entry */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Add Medicine</h2>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-12 gap-3">
+                <div className="col-span-8">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Medicine Search</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search medicine, batch, or legacy code..."
+                      value={searchTerm}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setSearchTerm(e.target.value);
+                        setShowMedicineDropdown(true);
+                        setSelectedMedicineIndex(0);
+                      }}
+                      onKeyDown={handleMedicineKeyDown}
+                      onFocus={() => setShowMedicineDropdown(true)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {showMedicineDropdown && searchTerm && (
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                        {filteredMedicines.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-slate-500">No medicines found</div>
+                        ) : (
+                          filteredMedicines.map((medicine, index) => (
+                            <div
+                              key={medicine.id}
+                              className={`px-3 py-2 cursor-pointer text-xs ${
+                                index === selectedMedicineIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
+                              }`}
+                              onClick={() => {
+                                const batch = medicine.batches[0];
+                                if (batch) {
+                                  addToBill(medicine, batch);
+                                  setSearchTerm('');
+                                  setQuantity(1);
+                                  setSelectedMedicineIndex(0);
+                                  setShowMedicineDropdown(false);
+                                  setTimeout(() => {
+                                    const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+                                    if (medicineInput) {
+                                      (medicineInput as HTMLElement).focus();
+                                    }
+                                  }, 100);
+                                }
+                              }}
+                            >
+                              <div className="font-medium text-slate-900">{medicine.name}</div>
+                              <div className="text-slate-500">
+                                {medicine.medicine_code} • {medicine.manufacturer} • 
+                                {medicine.batches.length > 0 && ` Batch: ${medicine.batches[0].batch_number} • Stock: ${medicine.batches[0].current_quantity}`}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Quantity"
+                    value={quantity}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    onKeyDown={handleQuantityKeyDown}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">&nbsp;</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (searchTerm && filteredMedicines.length > 0) {
+                        const medicine = filteredMedicines[0];
+                        const batch = medicine.batches[0];
+                        if (batch) {
+                          addToBill(medicine, batch);
+                          setSearchTerm('');
+                          setQuantity(1);
+                          setSelectedMedicineIndex(0);
+                          setShowMedicineDropdown(false);
+                          setTimeout(() => {
+                            const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+                            if (medicineInput) {
+                              (medicineInput as HTMLElement).focus();
+                            }
+                          }, 100);
+                        }
+                      }
+                    }}
+                    disabled={!searchTerm || filteredMedicines.length === 0}
+                    className="w-full rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  >
+                    Add Item
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
 
           {/* Right side: Bill Items + Billing Summary */}
           <div className="flex flex-col gap-4">
@@ -2516,8 +2626,10 @@ function NewBillingPageInner() {
             </div>
           </div>
         )}
+
       </div>
     </div>
+  </div>
   );
 }
 
