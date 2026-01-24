@@ -397,6 +397,33 @@ export default function OtherBills() {
                               // Direct print functionality using exact thermal format
                               const now = new Date();
                               const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+                              const items = (selectedBill as any).items && (selectedBill as any).items.length > 0
+                                ? (selectedBill as any).items
+                                : [
+                                    {
+                                      charge_description: selectedBill.charge_description,
+                                      quantity: selectedBill.quantity,
+                                      total_amount: selectedBill.total_amount,
+                                    },
+                                  ];
+
+                              const itemsRows = items
+                                .map((it: any, idx: number) => {
+                                  const qty = Number(it.quantity || 0);
+                                  const amt = typeof it.total_amount === 'number'
+                                    ? it.total_amount
+                                    : (Number(it.unit_price || 0) * qty);
+                                  return `
+                                    <tr>
+                                      <td class="items-8cm">${idx + 1}.</td>
+                                      <td class="items-8cm">${it.charge_description || ''}</td>
+                                      <td class="items-8cm text-center">${qty || 0}</td>
+                                      <td class="items-8cm text-right">${Number(amt || 0).toFixed(2)}</td>
+                                    </tr>
+                                  `;
+                                })
+                                .join('');
                               
                               const thermalContent = `
                                 <html>
@@ -473,12 +500,7 @@ export default function OtherBills() {
                                         <td width="15%" class="items-8cm text-center">Qty</td>
                                         <td width="15%" class="items-8cm text-right">Amt</td>
                                       </tr>
-                                      <tr>
-                                        <td class="items-8cm">1.</td>
-                                        <td class="items-8cm">${selectedBill.charge_description}</td>
-                                        <td class="items-8cm text-center">${selectedBill.quantity}</td>
-                                        <td class="items-8cm text-right">${selectedBill.total_amount.toFixed(2)}</td>
-                                      </tr>
+                                      ${itemsRows}
                                     </table>
                                   </div>
 

@@ -1277,7 +1277,6 @@ export async function processRestockSalesReturn(
       .from('sales_returns')
       .update({
         status: 'completed',
-        refund_status: 'completed',
         updated_at: new Date().toISOString()
       })
       .eq('id', returnId);

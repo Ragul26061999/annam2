@@ -8,6 +8,7 @@ import {
 import {
   getSalesReturns,
   createSalesReturn,
+  processRestockSalesReturn,
   getPharmacyBillForReturn,
   searchPharmacyBills,
   getRecentBills,
@@ -75,6 +76,7 @@ export default function SalesReturnPageV2() {
     returnQuantity: number
     reason: string
     restock: boolean
+    gstPercent: number
   }>>(new Map())
   
   // Return form data
@@ -161,6 +163,60 @@ export default function SalesReturnPageV2() {
     }
   }
 
+  const loadBillDetails = async (billId: string) => {
+    setLoadingBillDetails(true)
+    try {
+      const bill = await getPharmacyBillForReturn(billId)
+      if (!bill) {
+        alert('Bill not found')
+        return
+      }
+
+      // Get already returned quantities for this bill
+      const { data: returnedItems, error: returnedError } = await supabase
+        .from('sales_return_items')
+        .select('medication_id, batch_number, quantity')
+        .in('return_id', 
+          (await supabase
+            .from('sales_returns')
+            .select('id')
+            .eq('bill_id', billId)
+            .eq('status', 'completed')
+          ).data?.map((r: any) => r.id) || []
+        )
+
+      const returnedMap = new Map<string, number>()
+      if (returnedItems && !returnedError) {
+        returnedItems.forEach((item: any) => {
+          const key = `${item.medication_id}-${item.batch_number || ''}`
+          returnedMap.set(key, (returnedMap.get(key) || 0) + Number(item.quantity))
+        })
+      }
+
+      // Calculate remaining quantities
+      const itemsWithRemaining = bill.items.map((item: any) => {
+        const key = `${item.medicine_id}-${item.batch_number || ''}`
+        const returnedQty = returnedMap.get(key) || 0
+        const originalQty = Number(item.qty || 0)
+        const remainingQty = Math.max(0, originalQty - returnedQty)
+        
+        return {
+          ...item,
+          original_qty: originalQty,
+          returned_qty: returnedQty,
+          remaining_qty: remainingQty
+        }
+      })
+
+      setBillDetails({ bill: bill.bill, items: itemsWithRemaining })
+    } catch (err) {
+      console.error('Failed to load bill details:', err)
+      alert('Failed to load bill details')
+    } finally {
+      setLoadingBillDetails(false)
+    }
+  }
+
   const handleSelectBill = async (bill: any) => {
     setSelectedBill(bill)
     setLoadingBillDetails(true)
@@ -193,9 +249,10 @@ export default function SalesReturnPageV2() {
     } else {
       newSelected.set(item.id, {
         item,
-        returnQuantity: Number(item.qty || 0),
+        returnQuantity: Number(item.remaining_qty || item.qty || 0), // Use remaining quantity
         reason: 'wrong_medicine' as const,
-        restock: true
+        restock: true,
+        gstPercent: 0 // Default to 0% GST, user can edit
       })
     }
     
@@ -217,10 +274,32 @@ export default function SalesReturnPageV2() {
 
   const calculateReturnTotal = () => {
     let total = 0
-    selectedItems.forEach(({ item, returnQuantity }) => {
-      total += Number(item.unit_amount || 0) * returnQuantity
+    selectedItems.forEach(({ item, returnQuantity, reason, restock, gstPercent }) => {
+      const gstCalc = calculateGSTBasedReturn(item, returnQuantity, gstPercent)
+      total += gstCalc.totalWithQuantity // Use GST-inclusive total
     })
     return total
+  }
+
+  // Calculate proper GST-based return amount for an item
+  const calculateGSTBasedReturn = (item: any, returnQuantity: number, gstPercent?: number) => {
+    // Use provided gstPercent or default to 0
+    const gst = gstPercent !== undefined ? gstPercent : 0
+    const baseAmount = Number(item.unit_amount || 0) // This is the base amount (exclusive of GST)
+    
+    // Calculate GST amount and total (base + GST)
+    const gstAmount = (baseAmount * gst) / 100
+    const totalAmount = baseAmount + gstAmount
+    
+    return {
+      baseAmount,
+      gstAmount,
+      gstPercent: gst,
+      totalAmount,
+      totalWithQuantity: totalAmount * returnQuantity,
+      baseWithQuantity: baseAmount * returnQuantity,
+      gstWithQuantity: gstAmount * returnQuantity
+    }
   }
 
   const handleProceedToConfirm = () => {
@@ -235,18 +314,22 @@ export default function SalesReturnPageV2() {
     if (!billDetails || selectedItems.size === 0) return
 
     try {
-      const returnItems: SalesReturnItem[] = Array.from(selectedItems.values()).map(({ item, returnQuantity, reason, restock }) => ({
-        medication_id: item.medicine_id,
-        medication_name: item.medication?.name || '',
-        batch_number: item.batch_number || '',
-        quantity: returnQuantity,
-        unit_price: Number(item.unit_amount || 0),
-        gst_percent: item.gst_percent || 0,
-        gst_amount: (Number(item.unit_amount || 0) * returnQuantity * (item.gst_percent || 0)) / 100,
-        total_amount: Number(item.unit_amount || 0) * returnQuantity,
-        reason,
-        restock_status: restock ? 'pending' : 'disposed'
-      }))
+      const returnItems: SalesReturnItem[] = Array.from(selectedItems.values()).map(({ item, returnQuantity, reason, restock, gstPercent }) => {
+        const gstCalc = calculateGSTBasedReturn(item, returnQuantity, gstPercent)
+        
+        return {
+          medication_id: item.medicine_id,
+          medication_name: item.medication?.name || '',
+          batch_number: item.batch_number || '',
+          quantity: returnQuantity,
+          unit_price: gstCalc.baseAmount, // Base amount (exclusive of GST)
+          gst_percent: gstCalc.gstPercent,
+          gst_amount: gstCalc.gstWithQuantity, // GST amount for the quantity
+          total_amount: gstCalc.totalWithQuantity, // Base + GST (inclusive)
+          reason,
+          restock_status: restock ? 'pending' : 'disposed'
+        }
+      })
 
       const returnAmount = calculateReturnTotal()
       const impact = getBillImpactAfterReturn(billDetails.bill, returnAmount)
@@ -281,18 +364,67 @@ export default function SalesReturnPageV2() {
 
       const billUpdate = await updateBillAfterReturn(billDetails.bill.id, returnAmount, itemsForBillUpdate)
 
+      // Finalize restock/dispose so DB trigger can update stock immediately.
+      // Items were inserted as pending/disposed; flip pending -> restocked here.
+      try {
+        if (returnResult?.id) {
+          const { data: sriRows, error: sriErr } = await supabase
+            .from('sales_return_items')
+            .select('id, medication_id, batch_number, restock_status')
+            .eq('return_id', returnResult.id)
+
+          if (sriErr) {
+            console.warn('Failed loading sales_return_items for restock finalization:', {
+              message: (sriErr as any)?.message,
+              details: (sriErr as any)?.details,
+              hint: (sriErr as any)?.hint,
+              code: (sriErr as any)?.code
+            })
+          } else {
+            const restockMap = new Map<string, boolean>()
+            Array.from(selectedItems.values()).forEach(({ item, restock }) => {
+              if (item?.medicine_id) restockMap.set(String(item.medicine_id), !!restock)
+            })
+
+            const itemsToRestock = (sriRows || []).map((r: any) => ({
+              item_id: String(r.id),
+              restock: restockMap.get(String(r.medication_id)) ?? (String(r.restock_status || '').toLowerCase() === 'pending')
+            }))
+
+            if (itemsToRestock.length > 0) {
+              await processRestockSalesReturn(returnResult.id, itemsToRestock)
+            }
+          }
+        }
+      } catch (finalizeErr) {
+        console.warn('Restock/dispose finalization failed (return still recorded, bill adjusted):', finalizeErr)
+      }
+
+      // Reload bill details to reflect updated qty/totals after return (avoid showing pre-return quantities)
+      try {
+        const refreshed = await getPharmacyBillForReturn(billDetails.bill.id)
+        setBillDetails(refreshed)
+      } catch (refreshErr) {
+        console.warn('Failed refreshing bill details after return:', refreshErr)
+      }
+
       // Prepare print data
       setPrintData({
         returnNumber: returnResult?.return_number || 'N/A',
         returnDate: returnData.return_date,
         originalBill: billDetails.bill,
-        returnItems: Array.from(selectedItems.values()).map(({ item, returnQuantity, reason }) => ({
-          name: item.medication?.name,
-          quantity: returnQuantity,
-          unitPrice: Number(item.unit_amount || 0),
-          total: Number(item.unit_amount || 0) * returnQuantity,
-          reason
-        })),
+        returnItems: Array.from(selectedItems.values()).map(({ item, returnQuantity, reason, gstPercent }) => {
+          const gstCalc = calculateGSTBasedReturn(item, returnQuantity, gstPercent)
+          return {
+            name: item.medication?.name,
+            quantity: returnQuantity,
+            unitPrice: gstCalc.baseAmount, // Base amount (exclusive of GST)
+            gstPercent: gstCalc.gstPercent,
+            gstAmount: gstCalc.gstWithQuantity,
+            total: gstCalc.totalWithQuantity, // Base + GST
+            reason
+          }
+        }),
         refundMode: returnData.refund_mode,
         totalRefund: returnAmount,
         refundDue: billUpdate.refundAmount,
@@ -640,12 +772,19 @@ export default function SalesReturnPageV2() {
                               <input
                                 type="number"
                                 min="1"
-                                max={Number(item.qty || 0)}
+                                max={Number(item.remaining_qty || item.qty || 0)}
                                 value={selectedData.returnQuantity}
                                 onChange={(e) => handleUpdateReturnItem(item.id, 'returnQuantity', parseInt(e.target.value) || 1)}
                                 className="w-full border rounded px-3 py-2"
                               />
-                              <div className="text-xs text-gray-500 mt-1">Max: {Number(item.qty || 0)}</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Max: {Number(item.remaining_qty || item.qty || 0)}
+                                {item.returned_qty > 0 && (
+                                  <span className="ml-2 text-orange-600">
+                                    (Already returned: {item.returned_qty})
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Return Reason</label>
@@ -662,7 +801,7 @@ export default function SalesReturnPageV2() {
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Restock?</label>
                               <select
-                                value={selectedData.restock ? 'yes' : 'no'}
+                                value={selectedData.restock !== undefined ? (selectedData.restock ? 'yes' : 'no') : 'yes'}
                                 onChange={(e) => handleUpdateReturnItem(item.id, 'restock', e.target.value === 'yes')}
                                 className="w-full border rounded px-3 py-2"
                               >
@@ -670,17 +809,53 @@ export default function SalesReturnPageV2() {
                                 <option value="no">No, dispose</option>
                               </select>
                             </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">GST %</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                step="0.01"
+                                value={selectedData.gstPercent}
+                                onChange={(e) => handleUpdateReturnItem(item.id, 'gstPercent', parseFloat(e.target.value) || 0)}
+                                className="w-full border rounded px-3 py-2"
+                                placeholder="0"
+                              />
+                              <div className="text-xs text-gray-500 mt-1">Enter GST percentage</div>
+                            </div>
                           </div>
                         )}
                       </div>
 
                       <div className="text-right ml-4">
-                        <div className="text-sm text-gray-600">Qty: {Number(item.qty || 0)}</div>
+                        <div className="text-sm text-gray-600">
+                          Qty: {Number(item.remaining_qty || item.qty || 0)}
+                          {item.returned_qty > 0 && (
+                            <span className="ml-1 text-orange-600">
+                              (of {Number(item.qty || 0)} total)
+                            </span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-600">@ {formatCurrency(Number(item.unit_amount || 0))}</div>
                         <div className="text-lg font-bold mt-1">{formatCurrency(item.total_amount)}</div>
+                        {item.returned_qty > 0 && (
+                          <div className="text-xs text-orange-600 mt-1">
+                            Already returned: {item.returned_qty}
+                          </div>
+                        )}
                         {isSelected && selectedData && (
-                          <div className="mt-2 text-green-600 font-semibold">
-                            Return: {formatCurrency(Number(item.unit_amount || 0) * selectedData.returnQuantity)}
+                          <div className="mt-2 text-green-600">
+                            <div className="font-semibold">Return Details:</div>
+                            {(() => {
+                              const gstCalc = calculateGSTBasedReturn(item, selectedData.returnQuantity, selectedData.gstPercent)
+                              return (
+                                <div className="text-xs space-y-1">
+                                  <div>Base: {formatCurrency(gstCalc.baseWithQuantity)}</div>
+                                  <div>GST ({gstCalc.gstPercent}%): {formatCurrency(gstCalc.gstWithQuantity)}</div>
+                                  <div className="font-semibold border-t pt-1">Total: {formatCurrency(gstCalc.totalWithQuantity)}</div>
+                                </div>
+                              )
+                            })()}
                           </div>
                         )}
                       </div>
@@ -791,17 +966,38 @@ export default function SalesReturnPageV2() {
             </div>
 
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold mb-3">Return Summary</h3>
-              <div className="space-y-2">
-                {Array.from(selectedItems.values()).map(({ item, returnQuantity, reason }) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span>{item.medication?.name} x {returnQuantity}</span>
-                    <span className="font-medium">{formatCurrency(Number(item.unit_amount || 0) * returnQuantity)}</span>
-                  </div>
-                ))}
+              <h3 className="font-semibold mb-3">Return Summary (GST Breakdown)</h3>
+              <div className="space-y-3">
+                {Array.from(selectedItems.values()).map(({ item, returnQuantity, reason, gstPercent }) => {
+                  const gstCalc = calculateGSTBasedReturn(item, returnQuantity, gstPercent)
+                  return (
+                    <div key={item.id} className="border rounded p-3 bg-white">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="font-medium text-sm">{item.medication?.name} x {returnQuantity}</div>
+                          <div className="text-xs text-gray-500">Reason: {RETURN_REASONS.find(r => r.value === reason)?.label || reason}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">{formatCurrency(gstCalc.totalWithQuantity)}</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-600">Base:</span> {formatCurrency(gstCalc.baseWithQuantity)}
+                        </div>
+                        <div>
+                          <span className="text-gray-600">GST ({gstCalc.gstPercent}%):</span> {formatCurrency(gstCalc.gstWithQuantity)}
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Total:</span> {formatCurrency(gstCalc.totalWithQuantity)}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
               <div className="border-t mt-3 pt-3 flex justify-between font-bold text-lg">
-                <span>Total Refund</span>
+                <span>Total Refund (Incl. GST)</span>
                 <span className="text-green-600">{formatCurrency(calculateReturnTotal())}</span>
               </div>
 
@@ -916,8 +1112,10 @@ export default function SalesReturnPageV2() {
                   <tr>
                     <th className="border px-4 py-2 text-left">Medicine</th>
                     <th className="border px-4 py-2 text-center">Qty</th>
-                    <th className="border px-4 py-2 text-right">Rate</th>
-                    <th className="border px-4 py-2 text-right">Amount</th>
+                    <th className="border px-4 py-2 text-right">Base Rate</th>
+                    <th className="border px-4 py-2 text-right">GST %</th>
+                    <th className="border px-4 py-2 text-right">GST Amt</th>
+                    <th className="border px-4 py-2 text-right">Total</th>
                     <th className="border px-4 py-2 text-left">Reason</th>
                   </tr>
                 </thead>
@@ -927,6 +1125,8 @@ export default function SalesReturnPageV2() {
                       <td className="border px-4 py-2">{item.name}</td>
                       <td className="border px-4 py-2 text-center">{item.quantity}</td>
                       <td className="border px-4 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
+                      <td className="border px-4 py-2 text-right">{item.gstPercent}%</td>
+                      <td className="border px-4 py-2 text-right">{formatCurrency(item.gstAmount)}</td>
                       <td className="border px-4 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
                       <td className="border px-4 py-2 text-sm">{RETURN_REASONS.find(r => r.value === item.reason)?.label}</td>
                     </tr>
@@ -934,7 +1134,7 @@ export default function SalesReturnPageV2() {
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={3} className="border px-4 py-2 text-right font-bold">Total Refund:</td>
+                    <td colSpan={5} className="border px-4 py-2 text-right font-bold">Total Refund (Incl. GST):</td>
                     <td className="border px-4 py-2 text-right font-bold text-lg text-green-600">
                       {formatCurrency(printData.totalRefund)}
                     </td>

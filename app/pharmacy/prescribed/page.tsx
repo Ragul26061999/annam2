@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer } from 'lucide-react'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer, Eye, X } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 import { PharmacyBillPrint } from '../../../src/components/pharmacy/PharmacyBillPrint'
 
@@ -14,7 +14,7 @@ interface Prescription {
   doctor_id: string
   doctor_name: string
   prescription_date: string
-  status: 'active' | 'dispensed' | 'expired'
+  status: 'active' | 'partially_dispensed' | 'dispensed' | 'expired'
   instructions: string
   items: PrescriptionItem[]
 }
@@ -34,6 +34,38 @@ interface PrescriptionItem {
   status: 'pending' | 'dispensed' | 'cancelled'
 }
 
+interface LinkedBillItem {
+  billing_id: string
+  ref_id: string | null
+  description: string | null
+  qty: number | null
+  unit_amount: number | null
+  total_amount: number | null
+  batch_number: string | null
+  expiry_date: string | null
+}
+
+interface LinkedBill {
+  id: string
+  bill_number: string | null
+  created_at: string | null
+  total: number | null
+  amount_paid: number | null
+  balance_due: number | null
+  payment_method: string | null
+  payment_status: string | null
+  customer_name: string | null
+}
+
+interface LinkedPayment {
+  id: string
+  billing_id: string
+  amount: number
+  method: string
+  reference: string | null
+  paid_at: string | null
+}
+
 export default function PrescribedListPage() {
   const router = useRouter()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
@@ -44,11 +76,188 @@ export default function PrescribedListPage() {
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null)
 
+  const [showBillsModal, setShowBillsModal] = useState(false)
+  const [billsLoading, setBillsLoading] = useState(false)
+  const [selectedBillsPrescription, setSelectedBillsPrescription] = useState<Prescription | null>(null)
+  const [linkedBills, setLinkedBills] = useState<LinkedBill[]>([])
+  const [linkedBillItems, setLinkedBillItems] = useState<LinkedBillItem[]>([])
+  const [linkedPayments, setLinkedPayments] = useState<LinkedPayment[]>([])
+
+  const getDerivedPrescriptionStatus = (prescription: { status?: string; prescription_items?: any[] }): Prescription['status'] => {
+    const baseStatus = (prescription.status || 'active').toLowerCase()
+    if (baseStatus === 'expired') return 'expired'
+    if (baseStatus === 'dispensed') return 'dispensed'
+
+    const items = Array.isArray(prescription.prescription_items) ? prescription.prescription_items : []
+    if (items.length === 0) return 'active'
+
+    const anyDispensed = items.some((it: any) => (Number(it.dispensed_quantity) || 0) > 0)
+    const allDone = items.every((it: any) => (Number(it.dispensed_quantity) || 0) >= (Number(it.quantity) || 0))
+    if (allDone) return 'dispensed'
+    if (anyDispensed) return 'partially_dispensed'
+    return 'active'
+  }
+
+  const getStatusLabel = (status: Prescription['status']) => {
+    switch (status) {
+      case 'partially_dispensed':
+        return 'Partially Dispensed'
+      default:
+        return status
+    }
+  }
+
+  const openBillsModal = async (prescription: Prescription) => {
+    try {
+      setBillsLoading(true)
+      setSelectedBillsPrescription(prescription)
+      setShowBillsModal(true)
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser()
+      if (authErr || !authData?.user) {
+        console.warn('User not authenticated while loading linked bills:', {
+          message: (authErr as any)?.message,
+          details: (authErr as any)?.details,
+          hint: (authErr as any)?.hint,
+          code: (authErr as any)?.code
+        })
+        throw new Error('Please sign in again to view bills')
+      }
+
+      const { data: pItems, error: pItemsErr } = await supabase
+        .from('prescription_items')
+        .select('id')
+        .eq('prescription_id', prescription.id)
+
+      if (pItemsErr) {
+        console.warn('Failed loading prescription_items ids for linked bills:', {
+          message: (pItemsErr as any)?.message,
+          details: (pItemsErr as any)?.details,
+          hint: (pItemsErr as any)?.hint,
+          code: (pItemsErr as any)?.code
+        })
+        throw pItemsErr
+      }
+      const prescriptionItemIds = (pItems || []).map((r: any) => r.id).filter(Boolean)
+      if (prescriptionItemIds.length === 0) {
+        setLinkedBills([])
+        setLinkedBillItems([])
+        setLinkedPayments([])
+        return
+      }
+
+      const { data: billItems, error: billItemsErr } = await supabase
+        .from('billing_item')
+        .select('billing_id, ref_id, description, qty, unit_amount, total_amount, batch_number, expiry_date')
+        .in('ref_id', prescriptionItemIds)
+
+      if (billItemsErr) {
+        console.warn('Failed loading billing_item rows for linked bills:', {
+          message: (billItemsErr as any)?.message,
+          details: (billItemsErr as any)?.details,
+          hint: (billItemsErr as any)?.hint,
+          code: (billItemsErr as any)?.code
+        })
+        throw billItemsErr
+      }
+      const normalizedBillItems: LinkedBillItem[] = (billItems || []).map((x: any) => ({
+        billing_id: String(x.billing_id),
+        ref_id: x.ref_id ? String(x.ref_id) : null,
+        description: x.description ?? null,
+        qty: x.qty !== null && x.qty !== undefined ? Number(x.qty) : null,
+        unit_amount: x.unit_amount !== null && x.unit_amount !== undefined ? Number(x.unit_amount) : null,
+        total_amount: x.total_amount !== null && x.total_amount !== undefined ? Number(x.total_amount) : null,
+        batch_number: x.batch_number ?? null,
+        expiry_date: x.expiry_date ?? null
+      }))
+      setLinkedBillItems(normalizedBillItems)
+
+      const billIds = Array.from(new Set(normalizedBillItems.map(bi => bi.billing_id))).filter(Boolean)
+      if (billIds.length === 0) {
+        setLinkedBills([])
+        setLinkedPayments([])
+        return
+      }
+
+      const { data: bills, error: billsErr } = await supabase
+        .from('billing')
+        .select('id, bill_number, created_at, total, amount_paid, balance_due, payment_method, payment_status, customer_name')
+        .in('id', billIds)
+        .order('created_at', { ascending: false })
+
+      if (billsErr) {
+        console.warn('Failed loading billing headers for linked bills:', {
+          message: (billsErr as any)?.message,
+          details: (billsErr as any)?.details,
+          hint: (billsErr as any)?.hint,
+          code: (billsErr as any)?.code
+        })
+        throw billsErr
+      }
+      setLinkedBills((bills || []).map((b: any) => ({
+        id: String(b.id),
+        bill_number: b.bill_number ?? null,
+        created_at: b.created_at ?? null,
+        total: b.total !== null && b.total !== undefined ? Number(b.total) : null,
+        amount_paid: b.amount_paid !== null && b.amount_paid !== undefined ? Number(b.amount_paid) : null,
+        balance_due: b.balance_due !== null && b.balance_due !== undefined ? Number(b.balance_due) : null,
+        payment_method: b.payment_method ?? null,
+        payment_status: b.payment_status ?? null,
+        customer_name: b.customer_name ?? null
+      })))
+
+      const { data: pays, error: paysErr } = await supabase
+        .from('billing_payments')
+        .select('id, billing_id, amount, method, reference, paid_at')
+        .in('billing_id', billIds)
+        .order('paid_at', { ascending: false })
+
+      if (paysErr) {
+        console.warn('Failed loading billing_payments for linked bills:', {
+          message: (paysErr as any)?.message,
+          details: (paysErr as any)?.details,
+          hint: (paysErr as any)?.hint,
+          code: (paysErr as any)?.code
+        })
+        throw paysErr
+      }
+      setLinkedPayments((pays || []).map((p: any) => ({
+        id: String(p.id),
+        billing_id: String(p.billing_id),
+        amount: Number(p.amount) || 0,
+        method: String(p.method || ''),
+        reference: p.reference ?? null,
+        paid_at: p.paid_at ?? null
+      })))
+    } catch (e: any) {
+      console.error('Error loading linked bills:', {
+        message: e?.message,
+        details: e?.details,
+        hint: e?.hint,
+        code: e?.code,
+        raw: e
+      })
+      setLinkedBills([])
+      setLinkedBillItems([])
+      setLinkedPayments([])
+    } finally {
+      setBillsLoading(false)
+    }
+  }
+
+  const closeBillsModal = () => {
+    setShowBillsModal(false)
+    setSelectedBillsPrescription(null)
+    setLinkedBills([])
+    setLinkedBillItems([])
+    setLinkedPayments([])
+  }
+
   // Calculate statistics
   const stats = {
     total: prescriptions.length,
     active: prescriptions.filter(p => p.status === 'active').length,
-    dispensed: prescriptions.filter(p => p.status === 'dispensed').length,
+    dispensed: prescriptions.filter(p => p.status === 'dispensed' || p.status === 'partially_dispensed').length,
     pendingItems: prescriptions.reduce((acc, p) => acc + p.items.filter(i => i.status === 'pending').length, 0),
     totalPatients: new Set(prescriptions.map(p => p.patient_id)).size,
     totalValue: prescriptions.reduce((acc, p) => acc + p.items.reduce((itemAcc, item) => itemAcc + item.total_price, 0), 0)
@@ -116,6 +325,8 @@ export default function PrescribedListPage() {
           status: (item.status || 'pending') as 'pending' | 'dispensed' | 'cancelled'
         }))
 
+        const derivedStatus = getDerivedPrescriptionStatus(prescription)
+
         return {
           id: prescription.id,
           prescription_id: prescription.prescription_id,
@@ -124,7 +335,7 @@ export default function PrescribedListPage() {
           doctor_id: prescription.doctor_id,
           doctor_name: prescription.doctor?.name || 'Unknown Doctor',
           prescription_date: prescription.issue_date || prescription.created_at?.split('T')[0] || '',
-          status: (prescription.status || 'active') as 'active' | 'dispensed' | 'expired',
+          status: derivedStatus,
           instructions: prescription.instructions || '',
           items
         }
@@ -147,7 +358,7 @@ export default function PrescribedListPage() {
     if (activeTab === 'active') {
       matchesTab = prescription.status === 'active'
     } else if (activeTab === 'dispensed') {
-      matchesTab = prescription.status === 'dispensed'
+      matchesTab = prescription.status === 'dispensed' || prescription.status === 'partially_dispensed'
     }
     
     return matchesSearch && matchesTab
@@ -157,6 +368,8 @@ export default function PrescribedListPage() {
     switch (status) {
       case 'active':
         return 'bg-yellow-100 text-yellow-800'
+      case 'partially_dispensed':
+        return 'bg-blue-100 text-blue-800'
       case 'dispensed':
         return 'bg-green-100 text-green-800'
       case 'expired':
@@ -170,6 +383,8 @@ export default function PrescribedListPage() {
     switch (status) {
       case 'active':
         return <Clock className="w-4 h-4" />
+      case 'partially_dispensed':
+        return <Activity className="w-4 h-4" />
       case 'dispensed':
         return <CheckCircle className="w-4 h-4" />
       case 'expired':
@@ -372,7 +587,7 @@ export default function PrescribedListPage() {
                     <h3 className="text-lg font-semibold">{prescription.patient_name}</h3>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusBadge(prescription.status)}`}>
                       {getStatusIcon(prescription.status)}
-                      {prescription.status}
+                      {getStatusLabel(prescription.status)}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
@@ -393,7 +608,7 @@ export default function PrescribedListPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {prescription.status === 'active' ? (
+                  {prescription.status !== 'dispensed' ? (
                     <>
                       <button
                         onClick={() => handleCreateBill(prescription)}
@@ -403,39 +618,42 @@ export default function PrescribedListPage() {
                         <Receipt className="w-4 h-4" />
                         Create Bill
                       </button>
-                      <button
-                        onClick={() => handleDeletePrescription(prescription)}
-                        className="btn-secondary text-sm flex items-center gap-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete
-                      </button>
-                    </>
-                  ) : prescription.status === 'dispensed' ? (
-                    <>
-                      <button
-                        onClick={() => handlePrintBill(prescription)}
-                        className="btn-primary text-sm flex items-center gap-2"
-                      >
-                        <Printer className="w-4 h-4" />
-                        Print Bill
-                      </button>
-                      <button
-                        onClick={() => handleReturnBill(prescription)}
-                        className="btn-secondary text-sm flex items-center gap-2"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Return
-                      </button>
+                      {prescription.items.some(i => (Number(i.dispensed_quantity) || 0) > 0) ? (
+                        <button
+                          onClick={() => openBillsModal(prescription)}
+                          className="btn-secondary text-sm flex items-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Bills
+                        </button>
+                      ) : null}
+                      {!prescription.items.some(i => (Number(i.dispensed_quantity) || 0) > 0) ? (
+                        <button
+                          onClick={() => handleDeletePrescription(prescription)}
+                          className="btn-danger text-sm flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      ) : null}
                     </>
                   ) : (
-                    <button
-                      onClick={() => handleDeletePrescription(prescription)}
-                      className="btn-secondary text-sm flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
+                    <>
+                      <button
+                        onClick={() => openBillsModal(prescription)}
+                        className="btn-secondary text-sm flex items-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View Bills
+                      </button>
+                      <button
+                        onClick={() => handlePrintBill(prescription)}
+                        className="btn-secondary text-sm flex items-center gap-2"
+                      >
+                        <Printer className="w-4 h-4" />
+                        Print
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -479,6 +697,97 @@ export default function PrescribedListPage() {
             setSelectedPrescription(null)
           }}
         />
+      )}
+
+      {showBillsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h2 className="text-lg font-semibold">Bills</h2>
+                {selectedBillsPrescription ? (
+                  <div className="text-sm text-gray-600">
+                    {selectedBillsPrescription.patient_name} · {selectedBillsPrescription.prescription_id}
+                  </div>
+                ) : null}
+              </div>
+              <button onClick={closeBillsModal} className="p-2 rounded hover:bg-gray-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {billsLoading ? (
+                <div className="text-center py-10">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                </div>
+              ) : linkedBills.length === 0 ? (
+                <div className="text-sm text-gray-600">No bills found for dispensed items.</div>
+              ) : (
+                linkedBills.map(b => {
+                  const billTotal = Number(b.total ?? 0) || 0
+                  const billItems = linkedBillItems.filter(it => it.billing_id === b.id)
+                  const billPays = linkedPayments.filter(p => p.billing_id === b.id)
+                  return (
+                    <div key={b.id} className="border rounded-lg p-4">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        <div>
+                          <div className="font-semibold">{b.bill_number || b.id}</div>
+                          <div className="text-sm text-gray-600">
+                            {b.created_at ? new Date(b.created_at).toLocaleString() : ''}
+                          </div>
+                        </div>
+                        <div className="text-sm">
+                          <div><strong>Total:</strong> ₹{billTotal.toFixed(2)}</div>
+                          <div><strong>Status:</strong> {b.payment_status || ''}</div>
+                        </div>
+                      </div>
+
+                      {billItems.length > 0 ? (
+                        <div className="mt-3">
+                          <div className="text-sm font-medium mb-2">Items</div>
+                          <div className="space-y-2">
+                            {billItems.map((it, idx) => (
+                              <div key={`${it.billing_id}-${idx}`} className="flex justify-between text-sm bg-gray-50 rounded p-2">
+                                <div className="flex-1 pr-2">
+                                  <div className="font-medium">{it.description || 'Item'}</div>
+                                  <div className="text-gray-600">Batch: {it.batch_number || '-'} · Exp: {it.expiry_date || '-'}</div>
+                                </div>
+                                <div className="text-right">
+                                  <div>{Number(it.qty || 0)}/{''}</div>
+                                  <div>₹{Number(it.total_amount || 0).toFixed(2)}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3">
+                        <div className="text-sm font-medium mb-2">Payments</div>
+                        {billPays.length === 0 ? (
+                          <div className="text-sm text-gray-600">No payment transactions recorded.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {billPays.map(p => (
+                              <div key={p.id} className="flex justify-between text-sm bg-gray-50 rounded p-2">
+                                <div>
+                                  <div className="font-medium">{String(p.method || '').toUpperCase()}</div>
+                                  <div className="text-gray-600">{p.paid_at ? new Date(p.paid_at).toLocaleString() : ''}{p.reference ? ` · Ref: ${p.reference}` : ''}</div>
+                                </div>
+                                <div className="font-medium">₹{Number(p.amount || 0).toFixed(2)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

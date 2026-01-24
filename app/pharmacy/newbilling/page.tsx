@@ -254,6 +254,7 @@ function NewBillingPageInner() {
   const [patientResults, setPatientResults] = useState<any[]>([]);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const [linkedPrescriptionId, setLinkedPrescriptionId] = useState<string | null>(null);
+  const [linkedPrescriptionEncounterId, setLinkedPrescriptionEncounterId] = useState<string | null>(null);
   const [linkedPrescriptionItems, setLinkedPrescriptionItems] = useState<Array<{ prescription_item_id: string; medication_id: string; quantity: number; dispensed_quantity: number }>>([]);
   // Hospital details for receipt (persisted)
   const [hospitalDetails, setHospitalDetails] = useState({
@@ -435,6 +436,7 @@ function NewBillingPageInner() {
           .select(`
             id,
             patient_id,
+            encounter_id,
             status,
             patient:patients(id, patient_id, name, phone),
             prescription_items(
@@ -451,6 +453,7 @@ function NewBillingPageInner() {
         if (error) throw error;
 
         setLinkedPrescriptionId(data.id);
+        setLinkedPrescriptionEncounterId(data.encounter_id);
         setLinkedPrescriptionItems((data.prescription_items || []).map((it: any) => ({
           prescription_item_id: it.id,
           medication_id: it.medication_id,
@@ -805,6 +808,7 @@ function NewBillingPageInner() {
         const base = {
           bill_number: billNumber, // Use our generated bill number
           patient_id: customer.type === 'patient' ? customer.patient_id : null, // Set to null for walk-in customers
+          encounter_id: linkedPrescriptionEncounterId,
           currency: 'INR',
           subtotal: billTotals.subtotal,
           discount_type: billTotals.discountType,
@@ -846,24 +850,96 @@ function NewBillingPageInner() {
       }
 
       // Create bill items
-      const billItemsData = billItems.map(item => ({
-        billing_id: billData!.id,
-        line_type_id: '3a0ca26e-7dc1-4ede-9872-d798cf39d248', // Medicine line type from ref_code table
-        medicine_id: item.medicine.id,
-        batch_id: item.batch.id,
-        description: item.medicine.name,
-        qty: item.quantity,
-        unit_amount: item.batch.selling_price,
-        total_amount: item.total,
-        batch_number: item.batch.batch_number,
-        expiry_date: item.batch.expiry_date
-      }));
+      const billItemsData = billItems.map(item => {
+        const linked = linkedPrescriptionItems.find(lp => lp.medication_id === item.medicine.id);
+        return {
+          billing_id: billData!.id,
+          line_type_id: '3a0ca26e-7dc1-4ede-9872-d798cf39d248', // Medicine line type from ref_code table
+          medicine_id: item.medicine.id,
+          batch_id: item.batch.id,
+          ref_id: linked?.prescription_item_id ?? null,
+          description: item.medicine.name,
+          qty: item.quantity,
+          unit_amount: item.batch.selling_price,
+          total_amount: item.total,
+          batch_number: item.batch.batch_number,
+          expiry_date: item.batch.expiry_date
+        };
+      });
 
       const { error: itemsError } = await supabase
         .from('billing_item')
         .insert(billItemsData);
 
       if (itemsError) throw itemsError;
+
+      // If bill originated from a prescription, update dispensed quantities/status.
+      if (linkedPrescriptionId && linkedPrescriptionItems.length > 0) {
+        const nowIso = new Date().toISOString();
+        const updatedItems: Array<{ id: string; quantity: number; dispensed_quantity: number }> = [];
+        for (const it of linkedPrescriptionItems) {
+          const billedQty = billItems
+            .filter(bi => bi.medicine.id === it.medication_id)
+            .reduce((sum, bi) => sum + (Number(bi.quantity) || 0), 0);
+          if (billedQty <= 0) continue;
+
+          const newDispensed = Math.max((Number(it.dispensed_quantity) || 0) + billedQty, 0);
+          const fullyDispensed = newDispensed >= (Number(it.quantity) || 0);
+          // IMPORTANT: DB/UI only support 'pending' | 'dispensed' | 'cancelled' for prescription_items.status.
+          // So keep it 'pending' until fully dispensed.
+          const nextStatus = fullyDispensed ? 'dispensed' : 'pending';
+
+          const { error: updErr } = await supabase
+            .from('prescription_items')
+            .update({
+              dispensed_quantity: newDispensed,
+              status: nextStatus,
+              dispensed_by: currentUser?.id ?? null,
+              dispensed_date: nowIso
+            })
+            .eq('id', it.prescription_item_id);
+
+          if (updErr) {
+            console.warn('Failed updating prescription_items after billing:', {
+              prescription_item_id: it.prescription_item_id,
+              message: (updErr as any)?.message,
+              details: (updErr as any)?.details,
+              hint: (updErr as any)?.hint,
+              code: (updErr as any)?.code
+            });
+          } else {
+            updatedItems.push({
+              id: it.prescription_item_id,
+              quantity: Number(it.quantity) || 0,
+              dispensed_quantity: newDispensed
+            });
+          }
+        }
+
+        // Update prescriptions header status if all items are fully dispensed.
+        // The prescriptions list page categorizes based on prescriptions.status = 'active' | 'dispensed' | 'expired'.
+        try {
+          const allDone = updatedItems.length > 0 && updatedItems.every(x => (Number(x.dispensed_quantity) || 0) >= (Number(x.quantity) || 0));
+          if (allDone) {
+            const { error: presUpdErr } = await supabase
+              .from('prescriptions')
+              .update({ status: 'dispensed' })
+              .eq('id', linkedPrescriptionId);
+
+            if (presUpdErr) {
+              console.warn('Failed updating prescriptions.status after billing:', {
+                prescription_id: linkedPrescriptionId,
+                message: (presUpdErr as any)?.message,
+                details: (presUpdErr as any)?.details,
+                hint: (presUpdErr as any)?.hint,
+                code: (presUpdErr as any)?.code
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Error computing/updating prescriptions.status after billing:', e);
+        }
+      }
 
       // Insert split payments using RPC so triggers update payment_status/amounts
       for (const p of payments) {

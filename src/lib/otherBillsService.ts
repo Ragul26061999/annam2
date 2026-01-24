@@ -15,17 +15,23 @@ export interface OtherBillChargeCategory {
   sort_order: number;
 }
 
-export interface OtherBillFormData {
-  patient_id?: string;
-  patient_type: PatientType;
-  patient_name: string;
-  patient_phone?: string;
+export interface OtherBillItem {
+  id?: string;
   charge_category: ChargeCategory;
   charge_description: string;
   quantity: number;
   unit_price: number;
   discount_percent?: number;
   tax_percent?: number;
+  sort_order?: number;
+}
+
+export interface OtherBillFormData {
+  patient_id?: string;
+  patient_type: PatientType;
+  patient_name: string;
+  patient_phone?: string;
+  items: OtherBillItem[];
   reference_number?: string;
   remarks?: string;
   bed_allocation_id?: string;
@@ -43,7 +49,8 @@ export type OtherBillWithPatient = OtherBills['Row'] & {
     name: string;
     employee_id: string;
   } | null;
-}
+  items?: OtherBillItem[];
+};
 
 export const CHARGE_CATEGORIES: { value: string; label: string; description: string }[] = [
   { value: 'nursing_charges', label: 'Nursing Charges', description: 'Nursing care and monitoring fees' },
@@ -149,24 +156,57 @@ export async function generateOtherBillNumber(): Promise<string> {
 }
 
 function calculateBillAmounts(formData: OtherBillFormData) {
-  const quantity = formData.quantity || 1;
-  const unitPrice = formData.unit_price || 0;
-  const discountPercent = formData.discount_percent || 0;
-  const taxPercent = formData.tax_percent || 0;
+  let totalSubtotal = 0;
+  let totalDiscountAmount = 0;
+  let totalTaxAmount = 0;
+  let totalAmount = 0;
+
+  formData.items.forEach((item) => {
+    const quantity = item.quantity || 1;
+    const unitPrice = item.unit_price || 0;
+    const discountPercent = item.discount_percent || 0;
+    const taxPercent = item.tax_percent || 0;
+
+    const subtotal = quantity * unitPrice;
+    const discountAmount = (subtotal * discountPercent) / 100;
+    const afterDiscount = subtotal - discountAmount;
+    const taxAmount = (afterDiscount * taxPercent) / 100;
+    const itemTotal = afterDiscount + taxAmount;
+
+    totalSubtotal += subtotal;
+    totalDiscountAmount += discountAmount;
+    totalTaxAmount += taxAmount;
+    totalAmount += itemTotal;
+  });
+
+  const balanceAmount = totalAmount;
+
+  return {
+    subtotal: totalSubtotal,
+    discount_amount: totalDiscountAmount,
+    tax_amount: totalTaxAmount,
+    total_amount: totalAmount,
+    balance_amount: balanceAmount,
+  };
+}
+
+function calculateItemAmounts(item: OtherBillItem) {
+  const quantity = item.quantity || 1;
+  const unitPrice = item.unit_price || 0;
+  const discountPercent = item.discount_percent || 0;
+  const taxPercent = item.tax_percent || 0;
 
   const subtotal = quantity * unitPrice;
   const discountAmount = (subtotal * discountPercent) / 100;
   const afterDiscount = subtotal - discountAmount;
   const taxAmount = (afterDiscount * taxPercent) / 100;
   const totalAmount = afterDiscount + taxAmount;
-  const balanceAmount = totalAmount;
 
   return {
     subtotal,
     discount_amount: discountAmount,
     tax_amount: taxAmount,
     total_amount: totalAmount,
-    balance_amount: balanceAmount,
   };
 }
 
@@ -197,14 +237,15 @@ export async function createOtherBill(
       patient_type: normalizedFormData.patient_type,
       patient_name: normalizedFormData.patient_name,
       patient_phone: normalizedFormData.patient_phone || null,
-      charge_category: normalizedFormData.charge_category,
-      charge_description: normalizedFormData.charge_description,
-      quantity: normalizedFormData.quantity,
-      unit_price: normalizedFormData.unit_price,
-      discount_percent: normalizedFormData.discount_percent || 0,
+      // Set main bill fields from first item for backward compatibility
+      charge_category: normalizedFormData.items[0]?.charge_category || 'other',
+      charge_description: normalizedFormData.items[0]?.charge_description || 'Multiple items',
+      quantity: normalizedFormData.items.length,
+      unit_price: amounts.total_amount / normalizedFormData.items.length,
+      discount_percent: 0,
       discount_amount: amounts.discount_amount,
       subtotal: amounts.subtotal,
-      tax_percent: normalizedFormData.tax_percent || 0,
+      tax_percent: 0,
       tax_amount: amounts.tax_amount,
       total_amount: amounts.total_amount,
       payment_status: 'pending',
@@ -227,6 +268,29 @@ export async function createOtherBill(
     if (error) {
       console.error('Error creating other bill:', error);
       throw new Error(`Failed to create other bill: ${error.message}`);
+    }
+
+    // Insert bill items
+    const itemsToInsert = normalizedFormData.items.map((item, index) => ({
+      bill_id: data.id,
+      charge_category: item.charge_category,
+      charge_description: item.charge_description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_percent: item.discount_percent || 0,
+      tax_percent: item.tax_percent || 0,
+      sort_order: index,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('other_bill_items')
+      .insert(itemsToInsert);
+
+    if (itemsError) {
+      console.error('Error creating bill items:', itemsError);
+      // Rollback the bill creation
+      await supabase.from('other_bills').delete().eq('id', data.id);
+      throw new Error(`Failed to create bill items: ${itemsError.message}`);
     }
 
     return data;
@@ -253,7 +317,8 @@ export async function getOtherBills(filters?: {
       .select(`
         *,
         patient:patients(id, patient_id, name, phone),
-        created_by_user:created_by(name, employee_id)
+        created_by_user:created_by(name, employee_id),
+        items:other_bill_items(*)
       `)
       .order('bill_date', { ascending: false });
 
@@ -310,7 +375,8 @@ export async function getOtherBillById(billId: string): Promise<OtherBillWithPat
       .select(`
         *,
         patient:patients(id, patient_id, name, phone),
-        created_by_user:created_by(name, employee_id)
+        created_by_user:created_by(name, employee_id),
+        items:other_bill_items(*)
       `)
       .eq('id', billId)
       .single();
@@ -338,34 +404,71 @@ export async function updateOtherBill(
       throw new Error('Bill not found');
     }
 
-    const mergedData: OtherBillFormData = {
-      patient_id: updates.patient_id ?? currentBill.patient_id ?? undefined,
+    // For now, we only support updating patient info and remarks, not items
+    // Items updates would require more complex logic
+    const updateData: any = {
+      patient_id: updates.patient_id ?? currentBill.patient_id,
       patient_type: updates.patient_type ?? currentBill.patient_type,
       patient_name: updates.patient_name ?? currentBill.patient_name,
-      patient_phone: updates.patient_phone ?? currentBill.patient_phone ?? undefined,
-      charge_category: updates.charge_category ?? currentBill.charge_category,
-      charge_description: updates.charge_description ?? currentBill.charge_description,
-      quantity: updates.quantity ?? currentBill.quantity,
-      unit_price: updates.unit_price ?? currentBill.unit_price,
-      discount_percent: updates.discount_percent ?? currentBill.discount_percent,
-      tax_percent: updates.tax_percent ?? currentBill.tax_percent,
-      reference_number: updates.reference_number ?? currentBill.reference_number ?? undefined,
-      remarks: updates.remarks ?? currentBill.remarks ?? undefined,
-      bed_allocation_id: updates.bed_allocation_id ?? currentBill.bed_allocation_id ?? undefined,
-      encounter_id: updates.encounter_id ?? currentBill.encounter_id ?? undefined,
+      patient_phone: updates.patient_phone ?? currentBill.patient_phone,
+      reference_number: updates.reference_number ?? currentBill.reference_number,
+      remarks: updates.remarks ?? currentBill.remarks,
+      bed_allocation_id: updates.bed_allocation_id ?? currentBill.bed_allocation_id,
+      encounter_id: updates.encounter_id ?? currentBill.encounter_id,
     };
 
-    const amounts = calculateBillAmounts(mergedData);
+    // If items are provided, recalculate totals
+    if (updates.items) {
+      const tempFormData: OtherBillFormData = {
+        patient_id: updateData.patient_id || undefined,
+        patient_type: updateData.patient_type,
+        patient_name: updateData.patient_name,
+        patient_phone: updateData.patient_phone || undefined,
+        items: updates.items,
+        reference_number: updateData.reference_number || undefined,
+        remarks: updateData.remarks || undefined,
+        bed_allocation_id: updateData.bed_allocation_id || undefined,
+        encounter_id: updateData.encounter_id || undefined,
+      };
+      
+      const amounts = calculateBillAmounts(tempFormData);
+      
+      Object.assign(updateData, {
+        discount_amount: amounts.discount_amount,
+        subtotal: amounts.subtotal,
+        tax_amount: amounts.tax_amount,
+        total_amount: amounts.total_amount,
+        balance_amount: amounts.total_amount - currentBill.paid_amount,
+        // Update main bill fields for backward compatibility
+        charge_category: updates.items[0]?.charge_category || currentBill.charge_category,
+        charge_description: updates.items[0]?.charge_description || currentBill.charge_description,
+        quantity: updates.items.length,
+        unit_price: amounts.total_amount / updates.items.length,
+      });
 
-    const updateData: any = {
-      ...updates,
-      discount_amount: amounts.discount_amount,
-      subtotal: amounts.subtotal,
-      tax_amount: amounts.tax_amount,
-      total_amount: amounts.total_amount,
-      balance_amount: amounts.total_amount - currentBill.paid_amount,
-      // Remove updated_by to avoid foreign key constraints
-    };
+      // Update items
+      await supabase.from('other_bill_items').delete().eq('bill_id', billId);
+      
+      const itemsToInsert = updates.items.map((item, index) => ({
+        bill_id: billId,
+        charge_category: item.charge_category,
+        charge_description: item.charge_description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_percent: item.discount_percent || 0,
+        tax_percent: item.tax_percent || 0,
+        sort_order: index,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('other_bill_items')
+        .insert(itemsToInsert);
+
+      if (itemsError) {
+        console.error('Error updating bill items:', itemsError);
+        throw new Error(`Failed to update bill items: ${itemsError.message}`);
+      }
+    }
 
     const { data, error } = await supabase
       .from('other_bills')

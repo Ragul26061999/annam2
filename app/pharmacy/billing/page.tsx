@@ -62,6 +62,10 @@ export default function PharmacyBillingPage() {
   const [showViewModal, setShowViewModal] = useState(false)
   const [viewItems, setViewItems] = useState<any[]>([])
   const [viewLoading, setViewLoading] = useState(false)
+  const [billReturnsMap, setBillReturnsMap] = useState<Record<string, { return_id: string; return_number: string; return_date: string | null; refund_amount: number | null }[]>>({})
+  const [selectedBillReturns, setSelectedBillReturns] = useState<any[]>([])
+  const [selectedBillReturnItems, setSelectedBillReturnItems] = useState<any[]>([])
+  const [returnsLoading, setReturnsLoading] = useState(false)
   // Payment details for split payments
   const [paymentDetails, setPaymentDetails] = useState<any[]>([])
   const [paymentDetailsLoading, setPaymentDetailsLoading] = useState(false)
@@ -321,6 +325,40 @@ export default function PharmacyBillingPage() {
           staff_name: staffMap[bill.staff_id]?.full_name || 'Unknown Staff'
         };
       })
+
+      // Load sales return flags for these bills (for Returned badge)
+      try {
+        const billIds = (billsData || []).map((b: any) => b.id).filter(Boolean)
+        if (billIds.length > 0) {
+          const { data: srRows, error: srErr } = await supabase
+            .from('sales_returns')
+            .select('id, bill_id, return_number, return_date, refund_amount')
+            .in('bill_id', billIds)
+
+          if (srErr) {
+            console.warn('Failed loading sales_returns for billing badges:', srErr)
+            setBillReturnsMap({})
+          } else {
+            const map: Record<string, { return_id: string; return_number: string; return_date: string | null; refund_amount: number | null }[]> = {}
+            ;(srRows || []).forEach((r: any) => {
+              const bid = String(r.bill_id)
+              if (!map[bid]) map[bid] = []
+              map[bid].push({
+                return_id: String(r.id),
+                return_number: String(r.return_number || ''),
+                return_date: r.return_date || null,
+                refund_amount: r.refund_amount !== null && r.refund_amount !== undefined ? Number(r.refund_amount) : null
+              })
+            })
+            setBillReturnsMap(map)
+          }
+        } else {
+          setBillReturnsMap({})
+        }
+      } catch (e) {
+        console.warn('Error loading sales_returns for billing badges:', e)
+        setBillReturnsMap({})
+      }
 
       // Auto-correct DB payment_status for non-credit bills that qualify as paid after roundoff.
       // This ensures UI + reports reflect "paid" instead of lingering "partial".
@@ -646,6 +684,9 @@ export default function PharmacyBillingPage() {
     setShowViewModal(true)
     setViewLoading(true)
     setPaymentDetailsLoading(true)
+    setReturnsLoading(true)
+    setSelectedBillReturns([])
+    setSelectedBillReturnItems([])
 
     try {
       // Fetch bill items
@@ -669,14 +710,58 @@ export default function PharmacyBillingPage() {
       } else {
         setPaymentDetails(paymentData || [])
       }
+
+      // Fetch returns for this bill
+      try {
+        const { data: sr, error: srErr } = await supabase
+          .from('sales_returns')
+          .select('id, return_number, return_date, reason, refund_mode, refund_amount, status, remarks')
+          .eq('bill_id', bill.id)
+          .order('created_at', { ascending: false })
+
+        if (srErr) {
+          console.warn('Failed to load sales_returns for bill:', srErr)
+          setSelectedBillReturns([])
+          setSelectedBillReturnItems([])
+        } else {
+          setSelectedBillReturns(sr || [])
+
+          const returnIds = (sr || []).map((r: any) => r.id).filter(Boolean)
+          if (returnIds.length > 0) {
+            const { data: sri, error: sriErr } = await supabase
+              .from('sales_return_items')
+              .select('return_id, medication_id, batch_number, quantity, selling_rate, total_amount, return_reason, restock_status')
+              .in('return_id', returnIds)
+
+            if (sriErr) {
+              console.warn('Failed to load sales_return_items for bill:', sriErr)
+              setSelectedBillReturnItems([])
+            } else {
+              setSelectedBillReturnItems(sri || [])
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading return details for bill:', e)
+        setSelectedBillReturns([])
+        setSelectedBillReturnItems([])
+      }
     } catch (e) {
       console.error('Failed to load bill data', e)
       setViewItems([])
       setPaymentDetails([])
+      setSelectedBillReturns([])
+      setSelectedBillReturnItems([])
     } finally {
       setViewLoading(false)
       setPaymentDetailsLoading(false)
+      setReturnsLoading(false)
     }
+  }
+
+  const hasReturns = (billId: string) => {
+    const rows = billReturnsMap[billId]
+    return Array.isArray(rows) && rows.length > 0
   }
 
   const printBill = () => {
@@ -1479,7 +1564,14 @@ export default function PharmacyBillingPage() {
               {filteredBills.map((bill) => (
                 <tr key={bill.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => openViewBill(bill)}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {bill.bill_number}
+                    <div className="flex items-center gap-2">
+                      <span>{bill.bill_number}</span>
+                      {hasReturns(bill.id) ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                          Returned
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div>
@@ -1564,7 +1656,7 @@ export default function PharmacyBillingPage() {
       {/* Bill View Modal */}
       {showViewModal && selectedBill && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowViewModal(false)}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Bill {selectedBill.bill_number}</h3>
               <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowViewModal(false)}>
@@ -1617,6 +1709,64 @@ export default function PharmacyBillingPage() {
                 </div>
               </div>
             )}
+
+            {/* Returns Section */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-gray-900">Returns</h4>
+                {hasReturns(selectedBill.id) ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Returned</span>
+                ) : (
+                  <span className="text-xs text-gray-500">No returns</span>
+                )}
+              </div>
+
+              {returnsLoading ? (
+                <div className="text-xs text-gray-500 mt-2">Loading return details...</div>
+              ) : selectedBillReturns.length === 0 ? null : (
+                <div className="mt-2 space-y-3">
+                  {selectedBillReturns.map((r: any) => {
+                    const items = selectedBillReturnItems.filter((x: any) => String(x.return_id) === String(r.id))
+                    return (
+                      <div key={r.id} className="border rounded-lg p-3 bg-red-50">
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                          <div>
+                            <div className="font-medium text-red-900">{r.return_number || r.id}</div>
+                            <div className="text-xs text-red-700">
+                              {r.return_date ? new Date(r.return_date).toLocaleDateString() : ''}
+                              {r.reason ? ` · ${r.reason}` : ''}
+                              {r.status ? ` · ${r.status}` : ''}
+                            </div>
+                          </div>
+                          <div className="text-sm text-red-900">
+                            <span className="font-medium">Refund:</span> ₹{Number(r.refund_amount || 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        {items.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                            {items.map((it: any, idx: number) => (
+                              <div key={`${r.id}-${idx}`} className="flex justify-between text-xs bg-white rounded p-2">
+                                <div>
+                                  <div className="font-medium">Batch: {it.batch_number || '-'} · {it.restock_status || ''}</div>
+                                  <div className="text-gray-600">Qty: {it.quantity} · Rate: {Number(it.selling_rate || 0).toFixed(2)}</div>
+                                </div>
+                                <div className="font-medium">₹{Number(it.total_amount || 0).toFixed(2)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {r.remarks ? (
+                          <div className="text-xs text-gray-700 mt-2"><span className="font-medium">Remarks:</span> {r.remarks}</div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="border rounded-md overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">

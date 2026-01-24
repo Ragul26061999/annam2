@@ -13,6 +13,19 @@ export default function OtherBillPrintTemplate({ bill }: OtherBillPrintTemplateP
     return cat?.label || category;
   };
 
+  const items = (bill.items && bill.items.length > 0)
+    ? bill.items
+    : [
+        {
+          charge_category: bill.charge_category,
+          charge_description: bill.charge_description,
+          quantity: bill.quantity,
+          unit_price: bill.unit_price,
+          discount_percent: bill.discount_percent,
+          tax_percent: bill.tax_percent,
+        },
+      ];
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
@@ -141,23 +154,25 @@ export default function OtherBillPrintTemplate({ bill }: OtherBillPrintTemplateP
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td className="border border-gray-800 px-4 py-2 text-sm">
-                  {getCategoryLabel(bill.charge_category)}
-                </td>
-                <td className="border border-gray-800 px-4 py-2 text-sm">
-                  {bill.charge_description}
-                </td>
-                <td className="border border-gray-800 px-4 py-2 text-right text-sm">
-                  {bill.quantity}
-                </td>
-                <td className="border border-gray-800 px-4 py-2 text-right text-sm">
-                  ₹{bill.unit_price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="border border-gray-800 px-4 py-2 text-right text-sm font-semibold">
-                  ₹{bill.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
+              {items.map((item, idx) => (
+                <tr key={idx}>
+                  <td className="border border-gray-800 px-4 py-2 text-sm">
+                    {getCategoryLabel(item.charge_category)}
+                  </td>
+                  <td className="border border-gray-800 px-4 py-2 text-sm">
+                    {item.charge_description}
+                  </td>
+                  <td className="border border-gray-800 px-4 py-2 text-right text-sm">
+                    {item.quantity}
+                  </td>
+                  <td className="border border-gray-800 px-4 py-2 text-right text-sm">
+                    ₹{(item.unit_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="border border-gray-800 px-4 py-2 text-right text-sm font-semibold">
+                    ₹{((item.quantity || 0) * (item.unit_price || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
