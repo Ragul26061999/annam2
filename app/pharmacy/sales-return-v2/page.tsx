@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { 
   Plus, Search, Eye, XCircle, RotateCcw, User, Receipt, CheckCircle, 
   AlertCircle, ArrowLeft, ShoppingCart, Trash2, Calendar, CreditCard, Printer
@@ -17,6 +17,7 @@ import {
   SalesReturnItem
 } from '@/src/lib/enhancedPharmacyService'
 import { supabase } from '@/src/lib/supabase'
+import { useSearchParams } from 'next/navigation'
 
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount)
@@ -54,7 +55,8 @@ const getBillImpactAfterReturn = (bill: any, returnAmount: number) => {
   return { newTotal, newAmountPaid, newBalanceDue, refundAmount }
 }
 
-export default function SalesReturnPageV2() {
+function SalesReturnContent() {
+  const searchParams = useSearchParams()
   const [returns, setReturns] = useState<SalesReturn[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -97,6 +99,19 @@ export default function SalesReturnPageV2() {
     loadReturns()
     loadRecentBills()
   }, [filterStatus])
+
+  useEffect(() => {
+    const billId = searchParams?.get('billId')
+    if (!billId) return
+    ;(async () => {
+      await loadBillDetails(billId)
+      setSelectedBill({ id: billId })
+      setStep('view-bill')
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  const isCreditBill = billDetails?.bill?.payment_method === 'credit'
 
   const loadReturns = async () => {
     setLoading(true)
@@ -339,8 +354,8 @@ export default function SalesReturnPageV2() {
         customer_name: billDetails.bill.customer_name || 'Walk-in Customer',
         customer_phone: billDetails.bill.customer_phone || null,
         return_date: returnData.return_date,
-        refund_mode: returnData.refund_mode,
-        refund_amount: impact.refundAmount,
+        refund_mode: isCreditBill ? undefined : returnData.refund_mode,
+        refund_amount: isCreditBill ? 0 : impact.refundAmount,
         reason: (Array.from(new Set(returnItems.map(i => i.reason))).join(', ') as any),
         remarks: returnData.remarks
       }, returnItems)
@@ -383,12 +398,17 @@ export default function SalesReturnPageV2() {
           } else {
             const restockMap = new Map<string, boolean>()
             Array.from(selectedItems.values()).forEach(({ item, restock }) => {
-              if (item?.medicine_id) restockMap.set(String(item.medicine_id), !!restock)
+              const key = `${String(item?.medicine_id || '')}-${String(item?.batch_number || '')}`
+              if (key !== '-'){ 
+                restockMap.set(key, restock !== undefined ? !!restock : true)
+              }
             })
 
             const itemsToRestock = (sriRows || []).map((r: any) => ({
               item_id: String(r.id),
-              restock: restockMap.get(String(r.medication_id)) ?? (String(r.restock_status || '').toLowerCase() === 'pending')
+              restock:
+                restockMap.get(`${String(r.medication_id || '')}-${String(r.batch_number || '')}`) ??
+                (String(r.restock_status || '').toLowerCase() === 'pending')
             }))
 
             if (itemsToRestock.length > 0) {
@@ -425,7 +445,7 @@ export default function SalesReturnPageV2() {
             reason
           }
         }),
-        refundMode: returnData.refund_mode,
+        refundMode: isCreditBill ? null : returnData.refund_mode,
         totalRefund: returnAmount,
         refundDue: billUpdate.refundAmount,
         newTotal: billUpdate.newTotal,
@@ -933,25 +953,31 @@ export default function SalesReturnPageV2() {
                   className="w-full border rounded-lg px-4 py-2"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Refund Mode</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {REFUND_MODES.map(mode => (
-                    <button
-                      key={mode.value}
-                      onClick={() => setReturnData({...returnData, refund_mode: mode.value as any})}
-                      className={`border rounded-lg px-4 py-2 text-sm flex items-center justify-center ${
-                        returnData.refund_mode === mode.value
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <span className="mr-2">{mode.icon}</span>
-                      {mode.label}
-                    </button>
-                  ))}
+              {!isCreditBill ? (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Refund Mode</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {REFUND_MODES.map(mode => (
+                      <button
+                        key={mode.value}
+                        onClick={() => setReturnData({...returnData, refund_mode: mode.value as any})}
+                        className={`border rounded-lg px-4 py-2 text-sm flex items-center justify-center ${
+                          returnData.refund_mode === mode.value
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="mr-2">{mode.icon}</span>
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-sm text-gray-600">
+                  Refund mode is not applicable for credit bills.
+                </div>
+              )}
             </div>
 
             <div className="mb-6">
@@ -1326,10 +1352,12 @@ export default function SalesReturnPageV2() {
 
               {/* Additional Info */}
               <div className="mt-6 grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="text-sm text-gray-600 mb-1">Refund Mode</div>
-                  <div className="font-semibold capitalize">{selectedReturnForHistory.refund_mode}</div>
-                </div>
+                {!isCreditBill && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="text-sm text-gray-600 mb-1">Refund Mode</div>
+                    <div className="font-semibold capitalize">{selectedReturnForHistory.refund_mode}</div>
+                  </div>
+                )}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="text-sm text-gray-600 mb-1">Status</div>
                   <div>{getStatusBadge(selectedReturnForHistory.status)}</div>
@@ -1347,5 +1375,13 @@ export default function SalesReturnPageV2() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function SalesReturnPageV2() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-lg">Loading...</div></div>}>
+      <SalesReturnContent />
+    </Suspense>
   )
 }

@@ -42,7 +42,13 @@ export default function BillEditModal({ bill, isOpen, onClose, onSave }: BillEdi
         .eq('billing_id', bill.id)
 
       if (error) throw error
-      setItems(data || [])
+      const normalized = (data || []).map((row: any) => ({
+        ...row,
+        qty: Number(row.qty ?? 0),
+        unit_amount: Number(row.unit_amount ?? 0),
+        total_amount: Number(row.total_amount ?? 0)
+      }))
+      setItems(normalized)
     } catch (err: any) {
       setError('Failed to load bill items: ' + (err?.message || 'Unknown error'))
     } finally {
@@ -64,11 +70,11 @@ export default function BillEditModal({ bill, isOpen, onClose, onSave }: BillEdi
   }
 
   const calculateTotal = () => {
-    return items.reduce((sum, item) => sum + item.total_amount, 0)
+    return items.reduce((sum, item) => sum + (Number(item.total_amount) || 0), 0)
   }
 
   const calculateGST = () => {
-    return items.reduce((sum, item) => sum + (item.total_amount * 0.12), 0) // Assuming 12% GST
+    return items.reduce((sum, item) => sum + ((Number(item.total_amount) || 0) * 0.12), 0) // Assuming 12% GST
   }
 
   const handleSave = async () => {

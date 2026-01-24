@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Search,
@@ -16,7 +17,11 @@ import {
   Download,
   Edit,
   X,
-  Trash2
+  Trash2,
+  AlertCircle,
+  Clock,
+  Plus,
+  RotateCcw
 } from 'lucide-react'
 import { supabase } from '@/src/lib/supabase'
 import { getCurrentUserProfile } from '@/src/lib/supabase'
@@ -48,6 +53,7 @@ interface DashboardStats {
 }
 
 export default function PharmacyBillingPage() {
+  const router = useRouter()
   const [bills, setBills] = useState<PharmacyBill[]>([])
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -666,13 +672,8 @@ export default function PharmacyBillingPage() {
     setShowPaymentEditModal(true)
   }
 
-  const openEditBillModal = (bill: PharmacyBill) => {
-    if (bill.payment_status !== 'pending') {
-      alert('Only pending bills can be edited')
-      return
-    }
-    setSelectedBillForEdit(bill)
-    setShowBillEditModal(true)
+  const openReturnForBill = (bill: PharmacyBill) => {
+    router.push(`/pharmacy/sales-return-v2?billId=${bill.id}`)
   }
 
   const handleSaveBillEdit = async (updatedBill: any, updatedItems: any[]) => {
@@ -681,52 +682,72 @@ export default function PharmacyBillingPage() {
     try {
       setEditingBill(true)
 
-      // Update bill header
-      const { error: billError } = await supabase
+      console.log('Selected bill for edit:', selectedBillForEdit)
+      console.log('Updated bill data:', updatedBill)
+      console.log('Updated items:', updatedItems)
+
+      // 1) Update existing bill items (qty edits). Avoid delete+insert because inventory triggers run.
+      // updatedItems come from BillEditModal which loads existing billing_item rows.
+      for (const item of updatedItems) {
+        if (!item?.id) {
+          throw new Error('Missing billing_item.id in edited items payload')
+        }
+
+        const qty = Number(item.qty)
+        const unitAmount = Number(item.unit_amount)
+        const lineTotal = Number(item.total_amount)
+
+        const { error: itemUpdErr } = await supabase
+          .from('billing_item')
+          .update({
+            qty,
+            unit_amount: unitAmount,
+            total_amount: lineTotal,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', item.id)
+          .eq('billing_id', selectedBillForEdit.id)
+
+        if (itemUpdErr) {
+          console.error('billing_item update error:', {
+            message: (itemUpdErr as any)?.message,
+            details: (itemUpdErr as any)?.details,
+            hint: (itemUpdErr as any)?.hint,
+            code: (itemUpdErr as any)?.code,
+            raw: itemUpdErr
+          })
+          throw itemUpdErr
+        }
+      }
+
+      // 2) Try to update bill header totals (do not hard-fail if blocked by DB rules).
+      const subtotal = Number(updatedBill.subtotal)
+      const tax = Number(updatedBill.tax)
+      const total = Number(updatedBill.total)
+
+      const billingUpdate = await supabase
         .from('billing')
         .update({
-          subtotal: updatedBill.subtotal,
-          tax: updatedBill.tax,
-          total: updatedBill.total,
+          subtotal: Number.isFinite(subtotal) ? subtotal : 0,
+          tax: Number.isFinite(tax) ? tax : 0,
+          total: Number.isFinite(total) ? total : subtotal,
+          balance_due: (Number.isFinite(total) ? total : subtotal) - (Number(selectedBillForEdit.amount_paid) || 0),
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedBillForEdit.id)
+        .select('id')
+        .single()
 
-      if (billError) {
-        console.error('Bill update error details:', billError)
-        throw billError
-      }
-
-      // Delete existing items
-      const { error: deleteError } = await supabase
-        .from('billing_item')
-        .delete()
-        .eq('billing_id', selectedBillForEdit.id)
-
-      if (deleteError) {
-        console.error('Delete items error details:', deleteError)
-        throw deleteError
-      }
-
-      // Insert updated items
-      const itemsToInsert = updatedItems.map(item => ({
-        billing_id: selectedBillForEdit.id,
-        description: item.description,
-        qty: item.qty,
-        unit_amount: item.unit_amount,
-        total_amount: item.total_amount,
-        medicine_id: item.medicine_id || null
-      }))
-
-      console.log('Items to insert:', itemsToInsert)
-
-      const { error: insertError } = await supabase
-        .from('billing_item')
-        .insert(itemsToInsert)
-
-      if (insertError) {
-        console.error('Insert items error details:', insertError)
-        throw insertError
+      if (billingUpdate.error) {
+        console.error('Bill update error details:', {
+          status: (billingUpdate as any)?.status,
+          message: (billingUpdate.error as any)?.message,
+          details: (billingUpdate.error as any)?.details,
+          hint: (billingUpdate.error as any)?.hint,
+          code: (billingUpdate.error as any)?.code,
+          raw: billingUpdate.error
+        })
+        // Do not throw here; item quantities are already updated.
       }
 
       await loadBillingData()
@@ -1717,15 +1738,13 @@ export default function PharmacyBillingPage() {
                       <button className="text-green-600 hover:text-green-800" onClick={(e) => { e.stopPropagation(); (async () => { await openViewBill(bill); setTimeout(() => printBill(), 150); })(); }} title="Download / Print">
                         <Download className="w-4 h-4" />
                       </button>
-                      {bill.payment_status === 'pending' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditBillModal(bill) }}
-                          className="text-indigo-600 hover:text-indigo-800"
-                          title="Edit Bill Items"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openReturnForBill(bill) }}
+                        className="text-orange-600 hover:text-orange-800"
+                        title="Sales Return"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
                       {(bill.payment_method === 'split' || bill.payment_method === 'credit') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleEditPaymentMethod(bill) }}

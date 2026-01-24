@@ -1258,28 +1258,68 @@ export async function processRestockSalesReturn(
   itemsToRestock: { item_id: string; restock: boolean }[]
 ): Promise<boolean> {
   try {
+    if (!returnId) throw new Error('processRestockSalesReturn: returnId is required')
+    if (!Array.isArray(itemsToRestock) || itemsToRestock.length === 0) {
+      throw new Error('processRestockSalesReturn: itemsToRestock is empty')
+    }
+
     for (const item of itemsToRestock) {
-      if (item.restock) {
-        await supabase
+      const nextStatus = item.restock ? 'restocked' : 'disposed'
+      let updRes: any = null
+      try {
+        updRes = await supabase
           .from('sales_return_items')
-          .update({ restock_status: 'restocked' })
-          .eq('id', item.item_id);
-      } else {
-        await supabase
-          .from('sales_return_items')
-          .update({ restock_status: 'disposed' })
-          .eq('id', item.item_id);
+          .update({ restock_status: nextStatus })
+          .eq('id', item.item_id)
+          .eq('return_id', returnId)
+      } catch (e) {
+        console.error('processRestockSalesReturn item update exception:', e)
+        throw e
+      }
+
+      if (updRes?.error) {
+        const error = updRes.error
+        let errorJson: any = null
+        try {
+          errorJson = JSON.parse(JSON.stringify(error))
+        } catch {
+          errorJson = null
+        }
+
+        console.error('processRestockSalesReturn item update error:', {
+          status: updRes?.status,
+          statusText: updRes?.statusText,
+          message: (error as any)?.message,
+          details: (error as any)?.details,
+          hint: (error as any)?.hint,
+          code: (error as any)?.code,
+          errorJson,
+          raw: error,
+          item_id: item.item_id,
+          nextStatus
+        })
+        throw error
       }
     }
 
-    // Update return status
-    await supabase
+    const { error: srErr } = await supabase
       .from('sales_returns')
       .update({
         status: 'completed',
         updated_at: new Date().toISOString()
       })
-      .eq('id', returnId);
+      .eq('id', returnId)
+
+    if (srErr) {
+      console.error('processRestockSalesReturn return update error:', {
+        message: (srErr as any)?.message,
+        details: (srErr as any)?.details,
+        hint: (srErr as any)?.hint,
+        code: (srErr as any)?.code,
+        raw: srErr
+      })
+      throw srErr
+    }
 
     return true;
   } catch (error) {
