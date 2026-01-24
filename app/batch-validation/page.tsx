@@ -11,6 +11,7 @@ interface BatchRow {
   current_quantity: number;
   legacy_code: string | null;
   medication_name: string;
+  dosage_form: string | null;
 }
 
 interface BatchRowRaw {
@@ -30,6 +31,9 @@ const PublicBatchValidationPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
+  const [medicationSort, setMedicationSort] = useState<'asc' | 'desc' | null>(null);
+  const [selectedDosageForm, setSelectedDosageForm] = useState<string>('');
+  const [availableDosageForms, setAvailableDosageForms] = useState<string[]>([]);
 
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [draftLegacy, setDraftLegacy] = useState<Record<string, string>>({});
@@ -45,17 +49,17 @@ const PublicBatchValidationPage = () => {
       const from = (pageToFetch - 1) * pageSize;
       const to = from + pageSize - 1;
 
+      // For filtering and sorting, we need to fetch all data first
+      const shouldFetchAll = medicationSort || selectedDosageForm || searchTerm.trim();
+      
       let query = supabase
         .from('medicine_batches')
         .select('id,batch_number,current_quantity,legacy_code,medicine_id,medication_id', { count: 'exact' })
         .eq('is_active', true)
-        .order('batch_number')
-        .range(from, to);
+        .order('batch_number');
 
-      const trimmed = searchTerm.trim();
-      if (trimmed) {
-        query = query.or(`batch_number.ilike.%${trimmed}%,legacy_code.ilike.%${trimmed}%`);
-      }
+      // Always fetch all data for client-side filtering
+      // This ensures medication name search works properly
 
       const { data, error, count } = await query;
       if (error) {
@@ -98,10 +102,11 @@ const PublicBatchValidationPage = () => {
       ) as string[];
 
       let medNameById: Record<string, string> = {};
+      let meds: any[] | null = null;
       if (medicineIds.length > 0) {
-        const { data: meds, error: medsError } = await supabase
+        const { data: medsData, error: medsError } = await supabase
           .from('medications')
-          .select('id,name')
+          .select('id,name,dosage_form')
           .in('id', medicineIds);
 
         if (medsError) {
@@ -112,19 +117,95 @@ const PublicBatchValidationPage = () => {
             code: (medsError as any).code,
           });
         } else {
+          meds = medsData;
           for (const m of meds || []) {
             medNameById[(m as any).id] = (m as any).name || '';
           }
+          
+          // Extract unique dosage forms
+          const dosageForms = Array.from(
+            new Set((meds || []).map((m: any) => m.dosage_form).filter(Boolean))
+          ) as string[];
+          setAvailableDosageForms(dosageForms);
         }
       }
 
-      const nextRows: BatchRow[] = batchRowsRaw.map((r: BatchRowRaw) => ({
-        ...r,
-        medication_name: r.medicine_ref_id ? (medNameById[r.medicine_ref_id] || '') : '',
-      }));
+      const nextRows: BatchRow[] = batchRowsRaw.map((r: BatchRowRaw) => {
+        const med = meds?.find((m: any) => m.id === r.medicine_ref_id);
+        const medicationName = r.medicine_ref_id ? (medNameById[r.medicine_ref_id] || '') : '';
+        const dosageForm = med?.dosage_form || null;
+        
+        // Debug logging for specific medications
+        if (medicationName.toLowerCase().includes('acitrom') || medicationName.toLowerCase().includes('zerodol')) {
+          console.log('Found medication:', {
+            batch_id: r.id,
+            medication_name: medicationName,
+            medicine_ref_id: r.medicine_ref_id,
+            dosage_form: dosageForm
+          });
+        }
+        
+        return {
+          ...r,
+          medication_name: medicationName,
+          dosage_form: dosageForm
+        };
+      });
 
-      setTotal(count || 0);
-      setRows(nextRows);
+      // Apply client-side filtering and sorting
+      let filteredRows = nextRows;
+      
+      // Filter by search term (including medication names)
+      const trimmedSearch = searchTerm.trim();
+      if (trimmedSearch) {
+        console.log('Searching for:', trimmedSearch);
+        console.log('All medication names:', nextRows.map(r => ({ name: r.medication_name, lower: r.medication_name.toLowerCase() })));
+        console.log('Available medication names:', nextRows.map(r => r.medication_name).filter(name => name.toLowerCase().includes(trimmedSearch.toLowerCase())));
+        
+        filteredRows = filteredRows.filter(row => {
+          const batchMatch = row.batch_number.toLowerCase().includes(trimmedSearch.toLowerCase());
+          const medMatch = row.medication_name.toLowerCase().includes(trimmedSearch.toLowerCase());
+          const legacyMatch = row.legacy_code && row.legacy_code.toLowerCase().includes(trimmedSearch.toLowerCase());
+          
+          // Debug logging for troubleshooting
+          if (trimmedSearch.toLowerCase() === 'zero' || trimmedSearch.toLowerCase() === 'zerodol' || trimmedSearch.toLowerCase() === 'ze' || trimmedSearch.toLowerCase() === 'zer') {
+            console.log('Search debug for "' + trimmedSearch + '":', {
+              medication_name: row.medication_name,
+              medication_name_lower: row.medication_name.toLowerCase(),
+              search_term_lower: trimmedSearch.toLowerCase(),
+              batchMatch,
+              medMatch,
+              legacyMatch,
+              shouldInclude: batchMatch || medMatch || legacyMatch
+            });
+          }
+          
+          return batchMatch || medMatch || legacyMatch;
+        });
+        
+        console.log('Filtered results count:', filteredRows.length);
+      }
+      
+      // Filter by dosage form
+      if (selectedDosageForm) {
+        filteredRows = filteredRows.filter(row => row.dosage_form === selectedDosageForm);
+      }
+      
+      // Sort by medication name
+      if (medicationSort) {
+        filteredRows = [...filteredRows].sort((a, b) => {
+          const nameA = a.medication_name.toLowerCase();
+          const nameB = b.medication_name.toLowerCase();
+          return medicationSort === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
+      }
+      
+      // Update total for filtered results
+      setTotal(filteredRows.length);
+      
+      // Apply pagination
+      const paginatedRows = filteredRows.slice(from, to + 1);
+      setRows(paginatedRows);
       setDraftLegacy(prev => {
         const next = { ...prev };
         for (const r of nextRows) {
@@ -155,12 +236,11 @@ const PublicBatchValidationPage = () => {
 
   useEffect(() => {
     fetchRows();
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, medicationSort, selectedDosageForm, searchTerm]);
 
   useEffect(() => {
     setCurrentPage(1);
-    fetchRows(1);
-  }, [searchTerm, pageSize]);
+  }, [searchTerm]);
 
   const rangeText = useMemo(() => {
     if (total === 0) return 'Showing 0-0 of 0';
@@ -206,11 +286,63 @@ const PublicBatchValidationPage = () => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by batch number or legacy code..."
+              placeholder="Search by batch number, medication name, or legacy code..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
+          </div>
+        </div>
+
+        <div className="mb-4 flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Sort by Medication Name</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMedicationSort(medicationSort === 'asc' ? null : 'asc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  medicationSort === 'asc'
+                    ? 'bg-purple-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                A-Z
+              </button>
+              <button
+                onClick={() => setMedicationSort(medicationSort === 'desc' ? null : 'desc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  medicationSort === 'desc'
+                    ? 'bg-purple-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Z-A
+              </button>
+              {medicationSort && (
+                <button
+                  onClick={() => setMedicationSort(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Dosage Form</label>
+            <select
+              value={selectedDosageForm}
+              onChange={(e) => setSelectedDosageForm(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">All Dosage Forms</option>
+              {availableDosageForms.map((form) => (
+                <option key={form} value={form}>
+                  {form}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -263,11 +395,14 @@ const PublicBatchValidationPage = () => {
             {rows.map((r) => (
               <div key={r.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <div className="text-xs text-gray-500">Medication</div>
                     <div className="font-semibold text-gray-900 break-words">{r.medication_name || '-'}</div>
+                    {r.dosage_form && (
+                      <div className="text-xs text-gray-600 mt-1">{r.dosage_form}</div>
+                    )}
                   </div>
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <div className="text-xs text-gray-500">Batch Number</div>
                     <div className="font-semibold text-gray-900 break-all">{r.batch_number}</div>
                   </div>

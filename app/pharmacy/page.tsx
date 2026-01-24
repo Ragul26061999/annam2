@@ -635,9 +635,9 @@ export default function PharmacyPage() {
           <Package className="w-6 h-6 mx-auto text-cyan-600 mb-1" />
           <div className="text-xs font-medium text-cyan-800">Stock Report</div>
         </Link>
-        <Link href="/pharmacy/cash-collection" className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg p-3 text-center transition-colors">
+        <Link href="/pharmacy/collection-report" className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg p-3 text-center transition-colors">
           <Wallet className="w-6 h-6 mx-auto text-emerald-600 mb-1" />
-          <div className="text-xs font-medium text-emerald-800">Cash Collection</div>
+          <div className="text-xs font-medium text-emerald-800">Collection Report</div>
         </Link>
       </div>
 
