@@ -135,16 +135,6 @@ const PublicBatchValidationPage = () => {
         const medicationName = r.medicine_ref_id ? (medNameById[r.medicine_ref_id] || '') : '';
         const dosageForm = med?.dosage_form || null;
         
-        // Debug logging for specific medications
-        if (medicationName.toLowerCase().includes('acitrom') || medicationName.toLowerCase().includes('zerodol')) {
-          console.log('Found medication:', {
-            batch_id: r.id,
-            medication_name: medicationName,
-            medicine_ref_id: r.medicine_ref_id,
-            dosage_form: dosageForm
-          });
-        }
-        
         return {
           ...r,
           medication_name: medicationName,
@@ -158,32 +148,13 @@ const PublicBatchValidationPage = () => {
       // Filter by search term (including medication names)
       const trimmedSearch = searchTerm.trim();
       if (trimmedSearch) {
-        console.log('Searching for:', trimmedSearch);
-        console.log('All medication names:', nextRows.map(r => ({ name: r.medication_name, lower: r.medication_name.toLowerCase() })));
-        console.log('Available medication names:', nextRows.map(r => r.medication_name).filter(name => name.toLowerCase().includes(trimmedSearch.toLowerCase())));
-        
         filteredRows = filteredRows.filter(row => {
           const batchMatch = row.batch_number.toLowerCase().includes(trimmedSearch.toLowerCase());
           const medMatch = row.medication_name.toLowerCase().includes(trimmedSearch.toLowerCase());
           const legacyMatch = row.legacy_code && row.legacy_code.toLowerCase().includes(trimmedSearch.toLowerCase());
           
-          // Debug logging for troubleshooting
-          if (trimmedSearch.toLowerCase() === 'zero' || trimmedSearch.toLowerCase() === 'zerodol' || trimmedSearch.toLowerCase() === 'ze' || trimmedSearch.toLowerCase() === 'zer') {
-            console.log('Search debug for "' + trimmedSearch + '":', {
-              medication_name: row.medication_name,
-              medication_name_lower: row.medication_name.toLowerCase(),
-              search_term_lower: trimmedSearch.toLowerCase(),
-              batchMatch,
-              medMatch,
-              legacyMatch,
-              shouldInclude: batchMatch || medMatch || legacyMatch
-            });
-          }
-          
           return batchMatch || medMatch || legacyMatch;
         });
-        
-        console.log('Filtered results count:', filteredRows.length);
       }
       
       // Filter by dosage form
