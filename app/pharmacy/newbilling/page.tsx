@@ -268,6 +268,7 @@ function NewBillingPageInner() {
   const [viewMode, setViewMode] = useState<'compact' | 'detailed'>('compact');
   const [selectedPatientIndex, setSelectedPatientIndex] = useState(0);
   const [selectedMedicineIndex, setSelectedMedicineIndex] = useState(0);
+  const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const embedded = false;
   const [phoneError, setPhoneError] = useState<string>('');
@@ -407,36 +408,82 @@ function NewBillingPageInner() {
   };
 
   const handleMedicineKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      // Move focus to quantity input
-      const qtyInput = document.querySelector('input[placeholder*="Quantity"]') as HTMLInputElement;
-      if (qtyInput) {
-        qtyInput.focus();
-        qtyInput.select();
-      }
+    console.log('handleMedicineKeyDown called with key:', e.key);
+    console.log('showMedicineDropdown:', showMedicineDropdown, 'filteredMedicines.length:', filteredMedicines.length);
+    
+    if (!showMedicineDropdown || filteredMedicines.length === 0) {
+      console.log('Early return - dropdown not showing or no medicines');
       return;
     }
-    if (!showMedicineDropdown || filteredMedicines.length === 0) return;
+    
+    // Prevent default for arrow keys and enter
+    if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+      e.preventDefault();
+    }
+    
+    const currentMedicine = filteredMedicines[selectedMedicineIndex];
+    const matchingBatches = searchTermTrimmed.length > 0 
+      ? currentMedicine?.batches.filter(b => 
+          (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+          (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+          ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+        ) || []
+      : currentMedicine?.batches || [];
+    
+    const totalBatches = matchingBatches.length;
+    
+    console.log('Current state:', {
+      key: e.key,
+      medicineIndex: selectedMedicineIndex,
+      batchIndex: selectedBatchIndex,
+      totalBatches,
+      hasMedicines: filteredMedicines.length > 0
+    });
     
     switch (e.key) {
       case 'ArrowDown':
-        e.preventDefault();
-        setShowMedicineDropdown(true);
-        setSelectedMedicineIndex(prev => (prev + 1) % filteredMedicines.length);
+        if (selectedBatchIndex < totalBatches - 1) {
+          setSelectedBatchIndex(prev => prev + 1);
+          console.log('Moved to next batch:', selectedBatchIndex + 1);
+        } else if (selectedMedicineIndex < filteredMedicines.length - 1) {
+          setSelectedMedicineIndex(prev => prev + 1);
+          setSelectedBatchIndex(0);
+          console.log('Moved to next medicine:', selectedMedicineIndex + 1);
+        }
         break;
       case 'ArrowUp':
-        e.preventDefault();
-        setShowMedicineDropdown(true);
-        setSelectedMedicineIndex(prev => (prev - 1 + filteredMedicines.length) % filteredMedicines.length);
+        if (selectedBatchIndex > 0) {
+          setSelectedBatchIndex(prev => prev - 1);
+          console.log('Moved to previous batch:', selectedBatchIndex - 1);
+        } else if (selectedMedicineIndex > 0) {
+          setSelectedMedicineIndex(prev => prev - 1);
+          const prevMedicine = filteredMedicines[selectedMedicineIndex - 1];
+          const prevBatches = searchTermTrimmed.length > 0 
+            ? prevMedicine?.batches.filter(b => 
+                (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+              ) || []
+            : prevMedicine?.batches || [];
+          setSelectedBatchIndex(Math.max(0, prevBatches.length - 1));
+          console.log('Moved to previous medicine:', selectedMedicineIndex - 1);
+        }
         break;
       case 'Enter':
-        // Handled above; move to quantity
+        if (currentMedicine && matchingBatches[selectedBatchIndex]) {
+          console.log('Adding batch to bill:', matchingBatches[selectedBatchIndex].batch_number);
+          addToBill(currentMedicine, matchingBatches[selectedBatchIndex]);
+          setSearchTerm('');
+          setQuantity(1);
+          setSelectedMedicineIndex(0);
+          setSelectedBatchIndex(0);
+          setShowMedicineDropdown(false);
+        }
         break;
       case 'Escape':
-        e.preventDefault();
         setShowMedicineDropdown(false);
         setSelectedMedicineIndex(0);
+        setSelectedBatchIndex(0);
         break;
     }
   };
@@ -517,7 +564,7 @@ function NewBillingPageInner() {
         description: '',
         combination: m.combination,
         batches: batchesByMedicine[m.id] || []
-      })).filter((medicine: Medicine) => medicine.batches.length > 0);
+      }));
 
       setMedicines(medicinesWithBatches);
     } catch (err: any) {
@@ -1707,46 +1754,115 @@ function NewBillingPageInner() {
                         setSearchTerm(e.target.value);
                         setShowMedicineDropdown(true);
                         setSelectedMedicineIndex(0);
+                        setSelectedBatchIndex(0); // Reset batch index when search changes
                       }}
-                      onKeyDown={handleMedicineKeyDown}
+                      onKeyDown={(e) => {
+                        console.log('Key pressed in search input:', e.key);
+                        handleMedicineKeyDown(e);
+                      }}
                       onFocus={() => setShowMedicineDropdown(true)}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     {showMedicineDropdown && searchTerm && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-96 overflow-auto">
+                        <div className="px-3 py-1 text-xs text-slate-400 border-b">
+                          Debug: {filteredMedicines.length} medicines found
+                        </div>
                         {filteredMedicines.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-slate-500">No medicines found</div>
                         ) : (
-                          filteredMedicines.map((medicine, index) => (
-                            <div
-                              key={medicine.id}
-                              className={`px-3 py-2 cursor-pointer text-xs ${
-                                index === selectedMedicineIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
-                              }`}
-                              onClick={() => {
-                                const batch = medicine.batches[0];
-                                if (batch) {
-                                  addToBill(medicine, batch);
-                                  setSearchTerm('');
-                                  setQuantity(1);
-                                  setSelectedMedicineIndex(0);
-                                  setShowMedicineDropdown(false);
-                                  setTimeout(() => {
-                                    const medicineInput = document.querySelector('input[placeholder*="medicine"]');
-                                    if (medicineInput) {
-                                      (medicineInput as HTMLElement).focus();
-                                    }
-                                  }, 100);
-                                }
-                              }}
-                            >
-                              <div className="font-medium text-slate-900">{medicine.name}</div>
-                              <div className="text-slate-500">
-                                {medicine.medicine_code} • {medicine.manufacturer} • 
-                                {medicine.batches.length > 0 && ` Batch: ${medicine.batches[0].batch_number} • Stock: ${medicine.batches[0].current_quantity}`}
+                          filteredMedicines.map((medicine, index) => {
+                            const matchingBatches = searchTermTrimmed.length > 0 
+                              ? medicine.batches.filter(b => 
+                                  (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                                  (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                                  ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+                                )
+                              : medicine.batches;
+                            return (
+                              <div
+                                key={medicine.id}
+                                className={`px-3 py-2 text-xs ${
+                                  index === selectedMedicineIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="font-medium text-slate-900">{medicine.name}</div>
+                                <div className="text-slate-500">
+                                  {medicine.medicine_code} • {medicine.manufacturer}
+                                </div>
+                                
+                                {/* Always show batch section */}
+                                <div className="mt-2">
+                                  {medicine.batches.length === 0 ? (
+                                    <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                      No active batches available
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <div className="text-xs text-slate-600 mb-1">
+                                        Available Batches ({matchingBatches.length > 0 ? matchingBatches.length : medicine.batches.length}):
+                                      </div>
+                                      <div className="space-y-1">
+                                        {(matchingBatches.length > 0 ? matchingBatches : medicine.batches).slice(0, 5).map((batch, batchIndex) => {
+                                          const isSelectedBatch = index === selectedMedicineIndex && batchIndex === selectedBatchIndex;
+                                          return (
+                                          <div
+                                            key={batch.id}
+                                            className={`pl-2 py-2 rounded cursor-pointer border ${
+                                              isSelectedBatch
+                                                ? 'bg-blue-100 border-blue-400 ring-1 ring-blue-400'
+                                                : matchingBatches.length > 0 && searchTermTrimmed.length > 0
+                                                  ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                                                  : 'bg-slate-50 border-slate-200 hover:bg-blue-50'
+                                            }`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              console.log('Selected batch:', batch.batch_number, 'ID:', batch.id);
+                                              addToBill(medicine, batch);
+                                              setSearchTerm('');
+                                              setQuantity(1);
+                                              setSelectedMedicineIndex(0);
+                                              setSelectedBatchIndex(0);
+                                              setShowMedicineDropdown(false);
+                                              setTimeout(() => {
+                                                const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+                                                if (medicineInput) {
+                                                  (medicineInput as HTMLElement).focus();
+                                                }
+                                              }, 100);
+                                            }}
+                                          >
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-medium text-slate-700 text-xs">
+                                                Batch: {batch.batch_number}
+                                              </span>
+                                              <span className="text-slate-600 text-xs">
+                                                Stock: {batch.current_quantity}
+                                              </span>
+                                            </div>
+                                            <div className="text-xs text-slate-500 mt-1">
+                                              {batch.batch_barcode && `Barcode: ${batch.batch_barcode}`}
+                                              {batch.legacy_code && ` • Legacy: ${batch.legacy_code}`}
+                                              {batch.expiry_date && ` • Exp: ${new Date(batch.expiry_date).toLocaleDateString()}`}
+                                            </div>
+                                            <div className="text-xs text-emerald-600 mt-1">
+                                              Price: ₹{batch.selling_price}
+                                            </div>
+                                          </div>
+                                          );
+                                        })}
+                                        {medicine.batches.length > 5 && (
+                                          <div className="text-xs text-slate-400 pl-2 italic">
+                                            ... and {medicine.batches.length - 5} more batches
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     )}
@@ -1771,9 +1887,20 @@ function NewBillingPageInner() {
                     onClick={() => {
                       if (searchTerm && filteredMedicines.length > 0) {
                         const medicine = filteredMedicines[0];
-                        const batch = medicine.batches[0];
-                        if (batch) {
-                          addToBill(medicine, batch);
+                        // Find the best matching batch based on search term
+                        let targetBatch = medicine.batches[0];
+                        if (searchTermTrimmed.length > 0) {
+                          const matchingBatches = medicine.batches.filter(b => 
+                            (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                            (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                            ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+                          );
+                          if (matchingBatches.length > 0) {
+                            targetBatch = matchingBatches[0];
+                          }
+                        }
+                        if (targetBatch) {
+                          addToBill(medicine, targetBatch);
                           setSearchTerm('');
                           setQuantity(1);
                           setSelectedMedicineIndex(0);
