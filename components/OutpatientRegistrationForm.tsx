@@ -109,6 +109,47 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         staffId: ''
     });
 
+    const [dobInput, setDobInput] = useState('');
+
+    // Sync dobInput with formData.dob
+    useEffect(() => {
+        if (formData.dob) {
+            const [year, month, day] = formData.dob.split('-');
+            if (year && month && day) {
+                setDobInput(`${day}/${month}/${year}`);
+            }
+        } else {
+            setDobInput('');
+        }
+    }, [formData.dob]);
+
+    const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        // Allow numbers and slashes
+        if (/[^0-9/]/.test(val)) return;
+        
+        setDobInput(val);
+
+        // Validate DD/MM/YYYY
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+            const [day, month, year] = val.split('/');
+            const isoDate = `${year}-${month}-${day}`;
+            
+            // Validate date validity
+            const date = new Date(isoDate);
+            const isValidDate = date instanceof Date && !isNaN(date.getTime()) && 
+                                date.getDate() === parseInt(day) && 
+                                (date.getMonth() + 1) === parseInt(month) && 
+                                date.getFullYear() === parseInt(year);
+            
+            if (isValidDate) {
+                setFormData(prev => ({ ...prev, dob: isoDate }));
+            }
+        } else if (val === '') {
+            setFormData(prev => ({ ...prev, dob: '' }));
+        }
+    };
+
     useEffect(() => {
         const fetchInitialData = async () => {
             try {
@@ -476,10 +517,12 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Date of Birth</label>
                                 <input
-                                    type="date"
+                                    type="text"
                                     name="dob"
-                                    value={formData.dob}
-                                    onChange={handleInputChange}
+                                    placeholder="DD/MM/YYYY"
+                                    maxLength={10}
+                                    value={dobInput}
+                                    onChange={handleDobChange}
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                                 />
                             </div>
@@ -838,7 +881,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             name="consultationFee"
                                             value={formData.consultationFee}
                                             onChange={handleInputChange}
-                                            className="w-full pl-10 pr-4 py-2.5 border border-green-200 rounded-xl bg-green-50 font-bold text-green-700"
+                                            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                                         />
                                     </div>
                                 </div>

@@ -13,11 +13,15 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
-  Stethoscope
+  Stethoscope,
+  Printer,
+  CreditCard
 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
 import { createAppointment, type AppointmentData } from '../../../src/lib/appointmentService';
+import { createOPConsultationBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
 import StaffSelect from '../../../src/components/StaffSelect';
+import UniversalPaymentModal from '../../../src/components/UniversalPaymentModal';
 
 type PatientSearchRow = {
   id: string;
@@ -65,6 +69,8 @@ export default function OutpatientRevisitPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [createdAppointmentId, setCreatedAppointmentId] = useState<string | null>(null);
+  const [currentBill, setCurrentBill] = useState<PaymentRecord | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const [form, setForm] = useState({
     complaints: '',
@@ -378,11 +384,31 @@ export default function OutpatientRevisitPage() {
       const appointment = await createAppointment(appointmentData, form.staffId || undefined);
       setCreatedAppointmentId(appointment.id);
 
-      setSuccess(true);
+      // Create OP consultation bill
+      try {
+        if (!appointment.encounter?.id) {
+          throw new Error('Failed to get encounter ID from appointment');
+        }
+        
+        const bill = await createOPConsultationBill(
+          selectedPatient.id,
+          appointment.encounter.id,
+          parseFloat(form.consultationFee || '0'),
+          form.consultingDoctorName,
+          form.staffId
+        );
 
-      setTimeout(() => {
-        router.push('/outpatient?tab=appointments');
-      }, 2000);
+        setCurrentBill(bill);
+        // Show payment modal automatically if fee > 0
+        if (bill.total_amount > 0) {
+          setShowPaymentModal(true);
+        }
+      } catch (billingError) {
+        console.error('Error creating bill:', billingError);
+        // Continue even if billing fails
+      }
+
+      setSuccess(true);
     } catch (e: any) {
       console.error('Revisit submission error:', e);
       setError(e?.message || 'Failed to complete revisit');
@@ -401,10 +427,50 @@ export default function OutpatientRevisitPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Revisit Created</h2>
           <p className="text-gray-600 mb-4">Appointment created successfully.</p>
           {createdAppointmentId && (
-            <p className="text-xs text-gray-500">Appointment ID: {createdAppointmentId}</p>
+            <p className="text-xs text-gray-500 mb-6">Appointment ID: {createdAppointmentId}</p>
           )}
-          <p className="text-sm text-gray-500 mt-4">Redirecting to appointments...</p>
+
+          <div className="flex flex-col gap-3">
+            {currentBill && currentBill.payment_status !== 'paid' && (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                <CreditCard size={18} />
+                Make Payment (₹{currentBill.total_amount})
+              </button>
+            )}
+
+            {currentBill && (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                <Printer size={18} />
+                View / Print Bill
+              </button>
+            )}
+
+            <button
+              onClick={() => router.push('/outpatient?tab=appointments')}
+              className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors"
+            >
+              Return to Appointments
+            </button>
+          </div>
         </div>
+
+        {showPaymentModal && currentBill && (
+          <UniversalPaymentModal
+            isOpen={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            bill={currentBill}
+            onSuccess={() => {
+              // Payment completed successfully
+              setShowPaymentModal(false);
+            }}
+          />
+        )}
       </div>
     );
   }

@@ -34,6 +34,7 @@ interface Medicine {
   description?: string;
   combination?: string;
   batches: MedicineBatch[];
+  is_external?: boolean;
 }
 
 interface MedicineBatch {
@@ -53,6 +54,7 @@ interface BillItem {
   medicine: Medicine;
   batch: MedicineBatch;
   quantity: number;
+  unit_price: number;
   total: number;
 }
 
@@ -86,6 +88,12 @@ function NewBillingPageInner() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [billItems, setBillItems] = useState<BillItem[]>([]);
+  const [showExternalPriceModal, setShowExternalPriceModal] = useState(false);
+  const [externalPriceInput, setExternalPriceInput] = useState('');
+  const [pendingExternalAdd, setPendingExternalAdd] = useState<{
+    medicine: Medicine;
+    quantity: number;
+  } | null>(null);
   const [customer, setCustomer] = useState<Customer>({
     type: 'walk_in',
     name: '',
@@ -94,6 +102,19 @@ function NewBillingPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrPreviewBatch, setQrPreviewBatch] = useState<MedicineBatch | null>(null);
+  // Unlisted Medicine State
+  const [showUnlistedModal, setShowUnlistedModal] = useState(false);
+  const [unlistedForm, setUnlistedForm] = useState({
+    name: '',
+    manufacturer: '',
+    category: 'Unlisted',
+    mrp: '',
+    selling_price: '',
+    batch_number: 'TEMP-' + Math.floor(Math.random() * 10000),
+    expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+    stock: '100'
+  });
+
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([
@@ -470,14 +491,20 @@ function NewBillingPageInner() {
         }
         break;
       case 'Enter':
-        if (currentMedicine && matchingBatches[selectedBatchIndex]) {
-          console.log('Adding batch to bill:', matchingBatches[selectedBatchIndex].batch_number);
-          addToBill(currentMedicine, matchingBatches[selectedBatchIndex]);
-          setSearchTerm('');
-          setQuantity(1);
-          setSelectedMedicineIndex(0);
-          setSelectedBatchIndex(0);
-          setShowMedicineDropdown(false);
+        if (currentMedicine) {
+          if (currentMedicine.is_external) {
+            setPendingExternalAdd({ medicine: currentMedicine, quantity: Number(quantity) || 1 });
+            setExternalPriceInput('');
+            setShowExternalPriceModal(true);
+          } else if (matchingBatches[selectedBatchIndex]) {
+            console.log('Adding batch to bill:', matchingBatches[selectedBatchIndex].batch_number);
+            addToBill(currentMedicine, matchingBatches[selectedBatchIndex]);
+            setSearchTerm('');
+            setQuantity(1);
+            setSelectedMedicineIndex(0);
+            setSelectedBatchIndex(0);
+            setShowMedicineDropdown(false);
+          }
         }
         break;
       case 'Escape':
@@ -494,6 +521,12 @@ function NewBillingPageInner() {
       // Add item with current quantity and reset
       if (searchTerm && filteredMedicines.length > 0) {
         const medicine = filteredMedicines[0];
+        if (medicine.is_external) {
+          setPendingExternalAdd({ medicine, quantity: Number(quantity) || 1 });
+          setExternalPriceInput('');
+          setShowExternalPriceModal(true);
+          return;
+        }
         const batch = medicine.batches[0];
         if (batch) {
           addToBill(medicine, batch);
@@ -511,6 +544,72 @@ function NewBillingPageInner() {
         }
       }
     }
+  };
+
+  const confirmAddExternalWithPrice = () => {
+    if (!pendingExternalAdd) return;
+
+    const parsed = Number(externalPriceInput);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    const existingExternalIndex = billItems.findIndex(
+      (it) => !!it.medicine.is_external && it.medicine.id === pendingExternalAdd.medicine.id
+    );
+
+    if (existingExternalIndex >= 0) {
+      const currentQty = Number(billItems[existingExternalIndex]?.quantity) || 0;
+      const addQty = Number(pendingExternalAdd.quantity) || 0;
+      updateBillItemPrice(existingExternalIndex, parsed);
+      updateBillItemQuantity(existingExternalIndex, currentQty + addQty);
+
+      setShowExternalPriceModal(false);
+      setPendingExternalAdd(null);
+      setExternalPriceInput('');
+
+      setSearchTerm('');
+      setQuantity(1);
+      setSelectedMedicineIndex(0);
+      setSelectedBatchIndex(0);
+      setShowMedicineDropdown(false);
+      setTimeout(() => {
+        const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+        if (medicineInput) {
+          (medicineInput as HTMLElement).focus();
+        }
+      }, 100);
+      return;
+    }
+
+    const dummyBatch: MedicineBatch = {
+      id: 'ext-' + pendingExternalAdd.medicine.id,
+      batch_number: 'EXTERNAL',
+      expiry_date: '2099-12-31',
+      current_quantity: 999999,
+      purchase_price: 0,
+      selling_price: parsed,
+      medicine_id: pendingExternalAdd.medicine.id,
+      status: 'active'
+    };
+
+    addToBill(pendingExternalAdd.medicine, dummyBatch, pendingExternalAdd.quantity);
+    setShowExternalPriceModal(false);
+    setPendingExternalAdd(null);
+    setExternalPriceInput('');
+
+    setSearchTerm('');
+    setQuantity(1);
+    setSelectedMedicineIndex(0);
+    setSelectedBatchIndex(0);
+    setShowMedicineDropdown(false);
+    setTimeout(() => {
+      const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+      if (medicineInput) {
+        (medicineInput as HTMLElement).focus();
+      }
+    }, 100);
   };
 
   // Medicine dropdown state
@@ -665,6 +764,7 @@ function NewBillingPageInner() {
             medicine,
             batch,
             quantity: qty,
+            unit_price: batch.selling_price,
             total: qty * batch.selling_price
           });
         }
@@ -766,7 +866,77 @@ function NewBillingPageInner() {
       return baseMatch || batchMatch;
     });
 
-  // Add medicine to bill
+  // Add medicine to bill (or just to database as external)
+  const handleSaveUnlisted = async () => {
+    try {
+      if (!unlistedForm.name) {
+        alert("Please enter Medicine Name");
+        return;
+      }
+
+      setLoading(true);
+
+      const tempCode = 'EXT-' + Date.now();
+
+      // 1. Insert into medications with is_external = true
+      const { data: medData, error: medError } = await supabase
+        .from('medications')
+        .insert({
+          name: unlistedForm.name,
+          medication_code: tempCode,
+          manufacturer: 'External',
+          category: 'External',
+          unit: 'Nos', 
+          is_external: true,
+          status: 'active',
+          is_active: true
+        })
+        .select()
+        .single();
+
+      if (medError) {
+          console.error('Error inserting external medicine:', medError);
+          alert('Error logging external medicine: ' + (medError.message || 'Check console for details'));
+          return;
+      }
+
+      alert('External medicine added to database successfully. You can now search for it.');
+      
+      // Update local state to include this new medicine so it appears in search
+      const newMedicine: Medicine = {
+          id: medData.id,
+          name: medData.name,
+          medicine_code: medData.medication_code,
+          manufacturer: medData.manufacturer,
+          category: medData.category,
+          unit: medData.unit,
+          batches: [], // No batches yet
+          is_external: true
+      };
+      
+      setMedicines(prev => [...prev, newMedicine]);
+
+      setShowUnlistedModal(false);
+      // Reset form
+      setUnlistedForm({
+        name: '',
+        manufacturer: '',
+        category: 'Unlisted',
+        mrp: '',
+        selling_price: '',
+        batch_number: '',
+        expiry_date: '',
+        stock: ''
+      });
+      
+    } catch (e: any) {
+      console.error('Error adding unlisted medicine:', e);
+      alert('Error adding unlisted medicine: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const addToBill = (medicine: Medicine, batch: MedicineBatch, quantity: number = 1) => {
     // Validate quantity
     if (quantity <= 0) {
@@ -774,17 +944,20 @@ function NewBillingPageInner() {
       return;
     }
 
-    if (quantity > batch.current_quantity) {
+    // Skip stock check for external medicines
+    if (!medicine.is_external && quantity > batch.current_quantity) {
       alert(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
       return;
     }
 
-    // Check if batch is expired
-    const today = new Date();
-    const expiryDate = new Date(batch.expiry_date);
-    if (expiryDate <= today) {
-      alert('This batch has expired and cannot be sold.');
-      return;
+    // Check if batch is expired (skip for external)
+    if (!medicine.is_external) {
+      const today = new Date();
+      const expiryDate = new Date(batch.expiry_date);
+      if (expiryDate <= today) {
+        alert('This batch has expired and cannot be sold.');
+        return;
+      }
     }
 
     const existingItemIndex = billItems.findIndex(
@@ -793,7 +966,7 @@ function NewBillingPageInner() {
 
     if (existingItemIndex >= 0) {
       const newQuantity = billItems[existingItemIndex].quantity + quantity;
-      if (newQuantity > batch.current_quantity) {
+      if (!medicine.is_external && newQuantity > batch.current_quantity) {
         alert(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
         return;
       }
@@ -803,6 +976,7 @@ function NewBillingPageInner() {
         medicine,
         batch,
         quantity,
+        unit_price: batch.selling_price,
         total: quantity * batch.selling_price
       };
       setBillItems([...billItems, newItem]);
@@ -818,25 +992,41 @@ function NewBillingPageInner() {
 
     const item = billItems[index];
 
-    // Validate new quantity
-    if (newQuantity > item.batch.current_quantity) {
+    // Validate new quantity (skip for external)
+    if (!item.medicine.is_external && newQuantity > item.batch.current_quantity) {
       alert(`Insufficient stock available. Only ${item.batch.current_quantity} units in stock.`);
       return;
     }
 
-    // Check if batch is expired
-    const today = new Date();
-    const expiryDate = new Date(item.batch.expiry_date);
-    if (expiryDate <= today) {
-      alert('This batch has expired and cannot be sold.');
-      return;
+    // Check if batch is expired (skip for external)
+    if (!item.medicine.is_external) {
+      const today = new Date();
+      const expiryDate = new Date(item.batch.expiry_date);
+      if (expiryDate <= today) {
+        alert('This batch has expired and cannot be sold.');
+        return;
+      }
     }
 
     const updatedItems = [...billItems];
     updatedItems[index] = {
       ...item,
       quantity: newQuantity,
-      total: newQuantity * item.batch.selling_price
+      total: newQuantity * item.unit_price
+    };
+    setBillItems(updatedItems);
+  };
+
+  // Update bill item price
+  const updateBillItemPrice = (index: number, newPrice: number) => {
+    if (newPrice < 0) return;
+    
+    const updatedItems = [...billItems];
+    const item = updatedItems[index];
+    updatedItems[index] = {
+        ...item,
+        unit_price: newPrice,
+        total: item.quantity * newPrice
     };
     setBillItems(updatedItems);
   };
@@ -913,6 +1103,7 @@ function NewBillingPageInner() {
     // Check for expired batches before processing
     const today = new Date();
     const expiredItems = billItems.filter(item => {
+      if (item.medicine.is_external) return false;
       const expiryDate = new Date(item.batch.expiry_date);
       return expiryDate <= today;
     });
@@ -1011,14 +1202,14 @@ function NewBillingPageInner() {
           billing_id: billData!.id,
           line_type_id: '3a0ca26e-7dc1-4ede-9872-d798cf39d248', // Medicine line type from ref_code table
           medicine_id: item.medicine.id,
-          batch_id: item.batch.id,
+          batch_id: item.medicine.is_external ? null : item.batch.id,
           ref_id: linked?.prescription_item_id ?? null,
           description: item.medicine.name,
           qty: item.quantity,
-          unit_amount: item.batch.selling_price,
+          unit_amount: item.unit_price,
           total_amount: item.total,
-          batch_number: item.batch.batch_number,
-          expiry_date: item.batch.expiry_date
+          batch_number: item.medicine.is_external ? 'EXTERNAL' : item.batch.batch_number,
+          expiry_date: item.medicine.is_external ? null : item.batch.expiry_date
         };
       });
 
@@ -1769,7 +1960,15 @@ function NewBillingPageInner() {
                           Debug: {filteredMedicines.length} medicines found
                         </div>
                         {filteredMedicines.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-slate-500">No medicines found</div>
+                          <div className="px-3 py-2 text-xs text-slate-500 flex justify-between items-center">
+                            <span>No medicines found</span>
+                            <button
+                              onClick={() => setShowUnlistedModal(true)}
+                              className="text-blue-600 hover:text-blue-800 font-medium"
+                            >
+                              + Add Unlisted Medicine
+                            </button>
+                          </div>
                         ) : (
                           filteredMedicines.map((medicine, index) => {
                             const matchingBatches = searchTermTrimmed.length > 0 
@@ -1794,9 +1993,26 @@ function NewBillingPageInner() {
                                 {/* Always show batch section */}
                                 <div className="mt-2">
                                   {medicine.batches.length === 0 ? (
-                                    <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                                      No active batches available
-                                    </div>
+                                    medicine.is_external ? (
+                                      <div 
+                                          className={`pl-2 py-2 rounded cursor-pointer border ${
+                                              index === selectedMedicineIndex ? 'bg-blue-100 border-blue-400 ring-1 ring-blue-400' : 'bg-slate-50 border-slate-200 hover:bg-blue-50'
+                                          }`}
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              setPendingExternalAdd({ medicine: medicine, quantity: Number(quantity) || 1 });
+                                              setExternalPriceInput('');
+                                              setShowExternalPriceModal(true);
+                                          }}
+                                      >
+                                          <div className="font-medium text-slate-700 text-xs">Add to Bill</div>
+                                          <div className="text-xs text-slate-500">Price editable in bill</div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                        No active batches available
+                                      </div>
+                                    )
                                   ) : (
                                     <div>
                                       <div className="text-xs text-slate-600 mb-1">
@@ -1887,6 +2103,12 @@ function NewBillingPageInner() {
                     onClick={() => {
                       if (searchTerm && filteredMedicines.length > 0) {
                         const medicine = filteredMedicines[0];
+                        if (medicine.is_external) {
+                          setPendingExternalAdd({ medicine, quantity: Number(quantity) || 1 });
+                          setExternalPriceInput('');
+                          setShowExternalPriceModal(true);
+                          return;
+                        }
                         // Find the best matching batch based on search term
                         let targetBatch = medicine.batches[0];
                         if (searchTermTrimmed.length > 0) {
@@ -1958,9 +2180,23 @@ function NewBillingPageInner() {
                         <span>{index + 1}</span>
                         <div className="flex flex-col">
                           <span className="font-medium truncate">{item.medicine.name}</span>
-                          <span className="text-[10px] text-slate-500 truncate">Batch: {item.batch.batch_number.slice(-4)}</span>
+                          <span className="text-[10px] text-slate-500 truncate">Batch: {item.medicine.is_external ? 'EXT' : item.batch.batch_number.slice(-4)}</span>
                         </div>
-                        <span className="text-right font-medium">₹{item.batch.selling_price.toFixed(2)}</span>
+                        {item.medicine.is_external ? (
+                          <div className="flex justify-end">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={item.unit_price}
+                              onChange={(e) => updateBillItemPrice(index, parseFloat(e.target.value) || 0)}
+                              className="w-20 rounded border border-slate-200 bg-white text-right text-[11px] py-1 px-1 focus:ring-2 focus:ring-blue-500 outline-none"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-right font-medium">₹{item.unit_price.toFixed(2)}</span>
+                        )}
                         <div className="flex items-center justify-center">
                           <input
                             type="number"
@@ -2655,6 +2891,121 @@ function NewBillingPageInner() {
             </div>
           </div>
         )}
+
+      {showExternalPriceModal && pendingExternalAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => {
+              setShowExternalPriceModal(false);
+              setPendingExternalAdd(null);
+              setExternalPriceInput('');
+            }}
+          ></div>
+          <div className="relative bg-white w-full max-w-md mx-auto rounded-2xl shadow-xl border border-gray-100 p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-900">External Item Price</h3>
+              <button
+                onClick={() => {
+                  setShowExternalPriceModal(false);
+                  setPendingExternalAdd(null);
+                  setExternalPriceInput('');
+                }}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <div className="text-sm text-slate-700 font-medium truncate">{pendingExternalAdd.medicine.name}</div>
+              <div className="text-xs text-slate-500">Quantity: {pendingExternalAdd.quantity}</div>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Unit Price (₹)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={externalPriceInput}
+                onChange={(e) => setExternalPriceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    confirmAddExternalWithPrice();
+                  }
+                }}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExternalPriceModal(false);
+                  setPendingExternalAdd(null);
+                  setExternalPriceInput('');
+                }}
+                className="rounded-lg border border-slate-200 bg-white text-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmAddExternalWithPrice}
+                className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unlisted Medicine Modal */}
+      {showUnlistedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowUnlistedModal(false)}></div>
+          <div className="relative bg-white w-full max-w-md mx-auto rounded-2xl shadow-xl border border-gray-100 p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-900">Add Unlisted Medicine</h3>
+              <button onClick={() => setShowUnlistedModal(false)} className="text-slate-500 hover:text-slate-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Medicine Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={unlistedForm.name}
+                  onChange={e => setUnlistedForm({...unlistedForm, name: e.target.value})}
+                  placeholder="e.g., Dolopar 650"
+                  autoFocus
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  This medicine will be logged for future inventory creation. It will not be added to the current bill.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={handleSaveUnlisted}
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium shadow-sm"
+                >
+                  {loading ? 'Saving...' : 'Save Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
         {/* Hospital Details Modal */}
         {showHospitalModal && (

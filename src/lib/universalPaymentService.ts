@@ -26,6 +26,7 @@ export interface PaymentItem {
 
 export interface PaymentData {
   patient_id: string;
+  encounter_id?: string;
   appointment_id?: string;
   bed_allocation_id?: string;
   items: PaymentItem[];
@@ -36,7 +37,7 @@ export interface PaymentData {
   payment_method?: string; // Default for backward compatibility
   notes?: string;
   created_by?: string;
-  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'other';
+  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'outpatient' | 'other';
 }
 
 export interface PaymentSplit {
@@ -130,6 +131,7 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
         bill_no: bill_id,
         bill_number: bill_id,
         patient_id: data.patient_id,
+        encounter_id: data.encounter_id,
         bed_allocation_id: data.bed_allocation_id,
         subtotal: data.subtotal,
         discount: data.discount_amount,
@@ -507,7 +509,7 @@ export async function createIPAdmissionBill(
 // Create bill specifically for OP consultation
 export async function createOPConsultationBill(
   patientId: string,
-  appointmentId: string,
+  encounterId: string,
   consultationFee: number,
   doctorName: string,
   staffId?: string
@@ -518,7 +520,7 @@ export async function createOPConsultationBill(
     unit_rate: consultationFee,
     total_amount: consultationFee,
     item_type: 'service' as const,
-    reference_id: appointmentId,
+    reference_id: encounterId,
   }];
 
   const subtotal = consultationFee;
@@ -527,7 +529,7 @@ export async function createOPConsultationBill(
 
   return createUniversalBill({
     patient_id: patientId,
-    appointment_id: appointmentId,
+    encounter_id: encounterId,
     items,
     subtotal,
     tax_amount: taxAmount,
@@ -535,6 +537,6 @@ export async function createOPConsultationBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
-    bill_type: 'consultation',
+    bill_type: 'outpatient',
   });
 }
