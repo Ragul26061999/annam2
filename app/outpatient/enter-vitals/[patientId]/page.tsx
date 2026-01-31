@@ -272,6 +272,7 @@ export default function EnterVitalsPage() {
 
       // Create appointment for the selected doctor
       let createdAppointmentId: string | null = null;
+      let createdEncounterId: string | null = null;
       if (vitalsData.consultingDoctorId) {
         try {
           const today = new Date();
@@ -323,6 +324,7 @@ export default function EnterVitalsPage() {
           const appointment = await createAppointment(appointmentData, vitalsData.staffId);
           console.log('Appointment created successfully:', appointment.id);
           createdAppointmentId = appointment.id;
+          createdEncounterId = appointment.encounter?.id || null;
         } catch (appointmentError) {
           console.error('Error creating appointment:', appointmentError);
           // Don't fail the entire process if appointment creation fails
@@ -334,18 +336,18 @@ export default function EnterVitalsPage() {
       try {
         const consultationFee = parseFloat(vitalsData.consultationFee) || 0;
 
-        if (consultationFee > 0 && createdAppointmentId) {
+        if (consultationFee > 0 && createdEncounterId) {
           const bill = await createOPConsultationBill(
             patientId,
-            createdAppointmentId,
+            createdEncounterId,
             consultationFee,
             vitalsData.consultingDoctorName || 'Unknown Doctor',
             vitalsData.staffId || undefined
           );
           console.log('OP consultation bill created successfully:', bill.id);
           setCreatedBill(bill);
-        } else if (consultationFee > 0 && !createdAppointmentId) {
-          console.warn('Skipped bill creation because appointment was not created');
+        } else if (consultationFee > 0 && !createdEncounterId) {
+          console.warn('Skipped bill creation because encounter was not created');
         } else {
           console.log('No bill created - consultation fee is zero');
         }
@@ -907,14 +909,8 @@ export default function EnterVitalsPage() {
                     value={vitalsData.consultationFee}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                    placeholder="Auto-filled when doctor selected"
-                    readOnly={vitalsData.consultingDoctorId !== ''}
+                    placeholder="Enter consultation fee"
                   />
-                  {vitalsData.consultingDoctorId && (
-                    <p className="text-xs text-green-600 mt-1">
-                      Auto-filled from doctor selection
-                    </p>
-                  )}
                 </div>
 
                 <div>
