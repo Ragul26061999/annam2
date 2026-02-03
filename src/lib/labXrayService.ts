@@ -2301,7 +2301,7 @@ export async function createGroupedLabOrder(params: CreateGroupedLabOrderParams)
       p_ordering_doctor_id: params.ordering_doctor_id || null,
       p_clinical_indication: params.clinical_indication || null,
       p_urgency: params.urgency || 'routine',
-      p_service_items: JSON.stringify(params.service_items),
+      p_service_items: params.service_items,
       p_is_ip: params.is_ip || false,
       p_bed_allocation_id: params.bed_allocation_id || null,
       p_group_id: params.group_id || null,

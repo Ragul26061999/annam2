@@ -25,7 +25,8 @@ import {
     X,
     Printer,
     Save,
-    Loader2
+    Loader2,
+    Beaker
 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
 import { SearchableSelect } from '../../../src/components/ui/SearchableSelect';
@@ -476,14 +477,14 @@ try {
                             animate={{ opacity: 1, x: 0 }}
                             className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
                         >
-                            <div className="p-6 bg-gradient-to-br from-purple-600 to-purple-700 text-white">
+                            <div className="p-6 bg-gradient-to-br from-teal-600 to-teal-700 text-white">
                                 <div className="flex items-center gap-4">
                                     <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
                                         <User size={24} />
                                     </div>
                                     <div>
                                         <h2 className="text-lg font-bold">Patient Information</h2>
-                                        <p className="text-purple-100 text-xs">Register diagnostic clinical order</p>
+                                        <p className="text-teal-100 text-xs">Register diagnostic clinical order</p>
                                     </div>
                                 </div>
                             </div>
@@ -493,14 +494,14 @@ try {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UHID / Patient Name</label>
                                     <div className="relative group search-container">
-                                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${searchingPatient ? 'text-purple-500' : 'text-slate-400 group-focus-within:text-purple-500'}`} size={18} />
+                                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${searchingPatient ? 'text-teal-500' : 'text-slate-400 group-focus-within:text-teal-500'}`} size={18} />
                                         <input
                                             type="text"
                                             placeholder="Enter UHID or Patient Name..."
                                             value={uhidSearch}
                                             onChange={(e) => setUhidSearch(e.target.value)}
                                             onFocus={() => setShowSearchDropdown(searchResults.length > 0)}
-                                            className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-transparent focus:border-purple-500 focus:bg-white rounded-2xl transition-all outline-none text-sm font-semibold text-slate-700"
+                                            className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl transition-all outline-none text-sm font-semibold text-slate-700"
                                         />
                                         {uhidSearch && (
                                             <button
@@ -524,8 +525,8 @@ try {
                                                         onClick={() => handlePatientSelect(patient)}
                                                         className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-b-0"
                                                     >
-                                                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                                                            <User size={16} className="text-purple-600" />
+                                                        <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                                                            <User size={16} className="text-teal-600" />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="font-semibold text-slate-900 truncate">
@@ -550,7 +551,7 @@ try {
                                 <div className="grid grid-cols-1 gap-4">
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">UHID</label>
-                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-purple-700">
+                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-teal-700">
                                             {patientDetails.uhid || '--'}
                                         </div>
                                     </div>
@@ -609,8 +610,8 @@ try {
                             >
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600">
-                                            <Scissors size={20} />
+                                        <div className="p-2.5 bg-teal-50 rounded-xl text-teal-600">
+                                            <Beaker size={20} />
                                         </div>
                                         <div>
                                             <h2 className="text-lg font-bold text-slate-900">Scan Test Selection</h2>
@@ -620,9 +621,9 @@ try {
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => setShowNewTestModal(true)}
-                                            className="flex items-center gap-2 px-4 py-2 border-2 border-purple-600 text-purple-600 rounded-xl text-sm font-bold hover:bg-purple-50 transition-all"
+                                            className="flex items-center gap-2 px-4 py-2 border-2 border-teal-600 text-teal-600 rounded-xl text-sm font-bold hover:bg-teal-50 transition-all"
                                         >
-                                            <Scissors size={18} />
+                                            <Beaker size={18} />
                                             New Catalog Entry
                                         </button>
                                     </div>
@@ -639,7 +640,9 @@ try {
                                                     onChange={(e) => {
                                                         const next = e.target.checked;
                                                         setUseGroup(next);
-                                                        if (!next) setSelectedGroupId('');
+                                                        if (!next) {
+                                                            setSelectedGroupId('');
+                                                        }
                                                     }}
                                                 />
                                                 Use Group
@@ -654,7 +657,7 @@ try {
                                                             setSelectedGroupId(id);
                                                             await applyGroupToSelection(id);
                                                         }}
-                                                        className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                        className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
                                                     >
                                                         <option value="">Select Group...</option>
                                                         {availableGroups.map((g: any) => (
@@ -671,11 +674,6 @@ try {
                                                 </div>
                                             )}
                                         </div>
-                                        {useGroup && (
-                                            <div className="mt-2 text-[11px] text-slate-500 font-semibold">
-                                                {groupLoading ? 'Loading groups/items…' : 'Selecting a group will auto-fill tests. You can remove any row to opt-out per test.'}
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
 

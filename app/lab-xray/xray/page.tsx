@@ -25,7 +25,8 @@ import {
     Zap,
     Activity,
     Monitor,
-    Save
+    Save,
+    Beaker
 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
 import { SearchableSelect } from '../../../src/components/ui/SearchableSelect';
@@ -457,41 +458,40 @@ export default function XrayOrderPage() {
                     </div>
                 </div>
 
-                {/* Main Grid */}
+                {/* Main Content */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Patient Search (1/3) */}
+                    {/* Left: Patient and Details (1/3) */}
                     <div className="lg:col-span-1 space-y-6">
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
                         >
-                            <div className="p-7 bg-gradient-to-br from-cyan-600 to-blue-700 text-white relative">
-                                <div className="relative z-10 flex items-center gap-4">
-                                    <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl border border-white/20">
+                            <div className="p-6 bg-gradient-to-br from-teal-600 to-teal-700 text-white">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
                                         <User size={24} />
                                     </div>
                                     <div>
-                                        <h2 className="text-xl font-black tracking-tight">Radiology Client</h2>
-                                        <p className="text-cyan-100 text-[10px] font-bold uppercase tracking-widest">Image Acquisition Request</p>
+                                        <h2 className="text-lg font-bold">Patient Information</h2>
+                                        <p className="text-teal-100 text-xs">Register diagnostic clinical order</p>
                                     </div>
                                 </div>
-                                <Radiation className="absolute top-0 right-0 h-32 w-32 text-white/5 -mr-8 -mt-8 rotate-12" />
                             </div>
 
-                            <div className="p-7 space-y-6">
+                            <div className="p-6 space-y-5">
                                 {/* UHID Search */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Universal Health ID</label>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UHID / Patient Name</label>
                                     <div className="relative group search-container">
-                                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-all ${searchingPatient ? 'text-cyan-500 animate-pulse' : 'text-slate-400 group-focus-within:text-cyan-500'}`} size={18} />
+                                        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${searchingPatient ? 'text-teal-500' : 'text-slate-400 group-focus-within:text-teal-500'}`} size={18} />
                                         <input
                                             type="text"
-                                            placeholder="SCAN UHID OR TYPE PATIENT NAME..."
+                                            placeholder="Enter UHID or Patient Name..."
                                             value={uhidSearch}
                                             onChange={(e) => setUhidSearch(e.target.value)}
                                             onFocus={() => setShowSearchDropdown(searchResults.length > 0)}
-                                            className="w-full pl-12 pr-12 py-4 bg-slate-50 border-2 border-transparent focus:border-cyan-500 focus:bg-white rounded-[1.25rem] transition-all outline-none text-sm font-black text-slate-700 placeholder:text-slate-300 uppercase tracking-tight"
+                                            className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-transparent focus:border-teal-500 focus:bg-white rounded-2xl transition-all outline-none text-sm font-semibold text-slate-700"
                                         />
                                         {uhidSearch && (
                                             <button
@@ -500,9 +500,9 @@ export default function XrayOrderPage() {
                                                     setSearchResults([]);
                                                     setShowSearchDropdown(false);
                                                 }}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-red-500"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-red-500 rounded-xl transition-colors"
                                             >
-                                                <X size={16} />
+                                                <X size={18} />
                                             </button>
                                         )}
                                         
@@ -515,8 +515,8 @@ export default function XrayOrderPage() {
                                                         onClick={() => handlePatientSelect(patient)}
                                                         className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-b-0"
                                                     >
-                                                        <div className="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
-                                                            <User size={16} className="text-cyan-600" />
+                                                        <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                                                            <User size={16} className="text-teal-600" />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="font-semibold text-slate-900 truncate">
@@ -537,64 +537,90 @@ export default function XrayOrderPage() {
                                     </div>
                                 </div>
 
-                                {/* Auto-filled Form Details */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    {[
-                                        { label: 'Name', value: patientDetails.name },
-                                        { label: 'UHID', value: patientDetails.uhid },
-                                        { label: 'Gender / Age', value: patientDetails.gender ? `${patientDetails.gender} / ${patientDetails.age} Yrs` : null },
-                                        { label: 'Contact', value: patientDetails.contactNo },
-                                        { label: 'Email', value: patientDetails.emailId }
-                                    ].map((field, i) => (
-                                        <motion.div
-                                            key={field.label}
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: i * 0.05 }}
-                                            className="flex flex-col gap-1"
-                                        >
-                                            <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">{field.label}</span>
-                                            <div className="text-sm font-bold text-slate-600 px-1 truncate">
-                                                {field.value || '--'}
+                                {/* Auto-filled Fields */}
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">UHID</label>
+                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-teal-700">
+                                            {patientDetails.uhid || '--'}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Full Name</label>
+                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700">
+                                            {patientDetails.name || '--'}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gender</label>
+                                            <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 capitalize">
+                                                {patientDetails.gender || '--'}
                                             </div>
-                                        </motion.div>
-                                    ))}
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Age</label>
+                                            <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700">
+                                                {patientDetails.age ? `${patientDetails.age} Years` : '--'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Number</label>
+                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700">
+                                            {patientDetails.contactNo || '--'}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email ID</label>
+                                        <div className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 truncate">
+                                            {patientDetails.emailId || '--'}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </motion.div>
+
+                        <div className="bg-amber-50 border border-amber-100 p-5 rounded-3xl flex gap-3">
+                            <AlertCircle size={20} className="text-amber-500 shrink-0" />
+                            <div>
+                                <h4 className="text-xs font-bold text-amber-900 mb-1">Billing Note</h4>
+                                <p className="text-[10px] text-amber-700 leading-relaxed font-medium">Once generated, this bill will create a pending transaction in the patient's account. This cannot be undone easily.</p>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Radiology Order Form (2/3) */}
-                    <div className="lg:col-span-2 space-y-6">
+                    {/* Right: Test Selection & Billing (2/3) */}
+                    <div className="lg:col-span-2 flex flex-col gap-6">
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-full"
+                            className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col"
                         >
-                            <div className="p-7 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-white border border-slate-200 rounded-2xl text-cyan-600 shadow-sm">
-                                        <Activity size={20} />
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-teal-50 rounded-xl text-teal-600">
+                                        <Beaker size={20} />
                                     </div>
                                     <div>
-                                        <h2 className="text-xl font-black text-slate-900 tracking-tight">Radiological Procedures</h2>
-                                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Select modality and body regions</p>
+                                        <h2 className="text-lg font-bold text-slate-900">X-Ray Test Selection</h2>
+                                        <p className="text-slate-400 text-xs font-medium">Add required diagnostics for clinical analysis</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setShowNewTestModal(true)}
-                                        className="flex items-center gap-2 px-5 py-2.5 border-2 border-cyan-500 text-cyan-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-50 transition-all"
+                                        className="flex items-center gap-2 px-4 py-2 border-2 border-teal-600 text-teal-600 rounded-xl text-sm font-bold hover:bg-teal-50 transition-all"
                                     >
-                                        <Monitor size={16} />
-                                        New Catalog
+                                        <Beaker size={18} />
+                                        New Catalog Entry
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="p-7 flex-1 space-y-6 overflow-y-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-slate-200">
+                            <div className="p-6">
                                 {/* Group selector (optional) */}
-                                <div className="p-4 bg-white border border-slate-200 rounded-2xl">
+                                <div className="mb-5 p-4 bg-white border border-slate-200 rounded-2xl">
                                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                         <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
                                             <input
@@ -603,7 +629,9 @@ export default function XrayOrderPage() {
                                                 onChange={(e) => {
                                                     const next = e.target.checked;
                                                     setUseGroup(next);
-                                                    if (!next) setSelectedGroupId('');
+                                                    if (!next) {
+                                                        setSelectedGroupId('');
+                                                    }
                                                 }}
                                             />
                                             Use Group
@@ -618,7 +646,7 @@ export default function XrayOrderPage() {
                                                         setSelectedGroupId(id);
                                                         await applyGroupToSelection(id);
                                                     }}
-                                                    className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none"
+                                                    className="w-full md:w-80 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
                                                 >
                                                     <option value="">Select Group...</option>
                                                     {availableGroups.map((g: any) => (
@@ -635,11 +663,6 @@ export default function XrayOrderPage() {
                                             </div>
                                         )}
                                     </div>
-                                    {useGroup && (
-                                        <div className="mt-2 text-[11px] text-slate-500 font-semibold">
-                                            {groupLoading ? 'Loading groups/items…' : 'Selecting a group will auto-fill tests. You can remove any row to opt-out per test.'}
-                                        </div>
-                                    )}
                                 </div>
 
                                 <AnimatePresence>

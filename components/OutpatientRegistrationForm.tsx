@@ -88,7 +88,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         weight: '',
         bmi: '',
         temp: '',
-        tempUnit: 'Celsius',
+        tempUnit: 'Fahrenheit',
         bpSystolic: '',
         bpDiastolic: '',
         pulse: '',
@@ -285,7 +285,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                 try {
                     const bill = await createOPConsultationBill(
                         result.patient.id,
-                        '', // No appointment ID for direct OP registration
+                        null, // No appointment ID for direct OP registration
                         parseFloat(formData.consultationFee),
                         formData.doctorName,
                         formData.staffId
@@ -726,7 +726,6 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             onChange={handleInputChange}
                                             className="border border-l-0 border-blue-200 rounded-r-lg bg-white text-xs px-1"
                                         >
-                                            <option value="Celsius">°C</option>
                                             <option value="Fahrenheit">°F</option>
                                         </select>
                                     </div>
@@ -1425,7 +1424,6 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             onChange={handleInputChange}
                                             className="border border-l-0 border-blue-200 rounded-r-lg bg-white text-xs px-1"
                                         >
-                                            <option value="Celsius">°C</option>
                                             <option value="Fahrenheit">°F</option>
                                         </select>
                                     </div>

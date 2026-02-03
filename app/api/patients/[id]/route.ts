@@ -51,7 +51,8 @@ export async function PATCH(
     }
 
     const updateData = await request.json();
-    console.log('Received update data:', updateData);
+    console.log('Received update data for patient ID:', id);
+    console.log('Raw update data:', JSON.stringify(updateData, null, 2));
     
     if (!updateData || Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -69,7 +70,7 @@ export async function PATCH(
     }
 
     // Map frontend fields to database fields
-    const mappedData: Record<string, string | undefined> = {};
+    const mappedData: Record<string, string | undefined | null> = {};
     
     // Combine firstName and lastName into name field
     if (updateData.firstName || updateData.lastName) {
@@ -91,7 +92,14 @@ export async function PATCH(
       emergencyContactPhone: 'emergency_contact_phone',
       emergencyContactRelationship: 'emergency_contact_relationship',
       insuranceProvider: 'insurance_provider',
-      insuranceNumber: 'insurance_number'
+      insuranceNumber: 'insurance_number',
+      primaryComplaint: 'primary_complaint',
+      initialSymptoms: 'initial_symptoms',
+      guardianName: 'guardian_name',
+      guardianRelationship: 'guardian_relationship',
+      guardianPhone: 'guardian_phone',
+      guardianAddress: 'guardian_address',
+      referredBy: 'referred_by'
     };
     
     // Direct field mappings (same name in frontend and database)
@@ -100,24 +108,62 @@ export async function PATCH(
     // Map fields with different names
     Object.entries(fieldMapping).forEach(([frontendField, dbField]) => {
       if (updateData[frontendField] !== undefined) {
-        mappedData[dbField] = updateData[frontendField];
+        const value = updateData[frontendField];
+        
+        // Special handling for fields with check constraints
+        if (dbField === 'marital_status') {
+          const validValues = ['single', 'married', 'divorced', 'widowed', 'separated'];
+          mappedData[dbField] = (value && validValues.includes(value)) ? value : null;
+        } else if (dbField === 'gender') {
+          const validValues = ['male', 'female', 'other'];
+          mappedData[dbField] = (value && validValues.includes(value)) ? value : null;
+        } else if (dbField === 'admission_type') {
+          const validValues = ['emergency', 'elective', 'scheduled', 'referred', 'transfer', 'inpatient', 'outpatient'];
+          mappedData[dbField] = (value && validValues.includes(value)) ? value : null;
+        } else if (dbField === 'status') {
+          const validValues = ['active', 'inactive', 'deceased'];
+          mappedData[dbField] = (value && validValues.includes(value)) ? value : 'active';
+        } else {
+          mappedData[dbField] = value;
+        }
       }
     });
     
-    // Map direct fields
+    // Map direct fields with validation for constrained fields
     directFields.forEach(field => {
       if (updateData[field] !== undefined) {
-        mappedData[field] = updateData[field];
+        const value = updateData[field];
+        
+        // Special handling for fields with check constraints
+        if (field === 'gender') {
+          const validValues = ['male', 'female', 'other'];
+          mappedData[field] = (value && validValues.includes(value)) ? value : null;
+        } else if (field === 'status') {
+          const validValues = ['active', 'inactive', 'deceased'];
+          mappedData[field] = (value && validValues.includes(value)) ? value : 'active';
+        } else {
+          mappedData[field] = value;
+        }
       }
     });
-    
-    // Skip fields that don't exist in database
-    // primaryComplaint, initialSymptoms, guardianName, guardianRelationship, guardianPhone, guardianAddress, referredBy
     
     // Add updated timestamp
     mappedData.updated_at = new Date().toISOString();
 
-    console.log('Mapped data being sent to database:', mappedData);
+    console.log('Mapped data being sent to database:', JSON.stringify(mappedData, null, 2));
+    
+    // Additional validation before sending to database
+    console.log('Validating mapped data against constraints...');
+    if (mappedData.marital_status) {
+      console.log('marital_status value:', mappedData.marital_status);
+    }
+    if (mappedData.gender) {
+      console.log('gender value:', mappedData.gender);
+    }
+    if (mappedData.status) {
+      console.log('status value:', mappedData.status);
+    }
+    
     const updatedPatient = await updatePatientRecord(id, mappedData);
     
     return NextResponse.json(updatedPatient);

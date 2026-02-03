@@ -45,7 +45,7 @@ export default function EnterVitalsPage() {
     weight: '',
     bmi: '',
     temperature: '',
-    tempUnit: 'celsius',
+    tempUnit: 'fahrenheit',
     bpSystolic: '',
     bpDiastolic: '',
     pulse: '',
@@ -175,7 +175,7 @@ export default function EnterVitalsPage() {
           weight: data.weight || '',
           bmi: data.bmi || '',
           temperature: data.temperature || '',
-          tempUnit: data.temp_unit || 'celsius',
+          tempUnit: data.temp_unit || 'fahrenheit',
           bpSystolic: data.bp_systolic || '',
           bpDiastolic: data.bp_diastolic || '',
           pulse: data.pulse || '',
@@ -741,7 +741,6 @@ export default function EnterVitalsPage() {
                       onChange={handleInputChange}
                       className="px-2 py-2 border border-blue-200 rounded-lg text-sm"
                     >
-                      <option value="celsius">°C</option>
                       <option value="fahrenheit">°F</option>
                     </select>
                   </div>

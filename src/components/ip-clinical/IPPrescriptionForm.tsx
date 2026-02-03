@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Plus, 
@@ -12,9 +12,11 @@ import {
   FileText, 
   AlertCircle,
   CheckCircle,
-  Stethoscope
+  Stethoscope,
+  ExternalLink
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import NewMedicineModal from '../NewMedicineModal';
 
 interface Medication {
   id: string;
@@ -28,6 +30,7 @@ interface Medication {
   selling_price: number;
   available_stock: number;
   is_active: boolean;
+  is_external?: boolean;
 }
 
 interface IPPrescriptionItem {
@@ -75,6 +78,9 @@ export default function IPPrescriptionForm({
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Medication[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
+  const [showNewMedicineModal, setShowNewMedicineModal] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchMedications();
@@ -84,9 +90,8 @@ export default function IPPrescriptionForm({
     try {
       const { data, error } = await supabase
         .from('medications')
-        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, selling_price, available_stock, is_active')
+        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, selling_price, available_stock, is_active, is_external')
         .eq('is_active', true)
-        .gt('available_stock', 0)
         .order('name', { ascending: true });
       
       if (error) {
@@ -102,6 +107,7 @@ export default function IPPrescriptionForm({
   const searchMedications = (term: string) => {
     if (!term.trim()) {
       setSearchResults([]);
+      setHighlightedIndex(-1);
       return;
     }
     
@@ -111,6 +117,61 @@ export default function IPPrescriptionForm({
       (med.category && med.category.toLowerCase().includes(term.toLowerCase()))
     );
     setSearchResults(filtered);
+    setHighlightedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const { key } = e;
+    
+    if (key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        const newIndex = prev < searchResults.length - 1 ? prev + 1 : prev;
+        // Scroll to highlighted item
+        setTimeout(() => scrollToHighlightedItem(newIndex), 0);
+        return newIndex;
+      });
+    } else if (key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        const newIndex = prev > 0 ? prev - 1 : prev;
+        // Scroll to highlighted item
+        setTimeout(() => scrollToHighlightedItem(newIndex), 0);
+        return newIndex;
+      });
+    } else if (key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < searchResults.length) {
+        addMedicationToPrescription(searchResults[highlightedIndex]);
+      }
+    } else if (key === 'Escape') {
+      setSearchTerm('');
+      setSearchResults([]);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  const scrollToHighlightedItem = (index: number) => {
+    if (dropdownRef.current && index >= 0) {
+      const container = dropdownRef.current;
+      const highlightedElement = container.children[index] as HTMLElement;
+      
+      if (highlightedElement) {
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+        const elementTop = highlightedElement.offsetTop;
+        const elementBottom = elementTop + highlightedElement.clientHeight;
+        
+        // Scroll up if element is above visible area
+        if (elementTop < containerTop) {
+          container.scrollTop = elementTop;
+        }
+        // Scroll down if element is below visible area
+        else if (elementBottom > containerBottom) {
+          container.scrollTop = elementBottom - container.clientHeight;
+        }
+      }
+    }
   };
 
   const addMedicationToPrescription = (medication: Medication) => {
@@ -134,7 +195,15 @@ export default function IPPrescriptionForm({
     setPrescriptionItems([...prescriptionItems, newItem]);
     setSearchTerm('');
     setSearchResults([]);
+    setHighlightedIndex(-1);
     setShowMedicationSearch(false);
+  };
+
+  const handleNewMedicineAdded = (newMedicine: Medication) => {
+    // Add the new medicine to the medications list
+    setMedications(prev => [...prev, newMedicine]);
+    // Automatically add it to the prescription
+    addMedicationToPrescription(newMedicine);
   };
 
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
@@ -446,14 +515,24 @@ export default function IPPrescriptionForm({
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Prescribed Medications</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowMedicationSearch(!showMedicationSearch)}
-                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Medication
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMedicineModal(true)}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    New Medicine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowMedicationSearch(!showMedicationSearch)}
+                    className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Medication
+                  </button>
+                </div>
               </div>
 
               {showMedicationSearch && (
@@ -467,22 +546,38 @@ export default function IPPrescriptionForm({
                         setSearchTerm(e.target.value);
                         searchMedications(e.target.value);
                       }}
+                      onKeyDown={handleKeyDown}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="Search medications by name, generic name, or category..."
                     />
                   </div>
                   
                   {searchResults.length > 0 && (
-                    <div className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                      {searchResults.map((medication) => (
+                    <div 
+                      ref={dropdownRef}
+                      className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white"
+                    >
+                      {searchResults.map((medication, index) => (
                         <div
                           key={medication.id}
                           onClick={() => addMedicationToPrescription(medication)}
-                          className="p-3 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          className={`p-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                            highlightedIndex === index
+                              ? 'bg-green-100 border-green-300'
+                              : 'hover:bg-green-50'
+                          }`}
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="font-medium text-gray-900">{medication.name}</p>
+                              <p className="font-medium text-gray-900">
+                                {medication.name}
+                                {medication.is_external && (
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    <ExternalLink className="h-3 w-3 mr-1" />
+                                    External
+                                  </span>
+                                )}
+                              </p>
                               <p className="text-sm text-gray-600">{medication.generic_name}</p>
                               <p className="text-xs text-gray-500">
                                 {medication.strength} • {medication.dosage_form} • {medication.manufacturer}
@@ -490,7 +585,17 @@ export default function IPPrescriptionForm({
                             </div>
                             <div className="text-right">
                               <p className="font-medium text-green-600">₹{medication.selling_price || 0}</p>
-                              <p className="text-xs text-gray-500">Stock: {medication.available_stock || 0}</p>
+                              <p className={`text-xs ${
+                                medication.is_external 
+                                  ? 'text-purple-600' 
+                                  : medication.available_stock > 10 
+                                    ? 'text-green-600' 
+                                    : medication.available_stock > 0 
+                                      ? 'text-yellow-600' 
+                                      : 'text-red-600'
+                              }`}>
+                                {medication.is_external ? 'External' : `Stock: ${medication.available_stock || 0}`}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -509,7 +614,6 @@ export default function IPPrescriptionForm({
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
-                        <p className="text-sm text-gray-600">₹{item.unit_price} per unit</p>
                       </div>
                       <button
                         type="button"
@@ -521,11 +625,35 @@ export default function IPPrescriptionForm({
                     </div>
                     
                     {/* Stock Information */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className={`mb-4 p-3 rounded-lg border ${
+                      medications.find(m => m.id === item.medication_id)?.is_external
+                        ? 'bg-purple-50 border-purple-200'
+                        : 'bg-blue-50 border-blue-200'
+                    }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-blue-800">Current Stock:</span>
-                        <span className={`text-sm font-bold ${item.stock_quantity > 10 ? 'text-green-600' : item.stock_quantity > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                          {item.stock_quantity} units available
+                        <span className={`text-sm font-medium ${
+                          medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'text-purple-800'
+                            : 'text-blue-800'
+                        }`}>
+                          {medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'Medicine Type:'
+                            : 'Current Stock:'
+                          }
+                        </span>
+                        <span className={`text-sm font-bold ${
+                          medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'text-purple-600'
+                            : item.stock_quantity > 10 
+                              ? 'text-green-600' 
+                              : item.stock_quantity > 0 
+                                ? 'text-yellow-600' 
+                                : 'text-red-600'
+                        }`}>
+                          {medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'External Pharmacy'
+                            : `${item.stock_quantity} units available`
+                          }
                         </span>
                       </div>
                     </div>
@@ -596,7 +724,7 @@ export default function IPPrescriptionForm({
                     </div>
 
                     {/* Quantity Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="flex items-center space-x-2 mb-2">
                           <input
@@ -625,10 +753,18 @@ export default function IPPrescriptionForm({
                       </div>
                       
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                        <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded font-medium text-green-600">
-                          ₹{item.total_price.toFixed(2)}
-                        </div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Random Quantity</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const randomQty = Math.floor(Math.random() * Math.min(item.stock_quantity, 30)) + 1;
+                            updatePrescriptionItem(index, 'quantity', randomQty);
+                            updatePrescriptionItem(index, 'auto_calculate_quantity', false);
+                          }}
+                          className="w-full px-3 py-2 text-sm bg-purple-100 text-purple-700 border border-purple-300 rounded hover:bg-purple-200 transition-colors"
+                        >
+                          Generate Random
+                        </button>
                       </div>
                     </div>
                     
@@ -654,14 +790,6 @@ export default function IPPrescriptionForm({
                     </div>
                   </div>
                 ))}
-                
-                {/* Total Amount */}
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold text-gray-900">Total Prescription Amount:</span>
-                    <span className="text-2xl font-bold text-green-600">₹{calculateTotalAmount().toFixed(2)}</span>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -704,6 +832,13 @@ export default function IPPrescriptionForm({
           </div>
         </div>
       </div>
+      
+      {/* New Medicine Modal */}
+      <NewMedicineModal
+        isOpen={showNewMedicineModal}
+        onClose={() => setShowNewMedicineModal(false)}
+        onMedicineAdded={handleNewMedicineAdded}
+      />
     </div>
   );
 }

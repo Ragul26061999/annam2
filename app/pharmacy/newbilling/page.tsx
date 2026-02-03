@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase'
 import { generateBillNumber } from '@/src/lib/billingService';
@@ -141,20 +141,15 @@ function NewBillingPageInner() {
             .single();
           
           if (staffError) {
-            console.error('Error finding staff record:', {
-              message: (staffError as any)?.message,
-              details: (staffError as any)?.details,
-              hint: (staffError as any)?.hint,
-              code: (staffError as any)?.code,
-              raw: staffError,
-              stringified: JSON.stringify(staffError, (key, value) => {
-                if (typeof value === 'function') return '[Function]';
-                if (value instanceof Error) return value.toString();
-                return value;
-              }, 2),
-              keys: Object.getOwnPropertyNames(staffError || {}),
-              constructor: (staffError as any)?.constructor?.name
-            });
+            // Handle different types of staff errors
+            if (staffError.code === 'PGRST116') {
+              // No rows returned - user doesn't have a staff record
+              console.warn('No staff record found for current user:', user.id);
+            } else {
+              // Other database errors
+              console.error('Database error finding staff record:', staffError.message);
+            }
+            
             // No staff mapping found; do NOT fall back to user.id (billing.staff_id must reference staff.id)
             setCurrentStaff(null);
             setStaffId('');
@@ -290,7 +285,47 @@ function NewBillingPageInner() {
   const [selectedPatientIndex, setSelectedPatientIndex] = useState(0);
   const [selectedMedicineIndex, setSelectedMedicineIndex] = useState(0);
   const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
+  const medicineDropdownRef = useRef<HTMLDivElement>(null);
   const [quantity, setQuantity] = useState(1);
+
+  // Smooth scrolling function for dropdown
+  const scrollToHighlightedMedicine = (medicineIndex: number, batchIndex: number) => {
+    if (!medicineDropdownRef.current) return;
+    
+    const container = medicineDropdownRef.current;
+    
+    // Find all medicine elements
+    const medicineElements = container.querySelectorAll('[data-medicine-index]');
+    const targetMedicineElement = medicineElements[medicineIndex] as HTMLElement;
+    
+    if (targetMedicineElement) {
+      // Find the specific batch within this medicine
+      const batchElements = targetMedicineElement.querySelectorAll('[data-batch-index]');
+      const targetElement = batchElements.length > 0 && batchIndex < batchElements.length 
+        ? batchElements[batchIndex] as HTMLElement
+        : targetMedicineElement;
+      
+      if (targetElement) {
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+        const elementTop = targetElement.offsetTop;
+        const elementBottom = elementTop + targetElement.clientHeight;
+        
+        // Smooth scroll into view if not visible
+        if (elementTop < containerTop) {
+          container.scrollTo({
+            top: elementTop - 10,
+            behavior: 'smooth'
+          });
+        } else if (elementBottom > containerBottom) {
+          container.scrollTo({
+            top: elementBottom - container.clientHeight + 10,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }
+  };
   const embedded = false;
   const [phoneError, setPhoneError] = useState<string>('');
   const printCss = `
@@ -464,29 +499,46 @@ function NewBillingPageInner() {
     switch (e.key) {
       case 'ArrowDown':
         if (selectedBatchIndex < totalBatches - 1) {
-          setSelectedBatchIndex(prev => prev + 1);
+          setSelectedBatchIndex(prev => {
+            const newIndex = prev + 1;
+            setTimeout(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex), 0);
+            return newIndex;
+          });
           console.log('Moved to next batch:', selectedBatchIndex + 1);
         } else if (selectedMedicineIndex < filteredMedicines.length - 1) {
-          setSelectedMedicineIndex(prev => prev + 1);
-          setSelectedBatchIndex(0);
+          setSelectedMedicineIndex(prev => {
+            const newIndex = prev + 1;
+            setSelectedBatchIndex(0);
+            setTimeout(() => scrollToHighlightedMedicine(newIndex, 0), 0);
+            return newIndex;
+          });
           console.log('Moved to next medicine:', selectedMedicineIndex + 1);
         }
         break;
       case 'ArrowUp':
         if (selectedBatchIndex > 0) {
-          setSelectedBatchIndex(prev => prev - 1);
+          setSelectedBatchIndex(prev => {
+            const newIndex = prev - 1;
+            setTimeout(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex), 0);
+            return newIndex;
+          });
           console.log('Moved to previous batch:', selectedBatchIndex - 1);
         } else if (selectedMedicineIndex > 0) {
-          setSelectedMedicineIndex(prev => prev - 1);
-          const prevMedicine = filteredMedicines[selectedMedicineIndex - 1];
-          const prevBatches = searchTermTrimmed.length > 0 
-            ? prevMedicine?.batches.filter(b => 
-                (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
-                (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
-                ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
-              ) || []
-            : prevMedicine?.batches || [];
-          setSelectedBatchIndex(Math.max(0, prevBatches.length - 1));
+          setSelectedMedicineIndex(prev => {
+            const newIndex = prev - 1;
+            const prevMedicine = filteredMedicines[newIndex];
+            const prevBatches = searchTermTrimmed.length > 0 
+              ? prevMedicine?.batches.filter(b => 
+                  (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                  (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                  ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+                ) || []
+              : prevMedicine?.batches || [];
+            const newBatchIndex = Math.max(0, prevBatches.length - 1);
+            setSelectedBatchIndex(newBatchIndex);
+            setTimeout(() => scrollToHighlightedMedicine(newIndex, newBatchIndex), 0);
+            return newIndex;
+          });
           console.log('Moved to previous medicine:', selectedMedicineIndex - 1);
         }
         break;
@@ -1791,6 +1843,11 @@ function NewBillingPageInner() {
                     `${currentStaff.first_name} ${currentStaff.last_name}`.trim() || currentStaff.employee_id || 'Staff Member' :
                     currentUser?.name || 'Loading...'
                   }
+                  {!currentStaff && currentUser && (
+                    <span className="ml-2 text-amber-600 font-medium">
+                      (No staff record)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1955,7 +2012,10 @@ function NewBillingPageInner() {
                       className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     {showMedicineDropdown && searchTerm && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-96 overflow-auto">
+                      <div 
+                        ref={medicineDropdownRef}
+                        className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-96 overflow-auto"
+                      >
                         <div className="px-3 py-1 text-xs text-slate-400 border-b">
                           Debug: {filteredMedicines.length} medicines found
                         </div>
@@ -1981,6 +2041,7 @@ function NewBillingPageInner() {
                             return (
                               <div
                                 key={medicine.id}
+                                data-medicine-index={index}
                                 className={`px-3 py-2 text-xs ${
                                   index === selectedMedicineIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
                                 }`}
@@ -2024,6 +2085,7 @@ function NewBillingPageInner() {
                                           return (
                                           <div
                                             key={batch.id}
+                                            data-batch-index={batchIndex}
                                             className={`pl-2 py-2 rounded cursor-pointer border ${
                                               isSelectedBatch
                                                 ? 'bg-blue-100 border-blue-400 ring-1 ring-blue-400'

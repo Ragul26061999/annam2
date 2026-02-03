@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Plus, 
@@ -12,9 +12,11 @@ import {
   FileText, 
   AlertCircle,
   CheckCircle,
-  Stethoscope
+  Stethoscope,
+  ExternalLink
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import NewMedicineModal from './NewMedicineModal';
 
 interface Medication {
   id: string;
@@ -28,6 +30,7 @@ interface Medication {
   selling_price: number;
   available_stock: number;
   is_active: boolean;
+  is_external?: boolean;
 }
 
 interface PrescriptionItem {
@@ -70,66 +73,296 @@ export default function PrescriptionForm({
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Medication[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
+  const [showNewMedicineModal, setShowNewMedicineModal] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchAnimation, setSearchAnimation] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    testSupabaseConnection();
     fetchMedications();
+    fetchDoctors();
   }, []);
+
+  const fetchDoctors = async () => {
+    try {
+      console.log('Fetching doctors...');
+      
+      const { data, error } = await supabase
+        .from('doctors')
+        .select(`
+          id,
+          license_number,
+          specialization,
+          user_id
+        `)
+        .eq('status', 'active')
+        .order('id', { ascending: true });
+      
+      if (error) {
+        console.error('Error fetching doctors:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        return;
+      }
+      
+      console.log('Doctors fetched successfully:', data?.length || 0, 'doctors');
+      
+      // Fetch user names separately for each doctor
+      const doctorsWithNames = await Promise.all(
+        (data || []).map(async (doctor: any) => {
+          try {
+            if (doctor.user_id) {
+              const { data: userData, error: userError } = await supabase
+                .from('users')
+                .select('name, email')
+                .eq('id', doctor.user_id)
+                .single();
+              
+              if (userError) {
+                console.warn('Failed to fetch user data for doctor:', doctor.id, userError);
+              }
+              
+              return {
+                ...doctor,
+                users: userData || { name: 'Unknown Doctor', email: null }
+              };
+            }
+            return {
+              ...doctor,
+              users: { name: 'Unknown Doctor', email: null }
+            };
+          } catch (userErr) {
+            console.warn('Error fetching user for doctor:', doctor.id, userErr);
+            return {
+              ...doctor,
+              users: { name: 'Unknown Doctor', email: null }
+            };
+          }
+        })
+      );
+      
+      setDoctors(doctorsWithNames);
+      console.log('Final doctors list with names:', doctorsWithNames);
+    } catch (error: any) {
+      console.error('Error fetching doctors:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      setDoctors([]);
+    }
+  };
+
+  const testSupabaseConnection = async () => {
+    try {
+      console.log('Testing Supabase connection...');
+      
+      // Test basic connection with a simple query
+      const { data, error } = await supabase
+        .from('medications')
+        .select('count')
+        .limit(1);
+      
+      if (error) {
+        console.error('Supabase connection test failed:', error);
+        if (error.message?.includes('Failed to fetch')) {
+          const errorMsg = 'Network connection error. Please check your internet connection and try again.';
+          setConnectionError(errorMsg);
+          console.error('This is likely a network or configuration issue.');
+          console.error('Please check:');
+          console.error('1. .env.local file exists and contains correct Supabase URL and keys');
+          console.error('2. Network connection is working');
+          console.error('3. Supabase project is active and accessible');
+        }
+      } else {
+        console.log('Supabase connection test passed!');
+        setConnectionError(null);
+      }
+    } catch (error: any) {
+      console.error('Supabase connection test error:', error);
+      if (error.message?.includes('environment variables')) {
+        const errorMsg = 'Configuration error. Please check your environment variables.';
+        setConnectionError(errorMsg);
+      }
+    }
+  };
 
   const fetchMedications = async () => {
     try {
+      console.log('Fetching medications...');
+      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Set' : 'Not set');
+      console.log('Supabase Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set' : 'Not set');
+      
       const { data, error } = await supabase
         .from('medications')
-        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, selling_price, available_stock, is_active')
+        .select('id, medication_code, name, generic_name, manufacturer, category, dosage_form, strength, selling_price, available_stock, is_active, is_external')
         .eq('is_active', true)
-        .gt('available_stock', 0)
         .order('name', { ascending: true });
       
       if (error) {
-        console.error('Error fetching medications:', error);
+        console.error('Supabase error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       }
+      
+      console.log('Medications fetched successfully:', data?.length || 0, 'items');
       setMedications(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching medications:', error);
+      
+      // Provide more specific error messages
+      if (error.message?.includes('fetch')) {
+        const errorMsg = 'Network connection error. Unable to fetch medications.';
+        setConnectionError(errorMsg);
+        console.error('Network/Connection error - Check Supabase configuration');
+      } else if (error.message?.includes('API')) {
+        const errorMsg = 'API error. Please try again later.';
+        setConnectionError(errorMsg);
+        console.error('API error - Check Supabase service status');
+      } else if (error.message?.includes('environment variables')) {
+        const errorMsg = 'Configuration error. Please check your environment setup.';
+        setConnectionError(errorMsg);
+        console.error('Environment variables error - Check .env.local file');
+      }
+      
+      // Set empty array to prevent further errors
+      setMedications([]);
     }
   };
 
   const searchMedications = (term: string) => {
     if (!term.trim()) {
       setSearchResults([]);
+      setHighlightedIndex(-1);
+      setSearchAnimation(false);
       return;
     }
     
-    const filtered = medications.filter(med => 
-      med.name.toLowerCase().includes(term.toLowerCase()) ||
-      (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase())) ||
-      (med.category && med.category.toLowerCase().includes(term.toLowerCase()))
-    );
-    setSearchResults(filtered);
+    setIsSearching(true);
+    setSearchAnimation(true);
+    
+    // Simulate smooth search delay for better UX
+    setTimeout(() => {
+      const filtered = medications.filter(med => 
+        med.name.toLowerCase().includes(term.toLowerCase()) ||
+        (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase())) ||
+        (med.category && med.category.toLowerCase().includes(term.toLowerCase()))
+      );
+      setSearchResults(filtered);
+      setHighlightedIndex(-1);
+      setIsSearching(false);
+      
+      // Remove animation class after results appear
+      setTimeout(() => setSearchAnimation(false), 300);
+    }, 150);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const { key } = e;
+    
+    if (key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        const newIndex = prev < searchResults.length - 1 ? prev + 1 : prev;
+        // Scroll to highlighted item
+        setTimeout(() => scrollToHighlightedItem(newIndex), 0);
+        return newIndex;
+      });
+    } else if (key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        const newIndex = prev > 0 ? prev - 1 : prev;
+        // Scroll to highlighted item
+        setTimeout(() => scrollToHighlightedItem(newIndex), 0);
+        return newIndex;
+      });
+    } else if (key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < searchResults.length) {
+        addMedicationToPrescription(searchResults[highlightedIndex]);
+      }
+    } else if (key === 'Escape') {
+      setSearchTerm('');
+      setSearchResults([]);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  const scrollToHighlightedItem = (index: number) => {
+    if (dropdownRef.current && index >= 0) {
+      const container = dropdownRef.current;
+      const highlightedElement = container.children[index] as HTMLElement;
+      
+      if (highlightedElement) {
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+        const elementTop = highlightedElement.offsetTop;
+        const elementBottom = elementTop + highlightedElement.clientHeight;
+        
+        // Scroll up if element is above visible area
+        if (elementTop < containerTop) {
+          container.scrollTop = elementTop;
+        }
+        // Scroll down if element is below visible area
+        else if (elementBottom > containerBottom) {
+          container.scrollTop = elementBottom - container.clientHeight;
+        }
+      }
+    }
   };
 
   const addMedicationToPrescription = (medication: Medication) => {
-    const newItem: PrescriptionItem = {
-      medication_id: medication.id,
-      medication_name: medication.name,
-      dosage: '',
-      frequency: '',
-      frequency_times: [],
-      meal_timing: '',
-      duration: '',
-      duration_days: 1,
-      instructions: '',
-      quantity: 1,
-      auto_calculate_quantity: true,
-      unit_price: medication.selling_price || 0,
-      total_price: medication.selling_price || 0,
-      stock_quantity: medication.available_stock || 0
-    };
+    // Add smooth selection animation
+    const selectedItem = document.getElementById(`med-${medication.id}`);
+    if (selectedItem) {
+      selectedItem.classList.add('scale-95', 'opacity-50');
+    }
     
-    setPrescriptionItems([...prescriptionItems, newItem]);
-    setSearchTerm('');
-    setSearchResults([]);
-    setShowMedicationSearch(false);
+    setTimeout(() => {
+      const newItem: PrescriptionItem = {
+        medication_id: medication.id,
+        medication_name: medication.name,
+        dosage: '',
+        frequency: '',
+        frequency_times: [],
+        meal_timing: '',
+        duration: '',
+        duration_days: 1,
+        instructions: '',
+        quantity: 1,
+        auto_calculate_quantity: true,
+        unit_price: medication.selling_price || 0,
+        total_price: medication.selling_price || 0,
+        stock_quantity: medication.available_stock || 0
+      };
+      
+      setPrescriptionItems(prev => [...prev, newItem]);
+      setSearchTerm('');
+      setSearchResults([]);
+      setHighlightedIndex(-1);
+      setShowMedicationSearch(false);
+      setSearchAnimation(false);
+      
+      // Focus back to search input for continuous adding
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 100);
+    }, 150);
+  };
+
+  const handleNewMedicineAdded = (newMedicine: Medication) => {
+    // Add the new medicine to the medications list
+    setMedications(prev => [...prev, newMedicine]);
+    // Automatically add it to the prescription
+    addMedicationToPrescription(newMedicine);
   };
 
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
@@ -181,9 +414,16 @@ export default function PrescriptionForm({
       alert('Please add at least one medication to the prescription.');
       return;
     }
+    
+    if (!selectedDoctor) {
+      alert('Please select a prescribing doctor.');
+      return;
+    }
 
     setLoading(true);
     try {
+      console.log('Starting prescription creation...');
+      
       // Convert patient_id (like AH2601-0003) to actual UUID
       const { data: patientData, error: patientError } = await supabase
         .from('patients')
@@ -191,71 +431,104 @@ export default function PrescriptionForm({
         .eq('patient_id', patientId)
         .single();
 
-      if (patientError || !patientData) {
-        throw new Error('Patient not found in database');
+      if (patientError) {
+        console.error('Patient lookup error:', patientError);
+        throw new Error(`Patient not found: ${patientError.message}`);
       }
 
       const patientUuid = patientData.id;
+      console.log('Patient UUID found:', patientUuid);
 
       // Generate unique prescription ID
       const prescriptionId = generatePrescriptionId();
+      console.log('Generated prescription ID:', prescriptionId);
 
-      // Check if current user is a valid doctor
+      // Use selected doctor from dropdown
       let doctorId = null;
-      if (currentUser?.id) {
-        const { data: doctorData, error: doctorError } = await supabase
-          .from('doctors')
-          .select('id')
-          .eq('id', currentUser.id)
-          .single();
+      let doctorName = 'Unknown Doctor';
+      
+      if (selectedDoctor) {
+        const selectedDoctorData = doctors.find(d => d.id === selectedDoctor);
+        if (selectedDoctorData) {
+          doctorId = selectedDoctorData.id;
+          doctorName = selectedDoctorData.users?.name || 'Unknown Doctor';
+          console.log('Using selected doctor:', doctorName, 'ID:', doctorId);
+        }
+      } else {
+        // Fallback to current user if no doctor selected
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError) {
+          console.error('Auth error:', authError);
+          throw new Error(`Authentication error: ${authError.message}`);
+        }
         
-        if (!doctorError && doctorData) {
-          doctorId = currentUser.id;
+        if (user?.id) {
+          const { data: doctorData, error: doctorError } = await supabase
+            .from('doctors')
+            .select('id')
+            .eq('id', user.id)
+            .single();
+          
+          if (!doctorError && doctorData) {
+            doctorId = user.id;
+            doctorName = user.user_metadata?.name || user.email?.split('@')[0] || 'Current User';
+            console.log('Using current user as doctor:', doctorName, 'ID:', doctorId);
+          }
         }
       }
 
       // Create a new encounter record first
+      const encounterPayload = {
+        patient_id: patientUuid,
+        clinician_id: doctorId,
+        start_at: new Date().toISOString(),
+        status_id: null,
+        type_id: null,
+        department_id: null
+      };
+      
+      console.log('Creating encounter with payload:', encounterPayload);
+      
       const { data: encounterData, error: encounterError } = await supabase
         .from('encounter')
-        .insert({
-          patient_id: patientUuid,
-          clinician_id: doctorId, // Use valid doctor ID or null
-          start_at: new Date().toISOString(),
-          status_id: null, // Can be null
-          type_id: null,  // Can be null
-          department_id: null // Can be null
-        })
+        .insert(encounterPayload)
         .select()
         .single();
 
       if (encounterError) {
         console.error('Error creating encounter:', encounterError);
-        throw encounterError;
+        throw new Error(`Failed to create encounter: ${encounterError.message}`);
       }
 
       const encounterId = encounterData.id;
+      console.log('Encounter created successfully:', encounterId);
 
       // Create prescription record with correct schema
+      const prescriptionPayload = {
+        prescription_id: prescriptionId,
+        patient_id: patientUuid,
+        doctor_id: doctorId,
+        encounter_id: encounterId,
+        issue_date: new Date().toISOString().split('T')[0],
+        instructions: `Prescription created by ${doctorName}`,
+        status: 'active'
+      };
+      
+      console.log('Creating prescription with payload:', prescriptionPayload);
+      
       const { data: prescriptionData, error: prescriptionError } = await supabase
         .from('prescriptions')
-        .insert({
-          prescription_id: prescriptionId,
-          patient_id: patientUuid, // Use the actual UUID
-          doctor_id: doctorId, // Use valid doctor ID or null
-          encounter_id: encounterId, // Use the real encounter ID
-          issue_date: new Date().toISOString().split('T')[0],
-          instructions: 'Prescription created by doctor',
-          status: 'active'
-        })
+        .insert(prescriptionPayload)
         .select()
         .single();
 
       if (prescriptionError) {
         console.error('Prescription error:', prescriptionError);
-        throw prescriptionError;
+        throw new Error(`Failed to create prescription: ${prescriptionError.message}`);
       }
 
       const dbPrescriptionId = prescriptionData.id;
+      console.log('Prescription created successfully:', dbPrescriptionId);
 
       // Create prescription items with proper frequency formatting
       for (const item of prescriptionItems) {
@@ -348,61 +621,168 @@ export default function PrescriptionForm({
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Connection Error Alert */}
+            {connectionError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-red-900 mb-1">Connection Error</h4>
+                    <p className="text-sm text-red-700 mb-2">{connectionError}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionError(null);
+                        testSupabaseConnection();
+                        fetchMedications();
+                      }}
+                      className="text-sm bg-red-100 text-red-800 px-3 py-1 rounded hover:bg-red-200 transition-colors"
+                    >
+                      Retry Connection
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Doctor Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Prescribing Doctor *
+              </label>
+              <select
+                value={selectedDoctor}
+                onChange={(e) => setSelectedDoctor(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                required
+              >
+                <option value="">Select a doctor...</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.users?.name || 'Unknown Doctor'} - {doctor.specialization}
+                  </option>
+                ))}
+              </select>
+              {selectedDoctor && (
+                <p className="mt-2 text-sm text-gray-600">
+                  Selected: {doctors.find(d => d.id === selectedDoctor)?.users?.name || 'Unknown Doctor'}
+                </p>
+              )}
+            </div>
 
 
             {/* Medication Search */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Prescribed Medications</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowMedicationSearch(!showMedicationSearch)}
-                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Medication
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMedicineModal(true)}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    New Medicine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowMedicationSearch(!showMedicationSearch)}
+                    className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Medication
+                  </button>
+                </div>
               </div>
 
               {showMedicationSearch && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <div className="bg-gray-50 p-4 rounded-lg mb-4 transition-all duration-300 ease-in-out">
                   <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                    <Search className={`h-4 w-4 absolute left-3 top-3 transition-colors duration-200 ${
+                      isSearching ? 'text-green-500 animate-pulse' : 'text-gray-400'
+                    }`} />
                     <input
+                      ref={searchInputRef}
                       type="text"
                       value={searchTerm}
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
                         searchMedications(e.target.value);
                       }}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      onKeyDown={handleKeyDown}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
                       placeholder="Search medications by name, generic name, or category..."
+                      autoFocus
                     />
+                    {isSearching && (
+                      <div className="absolute right-3 top-2.5">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
+                      </div>
+                    )}
                   </div>
                   
                   {searchResults.length > 0 && (
-                    <div className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                      {searchResults.map((medication) => (
+                    <div 
+                      ref={dropdownRef}
+                      className={`mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white transition-all duration-300 ease-out ${
+                        searchAnimation ? 'opacity-0 transform -translate-y-2' : 'opacity-100 transform translate-y-0'
+                      }`}
+                    >
+                      {searchResults.map((medication, index) => (
                         <div
                           key={medication.id}
+                          id={`med-${medication.id}`}
                           onClick={() => addMedicationToPrescription(medication)}
-                          className="p-3 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          className={`p-3 cursor-pointer border-b border-gray-100 last:border-b-0 transition-all duration-200 transform hover:scale-[1.02] ${
+                            highlightedIndex === index
+                              ? 'bg-green-100 border-green-300 shadow-sm scale-[1.02]'
+                              : 'hover:bg-green-50 hover:shadow-sm'
+                          }`}
                         >
                           <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-gray-900">{medication.name}</p>
-                              <p className="text-sm text-gray-600">{medication.generic_name}</p>
-                              <p className="text-xs text-gray-500">
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900 flex items-center gap-2">
+                                {medication.name}
+                                {medication.is_external && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 animate-fade-in">
+                                    <ExternalLink className="h-3 w-3 mr-1" />
+                                    External
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-1">{medication.generic_name}</p>
+                              <p className="text-xs text-gray-500 mt-1">
                                 {medication.strength} • {medication.dosage_form} • {medication.manufacturer}
                               </p>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right ml-4">
                               <p className="font-medium text-green-600">₹{medication.selling_price || 0}</p>
-                              <p className="text-xs text-gray-500">Stock: {medication.available_stock || 0}</p>
+                              <p className={`text-xs mt-1 ${
+                                medication.is_external 
+                                  ? 'text-purple-600' 
+                                  : medication.available_stock > 10 
+                                    ? 'text-green-600' 
+                                    : medication.available_stock > 0 
+                                      ? 'text-yellow-600' 
+                                      : 'text-red-600'
+                              }`}>
+                                {medication.is_external ? 'External' : `Stock: ${medication.available_stock || 0}`}
+                              </p>
                             </div>
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  
+                  {searchTerm && searchResults.length === 0 && !isSearching && (
+                    <div className="mt-3 p-4 text-center text-gray-500 bg-white border border-gray-200 rounded-lg">
+                      <div className="flex flex-col items-center">
+                        <Search className="h-8 w-8 mb-2 text-gray-300" />
+                        <p className="text-sm">No medications found</p>
+                        <p className="text-xs mt-1">Try different keywords or add a new medicine</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -417,7 +797,6 @@ export default function PrescriptionForm({
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
-                        <p className="text-sm text-gray-600">₹{item.unit_price} per unit</p>
                       </div>
                       <button
                         type="button"
@@ -429,11 +808,35 @@ export default function PrescriptionForm({
                     </div>
                     
                     {/* Stock Information */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className={`mb-4 p-3 rounded-lg border ${
+                      medications.find(m => m.id === item.medication_id)?.is_external
+                        ? 'bg-purple-50 border-purple-200'
+                        : 'bg-blue-50 border-blue-200'
+                    }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-blue-800">Current Stock:</span>
-                        <span className={`text-sm font-bold ${item.stock_quantity > 10 ? 'text-green-600' : item.stock_quantity > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                          {item.stock_quantity} units available
+                        <span className={`text-sm font-medium ${
+                          medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'text-purple-800'
+                            : 'text-blue-800'
+                        }`}>
+                          {medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'Medicine Type:'
+                            : 'Current Stock:'
+                          }
+                        </span>
+                        <span className={`text-sm font-bold ${
+                          medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'text-purple-600'
+                            : item.stock_quantity > 10 
+                              ? 'text-green-600' 
+                              : item.stock_quantity > 0 
+                                ? 'text-yellow-600' 
+                                : 'text-red-600'
+                        }`}>
+                          {medications.find(m => m.id === item.medication_id)?.is_external
+                            ? 'External Pharmacy'
+                            : `${item.stock_quantity} units available`
+                          }
                         </span>
                       </div>
                     </div>
@@ -504,7 +907,7 @@ export default function PrescriptionForm({
                     </div>
 
                     {/* Quantity Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="flex items-center space-x-2 mb-2">
                           <input
@@ -545,12 +948,6 @@ export default function PrescriptionForm({
                         >
                           Generate Random
                         </button>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                        <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded font-medium text-green-600">
-                          ₹{item.total_price.toFixed(2)}
-                        </div>
                       </div>
                     </div>
                     
@@ -574,17 +971,8 @@ export default function PrescriptionForm({
                         </p>
                       )}
                     </div>
-                    </div>
                   </div>
                 ))}
-                
-                {/* Total Amount */}
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold text-gray-900">Total Prescription Amount:</span>
-                    <span className="text-2xl font-bold text-green-600">₹{calculateTotalAmount().toFixed(2)}</span>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -627,6 +1015,13 @@ export default function PrescriptionForm({
           </div>
         </div>
       </div>
+      
+      {/* New Medicine Modal */}
+      <NewMedicineModal
+        isOpen={showNewMedicineModal}
+        onClose={() => setShowNewMedicineModal(false)}
+        onMedicineAdded={handleNewMedicineAdded}
+      />
     </div>
   );
 }

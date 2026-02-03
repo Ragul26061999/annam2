@@ -167,8 +167,11 @@ export default function PatientEditForm({ patient, onSave, onCancel, isLoading =
     e.preventDefault();
     
     if (!validateForm()) {
+      console.log('Form validation failed:', errors);
       return;
     }
+
+    console.log('Submitting form data:', JSON.stringify(formData, null, 2));
 
     try {
       await onSave(formData);

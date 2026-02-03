@@ -420,7 +420,7 @@ export default function PatientDisplayPage() {
                       )}
                       {patient.temperature && (
                         <div className="text-[10px] text-gray-600">
-                          <span className="font-bold">Temp:</span> {patient.temperature}°{patient.temp_unit === 'Celsius' ? 'C' : 'F'}
+                          <span className="font-bold">Temp:</span> {patient.temperature}°F
                         </div>
                       )}
                       {patient.pulse && (

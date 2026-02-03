@@ -1523,7 +1523,7 @@ function OutpatientPageContent() {
                     )}
                     {patient.temperature && (
                       <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded border border-orange-100 text-[10px] font-bold">
-                        Temp: {patient.temperature}°{patient.temp_unit === 'celsius' ? 'C' : 'F'}
+                        Temp: {patient.temperature}°F
                       </span>
                     )}
                   </div>

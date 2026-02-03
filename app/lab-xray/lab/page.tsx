@@ -37,6 +37,8 @@ import {
     getDiagnosticGroupItems,
     getDiagnosticGroups,
     createLabTestCatalogEntry,
+    createDiagnosticGroup,
+    createDiagnosticGroupItem,
     LabTestCatalog
 } from '../../../src/lib/labXrayService';
 import { createLabTestBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
@@ -90,6 +92,21 @@ export default function LabOrderPage() {
         amount: 0
     });
     const [creatingTest, setCreatingTest] = useState(false);
+
+    // New Group State
+    const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+    const [newGroupData, setNewGroupData] = useState({
+        name: '',
+        category: 'Lab',
+        service_types: ['lab' as const],
+        items: [] as Array<{
+            service_type: 'lab' | 'radiology' | 'scan' | 'xray';
+            catalog_id: string;
+            default_selected: boolean;
+            sort_order: number;
+        }>
+    });
+    const [creatingGroup, setCreatingGroup] = useState(false);
 
     // Patient Details (Auto-filled)
     const [patientDetails, setPatientDetails] = useState({
@@ -369,6 +386,92 @@ export default function LabOrderPage() {
         setSelectedTests([{ testId: '', testName: '', groupName: '', amount: 0 }]);
     };
 
+    const handleCreateGroup = async () => {
+        if (!newGroupData.name.trim()) {
+            setError('Group name is required');
+            return;
+        }
+
+        setCreatingGroup(true);
+        setError(null);
+        
+        try {
+            // Create the group
+            const group = await createDiagnosticGroup({
+                name: newGroupData.name.trim(),
+                category: newGroupData.category,
+                service_types: newGroupData.service_types
+            });
+
+            // Add items to the group if any are selected
+            if (newGroupData.items.length > 0) {
+                for (const item of newGroupData.items) {
+                    await createDiagnosticGroupItem({
+                        group_id: group.id,
+                        service_type: item.service_type,
+                        catalog_id: item.catalog_id,
+                        default_selected: item.default_selected,
+                        sort_order: item.sort_order
+                    });
+                }
+            }
+
+            // Refresh the groups list
+            const groups = await getDiagnosticGroups({ is_active: true });
+            const labGroups = (groups || []).filter((g: any) => {
+                const serviceTypes: string[] = Array.isArray(g.service_types) ? g.service_types : [];
+                if (serviceTypes.length === 0) {
+                    return String(g.category || '').toLowerCase() === 'lab' || String(g.category || '').toLowerCase() === 'mixed';
+                }
+                return serviceTypes.includes('lab');
+            });
+            setAvailableGroups(labGroups);
+
+            // Reset form and close modal
+            setNewGroupData({
+                name: '',
+                category: 'Lab',
+                service_types: ['lab'],
+                items: []
+            });
+            setShowNewGroupModal(false);
+            
+            // Auto-select the newly created group
+            setSelectedGroupId(group.id);
+            await applyGroupToSelection(group.id);
+
+        } catch (e: any) {
+            setError(e?.message || 'Failed to create group');
+        } finally {
+            setCreatingGroup(false);
+        }
+    };
+
+    const addTestToGroup = (testId: string) => {
+        const test = labCatalog.find(t => t.id === testId);
+        if (!test) return;
+
+        const existingItem = newGroupData.items.find(item => item.catalog_id === testId);
+        if (existingItem) return;
+
+        setNewGroupData(prev => ({
+            ...prev,
+            items: [...prev.items, {
+                service_type: 'lab' as const,
+                catalog_id: testId,
+                default_selected: true,
+                sort_order: prev.items.length
+            }]
+        }));
+    };
+
+    const removeTestFromGroup = (catalogId: string) => {
+        setNewGroupData(prev => ({
+            ...prev,
+            items: prev.items.filter(item => item.catalog_id !== catalogId)
+        }));
+    };
+
     const handleTestChange = (index: number, testId: string) => {
         const test = labCatalog.find(t => t.id === testId);
         if (!test) return;
@@ -421,6 +524,7 @@ export default function LabOrderPage() {
                         item_name: test.testName,
                         sort_order: index
                     })),
+                    group_id: selectedGroupId || crypto.randomUUID(),
                     group_name: `Lab Order - ${new Date().toLocaleDateString()}`
                 });
                 orders = [groupedOrder];
@@ -696,6 +800,14 @@ export default function LabOrderPage() {
                                                 </select>
                                                 <button
                                                     type="button"
+                                                    onClick={() => setShowNewGroupModal(true)}
+                                                    className="px-4 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all flex items-center gap-2"
+                                                >
+                                                    <Plus size={16} />
+                                                    Add Group
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={clearGroupSelection}
                                                     className="px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-200 transition-all"
                                                 >
@@ -711,16 +823,23 @@ export default function LabOrderPage() {
                                     )}
                                 </div>
 
-                                <div className="space-y-4">
-                                    <AnimatePresence>
-                                        {selectedTests.map((test, index) => (
-                                            <motion.div
-                                                key={`test-${index}`}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end p-4 bg-slate-50 rounded-2xl border border-slate-100 relative group"
-                                            >
+                                <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4">
+                                    <div className="hidden md:grid grid-cols-12 gap-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        <div className="md:col-span-5 pl-1">Test Name</div>
+                                        <div className="md:col-span-4 pl-1">Group Name</div>
+                                        <div className="md:col-span-2 pl-1">Amount (₹)</div>
+                                        <div className="md:col-span-1" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <AnimatePresence>
+                                            {selectedTests.map((test, index) => (
+                                                <motion.div
+                                                    key={`test-${index}`}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95 }}
+                                                    className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end relative group"
+                                                >
                                                 {selectedTests.length > 1 && (
                                                     <button
                                                         onClick={() => removeTest(index)}
@@ -731,7 +850,7 @@ export default function LabOrderPage() {
                                                 )}
 
                                                 <div className="md:col-span-5 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Test Name</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Test Name</label>
                                                     <SearchableSelect
                                                         value={test.testId}
                                                         onChange={(value: string) => handleTestChange(index, value)}
@@ -746,14 +865,14 @@ export default function LabOrderPage() {
                                                 </div>
 
                                                 <div className="md:col-span-4 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Group Name</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Group Name</label>
                                                     <div className="px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500">
                                                         {test.groupName || 'N/A'}
                                                     </div>
                                                 </div>
 
                                                 <div className="md:col-span-2 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Amount (₹)</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Amount (₹)</label>
                                                     <div className="relative">
                                                         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                                         <input
@@ -764,19 +883,19 @@ export default function LabOrderPage() {
                                                         />
                                                     </div>
                                                 </div>
-
-                                                <div className="md:col-span-1 flex justify-end">
-                                                    <button
-                                                        onClick={addTest}
-                                                        className="flex items-center gap-2 px-3 py-3 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all shadow-md shadow-teal-100"
-                                                        title="Add Test"
-                                                    >
-                                                        <Plus size={16} />
-                                                    </button>
-                                                </div>
                                             </motion.div>
                                         ))}
                                     </AnimatePresence>
+                                    </div>
+                                    <div className="flex justify-center pt-2">
+                                        <button
+                                            onClick={addTest}
+                                            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all shadow-md shadow-teal-100"
+                                        >
+                                            <Plus size={16} />
+                                            Add Test
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1049,8 +1168,130 @@ export default function LabOrderPage() {
                             </motion.div>
                         )
                     }
+
+                    {/* New Group Modal */}
+                    {
+                        showNewGroupModal && (
+                            <motion.div
+                                key="new-group-modal-overlay"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                                onClick={() => setShowNewGroupModal(false)}
+                            >
+                                <motion.div
+                                    key="new-group-modal"
+                                    initial={{ scale: 0.95, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.95, opacity: 0 }}
+                                    className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="text-xl font-black text-slate-900">Create New Test Group</h3>
+                                        <button onClick={() => setShowNewGroupModal(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Group Name *</label>
+                                            <input
+                                                type="text"
+                                                value={newGroupData.name}
+                                                onChange={(e) => setNewGroupData(prev => ({ ...prev, name: e.target.value }))}
+                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                                placeholder="e.g., Basic Blood Tests, Cardiac Panel"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Category</label>
+                                            <select
+                                                value={newGroupData.category}
+                                                onChange={(e) => setNewGroupData(prev => ({ ...prev, category: e.target.value }))}
+                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                            >
+                                                <option value="Lab">Lab</option>
+                                                <option value="Radiology">Radiology</option>
+                                                <option value="Mixed">Mixed</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Add Tests to Group (Optional)</label>
+                                            <div className="border border-slate-200 rounded-xl p-4">
+                                                <div className="mb-3">
+                                                    <select
+                                                        onChange={(e) => {
+                                                            if (e.target.value) {
+                                                                addTestToGroup(e.target.value);
+                                                                e.target.value = '';
+                                                            }
+                                                        }}
+                                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                                    >
+                                                        <option value="">Select tests to add...</option>
+                                                        {labCatalog
+                                                            .filter(test => !newGroupData.items.find(item => item.catalog_id === test.id))
+                                                            .map(test => (
+                                                                <option key={test.id} value={test.id}>
+                                                                    {test.test_name} - ₹{test.test_cost}
+                                                                </option>
+                                                            ))}
+                                                    </select>
+                                                </div>
+
+                                                {newGroupData.items.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <p className="text-xs font-bold text-slate-600">Selected Tests:</p>
+                                                        {newGroupData.items.map((item, index) => {
+                                                            const test = labCatalog.find(t => t.id === item.catalog_id);
+                                                            return (
+                                                                <div key={item.catalog_id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-slate-800">{test?.test_name}</p>
+                                                                        <p className="text-xs text-slate-500">₹{test?.test_cost}</p>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeTestFromGroup(item.catalog_id)}
+                                                                        className="p-1 hover:bg-red-100 rounded text-red-500"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => setShowNewGroupModal(false)}
+                                            className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleCreateGroup}
+                                            disabled={creatingGroup || !newGroupData.name.trim()}
+                                            className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                        >
+                                            {creatingGroup ? <Loader2 className="animate-spin h-4 w-4" /> : <Save size={18} />}
+                                            Create Group
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            </motion.div>
+                        )
+                    }
                 </AnimatePresence >
-            </div >
 
             {/* Payment Modal */}
             {generatedBill && (
@@ -1061,6 +1302,7 @@ export default function LabOrderPage() {
                     onSuccess={handlePaymentSuccess}
                 />
             )}
+            </div >
         </div >
     );
 }

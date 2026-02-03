@@ -15,12 +15,14 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  Printer
+  Printer,
+  AlertTriangle
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../../../src/lib/patientService';
 import { addToQueue } from '../../../src/lib/outpatientQueueService';
 import StaffSelect from '../../../src/components/StaffSelect';
 import BarcodeModal from '../../../src/components/BarcodeModal';
+import { supabase } from '../../../src/lib/supabase';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -33,6 +35,20 @@ const INDIAN_STATES = [
   'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
 ];
 
+// Common places/areas for typeahead suggestions
+const COMMON_PLACES = [
+  'T. Nagar', 'Anna Nagar', 'Adyar', 'Mylapore', 'Velachery', 'Tambaram',
+  'Chromepet', 'Pallavaram', 'Guindy', 'Nungambakkam', 'Kodambakkam',
+  'Teynampet', 'Alwarpet', 'Royapettah', 'Triplicane', 'Chepauk',
+  'Egmore', 'Park Town', 'George Town', 'Parrys', 'Saidapet',
+  'Mambalam', 'Ashok Nagar', 'K.K. Nagar', 'Vadapalani', 'Saligramam',
+  'Porur', 'Poonamallee', 'Avadi', 'Ambattur', 'Madhavaram',
+  'Red Hills', 'Thiruvanmiyur', 'Besant Nagar', 'Thiruvanmiyur', 'Sholinganallur',
+  'Medavakkam', 'Keelkattalai', 'Kovilambakkam', 'Pallikaranai', 'Velachery',
+  'Thoraipakkam', 'Karapakkam', 'Navalur', 'Kelambakkam', 'Siruseri',
+  'OMR', 'ECR', 'GST Road', 'Arcot Road', 'Poonamallee High Road'
+];
+
 export default function QuickRegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -42,6 +58,13 @@ export default function QuickRegisterPage() {
   const [queueNumber, setQueueNumber] = useState<number | null>(null);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [registeredPatient, setRegisteredPatient] = useState<any>(null);
+  const [contactExists, setContactExists] = useState(false);
+  const [checkingContact, setCheckingContact] = useState(false);
+  const [placeSuggestions, setPlaceSuggestions] = useState<string[]>([]);
+  const [showPlaceSuggestions, setShowPlaceSuggestions] = useState(false);
+  const [placeSearchTerm, setPlaceSearchTerm] = useState('');
+  const [existingPlaces, setExistingPlaces] = useState<string[]>([]);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
   const [formData, setFormData] = useState({
     registrationDate: new Date().toISOString().split('T')[0],
@@ -58,6 +81,7 @@ export default function QuickRegisterPage() {
     city: '',
     state: 'Tamil Nadu',
     pincode: '',
+    place: '',
     emergencyName: '',
     emergencyPhone: '',
     relationship: '',
@@ -79,6 +103,44 @@ export default function QuickRegisterPage() {
     fetchUHID();
   }, []);
 
+  // Load existing places from database
+  useEffect(() => {
+    const loadExistingPlaces = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('place')
+          .not('place', 'is', null)
+          .not('place', 'eq', '')
+          .limit(100);
+        
+        if (error) {
+          console.error('Error loading existing places:', error);
+          return;
+        }
+        
+        const places = data?.map((p: any) => p.place).filter(Boolean) || [];
+        setExistingPlaces(places);
+      } catch (error) {
+        console.error('Error loading existing places:', error);
+      }
+    };
+    loadExistingPlaces();
+  }, []);
+
+  // Close place suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.place-input-container')) {
+        setShowPlaceSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Auto-calculate age from DOB
   useEffect(() => {
     if (formData.dob) {
@@ -96,6 +158,116 @@ export default function QuickRegisterPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Check if contact number exists when it changes
+    if (name === 'contactNo' && value.length >= 10) {
+      checkContactExists(value);
+    } else if (name === 'contactNo' && value.length < 10) {
+      setContactExists(false);
+    }
+    
+    // Handle place suggestions
+    if (name === 'place') {
+      setPlaceSearchTerm(value);
+      if (value.length >= 2) {
+        // Combine common places with existing places from database
+        const allPlaces = [...COMMON_PLACES, ...existingPlaces];
+        const uniquePlaces = [...new Set(allPlaces)]; // Remove duplicates
+        
+        const filteredPlaces = uniquePlaces.filter(place =>
+          place.toLowerCase().includes(value.toLowerCase())
+        );
+        
+        // Sort: exact matches first, then alphabetical
+        const sortedPlaces = filteredPlaces.sort((a, b) => {
+          const aLower = a.toLowerCase();
+          const bLower = b.toLowerCase();
+          const searchLower = value.toLowerCase();
+          
+          // Exact match first
+          if (aLower === searchLower) return -1;
+          if (bLower === searchLower) return 1;
+          
+          // Starts with search term next
+          if (aLower.startsWith(searchLower) && !bLower.startsWith(searchLower)) return -1;
+          if (bLower.startsWith(searchLower) && !aLower.startsWith(searchLower)) return 1;
+          
+          // Then alphabetical
+          return a.localeCompare(b);
+        });
+        
+        setPlaceSuggestions(sortedPlaces.slice(0, 8)); // Limit to 8 suggestions
+        setShowPlaceSuggestions(true);
+        setSelectedSuggestionIndex(-1); // Reset selection
+      } else {
+        setShowPlaceSuggestions(false);
+        setPlaceSuggestions([]);
+        setSelectedSuggestionIndex(-1);
+      }
+    }
+  };
+
+  // Function to select a place from suggestions
+  const selectPlace = (place: string) => {
+    setFormData(prev => ({ ...prev, place }));
+    setPlaceSearchTerm(place);
+    setShowPlaceSuggestions(false);
+    setPlaceSuggestions([]);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  // Handle keyboard navigation for place suggestions
+  const handlePlaceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showPlaceSuggestions || placeSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => 
+          prev < placeSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => prev > -1 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedSuggestionIndex >= 0 && placeSuggestions[selectedSuggestionIndex]) {
+          selectPlace(placeSuggestions[selectedSuggestionIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowPlaceSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+        break;
+    }
+  };
+
+  // Function to check if contact number already exists
+  const checkContactExists = async (contactNo: string) => {
+    if (!contactNo || contactNo.length < 10) return;
+    
+    setCheckingContact(true);
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('patient_id, name')
+        .eq('phone', contactNo)
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking contact:', error);
+        return;
+      }
+      
+      setContactExists(data && data.length > 0);
+    } catch (error) {
+      console.error('Error checking contact:', error);
+    } finally {
+      setCheckingContact(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -145,6 +317,7 @@ export default function QuickRegisterPage() {
         city: formData.city || null,
         state: formData.state || null,
         pincode: formData.pincode || null,
+        place: formData.place || null,
         emergency_contact_name: formData.emergencyName || null,
         emergency_contact_phone: formData.emergencyPhone || null,
         emergency_contact_relationship: formData.relationship || null,
@@ -421,32 +594,90 @@ export default function QuickRegisterPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Contact No (Optional)</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Contact No</label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input
                     type="tel"
                     name="contactNo"
-                    placeholder="Primary Number (Optional)"
+                    placeholder="Primary Number"
                     value={formData.contactNo}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500"
+                    className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 ${
+                      contactExists ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                    }`}
                   />
+                  {checkingContact && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                    </div>
+                  )}
+                  {contactExists && !checkingContact && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                    </div>
+                  )}
                 </div>
+                {contactExists && (
+                  <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    This number is already registered with a patient
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Alternate Contact</label>
-                <input
-                  type="tel"
-                  name="alternateNo"
-                  placeholder="Optional"
-                  value={formData.alternateNo}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500"
-                />
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Place</label>
+                <div className="relative place-input-container">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    name="place"
+                    placeholder="Enter Place/Area"
+                    value={formData.place}
+                    onChange={handleInputChange}
+                    onKeyDown={handlePlaceKeyDown}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500"
+                  />
+                  {showPlaceSuggestions && placeSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50">
+                      {placeSuggestions.map((place, index) => {
+                        const isExistingPlace = existingPlaces.includes(place);
+                        const isCommonPlace = COMMON_PLACES.includes(place);
+                        
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => selectPlace(place)}
+                            className={`w-full px-4 py-2 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between group ${
+                              index === selectedSuggestionIndex ? 'bg-orange-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <MapPin size={14} className="text-gray-400" />
+                              <span className="text-sm text-gray-700">{place}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {isExistingPlace && (
+                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                  Used
+                                </span>
+                              )}
+                              {isCommonPlace && !isExistingPlace && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                  Common
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">City</label>

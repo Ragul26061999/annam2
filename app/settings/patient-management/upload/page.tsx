@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, FileSpreadsheet, Check, AlertCircle, Loader2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { supabase } from '@/src/lib/supabase';
 import { uploadPatient } from './actions';
 
@@ -70,52 +70,66 @@ const PatientUploadPage = () => {
     }
   };
 
-  const parseExcel = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(sheet);
-        
-        if (jsonData.length > 0) {
-          // Normalize keys (trim whitespace)
-          const normalizedData = jsonData.map((row: any) => {
-            const newRow: any = {};
-            Object.keys(row).forEach(key => {
-              newRow[key.trim()] = row[key];
-            });
-            return newRow;
-          });
-
-          const cols = Object.keys(normalizedData[0] as object);
-          setColumns(cols);
-          setPreviewData(normalizedData as PatientData[]);
-          
-          // Auto-map columns
-          const newMapping = { ...mapping };
-          cols.forEach(col => {
-            const lowerCol = col.toLowerCase();
-            if (lowerCol.includes('name') || lowerCol.includes('patient')) newMapping.name = col;
-            if (lowerCol.includes('phone') || lowerCol.includes('mobile')) newMapping.phone = col;
-            if (lowerCol.includes('dob') || lowerCol.includes('birth')) newMapping.date_of_birth = col;
-            if (lowerCol.includes('gender') || lowerCol.includes('sex')) newMapping.gender = col;
-            if (lowerCol.includes('address') || lowerCol.includes('city')) newMapping.address = col;
-            if (lowerCol.includes('blood')) newMapping.blood_group = col;
-            if (lowerCol.includes('email')) newMapping.email = col;
-            if (lowerCol.includes('id') || lowerCol.includes('uhid')) newMapping.patient_id = col;
-          });
-          setMapping(newMapping);
-          setStep(2);
-        }
-      } catch (error) {
-        console.error('Error parsing Excel:', error);
-        alert('Error parsing Excel file. Please make sure it is a valid .xlsx or .xls file.');
+  const parseExcel = async (file: File) => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const arrayBuffer = await file.arrayBuffer();
+      await workbook.xlsx.load(arrayBuffer);
+      
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) {
+        throw new Error('No worksheet found');
       }
-    };
-    reader.readAsBinaryString(file);
+      
+      const jsonData: any[] = [];
+      const headers: string[] = [];
+      
+      // Get headers from first row
+      worksheet.getRow(1).eachCell((cell, colNumber) => {
+        headers[colNumber - 1] = cell.value?.toString().trim() || '';
+      });
+      
+      // Get data rows
+      for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        const rowData: any = {};
+        
+        headers.forEach((header, colIndex) => {
+          const cellValue = row.getCell(colIndex + 1).value;
+          rowData[header] = cellValue;
+        });
+        
+        // Skip empty rows
+        if (Object.values(rowData).some(val => val !== null && val !== undefined && val.toString().trim() !== '')) {
+          jsonData.push(rowData);
+        }
+      }
+      
+      if (jsonData.length > 0) {
+        const cols = Object.keys(jsonData[0]);
+        setColumns(cols);
+        setPreviewData(jsonData as PatientData[]);
+        
+        // Auto-map columns
+        const newMapping = { ...mapping };
+        cols.forEach(col => {
+          const lowerCol = col.toLowerCase();
+          if (lowerCol.includes('name') || lowerCol.includes('patient')) newMapping.name = col;
+          if (lowerCol.includes('phone') || lowerCol.includes('mobile')) newMapping.phone = col;
+          if (lowerCol.includes('dob') || lowerCol.includes('birth')) newMapping.date_of_birth = col;
+          if (lowerCol.includes('gender') || lowerCol.includes('sex')) newMapping.gender = col;
+          if (lowerCol.includes('address') || lowerCol.includes('city')) newMapping.address = col;
+          if (lowerCol.includes('blood')) newMapping.blood_group = col;
+          if (lowerCol.includes('email')) newMapping.email = col;
+          if (lowerCol.includes('id') || lowerCol.includes('uhid')) newMapping.patient_id = col;
+        });
+        setMapping(newMapping);
+        setStep(2);
+      }
+    } catch (error) {
+      console.error('Error parsing Excel:', error);
+      alert('Error parsing Excel file. Please make sure it is a valid .xlsx file.');
+    }
   };
 
   const normalizeGender = (val: any): string | null => {
@@ -264,10 +278,10 @@ const PatientUploadPage = () => {
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
               <FileSpreadsheet className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Upload Excel File</h3>
-              <p className="text-gray-500 mb-6">Supported formats: .xlsx, .xls</p>
+              <p className="text-gray-500 mb-6">Supported format: .xlsx</p>
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx"
                 onChange={handleFileChange}
                 className="hidden"
                 id="file-upload"

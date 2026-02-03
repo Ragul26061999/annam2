@@ -15,18 +15,17 @@ function supabaseErrorToString(err: unknown): string {
 }
 
 export interface PaymentItem {
-  id?: string;
   service_name: string;
   quantity: number;
   unit_rate: number;
   total_amount: number;
   item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology';
-  reference_id?: string; // Links to specific service (lab_order, radiology_order, etc.)
+  reference_id?: string | null; // Links to specific service (lab_order, radiology_order, etc.)
 }
 
 export interface PaymentData {
   patient_id: string;
-  encounter_id?: string;
+  encounter_id?: string | null;
   appointment_id?: string;
   bed_allocation_id?: string;
   items: PaymentItem[];
@@ -509,7 +508,7 @@ export async function createIPAdmissionBill(
 // Create bill specifically for OP consultation
 export async function createOPConsultationBill(
   patientId: string,
-  encounterId: string,
+  encounterId: string | null,
   consultationFee: number,
   doctorName: string,
   staffId?: string

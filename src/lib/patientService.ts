@@ -1093,12 +1093,17 @@ export async function updatePatientRecord(
   updateData: any
 ): Promise<any> {
   try {
+    console.log('Updating patient record for ID/UHID:', idOrUhid);
+    console.log('Update data:', JSON.stringify(updateData, null, 2));
+    
     let query = supabase.from('patients').update(updateData);
     
     // Check if the ID is a UUID (database ID)
     if (idOrUhid.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      console.log('Using UUID (database ID) to update patient');
       query = query.eq('id', idOrUhid);
     } else {
+      console.log('Using patient_id (UHID) to update patient');
       query = query.eq('patient_id', idOrUhid);
     }
 
@@ -1108,9 +1113,11 @@ export async function updatePatientRecord(
 
     if (error) {
       console.error('Error updating patient record:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       throw new Error(`Failed to update patient: ${error.message}`);
     }
 
+    console.log('Patient updated successfully:', patient);
     return patient;
   } catch (error) {
     console.error('Error updating patient record:', error);
