@@ -1134,10 +1134,13 @@ export async function getAllPatients(
     limit?: number;
     status?: string;
     searchTerm?: string;
+    startDate?: string;
+    endDate?: string;
+    place?: string;
   } = {}
 ): Promise<{ patients: any[]; total: number; page: number; limit: number }> {
   try {
-    const { page = 1, limit = 20, status, searchTerm } = options;
+    const { page = 1, limit = 20, status, searchTerm, startDate, endDate, place } = options;
     const offset = (page - 1) * limit;
 
     let query = supabase
@@ -1151,6 +1154,19 @@ export async function getAllPatients(
 
     if (searchTerm) {
       query = query.or(`name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+    }
+
+    // Date range filter
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+
+    // Place filter (filter by city, state, or address)
+    if (place) {
+      query = query.or(`city.ilike.%${place}%,state.ilike.%${place}%,address.ilike.%${place}%`);
     }
 
     // Apply pagination

@@ -79,6 +79,12 @@ export default function IPPrescriptionForm({
   const [searchResults, setSearchResults] = useState<Medication[]>([]);
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
   const [showNewMedicineModal, setShowNewMedicineModal] = useState(false);
+  const [isAddingNewMedicine, setIsAddingNewMedicine] = useState(false);
+  const [newMedicineName, setNewMedicineName] = useState('');
+  const [showInjectionSearch, setShowInjectionSearch] = useState(false);
+  const [isAddingNewInjection, setIsAddingNewInjection] = useState(false);
+  const [newInjectionName, setNewInjectionName] = useState('');
+  const [newInjectionDosage, setNewInjectionDosage] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -204,6 +210,113 @@ export default function IPPrescriptionForm({
     setMedications(prev => [...prev, newMedicine]);
     // Automatically add it to the prescription
     addMedicationToPrescription(newMedicine);
+  };
+
+  const handleAddNewMedicineFromSearch = async () => {
+    if (!newMedicineName.trim()) {
+      return;
+    }
+
+    try {
+      // Generate medication code for external medicine
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const medicationCode = `EXT${timestamp}${random}`;
+
+      // Create new external medicine
+      const { data: newMedicine, error } = await supabase
+        .from('medications')
+        .insert({
+          medication_code: medicationCode,
+          name: newMedicineName.trim(),
+          generic_name: null,
+          manufacturer: 'External Pharmacy',
+          category: 'External',
+          dosage_form: null,
+          strength: null,
+          selling_price: 0,
+          purchase_price: 0,
+          is_external: true,
+          is_active: true,
+          available_stock: 0,
+          total_stock: 0,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Add the new medicine to medications list and prescription
+      setMedications(prev => [...prev, newMedicine]);
+      addMedicationToPrescription(newMedicine);
+      
+      // Reset the new medicine input
+      setNewMedicineName('');
+      setIsAddingNewMedicine(false);
+      setSearchTerm('');
+      setSearchResults([]);
+
+    } catch (error: any) {
+      console.error('Error adding new medicine:', error);
+      // You could show an error message here if needed
+    }
+  };
+
+  const handleAddNewInjectionFromSearch = async () => {
+    if (!newInjectionName.trim() || !newInjectionDosage.trim()) {
+      return;
+    }
+
+    try {
+      // Generate medication code for external injection
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const medicationCode = `INJ${timestamp}${random}`;
+
+      // Create new external injection (stored as medication with injection dosage form)
+      const { data: newInjection, error } = await supabase
+        .from('medications')
+        .insert({
+          medication_code: medicationCode,
+          name: newInjectionName.trim(),
+          generic_name: null,
+          manufacturer: 'External Pharmacy',
+          category: 'Injection',
+          dosage_form: 'Injection',
+          strength: newInjectionDosage.trim(),
+          selling_price: 0,
+          purchase_price: 0,
+          is_external: true,
+          is_active: true,
+          available_stock: 0,
+          total_stock: 0,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Add the new injection to medications list and prescription
+      setMedications(prev => [...prev, newInjection]);
+      addMedicationToPrescription(newInjection);
+      
+      // Reset the new injection input
+      setNewInjectionName('');
+      setNewInjectionDosage('');
+      setIsAddingNewInjection(false);
+      setSearchTerm('');
+      setSearchResults([]);
+
+    } catch (error: any) {
+      console.error('Error adding new injection:', error);
+      // You could show an error message here if needed
+    }
   };
 
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
@@ -518,19 +631,19 @@ export default function IPPrescriptionForm({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowNewMedicineModal(true)}
-                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    New Medicine
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setShowMedicationSearch(!showMedicationSearch)}
                     className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
                   >
                     <Plus className="h-4 w-4" />
                     Add Medication
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowInjectionSearch(!showInjectionSearch)}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Injection
                   </button>
                 </div>
               </div>
@@ -539,17 +652,71 @@ export default function IPPrescriptionForm({
                 <div className="bg-gray-50 p-4 rounded-lg mb-4">
                   <div className="relative">
                     <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        searchMedications(e.target.value);
-                      }}
-                      onKeyDown={handleKeyDown}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Search medications by name, generic name, or category..."
-                    />
+                    
+                    {isAddingNewMedicine ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newMedicineName}
+                          onChange={(e) => setNewMedicineName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddNewMedicineFromSearch();
+                            } else if (e.key === 'Escape') {
+                              setIsAddingNewMedicine(false);
+                              setNewMedicineName('');
+                            }
+                          }}
+                          className="flex-1 pl-10 pr-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="Enter new medicine name..."
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddNewMedicineFromSearch}
+                          className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewMedicine(false);
+                            setNewMedicineName('');
+                          }}
+                          className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={searchTerm}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            searchMedications(e.target.value);
+                          }}
+                          onKeyDown={handleKeyDown}
+                          className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          placeholder="Search medications by name, generic name, or category..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewMedicine(true);
+                            setSearchTerm('');
+                            setSearchResults([]);
+                          }}
+                          className="absolute right-2 top-2 p-1.5 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors"
+                          title="Add new medicine"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                   
                   {searchResults.length > 0 && (
@@ -585,6 +752,157 @@ export default function IPPrescriptionForm({
                             </div>
                             <div className="text-right">
                               <p className="font-medium text-green-600">₹{medication.selling_price || 0}</p>
+                              <p className={`text-xs ${
+                                medication.is_external 
+                                  ? 'text-purple-600' 
+                                  : medication.available_stock > 10 
+                                    ? 'text-green-600' 
+                                    : medication.available_stock > 0 
+                                      ? 'text-yellow-600' 
+                                      : 'text-red-600'
+                              }`}>
+                                {medication.is_external ? 'External' : `Stock: ${medication.available_stock || 0}`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Injection Search */}
+              {showInjectionSearch && (
+                <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                  <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-3 text-blue-400" />
+                    
+                    {isAddingNewInjection ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newInjectionName}
+                            onChange={(e) => setNewInjectionName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                document.getElementById('injection-dosage-input-ip')?.focus();
+                              } else if (e.key === 'Escape') {
+                                setIsAddingNewInjection(false);
+                                setNewInjectionName('');
+                                setNewInjectionDosage('');
+                              }
+                            }}
+                            className="flex-1 pl-10 pr-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Enter injection name..."
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="injection-dosage-input-ip"
+                            type="text"
+                            value={newInjectionDosage}
+                            onChange={(e) => setNewInjectionDosage(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddNewInjectionFromSearch();
+                              } else if (e.key === 'Escape') {
+                                setIsAddingNewInjection(false);
+                                setNewInjectionName('');
+                                setNewInjectionDosage('');
+                              }
+                            }}
+                            className="flex-1 px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Enter dosage (e.g., 2ml, 5mg)..."
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddNewInjectionFromSearch}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddingNewInjection(false);
+                              setNewInjectionName('');
+                              setNewInjectionDosage('');
+                            }}
+                            className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={searchTerm}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            searchMedications(e.target.value);
+                          }}
+                          onKeyDown={handleKeyDown}
+                          className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Search injections by name, generic name, or category..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewInjection(true);
+                            setSearchTerm('');
+                            setSearchResults([]);
+                          }}
+                          className="absolute right-2 top-2 p-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                          title="Add new injection"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  
+                  {searchResults.length > 0 && (
+                    <div 
+                      ref={dropdownRef}
+                      className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white"
+                    >
+                      {searchResults
+                        .filter(medication => medication.dosage_form === 'Injection' || medication.category === 'Injection')
+                        .map((medication, index) => (
+                        <div
+                          key={medication.id}
+                          onClick={() => addMedicationToPrescription(medication)}
+                          className={`p-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                            highlightedIndex === index
+                              ? 'bg-blue-100 border-blue-300'
+                              : 'hover:bg-blue-50'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {medication.name}
+                                {medication.is_external && (
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    <ExternalLink className="h-3 w-3 mr-1" />
+                                    External
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-sm text-gray-600">{medication.generic_name}</p>
+                              <p className="text-xs text-gray-500">
+                                {medication.strength} • {medication.dosage_form} • {medication.manufacturer}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium text-blue-600">₹{medication.selling_price || 0}</p>
                               <p className={`text-xs ${
                                 medication.is_external 
                                   ? 'text-purple-600' 

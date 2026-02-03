@@ -90,6 +90,9 @@ export default function PatientsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [placeFilter, setPlaceFilter] = useState('');
   const [totalPatients, setTotalPatients] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
@@ -128,7 +131,7 @@ export default function PatientsPage() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [currentPage, statusFilter, searchTerm]);
+  }, [currentPage, statusFilter, searchTerm, startDate, endDate, placeFilter]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -184,7 +187,10 @@ export default function PatientsPage() {
         page: currentPage,
         limit: 20,
         status: statusFilter === '' ? undefined : statusFilter,
-        searchTerm: searchTerm || undefined
+        searchTerm: searchTerm || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        place: placeFilter || undefined
       });
 
       setPatients(response.patients);
@@ -236,6 +242,30 @@ export default function PatientsPage() {
   const handleStatusFilter = (status: string) => {
     setStatusFilter(status);
     setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handleStartDateChange = (date: string) => {
+    setStartDate(date);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handleEndDateChange = (date: string) => {
+    setEndDate(date);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handlePlaceFilter = (place: string) => {
+    setPlaceFilter(place);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
+    setStartDate('');
+    setEndDate('');
+    setPlaceFilter('');
+    setCurrentPage(1);
   };
 
   const calculateAge = (dateOfBirth: string) => {
@@ -471,7 +501,7 @@ export default function PatientsPage() {
 
       {/* Search and Filter */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <input
@@ -482,7 +512,8 @@ export default function PatientsPage() {
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
           </div>
-          <div className="flex gap-2">
+          
+          <div className="flex flex-wrap gap-2">
             <select
               value={statusFilter}
               onChange={(e) => handleStatusFilter(e.target.value)}
@@ -493,6 +524,37 @@ export default function PatientsPage() {
               <option value="critical">Critical</option>
               <option value="admitted">Admitted</option>
             </select>
+
+            <input
+              type="date"
+              placeholder="Start Date"
+              value={startDate}
+              onChange={(e) => handleStartDateChange(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+            />
+
+            <input
+              type="date"
+              placeholder="End Date"
+              value={endDate}
+              onChange={(e) => handleEndDateChange(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+            />
+
+            <input
+              type="text"
+              placeholder="Filter by place (city/state/address)"
+              value={placeFilter}
+              onChange={(e) => handlePlaceFilter(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+            />
+
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm"
+            >
+              Clear Filters
+            </button>
           </div>
         </div>
       </div>

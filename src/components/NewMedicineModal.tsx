@@ -11,12 +11,7 @@ interface NewMedicineModalProps {
 
 export default function NewMedicineModal({ isOpen, onClose, onMedicineAdded }: NewMedicineModalProps) {
   const [formData, setFormData] = useState({
-    name: '',
-    generic_name: '',
-    manufacturer: '',
-    category: '',
-    dosage_form: '',
-    strength: ''
+    name: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,11 +60,11 @@ export default function NewMedicineModal({ isOpen, onClose, onMedicineAdded }: N
         .insert({
           medication_code: medicationCode,
           name: formData.name.trim(),
-          generic_name: formData.generic_name.trim() || null,
-          manufacturer: formData.manufacturer.trim() || 'External Pharmacy',
-          category: formData.category.trim() || 'External',
-          dosage_form: formData.dosage_form.trim() || null,
-          strength: formData.strength.trim() || null,
+          generic_name: null,
+          manufacturer: 'External Pharmacy',
+          category: 'External',
+          dosage_form: null,
+          strength: null,
           selling_price: 0,
           purchase_price: 0,
           is_external: true,
@@ -91,12 +86,7 @@ export default function NewMedicineModal({ isOpen, onClose, onMedicineAdded }: N
       // Reset form after success
       setTimeout(() => {
         setFormData({
-          name: '',
-          generic_name: '',
-          manufacturer: '',
-          category: '',
-          dosage_form: '',
-          strength: ''
+          name: ''
         });
         setSuccess(false);
         onClose();
@@ -160,112 +150,19 @@ export default function NewMedicineModal({ isOpen, onClose, onMedicineAdded }: N
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Medicine Name */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Medicine Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., Paracetamol 500mg"
-                  required
-                />
-              </div>
-
-              {/* Generic Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Generic Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.generic_name}
-                  onChange={(e) => handleInputChange('generic_name', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., Acetaminophen"
-                />
-              </div>
-
-              {/* Manufacturer */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Manufacturer
-                </label>
-                <input
-                  type="text"
-                  value={formData.manufacturer}
-                  onChange={(e) => handleInputChange('manufacturer', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., Cipla, Sun Pharma"
-                />
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Category
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => handleInputChange('category', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="">Select category</option>
-                  <option value="Analgesics">Analgesics</option>
-                  <option value="Antibiotics">Antibiotics</option>
-                  <option value="Antipyretics">Antipyretics</option>
-                  <option value="Anti-inflammatory">Anti-inflammatory</option>
-                  <option value="Vitamins">Vitamins</option>
-                  <option value="Supplements">Supplements</option>
-                  <option value="Cardiovascular">Cardiovascular</option>
-                  <option value="Respiratory">Respiratory</option>
-                  <option value="Gastrointestinal">Gastrointestinal</option>
-                  <option value="Dermatological">Dermatological</option>
-                  <option value="External">External</option>
-                </select>
-              </div>
-
-              {/* Dosage Form */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Dosage Form
-                </label>
-                <select
-                  value={formData.dosage_form}
-                  onChange={(e) => handleInputChange('dosage_form', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="">Select form</option>
-                  <option value="Tablet">Tablet</option>
-                  <option value="Capsule">Capsule</option>
-                  <option value="Syrup">Syrup</option>
-                  <option value="Injection">Injection</option>
-                  <option value="Ointment">Ointment</option>
-                  <option value="Cream">Cream</option>
-                  <option value="Gel">Gel</option>
-                  <option value="Drops">Drops</option>
-                  <option value="Inhaler">Inhaler</option>
-                  <option value="Patch">Patch</option>
-                </select>
-              </div>
-
-              {/* Strength */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Strength
-                </label>
-                <input
-                  type="text"
-                  value={formData.strength}
-                  onChange={(e) => handleInputChange('strength', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., 500mg, 10ml"
-                />
-              </div>
+            {/* Medicine Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Medicine Name *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="e.g., Paracetamol 500mg"
+                required
+              />
             </div>
 
             {/* External Medicine Info */}

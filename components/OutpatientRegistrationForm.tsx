@@ -727,6 +727,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             className="border border-l-0 border-blue-200 rounded-r-lg bg-white text-xs px-1"
                                         >
                                             <option value="Fahrenheit">°F</option>
+                                            <option value="Celsius">°C</option>
                                         </select>
                                     </div>
                                 </div>
@@ -1425,6 +1426,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                             className="border border-l-0 border-blue-200 rounded-r-lg bg-white text-xs px-1"
                                         >
                                             <option value="Fahrenheit">°F</option>
+                                            <option value="Celsius">°C</option>
                                         </select>
                                     </div>
                                 </div>
