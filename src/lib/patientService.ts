@@ -1182,7 +1182,14 @@ export async function getAllPatients(
 
     // Apply filters
     if (status) {
-      query = query.eq('status', status);
+      if (status === 'critical') {
+        query = query.eq('is_critical', true);
+      } else if (status === 'admitted') {
+        // For admitted status, we need to check bed_allocations, so we'll filter after fetching
+        // Don't apply filter here, will handle in post-processing
+      } else {
+        query = query.eq('status', status);
+      }
     }
 
     if (searchTerm) {
@@ -1234,9 +1241,15 @@ export async function getAllPatients(
       bed_allocations: undefined // Remove the join data
     }));
 
+    // Apply additional filtering for 'admitted' status (since it requires bed allocation data)
+    let finalPatients = enhancedPatients;
+    if (status === 'admitted') {
+      finalPatients = enhancedPatients.filter((patient: any) => patient.is_admitted);
+    }
+
     return {
-      patients: enhancedPatients,
-      total: count || 0,
+      patients: finalPatients,
+      total: status === 'admitted' ? finalPatients.length : (count || 0), // Update total for admitted filter
       page,
       limit
     };

@@ -389,19 +389,14 @@ export default function PatientsPage() {
     inpatientToday: dailyStats.inpatientToday
   };
 
-  // Filter patients based on search and status
+  // Filter patients based on search only (status filtering is now handled by the backend)
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = !searchTerm ||
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.patient_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.phone?.includes(searchTerm);
 
-    const matchesStatus = !statusFilter ||
-      (statusFilter === 'critical' && isPatientCritical(patient)) ||
-      (statusFilter === 'admitted' && isPatientAdmitted(patient)) ||
-      (statusFilter === 'active' && patient.status === 'active');
-
-    return matchesSearch && matchesStatus;
+    return matchesSearch;
   });
 
   if (loading && patients.length === 0) {
