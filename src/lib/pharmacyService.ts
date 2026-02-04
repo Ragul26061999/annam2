@@ -1891,6 +1891,16 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
   soldUnitsThisMonth: number;
   purchasedUnitsThisMonth: number;
 }> {
+  // Input validation
+  if (!batchNumber || batchNumber.trim() === '') {
+    console.warn('Invalid batch number provided to getBatchStockStats:', batchNumber);
+    return {
+      remainingUnits: 0,
+      soldUnitsThisMonth: 0,
+      purchasedUnitsThisMonth: 0
+    };
+  }
+
   try {
     // Time window: current calendar month in IST
     const now = new Date();
@@ -1909,7 +1919,19 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
       .eq('batch_number', batchNumber);
 
     if (txAllError) {
-      console.error('Error fetching stock_transactions for batch:', txAllError);
+      console.error('Error fetching stock_transactions for batch:', batchNumber, txAllError);
+      
+      // Check if it's an authentication error
+      if (txAllError.message?.includes('JWT') || txAllError.message?.includes('auth') || txAllError.code === 'PGRST301') {
+        console.warn('Authentication error when fetching stock transactions. User may not be logged in.');
+      }
+      
+      // Return default values when there's an error fetching transactions
+      return {
+        remainingUnits: 0,
+        soldUnitsThisMonth: 0,
+        purchasedUnitsThisMonth: 0
+      };
     }
 
     let remainingUnits = 0;
@@ -1938,7 +1960,12 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
         .limit(1)
         .maybeSingle();
       if (batchError) {
-        console.error('Error fetching batch fallback quantity:', batchError);
+        console.error('Error fetching batch fallback quantity:', batchNumber, batchError);
+        
+        // Check if it's an authentication error
+        if (batchError.message?.includes('JWT') || batchError.message?.includes('auth') || batchError.code === 'PGRST301') {
+          console.warn('Authentication error when fetching medicine batch. User may not be logged in.');
+        }
       }
       remainingUnits = Number(batchRow?.current_quantity ?? 0);
     }
@@ -1949,7 +1976,16 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
       purchasedUnitsThisMonth: Math.max(0, purchasedUnitsThisMonth)
     };
   } catch (error) {
-    console.error('Error in getBatchStockStats:', error);
+    console.error('Unexpected error in getBatchStockStats for batch:', batchNumber, error);
+    
+    // Check if it's a Supabase authentication error
+    if (error && typeof error === 'object' && 'message' in error) {
+      const errorMessage = (error as any).message;
+      if (errorMessage?.includes('JWT') || errorMessage?.includes('auth') || (error as any).code === 'PGRST301') {
+        console.warn('Authentication error in getBatchStockStats. User may not be logged in.');
+      }
+    }
+    
     // Fail-safe defaults
     return {
       remainingUnits: 0,

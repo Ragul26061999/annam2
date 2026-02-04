@@ -99,7 +99,7 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
 
   // Add new medicine row
   const addMedicineRow = () => {
-    setPrescriptionMedicines([...prescriptionMedicines, {
+    setPrescriptionMedicines([{
       medication_id: '',
       medicine_name: '',
       dosage: '',
@@ -107,7 +107,7 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({
       duration: '',
       instructions: '',
       quantity: 1
-    }]);
+    }, ...prescriptionMedicines]);
   };
 
   // Remove medicine row

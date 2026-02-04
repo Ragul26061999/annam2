@@ -425,7 +425,8 @@ export default function InventoryPage() {
     // Whenever medicines (and their batches) change, fetch per-batch stats from DB
     const batchNumbers = Array.from(new Set(
       medicines.flatMap(m => m.batches.map(b => b.batch_number))
-    ))
+    )).filter(batchNumber => batchNumber && batchNumber.trim() !== ''); // Filter out invalid batch numbers
+    
     if (batchNumbers.length === 0) return
       ; (async () => {
         try {
@@ -436,6 +437,12 @@ export default function InventoryPage() {
               results[bn] = stats
             } catch (e) {
               console.error('Failed to load batch stats for', bn, e)
+              // Set default values for failed batches
+              results[bn] = {
+                remainingUnits: 0,
+                soldUnitsThisMonth: 0,
+                purchasedUnitsThisMonth: 0
+              }
             }
           }))
           setBatchStatsMap(results)

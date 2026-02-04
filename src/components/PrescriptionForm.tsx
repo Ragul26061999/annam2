@@ -353,7 +353,7 @@ export default function PrescriptionForm({
         stock_quantity: medication.available_stock || 0
       };
       
-      setPrescriptionItems(prev => [...prev, newItem]);
+      setPrescriptionItems(prev => [newItem, ...prev]);
       setSearchTerm('');
       setSearchResults([]);
       setHighlightedIndex(-1);
