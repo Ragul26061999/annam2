@@ -901,10 +901,74 @@ export default function PatientsPage() {
       {/* Pagination */}
       {totalPatients > 20 && (
         <div className="flex justify-center">
-          <div className="bg-white rounded-xl border border-gray-200 p-2">
-            <p className="text-sm text-gray-600 px-4 py-2">
-              Showing {patients.length} of {totalPatients} patients
-            </p>
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-3">
+            <div className="flex items-center gap-6">
+              {/* Previous Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              
+              {/* Page Information */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-900">
+                  Page {currentPage} of {Math.ceil(totalPatients / 20)}
+                </span>
+                <span className="text-sm text-gray-500">
+                  ({patients.length} of {totalPatients} patients)
+                </span>
+              </div>
+              
+              {/* Next Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalPatients / 20), prev + 1))}
+                disabled={currentPage >= Math.ceil(totalPatients / 20)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+              
+              {/* Divider */}
+              <div className="h-6 w-px bg-gray-300"></div>
+              
+              {/* Quick Page Navigation */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Go to page:</span>
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.min(5, Math.ceil(totalPatients / 20)) }, (_, i) => {
+                    const totalPages = Math.ceil(totalPatients / 20);
+                    let pageNum;
+                    
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

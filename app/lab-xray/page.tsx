@@ -413,7 +413,7 @@ export default function LabXRayPage() {
       </div>
 
       {/* Stats Summary - Glassmorphism */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-7 gap-3 overflow-x-auto">
         {[
           { label: 'Total Lab', value: stats.totalLabOrders, icon: Beaker, color: 'teal', trend: 'Orders' },
           { label: 'Total Radiology', value: stats.totalRadiologyOrders, icon: Radiation, color: 'cyan', trend: 'Scans' },
@@ -428,17 +428,17 @@ export default function LabXRayPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
             key={item.label}
-            className="group relative overflow-hidden bg-white border border-gray-100 p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300"
+            className="group relative overflow-hidden bg-white border border-gray-100 p-4 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 min-w-[140px]"
           >
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <item.icon size={64} className={`text-${item.color}-600`} />
             </div>
-            <div className={`p-3 bg-${item.color}-50 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform duration-300`}>
-              <item.icon size={20} className={`text-${item.color}-600`} />
+            <div className={`p-2 bg-${item.color}-50 rounded-lg w-fit mb-3 group-hover:scale-110 transition-transform duration-300`}>
+              <item.icon size={16} className={`text-${item.color}-600`} />
             </div>
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">{item.label}</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-3xl font-black text-gray-900">{item.value}</p>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{item.label}</p>
+            <div className="flex items-baseline gap-1 mt-1">
+              <p className="text-2xl font-black text-gray-900">{item.value}</p>
               <p className={`text-xs font-bold text-${item.color}-600`}>{item.trend}</p>
             </div>
           </motion.div>

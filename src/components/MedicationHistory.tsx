@@ -19,14 +19,15 @@ import {
   Eye,
   X
 } from 'lucide-react';
-import { getPatientMedicationHistory, type MedicationHistory } from '../lib/pharmacyService';
+import { getPatientPrescriptionGroups, type PrescriptionGroup, type MedicationItem } from '../lib/pharmacyService';
 
 interface MedicationHistoryProps {
   patientId: string;
+  refreshTrigger?: number;
 }
 
-export default function MedicationHistory({ patientId }: MedicationHistoryProps) {
-  const [medicationHistory, setMedicationHistory] = useState<MedicationHistory[]>([]);
+export default function MedicationHistory({ patientId, refreshTrigger }: MedicationHistoryProps) {
+  const [prescriptionGroups, setPrescriptionGroups] = useState<PrescriptionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'prescribed' | 'dispensed'>('all');
@@ -36,13 +37,13 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
 
   useEffect(() => {
     loadMedicationHistory();
-  }, [patientId]);
+  }, [patientId, refreshTrigger]);
 
   const loadMedicationHistory = async () => {
     try {
       setLoading(true);
-      const history = await getPatientMedicationHistory(patientId);
-      setMedicationHistory(history);
+      const groups = await getPatientPrescriptionGroups(patientId);
+      setPrescriptionGroups(groups);
     } catch (err) {
       setError('Failed to load medication history');
       console.error('Error loading medication history:', err);
@@ -51,14 +52,16 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
     }
   };
 
-  const filteredHistory = medicationHistory.filter(item => {
+  const filteredGroups = prescriptionGroups.filter(group => {
     const matchesFilter = filter === 'all' || 
-      (filter === 'prescribed' && !item.dispensed_date) ||
-      (filter === 'dispensed' && item.dispensed_date);
+      (filter === 'prescribed' && group.status === 'prescribed') ||
+      (filter === 'dispensed' && group.status === 'dispensed');
     
     const matchesSearch = !searchTerm || 
-      item.medication_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.dosage.toLowerCase().includes(searchTerm.toLowerCase());
+      group.medications.some(med => 
+        med.medication_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        med.dosage.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     
     return matchesFilter && matchesSearch;
   });
@@ -73,28 +76,28 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
     });
   };
 
-  const getStatusIcon = (item: MedicationHistory) => {
-    if (item.dispensed_date) {
+  const getStatusIcon = (group: PrescriptionGroup) => {
+    if (group.status === 'dispensed') {
       return <CheckCircle className="h-5 w-5 text-green-500" />;
     }
     return <Clock className="h-5 w-5 text-yellow-500" />;
   };
 
-  const getStatusText = (item: MedicationHistory) => {
-    if (item.dispensed_date) {
+  const getStatusText = (group: PrescriptionGroup) => {
+    if (group.status === 'dispensed') {
       return 'Dispensed';
     }
     return 'Prescribed';
   };
 
-  const getStatusColor = (item: MedicationHistory) => {
-    if (item.dispensed_date) {
+  const getStatusColor = (group: PrescriptionGroup) => {
+    if (group.status === 'dispensed') {
       return 'bg-green-100 text-green-800 border-green-200';
     }
     return 'bg-yellow-100 text-yellow-800 border-yellow-200';
   };
 
-  const getMedicationTypeIcon = (item: MedicationHistory) => {
+  const getMedicationTypeIcon = (item: MedicationItem) => {
     const dosageForm = item.dosage_form?.toLowerCase() || '';
     
     // Check if it's an injection
@@ -112,7 +115,7 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
     return <Pill className="h-4 w-4 text-blue-600" />;
   };
 
-  const getMedicationTypeIconColor = (item: MedicationHistory) => {
+  const getMedicationTypeIconColor = (item: MedicationItem) => {
     const dosageForm = item.dosage_form?.toLowerCase() || '';
     
     // Check if it's an injection
@@ -224,7 +227,7 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
       </div>
 
       {/* Medication List */}
-      {filteredHistory.length === 0 ? (
+      {filteredGroups.length === 0 ? (
         <div className="text-center py-12">
           <Pill className="h-12 w-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No medications found</h3>
@@ -237,20 +240,22 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredHistory.map((item, index) => (
+          {filteredGroups.map((group, index) => (
             <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`p-2 ${getMedicationTypeIconColor(item)} rounded-lg`}>
-                      {getMedicationTypeIcon(item)}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-orange-100 rounded-lg">
+                      <Pill className="h-5 w-5 text-orange-600" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
-                        {item.prescription_image_url && (
+                        <h4 className="font-medium text-gray-900">
+                          {group.prescription_id ? `Prescription ${group.prescription_id}` : 'Medication Group'}
+                        </h4>
+                        {group.prescription_image_url && (
                           <button
-                            onClick={() => handleViewImage(item.prescription_image_url!)}
+                            onClick={() => handleViewImage(group.prescription_image_url!)}
                             className="p-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
                             title="View prescription image"
                           >
@@ -258,44 +263,57 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
                           </button>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600">{item.dosage}</p>
+                      <p className="text-sm text-gray-600">
+                        {group.medications.length} medication{group.medications.length !== 1 ? 's' : ''}
+                      </p>
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+                  {/* Medications List */}
+                  <div className="space-y-3 mb-4">
+                    {group.medications.map((med, medIndex) => (
+                      <div key={medIndex} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                        <div className={`p-2 ${getMedicationTypeIconColor(med)} rounded-lg`}>
+                          {getMedicationTypeIcon(med)}
+                        </div>
+                        <div className="flex-1">
+                          <h5 className="font-medium text-gray-900">{med.medication_name}</h5>
+                          <p className="text-sm text-gray-600">{med.dosage}</p>
+                          <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                            <span>Frequency: {med.frequency}</span>
+                            <span>Duration: {med.duration}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="flex items-center text-sm text-gray-600">
                       <Calendar className="h-4 w-4 mr-2" />
-                      <span>Prescribed: {formatDate(item.prescribed_date)}</span>
+                      <span>
+                        {group.status === 'dispensed' ? 'Dispensed' : 'Prescribed'}: {formatDate(group.dispensed_date || group.prescribed_date)}
+                      </span>
                     </div>
-                    
-                    {item.dispensed_date && (
-                      <div className="flex items-center text-sm text-gray-600">
-                        <ShoppingCart className="h-4 w-4 mr-2" />
-                        <span>Dispensed: {formatDate(item.dispensed_date)}</span>
-                      </div>
-                    )}
                     
                     <div className="flex items-center text-sm text-gray-600">
                       <User className="h-4 w-4 mr-2" />
-                      <span>By: {item.prescribed_by}</span>
+                      <span>By: {group.prescribed_by || group.dispensed_by}</span>
                     </div>
                     
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Package className="h-4 w-4 mr-2" />
-                      <span>Frequency: {item.frequency}</span>
-                    </div>
-                    
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Clock className="h-4 w-4 mr-2" />
-                      <span>Duration: {item.duration}</span>
-                    </div>
+                    {group.total_amount && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Package className="h-4 w-4 mr-2" />
+                        <span>Total: ₹{group.total_amount}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
                 <div className="flex items-center gap-2 ml-4">
-                  {getStatusIcon(item)}
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(item)}`}>
-                    {getStatusText(item)}
+                  {getStatusIcon(group)}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(group)}`}>
+                    {getStatusText(group)}
                   </span>
                 </div>
               </div>

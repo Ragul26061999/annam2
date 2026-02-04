@@ -202,6 +202,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [showMedicalHistoryForm, setShowMedicalHistoryForm] = useState(false);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0);
+  const [medicationRefreshTrigger, setMedicationRefreshTrigger] = useState(0);
   const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
   const [showClinicalRecordsModal, setShowClinicalRecordsModal] = useState(false);
   const [clinicalRecordsSubTab, setClinicalRecordsSubTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge'>('overview');
@@ -1866,7 +1867,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
             )}
 
             {/* Medications Tab */}
-            {activeTab === 'medications' && <MedicationHistory patientId={patient.id} />}
+            {activeTab === 'medications' && <MedicationHistory patientId={patient.id} refreshTrigger={medicationRefreshTrigger} />}
 
             {/* Appointments Tab */}
             {activeTab === 'appointments' && (
@@ -2404,7 +2405,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           patientName={patient.name}
           currentUser={currentUser}
           onClose={() => setShowPrescriptionForm(false)}
-          onPrescriptionCreated={fetchPatientData}
+          onPrescriptionCreated={() => {
+            fetchPatientData();
+            setMedicationRefreshTrigger(prev => prev + 1);
+          }}
         />
       )}
       {showMedicalHistoryForm && (

@@ -94,6 +94,32 @@ export interface MedicationHistory {
   prescription_image_url?: string;
 }
 
+export interface PrescriptionGroup {
+  id: string;
+  prescription_id?: string;
+  patient_id: string;
+  prescribed_date: string;
+  dispensed_date?: string;
+  prescribed_by: string;
+  dispensed_by?: string;
+  status: 'prescribed' | 'dispensed' | 'completed' | 'discontinued';
+  prescription_image_url?: string;
+  total_amount?: number;
+  payment_status?: string;
+  medications: MedicationItem[];
+}
+
+export interface MedicationItem {
+  id: string;
+  medication_id: string;
+  medication_name: string;
+  generic_name: string;
+  dosage: string;
+  dosage_form?: string;
+  frequency: string;
+  duration: string;
+}
+
 export interface PharmacyBilling {
   id: string;
   bill_number: string;
@@ -477,6 +503,150 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
     return history;
   } catch (error) {
     console.error('Error in getPatientMedicationHistory:', error);
+    throw error;
+  }
+}
+
+export async function getPatientPrescriptionGroups(patientId: string): Promise<PrescriptionGroup[]> {
+  try {
+    const prescriptionGroups: PrescriptionGroup[] = [];
+
+    // Get prescribed medications from prescriptions (grouped by prescription)
+    const { data: prescriptions, error: prescError } = await supabase
+      .from('prescriptions')
+      .select(`
+        id,
+        prescription_id,
+        created_at,
+        prescription_image_url,
+        doctor:doctor_id(user:user_id(name)),
+        prescription_items(
+          medication_id,
+          dosage,
+          frequency,
+          duration,
+          medication:medication_id(name, generic_name, dosage_form)
+        )
+      `)
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (prescError) {
+      console.error('Error fetching prescriptions:', prescError);
+    } else if (prescriptions) {
+      prescriptions.forEach((prescription: any) => {
+        const doctorName = prescription.doctor?.user?.name || 'Unknown Doctor';
+        const items = prescription.prescription_items || [];
+        
+        const medications: MedicationItem[] = items.map((item: any) => {
+          const medicine = item.medication;
+          return {
+            id: `${prescription.id}_${item.medication_id}`,
+            medication_id: item.medication_id,
+            medication_name: medicine?.name || 'Unknown',
+            generic_name: medicine?.generic_name || '',
+            dosage: item.dosage || '',
+            dosage_form: medicine?.dosage_form || '',
+            frequency: item.frequency || '',
+            duration: item.duration || ''
+          };
+        });
+
+        prescriptionGroups.push({
+          id: prescription.id,
+          prescription_id: prescription.prescription_id,
+          patient_id: patientId,
+          prescribed_date: prescription.created_at,
+          prescribed_by: doctorName,
+          status: 'prescribed',
+          prescription_image_url: prescription.prescription_image_url,
+          medications: medications
+        });
+      });
+    }
+
+    // Get dispensed medications (grouped by dispense record)
+    const { data: dispensed, error: dispError } = await supabase
+      .from('prescription_dispensed')
+      .select(`
+        id,
+        dispensed_date,
+        total_amount,
+        payment_status,
+        pharmacist_id,
+        prescription_dispensed_items(
+          medication_id,
+          dispensed_quantity,
+          unit_price,
+          total_price
+        )
+      `)
+      .eq('patient_id', patientId)
+      .order('dispensed_date', { ascending: false });
+
+    if (dispError) {
+      console.error('Error fetching dispensed medications:', dispError);
+    } else if (dispensed) {
+      // Get pharmacist names
+      const pharmacistIds = [...new Set(dispensed.map((d: any) => d.pharmacist_id))];
+      const { data: pharmacists } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', pharmacistIds);
+
+      // Get medication names
+      const medicationIds = dispensed.flatMap((d: any) =>
+        d.prescription_dispensed_items?.map((item: any) => item.medication_id) || []
+      );
+      const { data: medications } = await supabase
+        .from('medications')
+        .select('id, name, generic_name, strength, dosage_form')
+        .in('id', medicationIds);
+
+      dispensed.forEach((dispense: any) => {
+        const pharmacist = pharmacists?.find((p: any) => p.id === dispense.pharmacist_id);
+        const dispensedItems = dispense.prescription_dispensed_items || [];
+        
+        const medicationItems: MedicationItem[] = dispensedItems.map((item: any) => {
+          if (!item) return null;
+          const medication = medications?.find((m: any) => m.id === item.medication_id);
+          return {
+            id: `${dispense.id}_${item.medication_id}`,
+            medication_id: item.medication_id,
+            medication_name: medication?.name || 'Unknown',
+            generic_name: medication?.generic_name || '',
+            dosage: medication ? `${medication.strength || ''} ${medication.dosage_form || ''}`.trim() : '',
+            dosage_form: medication?.dosage_form || '',
+            frequency: `Qty: ${item.dispensed_quantity}`,
+            duration: ''
+          };
+        }).filter(Boolean);
+
+        prescriptionGroups.push({
+          id: dispense.id,
+          patient_id: patientId,
+          prescribed_date: '',
+          dispensed_date: dispense.dispensed_date,
+          prescribed_by: '',
+          dispensed_by: pharmacist?.name || 'Unknown Pharmacist',
+          status: 'dispensed',
+          total_amount: dispense.total_amount,
+          payment_status: dispense.payment_status,
+          medications: medicationItems
+        });
+      });
+    }
+
+    // Sort by date (most recent first)
+    prescriptionGroups.sort((a, b) => {
+      const dateA = new Date(a.dispensed_date || a.prescribed_date);
+      const dateB = new Date(b.dispensed_date || b.prescribed_date);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    return prescriptionGroups;
+  } catch (error) {
+    console.error('Error in getPatientPrescriptionGroups:', error);
     throw error;
   }
 }

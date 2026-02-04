@@ -18,6 +18,7 @@ import { supabase } from '../../src/lib/supabase';
 import VitalsQueueCard from '../../components/VitalsQueueCard';
 import { getQueueStats } from '../../src/lib/outpatientQueueService';
 import { getBillingRecords, type BillingRecord } from '../../src/lib/financeService';
+import StaffSelect from '../../src/components/StaffSelect';
 
 interface OutpatientStats {
   totalPatients: number;
@@ -109,6 +110,7 @@ function OutpatientPageContent() {
   
   // Injection queue state
   const [injectionQueue, setInjectionQueue] = useState<any[]>([]);
+  const [updatedInjections, setUpdatedInjections] = useState<any[]>([]);
   const [injectionLoading, setInjectionLoading] = useState(false);
 
   // Billing state
@@ -180,13 +182,23 @@ function OutpatientPageContent() {
     }
   }, [searchParams]);
   useEffect(() => {
+    // Check environment variables first
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.error('Missing Supabase environment variables:', {
+        url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        key: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      });
+      return;
+    }
+
     loadOutpatientData();
     loadQueueStats();
     loadInjectionQueue();
 
     // Auto-refresh every 30 seconds
     const intervalMs = 0;
-    let interval: ReturnType<typeof setInterval> | undefined;
+    let interval: NodeJS.Timeout;
+    
     if (intervalMs > 0) {
       interval = setInterval(() => {
         loadOutpatientData();
@@ -296,6 +308,111 @@ function OutpatientPageContent() {
       setInjectionQueue([]);
     } finally {
       setInjectionLoading(false);
+    }
+  };
+
+  const updateInjectionStatus = async (itemId: string, status: string, staffName: string | null) => {
+    console.log('=== UPDATE INJECTION STATUS CALLED ===', new Date().toISOString());
+    console.log('Updating injection status:', { itemId, status, staffName });
+
+    // Map UI status values to database-allowed values
+    const statusMapping: { [key: string]: string } = {
+      'completed': 'dispensed',
+      'pending': 'active',
+      'cancelled': 'expired'
+    };
+
+    const dbStatus = statusMapping[status] || 'active';
+    console.log('Mapped status:', { uiStatus: status, dbStatus });
+    
+    // Double-check the mapping
+    if (status === 'completed' && dbStatus !== 'dispensed') {
+      console.error('Mapping error: completed should map to dispensed');
+    }
+    if (status === 'pending' && dbStatus !== 'active') {
+      console.error('Mapping error: pending should map to active');
+    }
+    if (status === 'cancelled' && dbStatus !== 'expired') {
+      console.error('Mapping error: cancelled should map to expired');
+    }
+    
+    try {
+      const updateData = {
+        status: dbStatus,
+        edited_by_name: staffName || 'Unknown Staff',
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log('Updating prescription with data:', updateData);
+
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .update(updateData)
+        .eq('id', itemId)
+        .select();
+
+      console.log('Update result:', { data, error });
+
+      if (error) {
+        console.error('Error updating injection status:', {
+          error: error,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        alert(`Failed to update status: ${error.message || 'Unknown error'}`);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.error('No prescription found with ID:', itemId);
+        alert('Prescription not found');
+        return;
+      }
+
+      console.log('Successfully updated prescription:', data[0]);
+
+      // Find the item in the current queue
+      const itemToUpdate = injectionQueue.find(item => item.id === itemId);
+      if (itemToUpdate) {
+        const updatedItem = { 
+          ...itemToUpdate, 
+          status: status, // Keep the UI status for display
+          dbStatus: dbStatus, // Store the database status
+          updatedByName: staffName || 'Unknown Staff',
+          updatedAt: new Date().toISOString()
+        };
+
+        console.log('Updating local state with item:', updatedItem);
+
+        // If status is 'completed' or 'cancelled', move to updated injections
+        if (status === 'completed' || status === 'cancelled') {
+          setUpdatedInjections(prev => [...prev, updatedItem]);
+          setInjectionQueue(prev => prev.filter(item => item.id !== itemId));
+          console.log('Moved item to updated injections');
+        } else {
+          // Update local state for pending status
+          setInjectionQueue(prev => prev.map(item => 
+            item.id === itemId ? updatedItem : item
+          ));
+          console.log('Updated item in current queue');
+        }
+      } else {
+        console.error('Item not found in local queue:', itemId);
+      }
+
+      // Refresh the queue
+      console.log('Refreshing injection queue...');
+      loadInjectionQueue();
+    } catch (err) {
+      console.error('Unexpected error in updateInjectionStatus:', {
+        error: err,
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        name: err instanceof Error ? err.name : undefined
+      });
+      alert(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -1237,10 +1354,202 @@ function OutpatientPageContent() {
                               ))}
                             </div>
                           </div>
+
+                          {/* Status Controls with Staff Name Input */}
+                          <div className="border-t pt-3 mt-3">
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Staff Name</label>
+                                <input
+                                  type="text"
+                                  placeholder="Enter staff name..."
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  onChange={(e) => {
+                                    setInjectionQueue(prev => prev.map(queueItem => 
+                                      queueItem.id === item.id ? { ...queueItem, staffName: e.target.value } : queueItem
+                                    ));
+                                  }}
+                                  value={item.staffName || ''}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Update Status</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      console.log('Dispensed button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'completed', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors"
+                                  >
+                                    Dispensed
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      console.log('Active button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'pending', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-md hover:bg-yellow-200 transition-colors"
+                                  >
+                                    Active
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      console.log('Expired button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'cancelled', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors"
+                                  >
+                                    Expired
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          {item.status && item.updatedByName && (
+                            <div className="mt-2 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                              Status: <span className="font-medium">
+                                {item.status === 'completed' ? 'Dispensed' : 
+                                 item.status === 'pending' ? 'Active' : 
+                                 item.status === 'cancelled' ? 'Expired' : 
+                                 item.status}
+                              </span> by 
+                              <span className="font-medium">
+                                {item.updatedByName || 'Unknown Staff'}
+                              </span>
+                              {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Updated Injections Section */}
+              {updatedInjections.length > 0 && (
+                <div className="mt-8">
+                  <div className="mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Updated Injections</h3>
+                      <p className="text-sm text-gray-600 mt-1">Injections that have been completed or cancelled</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {updatedInjections.map((item) => (
+                      <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow opacity-75">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`p-2 rounded-lg ${
+                                item.status === 'completed' ? 'bg-green-100' : 
+                                item.status === 'pending' ? 'bg-yellow-100' : 
+                                'bg-red-100'
+                              }`}>
+                                <Syringe className={`h-5 w-5 ${
+                                  item.status === 'completed' ? 'text-green-600' : 
+                                  item.status === 'pending' ? 'text-yellow-600' : 
+                                  'text-red-600'
+                                }`} />
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
+                                <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
+                              </div>
+                              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                item.status === 'completed' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : item.status === 'pending'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {item.status === 'completed' ? 'Dispensed' : 
+                                 item.status === 'pending' ? 'Active' : 
+                                 item.status === 'cancelled' ? 'Expired' : 
+                                 item.status}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Age/Gender:</span>
+                                <span className="ml-2 text-gray-600">
+                                  {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
+                                </span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Phone:</span>
+                                <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Prescription ID:</span>
+                                <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Time:</span>
+                                <span className="ml-2 text-gray-600">
+                                  {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="border-t pt-3">
+                              <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
+                              <div className="space-y-2">
+                                {item.injection_items.map((injection: any, index: number) => (
+                                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                      <Syringe className="h-4 w-4 text-gray-600" />
+                                      <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
+                                      <span className="text-sm text-gray-600">
+                                        ({injection.dosage} • {injection.frequency} • {injection.duration})
+                                      </span>
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                      Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Status Update Information */}
+                            <div className="border-t pt-3 mt-3">
+                              <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                                Status: <span className="font-medium">
+                                  {item.status === 'completed' ? 'Dispensed' : 
+                                   item.status === 'pending' ? 'Active' : 
+                                   item.status === 'cancelled' ? 'Expired' : 
+                                   item.status}
+                                </span> by 
+                                <span className="font-medium">
+                                  {item.updatedByName || 'Unknown Staff'}
+                                </span>
+                                {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -2286,7 +2595,7 @@ function OutpatientPageContent() {
       )}
 
 
-    </div >
+    </div>
   );
 }
 
