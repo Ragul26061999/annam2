@@ -318,88 +318,126 @@ export function IPBreakdownBillPrint({ billing }: IPBreakdownBillPrintProps) {
           .print-portal-root .mt-4 {
             margin-top: 16px;
           }
+
+          .print-portal-root .patient-info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+            font-size: 8pt;
+          }
+
+          .print-portal-root .patient-info-table th,
+          .print-portal-root .patient-info-table td {
+            border: 1px solid #000;
+            padding: 3px 5px;
+            text-align: left;
+          }
+
+          .print-portal-root .patient-info-table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            font-size: 9pt;
+          }
+
+          /* Remove all spaces between sections */
+          .print-portal-root .department-section {
+            margin: 0;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          /* Remove top margins */
+          .print-portal-root .department-section:first-child {
+            margin-top: 0;
+          }
+
+          /* Remove spaces on new pages */
+          @media print {
+            .print-portal-root .department-section {
+              break-before: auto;
+              page-break-before: auto;
+              margin-top: 0;
+            }
+          }
+
+          .print-portal-root .department-header {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+          }
+
+          .print-portal-root .department-total {
+            text-align: right;
+            font-weight: bold;
+            margin: 5px 0 0 0;
+          }
+
+          .print-portal-root .final-summary {
+            margin: 0;
+            border: 2px solid #000;
+            padding: 15px;
+          }
+
+          .print-portal-root .print-title {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 15px;
+          }
+
+          .print-portal-root .final-summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+
+          .print-portal-root .final-summary-total {
+            font-weight: bold;
+            border-top: 2px solid #000;
+            padding-top: 10px;
+          }
         }
       `}</style>
 
       <div className="p-6">
-        {/* Header Block - Matching Regular Billing Style */}
-        <div className="flex flex-col items-center justify-center mb-2">
-          {/* Logo */}
-          <div className="h-28 w-full flex items-center justify-center mb-2">
-             <img 
-               src="/images/logo.png" 
-               alt="Annam Hospital Logo" 
-               className="h-full w-auto object-contain"
-             />
-          </div>
-          
-          <div className="text-center">
-            <p className="text-sm font-semibold text-gray-800">2/300, Rajkanna Nagar, Veerapandianpatnam, Tiruchendur Taluk,</p>
-            <p className="text-sm font-semibold text-gray-800">Thoothukudi - 628 216.</p>
-            <div className="text-sm text-gray-800 mt-1 flex flex-col items-center justify-center">
-              <span className="font-bold">Cell: 8681850592, 8681950592</span>
-              <span>Email: annammultispecialityhospital@gmail.com</span>
-            </div>
-          </div>
-          
-          <div className="text-center mt-4 pb-2 border-b-2 border-gray-800">
-            <h2 className="text-lg font-bold uppercase inline-block px-4 pb-1 text-blue-900 tracking-wider">
-              DEPARTMENT-WISE BILL BREAKDOWN
-            </h2>
-          </div>
-        </div>
-
-        {/* Patient Identification - Matching Regular Billing Format */}
-        <div className="section-break mb-8">
-          <div className="flex gap-8 text-sm font-medium pt-4">
-            {/* Left Column */}
-            <div className="w-1/2 flex flex-col gap-4">
-              <div className="flex items-baseline">
-                <span className="font-bold w-24 shrink-0">Name :</span>
-                <span className="flex-1 uppercase border-b border-dotted border-gray-400 pb-1">{billing.patient?.name || ''}</span>
-              </div>
-              <div className="flex items-start">
-                <span className="font-bold w-24 shrink-0 mt-1">Address :</span>
-                <span className="flex-1 min-h-[48px] whitespace-pre-wrap border-b border-dotted border-gray-400 pb-1">{billing.patient?.address || ''}</span>
-              </div>
-              <div className="flex items-baseline mt-auto">
-                <span className="font-bold w-24 shrink-0">Bill No. :</span>
-                <span className="flex-1 uppercase font-bold border-b border-dotted border-gray-400 pb-1">BREAKDOWN-{billing.admission?.ip_number || 'N/A'}</span>
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="w-1/2 flex flex-col gap-3">
-              <div className="flex items-baseline">
-                <span className="font-bold w-36 shrink-0">Age & Sex :</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">
-                  {billing.patient?.age || '__'} Yrs / {billing.patient?.gender || '__'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                 <div className="flex items-baseline flex-1">
-                    <span className="font-bold w-20 shrink-0">O.P. No.</span>
-                    <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{billing.patient?.patient_id || ''}</span>
-                 </div>
-                 <div className="flex items-baseline flex-1 ml-4">
-                    <span className="font-bold w-16 shrink-0 text-right pr-2">I.P. No.</span>
-                    <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{billing.admission?.ip_number || ''}</span>
-                 </div>
-              </div>
-              <div className="flex items-baseline">
-                <span className="font-bold w-36 shrink-0">Date of Admission :</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{formatDate(billing.admission?.admission_date)}</span>
-              </div>
-              <div className="flex items-baseline">
-                <span className="font-bold w-36 shrink-0">Date of Discharge :</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{formatDate(billing.admission?.discharge_date)}</span>
-              </div>
-              <div className="flex items-baseline">
-                <span className="font-bold w-36 shrink-0">Room/Bed :</span>
-                <span className="flex-1 border-b border-dotted border-gray-400 pb-1">{billing.admission?.room_number || 'N/A'} / {billing.admission?.bed_number || 'N/A'}</span>
-              </div>
-            </div>
-          </div>
+        {/* Patient Information Table - Two Column Side by Side Layout */}
+        <div className="section-break">
+          <table className="patient-info-table">
+            <thead>
+              <tr>
+                <th colSpan={4} className="text-center font-bold">PATIENT INFORMATION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="font-bold" style={{width: '15%'}}>Name</td>
+                <td style={{width: '35%'}}>{billing.patient?.name || 'N/A'}</td>
+                <td className="font-bold" style={{width: '15%'}}>Age & Sex</td>
+                <td style={{width: '35%'}}>{billing.patient?.age || 'N/A'} Yrs / {billing.patient?.gender || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold">Address</td>
+                <td colSpan={3}>{billing.patient?.address || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold">O.P. No.</td>
+                <td>{billing.patient?.patient_id || 'N/A'}</td>
+                <td className="font-bold">I.P. No.</td>
+                <td>{billing.admission?.ip_number || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold">Date of Admission</td>
+                <td>{formatDate(billing.admission?.admission_date)}</td>
+                <td className="font-bold">Date of Discharge</td>
+                <td>{formatDate(billing.admission?.discharge_date)}</td>
+              </tr>
+              <tr>
+                <td className="font-bold">Room/Bed</td>
+                <td>{billing.admission?.room_number || 'N/A'} / {billing.admission?.bed_number || 'N/A'}</td>
+                <td className="font-bold">Bill No.</td>
+                <td>BREAKDOWN-{billing.admission?.ip_number || 'N/A'}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         {/* Department-wise Breakdown */}
