@@ -192,6 +192,43 @@ export async function getTotalAvailableAdvance(bedAllocationId: string): Promise
   return advances.reduce((sum, adv) => sum + (adv.available_amount || 0), 0);
 }
 
+export async function createAdvanceFromPatientRegistration(
+  bedAllocationId: string,
+  patientId: string,
+  advanceAmount: number,
+  paymentMethod: string,
+  referenceNumber?: string,
+  notes?: string,
+  createdBy?: string
+): Promise<IPAdvance> {
+  const advanceData: Partial<IPAdvance> = {
+    bed_allocation_id: bedAllocationId,
+    patient_id: patientId,
+    amount: advanceAmount,
+    payment_type: paymentMethod as Exclude<PaymentType, 'advance'>,
+    reference_number: referenceNumber,
+    notes: notes,
+    advance_date: new Date().toISOString(),
+    used_amount: 0,
+    available_amount: advanceAmount,
+    status: 'active',
+    created_by: createdBy
+  };
+
+  const { data, error } = await supabase
+    .from('ip_advances')
+    .insert([advanceData])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating advance from registration:', error);
+    throw new Error(`Failed to create advance: ${error.message}`);
+  }
+
+  return data;
+}
+
 export async function cancelAdvance(advanceId: string, userId?: string): Promise<void> {
   const { error } = await supabase
     .from('ip_advances')

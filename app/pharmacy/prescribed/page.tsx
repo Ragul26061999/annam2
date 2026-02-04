@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer, Eye, X } from 'lucide-react'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer, Eye, X, Pill, Syringe } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 import { PharmacyBillPrint } from '../../../src/components/pharmacy/PharmacyBillPrint'
 
@@ -24,6 +24,7 @@ interface PrescriptionItem {
   medication_id: string
   medication_name: string
   dosage: string
+  dosage_form?: string
   frequency: string
   duration: string
   quantity: number
@@ -298,7 +299,7 @@ export default function PrescribedListPage() {
             unit_price,
             total_price,
             status,
-            medication:medications(id, name, generic_name, strength)
+            medication:medications(id, name, generic_name, strength, dosage_form)
           )
         `)
         .order('created_at', { ascending: false })
@@ -315,6 +316,7 @@ export default function PrescribedListPage() {
           medication_id: item.medication_id,
           medication_name: item.medication?.name || 'Unknown Medication',
           dosage: item.dosage,
+          dosage_form: item.medication?.dosage_form || '',
           frequency: item.frequency,
           duration: item.duration,
           quantity: item.quantity,
@@ -393,6 +395,42 @@ export default function PrescribedListPage() {
         return <FileText className="w-4 h-4" />
     }
   }
+
+  const getMedicationTypeIcon = (item: PrescriptionItem) => {
+    const dosageForm = item.dosage_form?.toLowerCase() || '';
+    
+    // Check if it's an injection
+    if (dosageForm.includes('injection') || 
+        dosageForm.includes('inject') || 
+        dosageForm.includes('iv') || 
+        dosageForm.includes('im') || 
+        dosageForm.includes('sc') || 
+        dosageForm.includes('vial') || 
+        dosageForm.includes('ampoule')) {
+      return <Syringe className="h-4 w-4 text-purple-600" />;
+    }
+    
+    // Default to pill for oral medications and others
+    return <Pill className="h-4 w-4 text-blue-600" />;
+  };
+
+  const getMedicationTypeIconColor = (item: PrescriptionItem) => {
+    const dosageForm = item.dosage_form?.toLowerCase() || '';
+    
+    // Check if it's an injection
+    if (dosageForm.includes('injection') || 
+        dosageForm.includes('inject') || 
+        dosageForm.includes('iv') || 
+        dosageForm.includes('im') || 
+        dosageForm.includes('sc') || 
+        dosageForm.includes('vial') || 
+        dosageForm.includes('ampoule')) {
+      return 'bg-purple-100';
+    }
+    
+    // Default to blue for oral medications and others
+    return 'bg-blue-100';
+  };
 
   const handleCreateBill = (prescription: Prescription) => {
     router.push(`/pharmacy/newbilling?prescriptionId=${encodeURIComponent(prescription.id)}`)
@@ -664,14 +702,19 @@ export default function PrescribedListPage() {
                 <div className="space-y-2">
                   {prescription.items.map((item) => (
                     <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="font-medium">{item.medication_name}</div>
-                        <div className="text-sm text-gray-600">
-                          {item.dosage} • {item.frequency} • {item.duration}
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className={`p-2 ${getMedicationTypeIconColor(item)} rounded-lg`}>
+                          {getMedicationTypeIcon(item)}
                         </div>
-                        {item.instructions && (
-                          <div className="text-sm text-blue-600 mt-1">{item.instructions}</div>
-                        )}
+                        <div className="flex-1">
+                          <div className="font-medium">{item.medication_name}</div>
+                          <div className="text-sm text-gray-600">
+                            {item.dosage} • {item.frequency} • {item.duration}
+                          </div>
+                          {item.instructions && (
+                            <div className="text-sm text-blue-600 mt-1">{item.instructions}</div>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="font-medium">

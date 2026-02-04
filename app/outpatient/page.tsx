@@ -9,7 +9,7 @@ import {
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
   MoreVertical, Edit3, Trash2, Printer, FileText,
-  Receipt, CreditCard, IndianRupee, Download
+  Receipt, CreditCard, IndianRupee, Download, Syringe
 } from 'lucide-react';
 import { getDashboardStats } from '../../src/lib/dashboardService';
 import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
@@ -104,8 +104,12 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients' | 'billing'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('queue');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
+  
+  // Injection queue state
+  const [injectionQueue, setInjectionQueue] = useState<any[]>([]);
+  const [injectionLoading, setInjectionLoading] = useState(false);
 
   // Billing state
   const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
@@ -162,7 +166,7 @@ function OutpatientPageContent() {
 
     // Check for tab parameter
     const tab = searchParams?.get('tab');
-    if (tab === 'queue' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
+    if (tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
       setActiveTab(tab);
     }
 
@@ -178,6 +182,7 @@ function OutpatientPageContent() {
   useEffect(() => {
     loadOutpatientData();
     loadQueueStats();
+    loadInjectionQueue();
 
     // Auto-refresh every 30 seconds
     const intervalMs = 0;
@@ -186,6 +191,7 @@ function OutpatientPageContent() {
       interval = setInterval(() => {
         loadOutpatientData();
         loadQueueStats();
+        loadInjectionQueue();
       }, intervalMs);
     }
 
@@ -203,6 +209,93 @@ function OutpatientPageContent() {
       }
     } catch (err) {
       console.error('Error loading queue stats:', err);
+    }
+  };
+
+  const loadInjectionQueue = async () => {
+    try {
+      setInjectionLoading(true);
+      
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Fetch prescriptions with injection medications for today
+      const { data: prescriptions, error } = await supabase
+        .from('prescriptions')
+        .select(`
+          id,
+          prescription_id,
+          patient_id,
+          issue_date,
+          created_at,
+          patient:patients(id, patient_id, name, date_of_birth, gender, phone),
+          prescription_items(
+            id,
+            medication_id,
+            dosage,
+            frequency,
+            duration,
+            quantity,
+            dispensed_quantity,
+            medication:medications(id, name, dosage_form)
+          )
+        `)
+        .eq('status', 'active')
+        .gte('created_at', `${today}T00:00:00`)
+        .lt('created_at', `${today}T23:59:59`);
+
+      if (error) {
+        console.error('Error fetching injection prescriptions:', error);
+        setInjectionQueue([]);
+        return;
+      }
+
+      // Filter prescriptions that have injection medications
+      const injectionPrescriptions = (prescriptions || []).filter((prescription: any) => {
+        const items = prescription.prescription_items || [];
+        return items.some((item: any) => {
+          const dosageForm = item.medication?.dosage_form?.toLowerCase() || '';
+          return dosageForm.includes('injection') || 
+                 dosageForm.includes('inject') || 
+                 dosageForm.includes('iv') || 
+                 dosageForm.includes('im') || 
+                 dosageForm.includes('sc') || 
+                 dosageForm.includes('vial') || 
+                 dosageForm.includes('ampoule');
+        });
+      });
+
+      // Format the data for display
+      const formattedQueue = injectionPrescriptions.map((prescription: any) => {
+        const patient = prescription.patient;
+        const items = prescription.prescription_items || [];
+        const injectionItems = items.filter((item: any) => {
+          const dosageForm = item.medication?.dosage_form?.toLowerCase() || '';
+          return dosageForm.includes('injection') || 
+                 dosageForm.includes('inject') || 
+                 dosageForm.includes('iv') || 
+                 dosageForm.includes('im') || 
+                 dosageForm.includes('sc') || 
+                 dosageForm.includes('vial') || 
+                 dosageForm.includes('ampoule');
+        });
+
+        return {
+          id: prescription.id,
+          prescription_id: prescription.prescription_id,
+          patient: patient,
+          injection_items: injectionItems,
+          created_at: prescription.created_at,
+          issue_date: prescription.issue_date
+        };
+      });
+
+      setInjectionQueue(formattedQueue);
+    } catch (err) {
+      console.error('Error loading injection queue:', err);
+      setInjectionQueue([]);
+    } finally {
+      setInjectionLoading(false);
     }
   };
 
@@ -874,7 +967,7 @@ function OutpatientPageContent() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* Total Outpatients */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between">
@@ -916,6 +1009,20 @@ function OutpatientPageContent() {
             </div>
             <div className="p-3 bg-orange-100 rounded-xl">
               <Clock className="h-5 w-5 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Waiting for Injection */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('injection')}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Injections</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{injectionQueue.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Pending</p>
+            </div>
+            <div className="p-3 bg-red-100 rounded-xl">
+              <Syringe className="h-5 w-5 text-red-600" />
             </div>
           </div>
         </div>
@@ -987,6 +1094,16 @@ function OutpatientPageContent() {
               Waiting for Vitals ({queueStats.totalWaiting})
             </button>
             <button
+              onClick={() => setActiveTab('injection')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'injection'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              <Syringe className="h-4 w-4" />
+              Waiting for Injection ({injectionQueue.length})
+            </button>
+            <button
               onClick={() => setActiveTab('appointments')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'appointments'
                 ? 'bg-orange-100 text-orange-700'
@@ -1028,6 +1145,105 @@ function OutpatientPageContent() {
                 loadQueueStats();
               }}
             />
+          )}
+
+          {activeTab === 'injection' && (
+            <div>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Waiting for Injection</h3>
+                  <p className="text-sm text-gray-600 mt-1">Patients prescribed with injection medications</p>
+                </div>
+                <button
+                  onClick={() => {
+                    loadInjectionQueue();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </button>
+              </div>
+
+              {injectionLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  <span className="ml-3 text-gray-600">Loading injection queue...</span>
+                </div>
+              ) : injectionQueue.length === 0 ? (
+                <div className="text-center py-12">
+                  <Syringe className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Patients Waiting for Injection</h3>
+                  <p className="text-gray-600">No patients have been prescribed injection medications today.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {injectionQueue.map((item) => (
+                    <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                              <Syringe className="h-5 w-5 text-red-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
+                              <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Age/Gender:</span>
+                              <span className="ml-2 text-gray-600">
+                                {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Phone:</span>
+                              <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Prescription ID:</span>
+                              <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Time:</span>
+                              <span className="ml-2 text-gray-600">
+                                {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                }) : 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="border-t pt-3">
+                            <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
+                            <div className="space-y-2">
+                              {item.injection_items.map((injection: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-red-50 rounded-lg">
+                                  <div className="flex items-center gap-2">
+                                    <Syringe className="h-4 w-4 text-red-600" />
+                                    <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
+                                    <span className="text-sm text-gray-600">
+                                      ({injection.dosage} • {injection.frequency} • {injection.duration})
+                                    </span>
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {activeTab === 'appointments' && (

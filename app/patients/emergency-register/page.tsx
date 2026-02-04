@@ -22,6 +22,11 @@ interface EmergencyPatientData {
   admissionType: string;
   admissionDate: string;
   admissionTime: string;
+  // Advance Payment fields
+  advanceAmount?: string;
+  advancePaymentMethod?: string;
+  advanceReferenceNumber?: string;
+  advanceNotes?: string;
 }
 
 export default function EmergencyPatientRegisterPage() {
@@ -78,7 +83,12 @@ export default function EmergencyPatientRegisterPage() {
       insuranceProvider: '',
       insuranceNumber: '',
       initialSymptoms: '',
-      referredBy: ''
+      referredBy: '',
+      // Advance Payment fields
+      advanceAmount: emergencyData.advanceAmount,
+      advancePaymentMethod: emergencyData.advancePaymentMethod,
+      advanceReferenceNumber: emergencyData.advanceReferenceNumber,
+      advanceNotes: emergencyData.advanceNotes
     };
   };
 

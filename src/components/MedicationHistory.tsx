@@ -13,7 +13,8 @@ import {
   XCircle,
   Plus,
   Search,
-  Filter
+  Filter,
+  Syringe
 } from 'lucide-react';
 import { getPatientMedicationHistory, type MedicationHistory } from '../lib/pharmacyService';
 
@@ -86,6 +87,42 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
       return 'bg-green-100 text-green-800 border-green-200';
     }
     return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+  };
+
+  const getMedicationTypeIcon = (item: MedicationHistory) => {
+    const dosageForm = item.dosage_form?.toLowerCase() || '';
+    
+    // Check if it's an injection
+    if (dosageForm.includes('injection') || 
+        dosageForm.includes('inject') || 
+        dosageForm.includes('iv') || 
+        dosageForm.includes('im') || 
+        dosageForm.includes('sc') || 
+        dosageForm.includes('vial') || 
+        dosageForm.includes('ampoule')) {
+      return <Syringe className="h-4 w-4 text-purple-600" />;
+    }
+    
+    // Default to pill for oral medications and others
+    return <Pill className="h-4 w-4 text-blue-600" />;
+  };
+
+  const getMedicationTypeIconColor = (item: MedicationHistory) => {
+    const dosageForm = item.dosage_form?.toLowerCase() || '';
+    
+    // Check if it's an injection
+    if (dosageForm.includes('injection') || 
+        dosageForm.includes('inject') || 
+        dosageForm.includes('iv') || 
+        dosageForm.includes('im') || 
+        dosageForm.includes('sc') || 
+        dosageForm.includes('vial') || 
+        dosageForm.includes('ampoule')) {
+      return 'bg-purple-100';
+    }
+    
+    // Default to blue for oral medications and others
+    return 'bg-blue-100';
   };
 
   if (loading) {
@@ -190,8 +227,8 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Pill className="h-4 w-4 text-blue-600" />
+                    <div className={`p-2 ${getMedicationTypeIconColor(item)} rounded-lg`}>
+                      {getMedicationTypeIcon(item)}
                     </div>
                     <div>
                       <h4 className="font-medium text-gray-900">{item.medication_name}</h4>

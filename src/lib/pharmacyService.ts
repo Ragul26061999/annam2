@@ -81,6 +81,7 @@ export interface MedicationHistory {
   medication_name: string;
   generic_name: string;
   dosage: string;
+  dosage_form?: string;
   frequency: string;
   duration: string;
   prescribed_date: string;
@@ -362,7 +363,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
           dosage,
           frequency,
           duration,
-          medication:medication_id(name, generic_name)
+          medication:medication_id(name, generic_name, dosage_form)
         )
       `)
       .eq('patient_id', patientId)
@@ -385,6 +386,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
             medication_name: medicine?.name || 'Unknown',
             generic_name: medicine?.generic_name || '',
             dosage: item.dosage || '',
+            dosage_form: medicine?.dosage_form || '',
             frequency: item.frequency || '',
             duration: item.duration || '',
             prescribed_date: prescription.created_at,
@@ -447,6 +449,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
             medication_name: medication?.name || 'Unknown',
             generic_name: medication?.generic_name || '',
             dosage: medication ? `${medication.strength || ''} ${medication.dosage_form || ''}`.trim() : '',
+            dosage_form: medication?.dosage_form || '',
             frequency: `Qty: ${item.dispensed_quantity}`,
             duration: '',
             prescribed_date: '',

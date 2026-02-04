@@ -21,7 +21,8 @@ import {
   Building,
   UserCheck,
   ClipboardList,
-  Bed
+  Bed,
+  Wallet
 } from 'lucide-react';
 import { generateUHID } from '../src/lib/patientService';
 import { fetchAvailableBeds } from '../src/lib/registrationService';
@@ -85,6 +86,12 @@ interface PatientRegistrationData {
 
   // Staff
   staffId?: string;
+
+  // Advance Payment fields
+  advanceAmount?: string;
+  advancePaymentMethod?: string;
+  advanceReferenceNumber?: string;
+  advanceNotes?: string;
 }
 
 interface PatientRegistrationFormProps {
@@ -134,7 +141,12 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
     insuranceNumber: '',
     initialSymptoms: '',
     referredBy: '',
-    staffId: ''
+    staffId: '',
+    // Advance Payment fields
+    advanceAmount: '',
+    advancePaymentMethod: 'cash',
+    advanceReferenceNumber: '',
+    advanceNotes: ''
   });
 
   // State for available beds
@@ -942,6 +954,82 @@ export default function PatientRegistrationForm({ onSubmit, onCancel, isLoading 
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Advance Payment Section */}
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-900 mb-4 flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            Advance Payment (Optional)
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="advanceAmount" className="block text-sm font-medium text-gray-700 mb-1">
+                Advance Amount
+              </label>
+              <input
+                type="number"
+                id="advanceAmount"
+                value={formData.advanceAmount}
+                onChange={(e) => handleInputChange('advanceAmount', e.target.value)}
+                className="input-field"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div>
+              <label htmlFor="advancePaymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method
+              </label>
+              <select
+                id="advancePaymentMethod"
+                value={formData.advancePaymentMethod}
+                onChange={(e) => handleInputChange('advancePaymentMethod', e.target.value)}
+                className="input-field"
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="net_banking">Net Banking</option>
+                <option value="cheque">Cheque</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="advanceReferenceNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                Reference Number
+              </label>
+              <input
+                type="text"
+                id="advanceReferenceNumber"
+                value={formData.advanceReferenceNumber}
+                onChange={(e) => handleInputChange('advanceReferenceNumber', e.target.value)}
+                className="input-field"
+                placeholder="Transaction ID / Cheque No."
+              />
+            </div>
+            <div>
+              <label htmlFor="advanceNotes" className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <input
+                type="text"
+                id="advanceNotes"
+                value={formData.advanceNotes}
+                onChange={(e) => handleInputChange('advanceNotes', e.target.value)}
+                className="input-field"
+                placeholder="Additional notes"
+              />
+            </div>
+          </div>
+          {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
+            <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
+              <p className="text-sm text-green-800">
+                <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod ? formData.advancePaymentMethod.charAt(0).toUpperCase() + formData.advancePaymentMethod.slice(1) : 'Cash'}
+                {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

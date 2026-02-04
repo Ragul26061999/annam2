@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Phone, Mail, MapPin, Calendar, Heart, Shield, AlertTriangle, AlertCircle,
-  Save, X, UserPlus, Users, Hash, CheckCircle, Clock, Stethoscope, CalendarCheck, Printer
+  Save, X, UserPlus, Users, Hash, CheckCircle, Clock, Stethoscope, CalendarCheck, Printer, Wallet
 } from 'lucide-react';
 import { generateUHID, registerNewPatient } from '../src/lib/patientService';
 import { getAllDoctorsSimple, getDoctorAvailableSlots, type Doctor } from '../src/lib/doctorService';
@@ -52,6 +52,12 @@ interface RegistrationFormData {
   oxygenSaturation: string;
   weight: string;
   height: string;
+
+  // Advance Payment Information
+  advanceAmount: string;
+  advancePaymentMethod: string;
+  advanceReferenceNumber: string;
+  advanceNotes: string;
 }
 
 interface RestructuredPatientRegistrationFormProps {
@@ -111,7 +117,11 @@ export default function RestructuredPatientRegistrationForm({
     respiratoryRate: '',
     oxygenSaturation: '',
     weight: '',
-    height: ''
+    height: '',
+    advanceAmount: '',
+    advancePaymentMethod: 'cash',
+    advanceReferenceNumber: '',
+    advanceNotes: ''
   });
 
   useEffect(() => {
@@ -262,7 +272,11 @@ export default function RestructuredPatientRegistrationForm({
         insuranceProvider: '',
         insuranceNumber: '',
         initialSymptoms: '',
-        referredBy: ''
+        referredBy: '',
+        advanceAmount: formData.advanceAmount,
+        advancePaymentMethod: formData.advancePaymentMethod,
+        advanceReferenceNumber: formData.advanceReferenceNumber,
+        advanceNotes: formData.advanceNotes
       };
 
       const result = await registerNewPatient(patientData, previewUHID);
@@ -357,7 +371,11 @@ export default function RestructuredPatientRegistrationForm({
         insuranceProvider: '',
         insuranceNumber: '',
         initialSymptoms: '',
-        referredBy: ''
+        referredBy: '',
+        advanceAmount: formData.advanceAmount,
+        advancePaymentMethod: formData.advancePaymentMethod,
+        advanceReferenceNumber: formData.advanceReferenceNumber,
+        advanceNotes: formData.advanceNotes
       };
 
       const result = await registerNewPatient(patientData, previewUHID);
@@ -678,6 +696,70 @@ export default function RestructuredPatientRegistrationForm({
             />
           </div>
         </div>
+      </div>
+
+      {/* Advance Payment Section */}
+      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+        <h4 className="font-medium text-green-900 mb-4 flex items-center gap-2">
+          <Wallet className="h-4 w-4" />
+          Advance Payment (Optional)
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount</label>
+            <input
+              type="number"
+              value={formData.advanceAmount}
+              onChange={(e) => handleInputChange('advanceAmount', e.target.value)}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+            <select
+              value={formData.advancePaymentMethod}
+              onChange={(e) => handleInputChange('advancePaymentMethod', e.target.value)}
+              className="input-field"
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="net_banking">Net Banking</option>
+              <option value="cheque">Cheque</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+            <input
+              type="text"
+              value={formData.advanceReferenceNumber}
+              onChange={(e) => handleInputChange('advanceReferenceNumber', e.target.value)}
+              className="input-field"
+              placeholder="Transaction ID / Cheque No."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <input
+              type="text"
+              value={formData.advanceNotes}
+              onChange={(e) => handleInputChange('advanceNotes', e.target.value)}
+              className="input-field"
+              placeholder="Additional notes"
+            />
+          </div>
+        </div>
+        {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
+          <div className="mt-3 p-3 bg-green-100 rounded-lg border border-green-300">
+            <p className="text-sm text-green-800">
+              <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
+              {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Guardian Information */}

@@ -187,8 +187,37 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                 patientUpdateData
             );
 
-            // 4. Record the advance amount (this would typically go to a billing/transaction table)
-            // Since we don't have a specific table for this in the user request, we'll skip for now or use a metadata field if available
+            // 4. Record the advance amount if provided
+            if (formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && formData.selectedBedId) {
+                try {
+                    // Get the bed allocation to link the advance
+                    const { data: bedAllocation } = await supabase
+                        .from('bed_allocations')
+                        .select('id')
+                        .eq('patient_id', selectedPatient.id)
+                        .eq('bed_id', formData.selectedBedId)
+                        .eq('status', 'active')
+                        .single();
+
+                    if (bedAllocation) {
+                        // Import the service function dynamically
+                        const { createAdvanceFromPatientRegistration } = await import('../src/lib/ipFlexibleBillingService');
+                        const advance = await createAdvanceFromPatientRegistration(
+                            bedAllocation.id,
+                            selectedPatient.id,
+                            parseFloat(formData.advanceAmount),
+                            'cash', // Default payment method
+                            '', // Reference number
+                            'Advance paid during inpatient admission',
+                            formData.staffId
+                        );
+                        console.log('Advance recorded successfully:', advance.id);
+                    }
+                } catch (advanceError) {
+                    console.error('Error recording advance:', advanceError);
+                    // Don't fail the admission if advance recording fails
+                }
+            }
 
             onComplete({
                 uhid: selectedPatient.patient_id,

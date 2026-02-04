@@ -89,6 +89,12 @@ export interface PatientRegistrationData {  // Personal Information (Mandatory)
   consultationFee?: string;
   totalAmount?: string;
   paymentMode?: string;
+
+  // Advance Payment
+  advanceAmount?: string;
+  advancePaymentMethod?: string;
+  advanceReferenceNumber?: string;
+  advanceNotes?: string;
 }
 
 export interface PatientResponse {
@@ -344,6 +350,13 @@ export async function insertPatientRecord(
       consultation_fee: registrationData.consultationFee || null,
       total_amount: registrationData.totalAmount || null,
       payment_mode: registrationData.paymentMode || null,
+
+      // Advance Payment
+      advance_amount: registrationData.advanceAmount ? parseFloat(registrationData.advanceAmount) : 0.00,
+      advance_payment_method: registrationData.advancePaymentMethod || null,
+      advance_payment_date: registrationData.advanceAmount ? new Date().toISOString() : null,
+      advance_reference_number: registrationData.advanceReferenceNumber || null,
+      advance_notes: registrationData.advanceNotes || null,
 
       // Admission Information
       admission_date: admissionDateTime,
@@ -874,6 +887,26 @@ export async function registerNewPatient(
         };
         const bedAllocation = await allocateBed(bedAllocationData);
         console.log('Created bed allocation:', bedAllocation.id);
+
+        // Create IP advance record if patient paid advance during registration
+        if (registrationData.advanceAmount && parseFloat(registrationData.advanceAmount) > 0) {
+          try {
+            const { createAdvanceFromPatientRegistration } = await import('./ipFlexibleBillingService');
+            const advance = await createAdvanceFromPatientRegistration(
+              bedAllocation.id,
+              patient.id,
+              parseFloat(registrationData.advanceAmount),
+              registrationData.advancePaymentMethod || 'cash',
+              registrationData.advanceReferenceNumber,
+              registrationData.advanceNotes,
+              registrationData.staffId
+            );
+            console.log('Created advance record from registration:', advance.id);
+          } catch (advanceError) {
+            console.error('Error creating advance record:', advanceError);
+            // Don't fail the registration if advance creation fails
+          }
+        }
 
         // Update patient status to admitted
         await updatePatientAdmissionStatus(uhid, true);

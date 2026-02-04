@@ -37,7 +37,8 @@ import {
   Microscope,
   Radiation,
   Printer,
-  Paperclip
+  Paperclip,
+  Wallet
 } from 'lucide-react';
 import { getPatientWithRelatedData } from '../../../src/lib/patientService';
 import { getPatientVitals, recordVitals, updateVitalRecord } from '../../../src/lib/vitalsService';
@@ -117,6 +118,12 @@ interface Patient {
   city?: string;
   state?: string;
   pincode?: string;
+  // Advance Payment fields
+  advance_amount?: string;
+  advance_payment_method?: string;
+  advance_payment_date?: string;
+  advance_reference_number?: string;
+  advance_notes?: string;
   appointments: any[];
   bed_allocations: any[];
   billing?: {
@@ -835,6 +842,48 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               </div>
             </div>
           </div>
+
+          {/* Advance Payment Info */}
+          {(patient.advance_amount && parseFloat(patient.advance_amount) > 0) && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Wallet className="h-5 w-5 text-green-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Advance Payment</h3>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-sm p-2 bg-green-50 rounded">
+                  <span className="text-gray-600">Advance Amount</span>
+                  <span className="font-bold text-green-600">₹{parseFloat(patient.advance_amount).toFixed(2)}</span>
+                </div>
+                {patient.advance_payment_method && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Payment Method</span>
+                    <span className="font-medium capitalize">{patient.advance_payment_method}</span>
+                  </div>
+                )}
+                {patient.advance_payment_date && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Payment Date</span>
+                    <span className="font-medium">{formatDate(patient.advance_payment_date)}</span>
+                  </div>
+                )}
+                {patient.advance_reference_number && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Reference No.</span>
+                    <span className="font-medium">{patient.advance_reference_number}</span>
+                  </div>
+                )}
+                {patient.advance_notes && (
+                  <div className="text-sm">
+                    <span className="text-gray-600">Notes: </span>
+                    <span className="font-medium">{patient.advance_notes}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tabs Content */}

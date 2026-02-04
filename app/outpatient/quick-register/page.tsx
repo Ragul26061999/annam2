@@ -16,7 +16,8 @@ import {
   CheckCircle,
   AlertCircle,
   Printer,
-  AlertTriangle
+  AlertTriangle,
+  Wallet
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../../../src/lib/patientService';
 import { addToQueue } from '../../../src/lib/outpatientQueueService';
@@ -87,7 +88,12 @@ export default function QuickRegisterPage() {
     relationship: '',
     primaryComplaint: '',
     priority: '0',
-    staffId: ''
+    staffId: '',
+    // Advance Payment fields
+    advanceAmount: '',
+    advancePaymentMethod: 'cash',
+    advanceReferenceNumber: '',
+    advanceNotes: ''
   });
 
   useEffect(() => {
@@ -330,7 +336,13 @@ export default function QuickRegisterPage() {
         admission_time: formData.registrationTime,
         staff_id: formData.staffId && formData.staffId.trim() !== '' ? formData.staffId : null,
         registration_status: 'pending_vitals',
-        status: 'active'
+        status: 'active',
+        // Advance Payment fields
+        advance_amount: formData.advanceAmount ? parseFloat(formData.advanceAmount) : 0.00,
+        advance_payment_method: formData.advanceAmount ? formData.advancePaymentMethod : null,
+        advance_payment_date: formData.advanceAmount ? new Date().toISOString() : null,
+        advance_reference_number: formData.advanceAmount ? formData.advanceReferenceNumber : null,
+        advance_notes: formData.advanceAmount ? formData.advanceNotes : null
       };
 
       console.log('Patient data to insert:', patientData);
@@ -803,6 +815,76 @@ export default function QuickRegisterPage() {
                 onChange={(staffId) => setFormData(prev => ({ ...prev, staffId }))}
                 label="Registered By (Optional)"
               />
+            </div>
+
+            {/* Advance Payment Section */}
+            <div className="bg-green-50 p-6 rounded-xl border border-green-200">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Wallet className="h-5 w-5 text-green-600" />
+                </div>
+                <h3 className="font-semibold text-green-900">Advance Payment (Optional)</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount</label>
+                  <input
+                    type="number"
+                    name="advanceAmount"
+                    value={formData.advanceAmount}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                  <select
+                    name="advancePaymentMethod"
+                    value={formData.advancePaymentMethod}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="net_banking">Net Banking</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+                  <input
+                    type="text"
+                    name="advanceReferenceNumber"
+                    value={formData.advanceReferenceNumber}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Transaction ID / Cheque No."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <input
+                    type="text"
+                    name="advanceNotes"
+                    value={formData.advanceNotes}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Additional notes"
+                  />
+                </div>
+              </div>
+              {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
+                <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
+                  <p className="text-sm text-green-800">
+                    <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
+                    {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
