@@ -827,27 +827,27 @@ export default function XrayOrderPage() {
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-4 w-full md:w-auto">
+                                    <div className="flex gap-2 w-full md:w-auto">
                                         <button
                                             onClick={() => router.push('/lab-xray')}
-                                            className="flex-1 md:flex-none px-8 py-4 bg-slate-800 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-white transition-all border border-slate-700"
+                                            className="flex-1 md:flex-none px-4 py-2 bg-slate-800 text-slate-400 rounded-xl font-black text-xs uppercase tracking-widest hover:text-white transition-all border border-slate-700"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             onClick={handleSubmit}
                                             disabled={submitting || success}
-                                            className="flex-1 md:flex-none flex items-center justify-center gap-4 px-12 py-5 bg-cyan-500 text-white rounded-[1.5rem] font-black text-lg hover:bg-cyan-400 transition-all shadow-2xl shadow-cyan-900/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                            className="flex-1 md:flex-none flex items-center justify-center gap-1 px-4 py-2 bg-cyan-500 text-white rounded-xl font-black text-xs hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-900/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                                         >
                                             {submitting ? (
                                                 <>
-                                                    <Loader2 className="animate-spin h-6 w-6" />
-                                                    <span className="uppercase tracking-widest text-sm">Transmitting...</span>
+                                                    <Loader2 className="animate-spin h-3 w-3" />
+                                                    <span className="uppercase tracking-widest text-xs">Transmitting...</span>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Zap size={24} />
-                                                    <span className="uppercase tracking-widest">Generate Bill</span>
+                                                    <Zap size={12} />
+                                                    <span className="uppercase tracking-widest text-xs">Generate Bill</span>
                                                 </>
                                             )}
                                         </button>

@@ -743,7 +743,7 @@ try {
                                             </motion.div>
                                         ))}
 
-                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 pl-6 pr-6">
                                     <div className="space-y-4">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ordering Doctor (Optional)</label>
