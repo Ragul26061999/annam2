@@ -280,12 +280,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                 previousSurgeries: '',
                 admissionDate: formData.registrationDate,
                 admissionTime: formData.registrationTime,
-                staffId: formData.staffId,
-                advanceAmount: formData.advanceAmount,
-                advancePaymentMethod: formData.advancePaymentMethod,
-                
-                advanceReferenceNumber: formData.advanceReferenceNumber,
-                advanceNotes: formData.advanceNotes            };
+                staffId: formData.staffId
+            };
 
             const result = await registerNewPatient(registrationData, formData.uhid);
 
@@ -1003,85 +999,6 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             </div>
                         </div>
 
-                        {/* Advance Payment Section */}
-                        <div className="mt-6 p-4 bg-green-50/50 rounded-xl border border-green-100">
-                            <h4 className="text-sm font-bold text-green-800 mb-4 flex items-center gap-2">
-                                <IndianRupee size={16} />
-                                Advance Payment (Optional)
-                            </h4>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Advance Amount (₹)</label>
-                                    <div className="relative">
-                                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500" size={16} />
-                                        <input
-                                            type="number"
-                                            name="advanceAmount"
-                                            value={formData.advanceAmount}
-                                            onChange={handleInputChange}
-                                            placeholder="0.00"
-                                            className="w-full pl-10 pr-4 py-2.5 border border-green-200 rounded-xl bg-white focus:ring-2 focus:ring-green-500"
-                                        />
-                                    </div>
-                                </div>
-                                
-                                {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Payment Method</label>
-                                        <select
-                                            name="advancePaymentMethod"
-                                            value={formData.advancePaymentMethod}
-                                            onChange={handleInputChange}
-                                            className="w-full px-4 py-2.5 border border-green-200 rounded-xl bg-white focus:ring-2 focus:ring-green-500"
-                                        >
-                                            <option value="cash">Cash</option>
-                                            <option value="card">Card</option>
-                                            <option value="upi">UPI</option>
-                                            <option value="net_banking">Net Banking</option>
-                                            <option value="cheque">Cheque</option>
-                                        </select>
-                                    </div>
-                                )}
-                            </div>
-
-                            {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Reference Number (Optional)</label>
-                                        <input
-                                            type="text"
-                                            name="advanceReferenceNumber"
-                                            value={formData.advanceReferenceNumber}
-                                            onChange={handleInputChange}
-                                            placeholder="Transaction/Check number"
-                                            className="w-full px-4 py-2.5 border border-green-200 rounded-xl bg-white focus:ring-2 focus:ring-green-500"
-                                        />
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Notes (Optional)</label>
-                                        <textarea
-                                            name="advanceNotes"
-                                            value={formData.advanceNotes}
-                                            onChange={handleInputChange}
-                                            placeholder="Any additional notes about the advance payment"
-                                            className="w-full px-4 py-2.5 border border-green-200 rounded-xl bg-white focus:ring-2 focus:ring-green-500"
-                                            rows={2}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
-                                <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
-                                    <p className="text-sm text-green-800">
-                                        <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
-                                        {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
                         <div className="flex justify-between">
                             <button
                                 type="button"

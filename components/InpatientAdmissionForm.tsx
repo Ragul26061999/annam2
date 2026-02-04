@@ -35,6 +35,9 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
         attendingDoctorId: '',
         admittingDoctorId: '',
         advanceAmount: '',
+        advancePaymentMethod: 'cash',
+        advanceReferenceNumber: '',
+        advanceNotes: '',
         reasonForAdmission: '',
         diagnosisAtAdmission: '',
         selectedBedId: '',
@@ -177,7 +180,13 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                 diagnosis: formData.diagnosisAtAdmission,
                 primary_complaint: formData.reasonForAdmission,
                 admission_date: formData.admissionDate,
-                admission_category: formData.admissionCategory
+                admission_category: formData.admissionCategory,
+                // Add advance payment details to patient record
+                advance_amount: formData.advanceAmount ? parseFloat(formData.advanceAmount) : 0.00,
+                advance_payment_method: formData.advanceAmount ? formData.advancePaymentMethod : null,
+                advance_payment_date: formData.advanceAmount ? new Date().toISOString() : null,
+                advance_reference_number: formData.advanceAmount ? formData.advanceReferenceNumber : null,
+                advance_notes: formData.advanceAmount ? formData.advanceNotes : null
             };
 
             await updatePatientAdmissionStatus(
@@ -206,9 +215,9 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                             bedAllocation.id,
                             selectedPatient.id,
                             parseFloat(formData.advanceAmount),
-                            'cash', // Default payment method
-                            '', // Reference number
-                            'Advance paid during inpatient admission',
+                            formData.advancePaymentMethod || 'cash',
+                            formData.advanceReferenceNumber || '',
+                            formData.advanceNotes || 'Advance paid during inpatient admission',
                             formData.staffId
                         );
                         console.log('Advance recorded successfully:', advance.id);
@@ -348,6 +357,65 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
                             required
                         />
                     </div>
+
+                    {/* Advance Payment Method */}
+                    {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                                    <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
+                                </label>
+                                <select
+                                    value={formData.advancePaymentMethod}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, advancePaymentMethod: e.target.value }))}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    required
+                                >
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Card</option>
+                                    <option value="upi">UPI</option>
+                                    <option value="net_banking">Net Banking</option>
+                                    <option value="cheque">Cheque</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                                    <Hash className="h-4 w-4 text-gray-400" /> Reference Number (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.advanceReferenceNumber}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, advanceReferenceNumber: e.target.value }))}
+                                    placeholder="Transaction/Check number"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                                    <FileText className="h-4 w-4 text-gray-400" /> Advance Notes (Optional)
+                                </label>
+                                <textarea
+                                    value={formData.advanceNotes}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, advanceNotes: e.target.value }))}
+                                    placeholder="Any additional notes about the advance payment"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    rows={2}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    {/* Advance Payment Summary */}
+                    {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
+                        <div className="md:col-span-2 p-3 bg-green-100 rounded-lg border border-green-300">
+                            <p className="text-sm text-green-800">
+                                <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
+                                {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
+                            </p>
+                        </div>
+                    )}
 
                     {/* Inpatient Number (Automatic) */}
                     <div>
