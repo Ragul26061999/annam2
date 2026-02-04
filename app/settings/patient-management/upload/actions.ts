@@ -1,9 +1,11 @@
 'use server';
 
-import { supabaseAdmin } from '@/src/lib/supabase-admin';
+import { requireSupabaseAdmin } from '@/src/lib/supabase-admin';
 
 export async function uploadPatient(patientData: any) {
   try {
+    const supabaseAdmin = requireSupabaseAdmin();
+
     const { error } = await supabaseAdmin
       .from('patients')
       .upsert(patientData, { onConflict: 'patient_id' });

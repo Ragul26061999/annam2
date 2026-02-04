@@ -222,6 +222,54 @@ export async function createUniversalBill(data: PaymentData): Promise<PaymentRec
   }
 }
 
+async function resolveGroupedLabItemsToPaymentItems(groupedOrders: any[]): Promise<PaymentItem[]> {
+  const groupItems: any[] = groupedOrders
+    .flatMap((o: any) => (Array.isArray(o?.items) ? o.items : []))
+    .filter((it: any) => it && (it.service_type === 'lab' || !it.service_type));
+
+  const catalogIds = Array.from(
+    new Set(
+      groupItems
+        .map((it: any) => it.catalog_id)
+        .filter((id: any) => typeof id === 'string' && id.length > 0)
+    )
+  );
+
+  const catalogById = new Map<string, { test_name?: string; test_cost?: number }>();
+  if (catalogIds.length) {
+    const { data, error } = await supabase
+      .from('lab_test_catalog')
+      .select('id, test_name, test_cost')
+      .in('id', catalogIds);
+
+    if (error) {
+      console.warn('Failed to resolve lab catalog for grouped billing:', error);
+    } else {
+      (data || []).forEach((row: any) => {
+        if (!row?.id) return;
+        catalogById.set(row.id, {
+          test_name: row.test_name,
+          test_cost: Number(row.test_cost) || 0,
+        });
+      });
+    }
+  }
+
+  return groupItems.map((it: any) => {
+    const cat = it.catalog_id ? catalogById.get(it.catalog_id) : undefined;
+    const name = cat?.test_name || it.item_name_snapshot || 'Lab Test';
+    const cost = Number(cat?.test_cost) || 0;
+    return {
+      service_name: name,
+      quantity: 1,
+      unit_rate: cost,
+      total_amount: cost,
+      item_type: 'lab_test' as const,
+      reference_id: it.group_order_id || null,
+    };
+  });
+}
+
 // Process split payments for existing bill
 export async function processSplitPayments(
   billId: string,
@@ -378,14 +426,24 @@ export async function createLabTestBill(
   labOrders: any[],
   staffId?: string
 ): Promise<PaymentRecord> {
-  const items: PaymentItem[] = labOrders.map(order => ({
-    service_name: order.test_catalog?.test_name || 'Lab Test',
-    quantity: 1,
-    unit_rate: order.test_catalog?.test_cost || 0,
-    total_amount: order.test_catalog?.test_cost || 0,
-    item_type: 'lab_test' as const,
-    reference_id: order.id,
-  }));
+  const groupedOrders = (labOrders || []).filter((o: any) => Array.isArray(o?.items) && o.items.length > 0);
+  const singleOrders = (labOrders || []).filter((o: any) => !Array.isArray(o?.items) || o.items.length === 0);
+
+  const [groupedItems, singleItems] = await Promise.all([
+    resolveGroupedLabItemsToPaymentItems(groupedOrders),
+    Promise.resolve(
+      singleOrders.map((order: any) => ({
+        service_name: order.test_catalog?.test_name || 'Lab Test',
+        quantity: 1,
+        unit_rate: Number(order.test_catalog?.test_cost) || 0,
+        total_amount: Number(order.test_catalog?.test_cost) || 0,
+        item_type: 'lab_test' as const,
+        reference_id: order.id,
+      }))
+    ),
+  ]);
+
+  const items: PaymentItem[] = [...singleItems, ...groupedItems];
 
   const subtotal = items.reduce((sum, item) => sum + item.total_amount, 0);
   const taxAmount = subtotal * 0.05; // 5% tax

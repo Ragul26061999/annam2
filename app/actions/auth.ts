@@ -1,6 +1,6 @@
 'use server'
 
-import { supabaseAdmin } from '@/src/lib/supabase-admin';
+import { requireSupabaseAdmin } from '@/src/lib/supabase-admin';
 
 export async function createUserAccount(
   entityId: string,
@@ -11,6 +11,8 @@ export async function createUserAccount(
   passwordInput?: string
 ) {
   try {
+    const supabaseAdmin = requireSupabaseAdmin();
+
     // 1. Format Email
     let email = emailInput.trim();
     if (!email) {

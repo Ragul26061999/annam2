@@ -155,37 +155,80 @@ export default function OrderList({ onRefresh }: OrderListProps) {
 
       // Process grouped orders
       if (groupedOrders.data && groupedOrders.data.length > 0) {
-        // Load all grouped order items at once
+        const groupOrderIds = (groupedOrders.data || []).map((g: any) => g.id);
+
+        // Load grouped order items without inner joins (inner joins would filter out most rows)
         const { data: allGroupItems, error: itemsError } = await supabase
           .from('diagnostic_group_order_items')
-          .select(`
-            group_order_id,
-            service_type, 
-            item_name_snapshot, 
-            catalog_id,
-            lab_test_catalog!inner(test_name, test_cost),
-            radiology_test_catalog!inner(test_name, test_cost),
-            scan_test_catalog!inner(test_name, test_cost),
-            xray_test_catalog!inner(test_name, test_cost)
-          `)
-          .in('group_order_id', (groupedOrders.data || []).map((g: any) => g.id));
+          .select('id, group_order_id, service_type, item_name_snapshot, catalog_id, status, sort_order, created_at')
+          .in('group_order_id', groupOrderIds)
+          .order('sort_order', { ascending: true });
+
+        if (itemsError) {
+          console.error('Failed to fetch grouped order items:', itemsError);
+          throw itemsError;
+        }
+
+        // Resolve catalog costs in bulk per service type
+        const itemsArr = allGroupItems || [];
+        const idsByType: Record<string, string[]> = {
+          lab: [],
+          radiology: [],
+          scan: [],
+          xray: [],
+        };
+
+        for (const it of itemsArr as any[]) {
+          const t = String(it.service_type || '').toLowerCase();
+          const id = it.catalog_id;
+          if (!id) continue;
+          if (t in idsByType) idsByType[t].push(id);
+        }
+
+        const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
+        const [labCats, radCats, scanCats, xrayCats] = await Promise.all([
+          uniq(idsByType.lab).length
+            ? supabase.from('lab_test_catalog').select('id, test_name, test_cost').in('id', uniq(idsByType.lab))
+            : Promise.resolve({ data: [], error: null } as any),
+          uniq(idsByType.radiology).length
+            ? supabase.from('radiology_test_catalog').select('id, test_name, test_cost').in('id', uniq(idsByType.radiology))
+            : Promise.resolve({ data: [], error: null } as any),
+          uniq(idsByType.scan).length
+            ? supabase.from('scan_test_catalog').select('id, test_name, test_cost').in('id', uniq(idsByType.scan))
+            : Promise.resolve({ data: [], error: null } as any),
+          // X-ray uses radiology_test_catalog via radiology_test_catalog_id in xray_orders
+          uniq(idsByType.xray).length
+            ? supabase.from('radiology_test_catalog').select('id, test_name, test_cost').in('id', uniq(idsByType.xray))
+            : Promise.resolve({ data: [], error: null } as any),
+        ]);
+
+        const catCost = new Map<string, number>();
+        const catName = new Map<string, string>();
+        const addCats = (rows: any[] | null | undefined) => {
+          (rows || []).forEach((r: any) => {
+            if (!r?.id) return;
+            catCost.set(r.id, Number(r.test_cost) || 0);
+            catName.set(r.id, r.test_name || '');
+          });
+        };
+
+        addCats(labCats.data);
+        addCats(radCats.data);
+        addCats(scanCats.data);
+        addCats(xrayCats.data);
 
         // Load all attachments at once
         const { data: allAttachments } = await supabase
           .from('lab_xray_attachments')
           .select('*')
-          .in('group_order_id', (groupedOrders.data || []).map((g: any) => g.id));
+          .in('group_order_id', groupOrderIds);
 
         for (const group of groupedOrders.data || []) {
-          const groupItems = allGroupItems?.filter((item: any) => item.group_order_id === group.id) || [];
+          const groupItems = itemsArr.filter((item: any) => item.group_order_id === group.id) || [];
           const attachments = allAttachments?.filter((att: any) => att.group_order_id === group.id) || [];
           
           const totalAmount = groupItems.reduce((sum: number, item: any) => {
-            const cost = item.lab_test_catalog?.test_cost || 
-                       item.radiology_test_catalog?.test_cost || 
-                       item.scan_test_catalog?.test_cost || 
-                       item.xray_test_catalog?.test_cost || 0;
-            return sum + cost;
+            return sum + (catCost.get(item.catalog_id) || 0);
           }, 0);
 
           const groupOrder: UnifiedOrder = {
@@ -202,7 +245,11 @@ export default function OrderList({ onRefresh }: OrderListProps) {
             created_at: group.created_at,
             group_order_id: group.id,
             group_name: group.group_name_snapshot,
-            items: groupItems,
+            items: groupItems.map((it: any) => ({
+              ...it,
+              test_name: catName.get(it.catalog_id) || it.item_name_snapshot || 'Service',
+              test_cost: catCost.get(it.catalog_id) || 0,
+            })),
             total_amount: totalAmount,
             attachments: attachments
           };

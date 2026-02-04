@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../src/lib/supabase-admin';
+import { requireSupabaseAdmin } from '../../../../src/lib/supabase-admin';
 
 export async function GET(request: Request) {
   try {
@@ -9,6 +9,8 @@ export async function GET(request: Request) {
     if (!query) {
       return NextResponse.json({ medications: [] });
     }
+
+    const supabaseAdmin = requireSupabaseAdmin();
 
     const { data: medications, error } = await supabaseAdmin
       .from('medications')

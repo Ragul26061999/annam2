@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/src/lib/supabase-admin'
+import { requireSupabaseAdmin } from '@/src/lib/supabase-admin'
 
 export async function POST(request: Request) {
   try {
+    const supabaseAdmin = requireSupabaseAdmin()
+
     const body = await request.json()
     const purchase = body?.purchase
     const items = body?.items
