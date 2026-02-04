@@ -318,19 +318,6 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               </p>
             </div>
             <div className="flex gap-3">
-              {availableAdvance > 0 && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-semibold">
-                  <Wallet className="h-4 w-4" />
-                  Advance: {formatCurrency(availableAdvance)}
-                </div>
-              )}
-              <button
-                onClick={() => setShowAdvanceModal(true)}
-                className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold shadow-md"
-              >
-                <Wallet className="h-5 w-5" />
-                Receive Advance
-              </button>
               <button
                 onClick={() => setShowBillWisePaymentModal(true)}
                 className="flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md"
@@ -794,6 +781,14 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Other Bills Included</span>
                 <span className="font-semibold">{formatCurrency(billing.summary.other_bills_total)}</span>
+              </div>
+            )}
+
+            {/* Advance Amount Display */}
+            {(availableAdvance > 0 || billing.summary.advance_paid > 0) && (
+              <div className="flex justify-between text-lg">
+                <span className="text-purple-700 font-semibold">Advance Amount</span>
+                <span className="font-semibold text-purple-700">- {formatCurrency(availableAdvance || billing.summary.advance_paid)}</span>
               </div>
             )}
 

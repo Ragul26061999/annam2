@@ -58,6 +58,7 @@ export async function POST(request: Request) {
         total_tax: totalTax,
         net_amount: Number(purchase.net_amount ?? totalAmount),
         remarks: purchase.remarks || null,
+        document_url: purchase.document_url || null,
       })
       .select('*')
       .single()

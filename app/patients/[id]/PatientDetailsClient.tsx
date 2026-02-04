@@ -61,6 +61,7 @@ import BarcodeModal from '../../../src/components/BarcodeModal';
 import { getPatientCompleteHistory, PatientTimelineEvent, PatientTimelineEventType } from '../../../src/lib/patientTimelineService';
 import { getPharmacyBills } from '../../../src/lib/pharmacyService';
 import LabXrayAttachments from '../../../src/components/LabXrayAttachments';
+import { getTotalAvailableAdvance } from '../../../src/lib/ipFlexibleBillingService';
 
 interface Patient {
   id: string;
@@ -209,6 +210,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);
   const [ipBillingPayments, setIpBillingPayments] = useState<BillingPaymentRow[]>([]);
   const [comprehensiveBilling, setComprehensiveBilling] = useState<IPComprehensiveBilling | null>(null);
+  const [ipAdvances, setIpAdvances] = useState<any[]>([]);
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [xrayOrders, setXrayOrders] = useState<any[]>([]);
@@ -409,6 +411,23 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       } catch (pharmacyErr) {
         console.warn('Failed to load pharmacy bills:', pharmacyErr);
         setPharmacyBills([]);
+      }
+
+      // Fetch IP advances for this patient
+      try {
+        const { data: advancesData, error: advancesError } = await supabase
+          .from('ip_advances')
+          .select('*')
+          .eq('patient_id', patientData.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false });
+
+        if (!advancesError && advancesData) {
+          setIpAdvances(advancesData);
+        }
+      } catch (advancesErr) {
+        console.warn('Failed to load IP advances:', advancesErr);
+        setIpAdvances([]);
       }
 
       // Timeline will be loaded on demand
@@ -844,7 +863,9 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
           </div>
 
           {/* Advance Payment Info */}
-          {(patient.advance_amount && parseFloat(patient.advance_amount) > 0) && (
+          {((patient.advance_amount && parseFloat(patient.advance_amount) > 0) || 
+            (comprehensiveBilling?.summary?.advance_paid && comprehensiveBilling.summary.advance_paid > 0) ||
+            (ipAdvances.length > 0)) && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-green-100 rounded-lg">
@@ -853,34 +874,74 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                 <h3 className="font-semibold text-gray-900">Advance Payment</h3>
               </div>
               <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm p-2 bg-green-50 rounded">
-                  <span className="text-gray-600">Advance Amount</span>
-                  <span className="font-bold text-green-600">₹{parseFloat(patient.advance_amount).toFixed(2)}</span>
+                {/* Patient Registration Advance */}
+                {patient.advance_amount && parseFloat(patient.advance_amount) > 0 && (
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                    <div className="flex justify-between items-center text-sm mb-2">
+                      <span className="text-gray-600 font-medium">Registration Advance</span>
+                      <span className="font-bold text-green-600">₹{parseFloat(patient.advance_amount).toFixed(2)}</span>
+                    </div>
+                    {patient.advance_payment_method && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">Method</span>
+                        <span className="font-medium capitalize">{patient.advance_payment_method}</span>
+                      </div>
+                    )}
+                    {patient.advance_payment_date && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">Date</span>
+                        <span className="font-medium">{formatDate(patient.advance_payment_date)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* IP Admission Advance */}
+                {ipAdvances.length > 0 && (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex justify-between items-center text-sm mb-2">
+                      <span className="text-gray-600 font-medium">IP Admission Advance</span>
+                      <span className="font-bold text-blue-600">
+                        ₹{ipAdvances.reduce((sum, adv) => sum + (adv.available_amount || adv.amount || 0), 0).toFixed(2)}
+                      </span>
+                    </div>
+                    {ipAdvances.map((advance, idx) => (
+                      <div key={idx} className="text-xs text-gray-500 mt-1">
+                        ₹{advance.amount?.toFixed(2)} paid on {formatDate(advance.advance_date)} via {advance.payment_type}
+                        {advance.reference_number && ` (Ref: ${advance.reference_number})`}
+                        {advance.notes && ` - ${advance.notes}`}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* IP Billing Advance */}
+                {comprehensiveBilling?.summary?.advance_paid && comprehensiveBilling.summary.advance_paid > 0 && (
+                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <div className="flex justify-between items-center text-sm mb-2">
+                      <span className="text-gray-600 font-medium">IP Billing Advance</span>
+                      <span className="font-bold text-indigo-600">₹{(comprehensiveBilling.summary.advance_paid || 0).toFixed(2)}</span>
+                    </div>
+                    {comprehensiveBilling?.payment_receipts?.filter(r => r.payment_type === 'advance').map((receipt, idx) => (
+                      <div key={idx} className="text-xs text-gray-500 mt-1">
+                        Paid on {formatDate(receipt.payment_date)} via {receipt.payment_type}
+                        {receipt.reference_number && ` (Ref: ${receipt.reference_number})`}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Total Advance */}
+                <div className="flex justify-between items-center text-sm p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <span className="text-purple-700 font-bold">Total Advance</span>
+                  <span className="font-bold text-purple-700">
+                    ₹{(
+                      (patient.advance_amount ? parseFloat(patient.advance_amount) : 0) + 
+                      (ipAdvances.reduce((sum, adv) => sum + (adv.available_amount || adv.amount || 0), 0)) +
+                      (comprehensiveBilling?.summary?.advance_paid || 0)
+                    ).toFixed(2)}
+                  </span>
                 </div>
-                {patient.advance_payment_method && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Payment Method</span>
-                    <span className="font-medium capitalize">{patient.advance_payment_method}</span>
-                  </div>
-                )}
-                {patient.advance_payment_date && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Payment Date</span>
-                    <span className="font-medium">{formatDate(patient.advance_payment_date)}</span>
-                  </div>
-                )}
-                {patient.advance_reference_number && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Reference No.</span>
-                    <span className="font-medium">{patient.advance_reference_number}</span>
-                  </div>
-                )}
-                {patient.advance_notes && (
-                  <div className="text-sm">
-                    <span className="text-gray-600">Notes: </span>
-                    <span className="font-medium">{patient.advance_notes}</span>
-                  </div>
-                )}
               </div>
             </div>
           )}

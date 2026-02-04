@@ -91,6 +91,7 @@ export interface MedicationHistory {
   status: 'prescribed' | 'dispensed' | 'completed' | 'discontinued';
   total_amount?: number;
   payment_status?: string;
+  prescription_image_url?: string;
 }
 
 export interface PharmacyBilling {
@@ -357,6 +358,7 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
       .select(`
         id,
         created_at,
+        prescription_image_url,
         doctor:doctor_id(user:user_id(name)),
         prescription_items(
           medication_id,
@@ -391,7 +393,8 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
             duration: item.duration || '',
             prescribed_date: prescription.created_at,
             prescribed_by: doctorName,
-            status: 'prescribed'
+            status: 'prescribed',
+            prescription_image_url: prescription.prescription_image_url
           });
         });
       });

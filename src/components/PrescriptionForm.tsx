@@ -13,7 +13,9 @@ import {
   AlertCircle,
   CheckCircle,
   Stethoscope,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  Image
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import NewMedicineModal from './NewMedicineModal';
@@ -88,6 +90,9 @@ export default function PrescriptionForm({
   const [searchAnimation, setSearchAnimation] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [prescriptionImage, setPrescriptionImage] = useState<File | null>(null);
+  const [prescriptionImageUrl, setPrescriptionImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
 
   useEffect(() => {
     testSupabaseConnection();
@@ -478,6 +483,63 @@ export default function PrescriptionForm({
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
+
+    setImageUploading(true);
+    setPrescriptionImage(file);
+
+    try {
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `prescription-images/${fileName}`;
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('prescription-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('prescription-images')
+        .getPublicUrl(filePath);
+
+      setPrescriptionImageUrl(urlData.publicUrl);
+      console.log('Image uploaded successfully:', urlData.publicUrl);
+
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      alert(`Failed to upload image: ${error.message}`);
+      setPrescriptionImage(null);
+      setPrescriptionImageUrl(null);
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setPrescriptionImage(null);
+    setPrescriptionImageUrl(null);
+  };
+
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
     const timesPerDay = frequencyTimes.length;
     return timesPerDay * durationDays;
@@ -624,7 +686,8 @@ export default function PrescriptionForm({
         encounter_id: encounterId,
         issue_date: new Date().toISOString().split('T')[0],
         instructions: `Prescription created by ${doctorName}`,
-        status: 'active'
+        status: 'active',
+        prescription_image_url: prescriptionImageUrl || null
       };
       
       console.log('Creating prescription with payload:', prescriptionPayload);
@@ -782,6 +845,67 @@ export default function PrescriptionForm({
                   Selected: {doctors.find(d => d.id === selectedDoctor)?.users?.name || 'Unknown Doctor'}
                 </p>
               )}
+            </div>
+
+            {/* Prescription Image Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Prescription Image (Optional)
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                {!prescriptionImageUrl ? (
+                  <div className="text-center">
+                    <input
+                      type="file"
+                      id="prescription-image"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={imageUploading}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="prescription-image"
+                      className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                    >
+                      {imageUploading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4" />
+                          Upload Prescription Image
+                        </>
+                      )}
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Supported formats: JPEG, PNG, GIF (Max 5MB)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <img
+                        src={prescriptionImageUrl}
+                        alt="Prescription"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-green-600 flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      Image uploaded successfully
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
 

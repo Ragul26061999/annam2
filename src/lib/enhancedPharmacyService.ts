@@ -50,6 +50,7 @@ export interface DrugPurchase {
   verified_by?: string;
   status: 'draft' | 'received' | 'verified' | 'cancelled';
   items?: DrugPurchaseItem[];
+  document_url?: string;
   created_at: string;
   updated_at: string;
 }

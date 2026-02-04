@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
-  Plus, Search, Eye, Printer, XCircle
+  Plus, Search, Eye, Printer, XCircle, FileText, Download
 } from 'lucide-react'
 import {
   getDrugPurchases,
@@ -48,6 +48,8 @@ export default function DrugPurchasePage() {
   const [loading, setLoading] = useState(true)
   const [selectedPurchase, setSelectedPurchase] = useState<DrugPurchase | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
+  const [showDocumentModal, setShowDocumentModal] = useState(false)
+  const [selectedDocumentUrl, setSelectedDocumentUrl] = useState<string | null>(null)
   
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -80,6 +82,16 @@ export default function DrugPurchasePage() {
     } finally {
       setLoadingDetails(false)
     }
+  }
+
+  const handleViewDocument = (documentUrl: string) => {
+    setSelectedDocumentUrl(documentUrl)
+    setShowDocumentModal(true)
+  }
+
+  const handleCloseDocumentModal = () => {
+    setSelectedDocumentUrl(null)
+    setShowDocumentModal(false)
   }
 
   if (loading) {
@@ -248,6 +260,29 @@ export default function DrugPurchasePage() {
                 </div>
               </div>
 
+              {/* Document Section */}
+              {selectedPurchase.document_url && (
+                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Purchase Document</p>
+                        <p className="text-xs text-gray-600">Click to view the uploaded purchase document</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => selectedPurchase.document_url && handleViewDocument(selectedPurchase.document_url)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
+                      disabled={!selectedPurchase.document_url}
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Document
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Items Table */}
               <h3 className="text-lg font-semibold mb-4">Purchase Items</h3>
               <div className="border rounded-lg overflow-hidden">
@@ -305,6 +340,56 @@ export default function DrugPurchasePage() {
                 >
                     Close
                 </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Document Modal */}
+      {showDocumentModal && selectedDocumentUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Purchase Document</h3>
+              <button
+                onClick={handleCloseDocumentModal}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XCircle className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 p-4 overflow-auto">
+              {selectedDocumentUrl.includes('.pdf') ? (
+                <iframe
+                  src={selectedDocumentUrl}
+                  className="w-full h-[70vh] rounded-lg"
+                  title="Purchase Document"
+                />
+              ) : (
+                <img
+                  src={selectedDocumentUrl}
+                  alt="Purchase Document"
+                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                />
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex justify-end gap-3">
+                <a
+                  href={selectedDocumentUrl}
+                  download="purchase-document"
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Document
+                </a>
+                <button
+                  onClick={handleCloseDocumentModal}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

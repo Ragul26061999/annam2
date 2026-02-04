@@ -14,7 +14,10 @@ import {
   Plus,
   Search,
   Filter,
-  Syringe
+  Syringe,
+  Image,
+  Eye,
+  X
 } from 'lucide-react';
 import { getPatientMedicationHistory, type MedicationHistory } from '../lib/pharmacyService';
 
@@ -28,6 +31,8 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'prescribed' | 'dispensed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
 
   useEffect(() => {
     loadMedicationHistory();
@@ -123,6 +128,16 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
     
     // Default to blue for oral medications and others
     return 'bg-blue-100';
+  };
+
+  const handleViewImage = (imageUrl: string) => {
+    setSelectedImage(imageUrl);
+    setShowImageModal(true);
+  };
+
+  const handleCloseImageModal = () => {
+    setSelectedImage(null);
+    setShowImageModal(false);
   };
 
   if (loading) {
@@ -230,8 +245,19 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
                     <div className={`p-2 ${getMedicationTypeIconColor(item)} rounded-lg`}>
                       {getMedicationTypeIcon(item)}
                     </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
+                        {item.prescription_image_url && (
+                          <button
+                            onClick={() => handleViewImage(item.prescription_image_url!)}
+                            className="p-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                            title="View prescription image"
+                          >
+                            <Image className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-600">{item.dosage}</p>
                     </div>
                   </div>
@@ -275,6 +301,48 @@ export default function MedicationHistory({ patientId }: MedicationHistoryProps)
               </div>
             </div>
           ))}
+        </div>
+      )}
+      
+      {/* Image Modal */}
+      {showImageModal && selectedImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Prescription Image</h3>
+              <button
+                onClick={handleCloseImageModal}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 p-4 overflow-auto">
+              <img
+                src={selectedImage}
+                alt="Prescription"
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex justify-end gap-3">
+                <a
+                  href={selectedImage}
+                  download="prescription.png"
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                >
+                  <Eye className="h-4 w-4" />
+                  Download Image
+                </a>
+                <button
+                  onClick={handleCloseImageModal}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

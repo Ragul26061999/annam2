@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Plus, Trash2, Save, ArrowLeft,
   Calendar, CreditCard, User, FileText,
-  Package, Truck, Receipt
+  Package, Truck, Receipt, Upload, X, CheckCircle
 } from 'lucide-react'
 import {
   getSuppliers,
@@ -14,6 +14,16 @@ import {
   DrugPurchaseItem
 } from '@/src/lib/enhancedPharmacyService'
 import { getMedications } from '@/src/lib/pharmacyService'
+import { supabase } from '@/src/lib/supabase'
+
+interface PurchaseFormData {
+  supplier_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  purchase_date: string;
+  payment_mode: 'cash' | 'credit' | 'cheque' | 'online' | 'upi';
+  remarks: string;
+}
 
 export default function NewDrugPurchasePage() {
   const router = useRouter()
@@ -23,7 +33,7 @@ export default function NewDrugPurchasePage() {
   const [submitting, setSubmitting] = useState(false)
   
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PurchaseFormData>({
     supplier_id: '',
     invoice_number: '',
     invoice_date: '',
@@ -33,6 +43,12 @@ export default function NewDrugPurchasePage() {
   })
   
   const [items, setItems] = useState<DrugPurchaseItem[]>([])
+  
+  // Document upload state
+  const [purchaseDocument, setPurchaseDocument] = useState<File | null>(null)
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null)
+  const [documentUploading, setDocumentUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadData()
@@ -49,10 +65,102 @@ export default function NewDrugPurchasePage() {
       setMedications(medsData)
       // Add one empty item by default
       addItem()
+      
+      // Create storage bucket if it doesn't exist
+      await createStorageBucket()
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const createStorageBucket = async () => {
+    try {
+      // Check if bucket exists, create if not
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets()
+      
+      if (listError) {
+        console.warn('Error listing storage buckets:', listError)
+        return
+      }
+      
+      const bucketExists = buckets?.some((b: any) => b.name === 'purchase-documents')
+      
+      if (!bucketExists) {
+        const { error } = await supabase.storage.createBucket('purchase-documents', {
+          public: true,
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+          fileSizeLimit: 5242880 // 5MB
+        })
+        
+        if (error) {
+          console.warn('Could not create storage bucket:', error)
+        }
+      }
+    } catch (error) {
+      console.warn('Error checking storage bucket:', error)
+    }
+  }
+
+  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+    if (!allowedTypes.includes(file.type)) {
+      alert('Please select an image file (JPEG, PNG, GIF, WebP) or PDF')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size should be less than 5MB')
+      return
+    }
+
+    setDocumentUploading(true)
+    setPurchaseDocument(file)
+
+    try {
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `purchase-documents/${fileName}`
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('purchase-documents')
+        .upload(filePath, file)
+
+      if (uploadError) {
+        throw uploadError
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('purchase-documents')
+        .getPublicUrl(filePath)
+
+      setDocumentUrl(urlData.publicUrl)
+      console.log('Document uploaded successfully:', urlData.publicUrl)
+
+    } catch (error: any) {
+      console.error('Error uploading document:', error)
+      alert(`Failed to upload document: ${error.message}`)
+      setPurchaseDocument(null)
+      setDocumentUrl(null)
+    } finally {
+      setDocumentUploading(false)
+    }
+  }
+
+  const handleRemoveDocument = () => {
+    setPurchaseDocument(null)
+    setDocumentUrl(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -176,7 +284,8 @@ export default function NewDrugPurchasePage() {
         discount_amount: discount,
         total_gst: totalGst,
         total_amount: grandTotal,
-        status: 'received'
+        status: 'received',
+        document_url: documentUrl || undefined
       }, items)
 
       if (created) {
@@ -350,15 +459,70 @@ export default function NewDrugPurchasePage() {
               <Package className="w-5 h-5 text-blue-600" />
               Purchase Items
             </h2>
-            <button
-              type="button"
-              onClick={addItem}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add New Item
-            </button>
+            <div className="flex gap-3">
+              {/* Document Upload Button */}
+              <div className="relative">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleDocumentUpload}
+                  disabled={documentUploading}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={documentUploading}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-colors shadow-sm text-sm font-medium disabled:opacity-50"
+                >
+                  {documentUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      Upload Document
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              <button
+                type="button"
+                onClick={addItem}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add New Item
+              </button>
+            </div>
           </div>
+          
+          {/* Document Preview */}
+          {documentUrl && (
+            <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Document uploaded successfully</p>
+                    <p className="text-xs text-gray-600">{purchaseDocument?.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveDocument}
+                  className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors"
+                  title="Remove document"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
