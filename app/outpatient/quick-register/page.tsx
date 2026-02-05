@@ -17,7 +17,8 @@ import {
   AlertCircle,
   Printer,
   AlertTriangle,
-  Wallet
+  Stethoscope,
+  IndianRupee
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../../../src/lib/patientService';
 import { addToQueue } from '../../../src/lib/outpatientQueueService';
@@ -66,6 +67,10 @@ export default function QuickRegisterPage() {
   const [placeSearchTerm, setPlaceSearchTerm] = useState('');
   const [existingPlaces, setExistingPlaces] = useState<string[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [duplicatePatient, setDuplicatePatient] = useState<any | null>(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
+  const [doctors, setDoctors] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     registrationDate: new Date().toISOString().split('T')[0],
@@ -89,11 +94,15 @@ export default function QuickRegisterPage() {
     primaryComplaint: '',
     priority: '0',
     staffId: '',
-    // Advance Payment fields
-    advanceAmount: '',
-    advancePaymentMethod: 'cash',
-    advanceReferenceNumber: '',
-    advanceNotes: ''
+    // Consultation Details
+    consultingDoctorId: '',
+    consultingDoctorName: '',
+    diagnosis: '',
+    // Billing Information
+    consultationFee: '',
+    opCardAmount: '',
+    totalAmount: '',
+    paymentMode: 'Cash'
   });
 
   useEffect(() => {
@@ -134,6 +143,34 @@ export default function QuickRegisterPage() {
     loadExistingPlaces();
   }, []);
 
+  // Load doctors for consultation
+  useEffect(() => {
+    const loadDoctors = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('doctors')
+          .select(`
+            id,
+            users(name),
+            specialization,
+            consultation_fee,
+            department
+          `)
+          .eq('status', 'active');
+        
+        if (error) {
+          console.error('Error loading doctors:', error);
+          return;
+        }
+        
+        setDoctors(data || []);
+      } catch (error) {
+        console.error('Error loading doctors:', error);
+      }
+    };
+    loadDoctors();
+  }, []);
+
   // Close place suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -161,9 +198,43 @@ export default function QuickRegisterPage() {
     }
   }, [formData.dob]);
 
+  // Function to handle doctor selection
+  const handleDoctorSelect = (doctorId: string) => {
+    const selectedDoctor = doctors.find(doc => doc.id === doctorId);
+    setFormData(prev => {
+      const consultationFee = selectedDoctor?.consultation_fee ? selectedDoctor.consultation_fee.toString() : prev.consultationFee;
+      const opCardAmount = parseFloat(prev.opCardAmount) || 0;
+      const total = parseFloat(consultationFee) + opCardAmount;
+      
+      return {
+        ...prev,
+        consultingDoctorId: doctorId,
+        consultingDoctorName: selectedDoctor?.users?.name || '',
+        consultationFee,
+        totalAmount: total.toString()
+      };
+    });
+  };
+
+  // Function to calculate total amount
+  const calculateTotalAmount = () => {
+    const consultationFee = parseFloat(formData.consultationFee) || 0;
+    const opCardAmount = parseFloat(formData.opCardAmount) || 0;
+    const total = consultationFee + opCardAmount;
+    setFormData(prev => ({ ...prev, totalAmount: total.toString() }));
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Recalculate total when consultation fee or OP card amount changes
+    if (name === 'consultationFee' || name === 'opCardAmount') {
+      const consultationFee = name === 'consultationFee' ? parseFloat(value) || 0 : parseFloat(formData.consultationFee) || 0;
+      const opCardAmount = name === 'opCardAmount' ? parseFloat(value) || 0 : parseFloat(formData.opCardAmount) || 0;
+      const total = consultationFee + opCardAmount;
+      setFormData(prev => ({ ...prev, totalAmount: total.toString() }));
+    }
     
     // Check if contact number exists when it changes
     if (name === 'contactNo' && value.length >= 10) {
@@ -172,7 +243,7 @@ export default function QuickRegisterPage() {
       setContactExists(false);
     }
     
-    // Handle place suggestions
+    // Handle place suggestions and trigger duplicate check
     if (name === 'place') {
       setPlaceSearchTerm(value);
       if (value.length >= 2) {
@@ -205,6 +276,12 @@ export default function QuickRegisterPage() {
         setPlaceSuggestions(sortedPlaces.slice(0, 8)); // Limit to 8 suggestions
         setShowPlaceSuggestions(true);
         setSelectedSuggestionIndex(-1); // Reset selection
+        
+        // Trigger duplicate patient check when place field is filled
+        const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+        if (fullName && formData.gender && formData.dob) {
+          checkDuplicatePatient(fullName, formData.gender, formData.dob);
+        }
       } else {
         setShowPlaceSuggestions(false);
         setPlaceSuggestions([]);
@@ -220,6 +297,12 @@ export default function QuickRegisterPage() {
     setShowPlaceSuggestions(false);
     setPlaceSuggestions([]);
     setSelectedSuggestionIndex(-1);
+    
+    // Trigger duplicate patient check when place is selected
+    const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+    if (fullName && formData.gender && formData.dob) {
+      checkDuplicatePatient(fullName, formData.gender, formData.dob);
+    }
   };
 
   // Handle keyboard navigation for place suggestions
@@ -241,6 +324,12 @@ export default function QuickRegisterPage() {
         e.preventDefault();
         if (selectedSuggestionIndex >= 0 && placeSuggestions[selectedSuggestionIndex]) {
           selectPlace(placeSuggestions[selectedSuggestionIndex]);
+        } else {
+          // Trigger duplicate check when Enter is pressed without selecting a suggestion
+          const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+          if (fullName && formData.gender && formData.dob && formData.place) {
+            checkDuplicatePatient(fullName, formData.gender, formData.dob);
+          }
         }
         break;
       case 'Escape':
@@ -248,6 +337,18 @@ export default function QuickRegisterPage() {
         setShowPlaceSuggestions(false);
         setSelectedSuggestionIndex(-1);
         break;
+    }
+  };
+
+  // Handle blur event for place field to trigger duplicate check
+  const handlePlaceBlur = () => {
+    setShowPlaceSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    
+    // Trigger duplicate check when place field loses focus
+    const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+    if (fullName && formData.gender && formData.dob && formData.place) {
+      checkDuplicatePatient(fullName, formData.gender, formData.dob);
     }
   };
 
@@ -276,12 +377,50 @@ export default function QuickRegisterPage() {
     }
   };
 
+  // Function to check for duplicate patients
+  const checkDuplicatePatient = async (fullName: string, gender: string, dob: string) => {
+    if (!fullName.trim() || !gender || !dob) return;
+    
+    setCheckingDuplicate(true);
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('name', fullName.trim())
+        .eq('gender', gender.toLowerCase())
+        .eq('date_of_birth', dob)
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking duplicate patient:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        setDuplicatePatient(data[0]);
+        setShowDuplicateAlert(true);
+      } else {
+        setDuplicatePatient(null);
+        setShowDuplicateAlert(false);
+      }
+    } catch (error) {
+      console.error('Error checking duplicate patient:', error);
+    } finally {
+      setCheckingDuplicate(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
+      // Check for duplicate patient before proceeding
+      if (duplicatePatient && showDuplicateAlert) {
+        throw new Error('This patient already exists. Please check the existing patient record or use a different name/gender/date of birth combination.');
+      }
+
       // Validate required fields
       if (!formData.firstName.trim()) {
         throw new Error('First name is required');
@@ -337,12 +476,15 @@ export default function QuickRegisterPage() {
         staff_id: formData.staffId && formData.staffId.trim() !== '' ? formData.staffId : null,
         registration_status: 'pending_vitals',
         status: 'active',
-        // Advance Payment fields
-        advance_amount: formData.advanceAmount ? parseFloat(formData.advanceAmount) : 0.00,
-        advance_payment_method: formData.advanceAmount ? formData.advancePaymentMethod : null,
-        advance_payment_date: formData.advanceAmount ? new Date().toISOString() : null,
-        advance_reference_number: formData.advanceAmount ? formData.advanceReferenceNumber : null,
-        advance_notes: formData.advanceAmount ? formData.advanceNotes : null
+        // Consultation Details
+        consulting_doctor_id: formData.consultingDoctorId || null,
+        consulting_doctor_name: formData.consultingDoctorName || null,
+        diagnosis: formData.diagnosis || null,
+        // Billing Information
+        consultation_fee: formData.consultationFee ? parseFloat(formData.consultationFee) : null,
+        op_card_amount: formData.opCardAmount ? parseFloat(formData.opCardAmount) : null,
+        total_amount: formData.totalAmount ? parseFloat(formData.totalAmount) : null,
+        payment_mode: formData.paymentMode || null
       };
 
       console.log('Patient data to insert:', patientData);
@@ -500,6 +642,56 @@ export default function QuickRegisterPage() {
               </div>
             )}
 
+            {/* Duplicate Patient Alert */}
+            {showDuplicateAlert && duplicatePatient && (
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-yellow-800 mb-2">This patient already exists!</h4>
+                    <div className="bg-white rounded-lg p-3 border border-yellow-200 mb-3">
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Patient ID:</strong> {duplicatePatient.patient_id}
+                      </p>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Name:</strong> {duplicatePatient.name}
+                      </p>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Gender:</strong> {duplicatePatient.gender?.charAt(0).toUpperCase() + duplicatePatient.gender?.slice(1)}
+                      </p>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Date of Birth:</strong> {new Date(duplicatePatient.date_of_birth).toLocaleDateString()}
+                      </p>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Contact:</strong> {duplicatePatient.phone || 'Not provided'}
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        <strong>Place:</strong> {duplicatePatient.place || 'Not provided'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDuplicateAlert(false);
+                          setDuplicatePatient(null);
+                        }}
+                        className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors"
+                      >
+                        I Understand - Continue Registration
+                      </button>
+                      <Link
+                        href="/outpatient"
+                        className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                      >
+                        Go to Patient Search
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Registration Header Info */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -651,8 +843,16 @@ export default function QuickRegisterPage() {
                     value={formData.place}
                     onChange={handleInputChange}
                     onKeyDown={handlePlaceKeyDown}
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500"
+                    onBlur={handlePlaceBlur}
+                    className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 ${
+                      checkingDuplicate ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                    }`}
                   />
+                  {checkingDuplicate && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                    </div>
+                  )}
                   {showPlaceSuggestions && placeSuggestions.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50">
                       {placeSuggestions.map((place, index) => {
@@ -817,74 +1017,106 @@ export default function QuickRegisterPage() {
               />
             </div>
 
-            {/* Advance Payment Section */}
-            <div className="bg-green-50 p-6 rounded-xl border border-green-200">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Wallet className="h-5 w-5 text-green-600" />
-                </div>
-                <h3 className="font-semibold text-green-900">Advance Payment (Optional)</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Consultation Details */}
+            <div className="bg-purple-50/50 p-6 rounded-xl border border-purple-100">
+              <h3 className="text-sm font-bold text-purple-800 mb-6 flex items-center gap-2">
+                <Stethoscope size={18} />
+                Consultation Details
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount</label>
+                  <label className="block text-xs font-bold text-purple-600 uppercase mb-2">Consulting Doctor</label>
+                  <select
+                    value={formData.consultingDoctorId}
+                    onChange={(e) => handleDoctorSelect(e.target.value)}
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">Select Doctor</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        Dr. {doctor.users?.name || 'Unknown'} {doctor.specialization ? `- ${doctor.specialization}` : ''}
+                        {doctor.consultation_fee ? ` (₹${doctor.consultation_fee})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.consultingDoctorName && (
+                    <p className="text-xs text-purple-600 mt-1">
+                      Selected: Dr. {formData.consultingDoctorName}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-600 uppercase mb-2">Diagnosis / Complaint</label>
+                  <input
+                    type="text"
+                    name="diagnosis"
+                    value={formData.diagnosis}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    placeholder="Brief diagnosis"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Billing Information */}
+            <div className="bg-green-50/50 p-6 rounded-xl border border-green-100">
+              <h3 className="text-sm font-bold text-green-800 mb-6 flex items-center gap-2">
+                <IndianRupee size={18} />
+                Billing Information
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Consultation Fee</label>
                   <input
                     type="number"
-                    name="advanceAmount"
-                    value={formData.advanceAmount}
+                    name="consultationFee"
+                    value={formData.consultationFee}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter consultation fee"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-                  <select
-                    name="advancePaymentMethod"
-                    value={formData.advancePaymentMethod}
+                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">OP Card Amount</label>
+                  <input
+                    type="number"
+                    name="opCardAmount"
+                    value={formData.opCardAmount}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Total Amount</label>
+                  <input
+                    type="text"
+                    value={formData.totalAmount}
+                    readOnly
+                    className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-bold text-green-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Payment Mode</label>
+                  <select
+                    name="paymentMode"
+                    value={formData.paymentMode}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
                   >
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="upi">UPI</option>
-                    <option value="net_banking">Net Banking</option>
-                    <option value="cheque">Cheque</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Insurance">Insurance</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
-                  <input
-                    type="text"
-                    name="advanceReferenceNumber"
-                    value={formData.advanceReferenceNumber}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Transaction ID / Cheque No."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                  <input
-                    type="text"
-                    name="advanceNotes"
-                    value={formData.advanceNotes}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Additional notes"
-                  />
-                </div>
               </div>
-              {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
-                <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
-                  <p className="text-sm text-green-800">
-                    <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
-                    {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Action Buttons */}

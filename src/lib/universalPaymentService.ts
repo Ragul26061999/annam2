@@ -338,7 +338,7 @@ export async function processSplitPayments(
 
     // Derive payment_method for billing header
     const nonZero = payments.filter(p => (Number(p.amount) || 0) > 0);
-    const derivedMethod = nonZero.length === 1 ? nonZero[0].method : (nonZero.length > 1 ? 'others' : null);
+    const derivedMethod = nonZero.length === 1 ? nonZero[0].method : (nonZero.length > 1 ? 'split' : null);
 
     const { error: updError } = await supabase
       .from('billing')

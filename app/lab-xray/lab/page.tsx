@@ -62,11 +62,7 @@ export default function LabOrderPage() {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const ensureTrailingEmptyRow = useCallback((tests: TestSelection[]) => {
-        const hasEmpty = tests.some(t => !t.testId);
-        if (hasEmpty) return tests;
-        return [...tests, { testId: '', testName: '', groupName: '', amount: 0 }];
-    }, []);
+    // NOTE: Row-based selection was replaced with a pinned selection bar and a list below it
 
     // Master Data
     const [labCatalog, setLabCatalog] = useState<LabTestCatalog[]>([]);
@@ -120,9 +116,10 @@ export default function LabOrderPage() {
     });
 
     // Order Details
-    const [selectedTests, setSelectedTests] = useState<TestSelection[]>([
-        { testId: '', testName: '', groupName: '', amount: 0 }
-    ]);
+    const [selectedTests, setSelectedTests] = useState<TestSelection[]>([]);
+    // Pinned selection bar state
+    const [pendingTestId, setPendingTestId] = useState('');
+    const [pendingAmount, setPendingAmount] = useState<number>(0);
     const [orderingDoctorId, setOrderingDoctorId] = useState('');
     const [clinicalIndication, setClinicalIndication] = useState('');
     const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'stat' | 'emergency'>('routine');
@@ -309,26 +306,17 @@ export default function LabOrderPage() {
             // Update master data
             setLabCatalog(prev => [...prev, newEntry]);
 
-            // Automatically select this new test in the current list
-            setSelectedTests(prev => {
-                const newTests = [...prev];
-                // Find first empty row or the last row if it's empty
-                const emptyIndex = newTests.findIndex(t => !t.testId);
-
-                const selection = {
+            // Add newly created test to the top of the selected list (last selected first)
+            setSelectedTests(prev => [
+                {
                     testId: newEntry.id,
                     testName: newEntry.test_name,
                     groupName: newEntry.category || 'N/A',
                     amount: newEntry.test_cost || 0
-                };
-
-                if (emptyIndex !== -1) {
-                    newTests[emptyIndex] = selection;
-                } else {
-                    newTests.push(selection);
-                }
-                return ensureTrailingEmptyRow(newTests);
-            });
+                },
+                // Remove any previous occurrence of this test
+                ...prev.filter(t => t.testId !== newEntry.id)
+            ]);
 
             // Success!
             setNewTestData({ testName: '', groupName: '', amount: 0 });
@@ -341,15 +329,27 @@ export default function LabOrderPage() {
         }
     };
 
-    const addTest = () => {
-        setSelectedTests([...selectedTests, { testId: '', testName: '', groupName: '', amount: 0 }]);
+    // Selection bar actions
+    const handleAddPendingTest = () => {
+        if (!pendingTestId) return;
+        const test = labCatalog.find(t => t.id === pendingTestId);
+        if (!test) return;
+        setSelectedTests(prev => [
+            {
+                testId: test.id,
+                testName: test.test_name,
+                groupName: test.category || 'N/A',
+                amount: Number.isFinite(pendingAmount) && pendingAmount > 0 ? pendingAmount : (test.test_cost || 0)
+            },
+            ...prev.filter(t => t.testId !== test.id)
+        ]);
+        // reset pending
+        setPendingTestId('');
+        setPendingAmount(0);
     };
 
-    const removeTest = (index: number) => {
-        if (selectedTests.length === 1) return;
-        const newTests = [...selectedTests];
-        newTests.splice(index, 1);
-        setSelectedTests(ensureTrailingEmptyRow(newTests));
+    const handleRemoveSelectedTest = (testId: string) => {
+        setSelectedTests(prev => prev.filter(t => t.testId !== testId));
     };
 
     const applyGroupToSelection = async (groupId: string) => {
@@ -372,7 +372,12 @@ export default function LabOrderPage() {
                 })
                 .filter(s => Boolean(s.testId));
 
-            setSelectedTests(ensureTrailingEmptyRow(selections.length ? selections : [{ testId: '', testName: '', groupName: '', amount: 0 }]));
+            // Append group's tests to existing selections without erasing; deduplicate by testId
+            setSelectedTests(prev => {
+                const prevFiltered = prev.filter(p => !selections.some(s => s.testId === p.testId));
+                // Place new group's items on top, keep existing items after
+                return [...selections, ...prevFiltered];
+            });
         } catch (e: any) {
             setError(e?.message || 'Failed to load group items');
         } finally {
@@ -383,7 +388,7 @@ export default function LabOrderPage() {
     const clearGroupSelection = () => {
         setSelectedGroupId('');
         setUseGroup(false);
-        setSelectedTests([{ testId: '', testName: '', groupName: '', amount: 0 }]);
+        setSelectedTests([]);
     };
 
     const handleCreateGroup = async () => {
@@ -472,25 +477,19 @@ export default function LabOrderPage() {
         }));
     };
 
-    const handleTestChange = (index: number, testId: string) => {
-        const test = labCatalog.find(t => t.id === testId);
-        if (!test) return;
-
-        const newTests = [...selectedTests];
-        newTests[index] = {
-            testId: test.id,
-            testName: test.test_name,
-            groupName: test.category || 'N/A',
-            amount: test.test_cost || 0
-        };
-        setSelectedTests(ensureTrailingEmptyRow(newTests));
+    const handleAmountChange = (testId: string, amount: number) => {
+        setSelectedTests(prev => prev.map(t => t.testId === testId ? { ...t, amount } : t));
     };
 
-    const handleManualAmountChange = (index: number, amount: number) => {
-        const newTests = [...selectedTests];
-        newTests[index].amount = amount;
-        setSelectedTests(ensureTrailingEmptyRow(newTests));
-    };
+    // Update pending amount automatically when pending test changes
+    useEffect(() => {
+        if (!pendingTestId) {
+            setPendingAmount(0);
+            return;
+        }
+        const t = labCatalog.find(item => item.id === pendingTestId);
+        setPendingAmount(t?.test_cost || 0);
+    }, [pendingTestId, labCatalog]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -824,77 +823,106 @@ export default function LabOrderPage() {
                                 </div>
 
                                 <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4">
-                                    <div className="hidden md:grid grid-cols-12 gap-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                        <div className="md:col-span-5 pl-1">Test Name</div>
-                                        <div className="md:col-span-4 pl-1">Group Name</div>
-                                        <div className="md:col-span-2 pl-1">Amount (₹)</div>
-                                        <div className="md:col-span-1" />
+                                    {/* Pinned selection bar */}
+                                    <div className="sticky top-0 z-10 -mx-4 px-4 pb-4 bg-slate-50">
+                                        <div className="hidden md:grid grid-cols-12 gap-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            <div className="md:col-span-5 pl-1">Test Name</div>
+                                            <div className="md:col-span-4 pl-1">Group Name</div>
+                                            <div className="md:col-span-2 pl-1">Amount (₹)</div>
+                                            <div className="md:col-span-1" />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                            <div className="md:col-span-5">
+                                                <SearchableSelect
+                                                    value={pendingTestId}
+                                                    onChange={(value: string) => setPendingTestId(value)}
+                                                    options={labCatalog.map(item => ({
+                                                        value: item.id,
+                                                        label: item.test_name,
+                                                        group: item.category,
+                                                        subLabel: `₹${item.test_cost}`
+                                                    }))}
+                                                    placeholder="Search & Select Test..."
+                                                />
+                                            </div>
+                                            <div className="md:col-span-4">
+                                                <div className="px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500">
+                                                    {labCatalog.find(i => i.id === pendingTestId)?.category || 'N/A'}
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <div className="relative">
+                                                    <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                    <input
+                                                        type="number"
+                                                        value={pendingAmount}
+                                                        onChange={(e) => setPendingAmount(parseFloat(e.target.value) || 0)}
+                                                        className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-teal-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddPendingTest}
+                                                    disabled={!pendingTestId}
+                                                    className="w-full md:w-auto flex items-center justify-center gap-1 px-2 py-1.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all disabled:opacity-50"
+                                                >
+                                                    <Plus size={12} />
+                                                    <span className="hidden md:inline">Add Test</span>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
+
+                                    {/* Selected tests list (last selected first) */}
                                     <div className="space-y-2">
                                         <AnimatePresence>
-                                            {selectedTests.map((test, index) => (
+                                            {selectedTests.map((test) => (
                                                 <motion.div
-                                                    key={`test-${index}`}
+                                                    key={`test-${test.testId}`}
                                                     initial={{ opacity: 0, y: 10 }}
                                                     animate={{ opacity: 1, y: 0 }}
                                                     exit={{ opacity: 0, scale: 0.95 }}
                                                     className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end relative group"
                                                 >
-                                                {selectedTests.length > 1 && (
                                                     <button
-                                                        onClick={() => removeTest(index)}
+                                                        onClick={() => handleRemoveSelectedTest(test.testId)}
                                                         className="absolute -top-2 -right-2 p-1.5 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all"
+                                                        title="Remove"
                                                     >
                                                         <Trash2 size={14} />
                                                     </button>
-                                                )}
 
-                                                <div className="md:col-span-5 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Test Name</label>
-                                                    <SearchableSelect
-                                                        value={test.testId}
-                                                        onChange={(value: string) => handleTestChange(index, value)}
-                                                        options={labCatalog.map(item => ({
-                                                            value: item.id,
-                                                            label: item.test_name,
-                                                            group: item.category,
-                                                            subLabel: `₹${item.test_cost}`
-                                                        }))}
-                                                        placeholder="Search & Select Test..."
-                                                    />
-                                                </div>
-
-                                                <div className="md:col-span-4 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Group Name</label>
-                                                    <div className="px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500">
-                                                        {test.groupName || 'N/A'}
+                                                    <div className="md:col-span-5 space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Test Name</label>
+                                                        <div className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700">
+                                                            {test.testName}
+                                                        </div>
                                                     </div>
-                                                </div>
 
-                                                <div className="md:col-span-2 space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Amount (₹)</label>
-                                                    <div className="relative">
-                                                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                                        <input
-                                                            type="number"
-                                                            value={test.amount}
-                                                            onChange={(e) => handleManualAmountChange(index, parseFloat(e.target.value) || 0)}
-                                                            className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-teal-700 focus:ring-2 focus:ring-teal-500 outline-none"
-                                                        />
+                                                    <div className="md:col-span-4 space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Group Name</label>
+                                                        <div className="px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500">
+                                                            {test.groupName || 'N/A'}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                    </AnimatePresence>
-                                    </div>
-                                    <div className="flex justify-center pt-2">
-                                        <button
-                                            onClick={addTest}
-                                            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-all shadow-md shadow-teal-100"
-                                        >
-                                            <Plus size={16} />
-                                            Add Test
-                                        </button>
+
+                                                    <div className="md:col-span-2 space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 md:hidden">Amount (₹)</label>
+                                                        <div className="relative">
+                                                            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                            <input
+                                                                type="number"
+                                                                value={test.amount}
+                                                                onChange={(e) => handleAmountChange(test.testId, parseFloat(e.target.value) || 0)}
+                                                                className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-teal-700 focus:ring-2 focus:ring-teal-500 outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </motion.div>
+                                            ))}
+                                        </AnimatePresence>
                                     </div>
                                 </div>
 

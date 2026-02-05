@@ -36,7 +36,8 @@ const DEFAULT_BUSINESS_RULES: BusinessRules = {
  */
 export async function validateAppointmentData(
   appointmentData: AppointmentData,
-  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES
+  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES,
+  bypassTimeValidation: boolean = false
 ): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -55,29 +56,31 @@ export async function validateAppointmentData(
     errors.push('Appointment time is required');
   }
 
-  // Date and time validation
+  // Date and time validation (skip if bypassTimeValidation is true)
   const appointmentDateTime = new Date(`${appointmentData.appointmentDate}T${appointmentData.appointmentTime}`);
   const now = new Date();
   const dayOfWeek = appointmentDateTime.getDay();
 
-  // Check if appointment is in the past (allow same-day appointments and immediate scheduling)
-  // Only prevent appointments that are significantly in the past
-  const appointmentDateOnly = appointmentDateTime.toISOString().split('T')[0];
-  const todayDateOnly = now.toISOString().split('T')[0];
+  if (!bypassTimeValidation) {
+    // Check if appointment is in the past (allow same-day appointments and immediate scheduling)
+    // Only prevent appointments that are significantly in the past
+    const appointmentDateOnly = appointmentDateTime.toISOString().split('T')[0];
+    const todayDateOnly = now.toISOString().split('T')[0];
 
-  // For same-day appointments, allow scheduling for later in the day, but prevent if time has already passed
-  if (appointmentDateOnly === todayDateOnly) {
-    // Allow same-day appointments if they're later today (after current time)
-    // Or if they're within a reasonable grace period (e.g., last hour) for registration purposes
-    const oneHourBeforeNow = new Date(now.getTime() - 60 * 60 * 1000);
-    if (appointmentDateTime < oneHourBeforeNow) {
-      errors.push('Same-day appointment cannot be scheduled more than 1 hour before current time');
-    }
-  } else {
-    // For future appointments, prevent if more than 1 hour in the past (for rescheduling)
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-    if (appointmentDateTime < oneHourAgo) {
-      errors.push('Appointment cannot be scheduled more than 1 hour in the past');
+    // For same-day appointments, allow scheduling for later in the day, but prevent if time has already passed
+    if (appointmentDateOnly === todayDateOnly) {
+      // Allow same-day appointments if they're later today (after current time)
+      // Or if they're within a reasonable grace period (e.g., last hour) for registration purposes
+      const oneHourBeforeNow = new Date(now.getTime() - 60 * 60 * 1000);
+      if (appointmentDateTime < oneHourBeforeNow) {
+        errors.push('Same-day appointment cannot be scheduled more than 1 hour before current time');
+      }
+    } else {
+      // For future appointments, prevent if more than 1 hour in the past (for rescheduling)
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      if (appointmentDateTime < oneHourAgo) {
+        errors.push('Appointment cannot be scheduled more than 1 hour in the past');
+      }
     }
   }
 
@@ -171,10 +174,11 @@ export async function checkAppointmentConflicts(
 export async function validateAppointment(
   appointmentData: AppointmentData,
   excludeAppointmentId?: string,
-  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES
+  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES,
+  bypassTimeValidation: boolean = false
 ): Promise<ValidationResult> {
   // Run basic validation
-  const basicValidation = await validateAppointmentData(appointmentData, businessRules);
+  const basicValidation = await validateAppointmentData(appointmentData, businessRules, bypassTimeValidation);
 
   if (!basicValidation.isValid) {
     return basicValidation;
@@ -293,9 +297,10 @@ export async function getAlternativeSlots(
 export async function validateAppointmentWithSuggestions(
   appointmentData: AppointmentData,
   excludeAppointmentId?: string,
-  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES
+  businessRules: BusinessRules = DEFAULT_BUSINESS_RULES,
+  bypassTimeValidation: boolean = false
 ): Promise<ValidationResult & { suggestions?: AppointmentSlot[] }> {
-  const validation = await validateAppointment(appointmentData, excludeAppointmentId, businessRules);
+  const validation = await validateAppointment(appointmentData, excludeAppointmentId, businessRules, bypassTimeValidation);
 
   // If validation fails due to conflicts, provide alternative suggestions
   if (!validation.isValid && validation.errors.some(error =>
@@ -457,11 +462,12 @@ export async function generateAppointmentToken(
  */
 export async function createAppointment(
   appointmentData: AppointmentData,
-  createdBy?: string
+  createdBy?: string,
+  bypassValidation: boolean = false
 ): Promise<Appointment> {
   try {
-    // Validate appointment data and check for conflicts
-    const validation = await validateAppointment(appointmentData);
+    // Validate appointment data and check for conflicts (skip time validation for bypass)
+    const validation = await validateAppointment(appointmentData, undefined, undefined, bypassValidation);
 
     if (!validation.isValid) {
       const errorMessage = validation.errors.join('; ');

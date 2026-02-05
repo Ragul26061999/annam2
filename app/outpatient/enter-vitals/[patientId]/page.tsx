@@ -9,19 +9,13 @@ import {
   Loader2,
   User,
   Phone,
-  Calendar,
   AlertCircle,
   CheckCircle,
-  Stethoscope,
-  IndianRupee,
-  Printer,
   ScanBarcode
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../../../src/lib/supabase';
 import { updateQueueStatus } from '../../../../src/lib/outpatientQueueService';
-import { createAppointment, type AppointmentData } from '../../../../src/lib/appointmentService';
-import { createOPConsultationBill } from '../../../../src/lib/universalPaymentService';
 import { generateBarcodeForPatient, generatePrintableBarcodeData } from '../../../../src/lib/barcodeUtils';
 import StaffSelect from '../../../../src/components/StaffSelect';
 
@@ -37,8 +31,6 @@ export default function EnterVitalsPage() {
   const [patient, setPatient] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [doctors, setDoctors] = useState<any[]>([]);
-  const [createdBill, setCreatedBill] = useState<any>(null);
 
   const [vitalsData, setVitalsData] = useState({
     height: '',
@@ -53,87 +45,15 @@ export default function EnterVitalsPage() {
     respiratoryRate: '',
     randomBloodSugar: '',
     vitalNotes: '',
-    consultingDoctorId: '',
-    consultingDoctorName: '',
-    diagnosis: '',
-    consultationFee: '0',
-    opCardAmount: '0',
-    totalAmount: '0',
-    paymentMode: 'Cash',
     staffId: ''
   });
 
   useEffect(() => {
     if (patientId) {
       loadPatientData();
-      loadDoctors();
     }
   }, [patientId]);
 
-  const loadDoctors = async () => {
-    try {
-      console.log('Loading doctors...');
-      
-      // Simple query without complex joins
-      const { data, error } = await supabase
-        .from('doctors')
-        .select(`
-          id,
-          user_id,
-          specialization,
-          consultation_fee,
-          status
-        `)
-        .eq('status', 'active')
-        .is('deleted_at', null)
-        .order('specialization', { ascending: true });
-
-      console.log('Doctor query result:', { data, error });
-
-      if (error) {
-        console.error('Doctor query failed:', error);
-        throw error;
-      }
-
-      if (data && data.length > 0) {
-        // Get user details separately
-        const userIds = data.map((d: { user_id: string | null }) => d.user_id).filter(Boolean);
-        let doctorsWithUsers = data;
-
-        if (userIds.length > 0) {
-          const { data: usersData, error: usersError } = await supabase
-            .from('users')
-            .select('id, name, email')
-            .in('id', userIds);
-
-          console.log('Users query result:', { usersData, usersError });
-
-          if (!usersError && usersData) {
-            doctorsWithUsers = data.map((doctor: any) => ({
-              ...doctor,
-              users: usersData.find((user: any) => user.id === doctor.user_id)
-            }));
-          } else if (usersError) {
-            console.warn('Could not fetch user details:', usersError);
-            // Continue without user details
-          }
-        }
-
-        console.log('Final doctors data:', doctorsWithUsers);
-        setDoctors(doctorsWithUsers);
-      } else {
-        console.log('No active doctors found');
-        setDoctors([]);
-      }
-    } catch (err) {
-      console.error('Error loading doctors:', err);
-      console.error('Error type:', typeof err);
-      console.error('Error keys:', err ? Object.keys(err) : 'null');
-      console.error('Error stringified:', JSON.stringify(err, null, 2));
-      // Set empty array to prevent UI from breaking
-      setDoctors([]);
-    }
-  };
 
   // Auto-calculate BMI
   useEffect(() => {
@@ -147,12 +67,6 @@ export default function EnterVitalsPage() {
     }
   }, [vitalsData.height, vitalsData.weight]);
 
-  // Calculate total amount
-  useEffect(() => {
-    const fee = parseFloat(vitalsData.consultationFee) || 0;
-    const opAmount = parseFloat(vitalsData.opCardAmount) || 0;
-    setVitalsData(prev => ({ ...prev, totalAmount: (fee + opAmount).toString() }));
-  }, [vitalsData.consultationFee, vitalsData.opCardAmount]);
 
   const loadPatientData = async () => {
     try {
@@ -181,13 +95,7 @@ export default function EnterVitalsPage() {
           pulse: data.pulse || '',
           spo2: data.spo2 || '',
           respiratoryRate: data.respiratory_rate || '',
-          randomBloodSugar: data.random_blood_sugar || '',
-          consultingDoctorName: data.consulting_doctor_name || '',
-          diagnosis: data.diagnosis || data.primary_complaint || '',
-          consultationFee: data.consultation_fee || '0',
-          opCardAmount: data.op_card_amount || '0',
-          totalAmount: data.total_amount || '0',
-          paymentMode: data.payment_mode || 'Cash'
+          randomBloodSugar: data.random_blood_sugar || ''
         }));
       }
     } catch (err) {
@@ -203,17 +111,6 @@ export default function EnterVitalsPage() {
     setVitalsData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleDoctorSelect = (doctorId: string) => {
-    const selectedDoctor = doctors.find(d => d.id === doctorId);
-    if (selectedDoctor) {
-      setVitalsData(prev => ({
-        ...prev,
-        consultingDoctorId: doctorId,
-        consultingDoctorName: selectedDoctor.users?.name || `Dr. ID: ${doctorId}`,
-        consultationFee: selectedDoctor.consultation_fee?.toString() || '0'
-      }));
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,12 +144,6 @@ export default function EnterVitalsPage() {
         respiratory_rate: toIntOrNull(vitalsData.respiratoryRate),
         random_blood_sugar: vitalsData.randomBloodSugar ? vitalsData.randomBloodSugar : null,
         vital_notes: vitalsData.vitalNotes ? vitalsData.vitalNotes : null,
-        consulting_doctor_name: vitalsData.consultingDoctorName || null,
-        diagnosis: vitalsData.diagnosis || null,
-        consultation_fee: toNumberOrNull(vitalsData.consultationFee),
-        op_card_amount: toNumberOrNull(vitalsData.opCardAmount),
-        total_amount: toNumberOrNull(vitalsData.totalAmount),
-        payment_mode: vitalsData.paymentMode,
         registration_status: 'completed',
         vitals_completed_at: new Date().toISOString(),
         staff_id: vitalsData.staffId || null
@@ -268,93 +159,6 @@ export default function EnterVitalsPage() {
       // Update queue status if queueId is provided
       if (queueId) {
         await updateQueueStatus(queueId, 'completed', vitalsData.staffId);
-      }
-
-      // Create appointment for the selected doctor
-      let createdAppointmentId: string | null = null;
-      let createdEncounterId: string | null = null;
-      if (vitalsData.consultingDoctorId) {
-        try {
-          const today = new Date();
-          
-          // Schedule appointment for today at a reasonable future time
-          const now = new Date();
-          const currentHour = now.getHours();
-          const currentMinute = now.getMinutes();
-          
-          // If it's after 5 PM, schedule for tomorrow at 9 AM
-          // Otherwise schedule for the next available slot (current time + 30 minutes, rounded up to next 30-min slot)
-          let finalAppointmentDate = today.toISOString().split('T')[0];
-          let appointmentTimeObj: Date;
-          
-          if (currentHour >= 17) {
-            // After 5 PM - schedule for tomorrow
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            finalAppointmentDate = tomorrow.toISOString().split('T')[0];
-            appointmentTimeObj = new Date(tomorrow.setHours(9, 0, 0, 0));
-          } else {
-            // During business hours - schedule for next 30-minute slot
-            const nextSlotMinute = Math.ceil((currentMinute + 30) / 30) * 30;
-            appointmentTimeObj = new Date(today.setHours(currentHour, nextSlotMinute, 0, 0));
-            
-            // If the next slot goes past business hours, schedule for tomorrow
-            if (appointmentTimeObj.getHours() >= 17) {
-              const tomorrow = new Date(today);
-              tomorrow.setDate(tomorrow.getDate() + 1);
-              finalAppointmentDate = tomorrow.toISOString().split('T')[0];
-              appointmentTimeObj = new Date(tomorrow.setHours(9, 0, 0, 0));
-            }
-          }
-          
-          const appointmentTime = `${appointmentTimeObj.getHours().toString().padStart(2, '0')}:${appointmentTimeObj.getMinutes().toString().padStart(2, '0')}:00`;
-
-          const appointmentData: AppointmentData = {
-            patientId: patientId,
-            doctorId: vitalsData.consultingDoctorId,
-            appointmentDate: finalAppointmentDate,
-            appointmentTime: appointmentTime,
-            durationMinutes: 30,
-            type: 'consultation',
-            isEmergency: false,
-            chiefComplaint: vitalsData.diagnosis || 'General consultation',
-            bookingMethod: 'walk_in' // Default to walk_in for vitals entry appointments
-          };
-
-          const appointment = await createAppointment(appointmentData, vitalsData.staffId);
-          console.log('Appointment created successfully:', appointment.id);
-          createdAppointmentId = appointment.id;
-          createdEncounterId = appointment.encounter?.id || null;
-        } catch (appointmentError) {
-          console.error('Error creating appointment:', appointmentError);
-          // Don't fail the entire process if appointment creation fails
-          // Just log the error and continue with vitals completion
-        }
-      }
-
-      // Create OP consultation bill
-      try {
-        const consultationFee = parseFloat(vitalsData.consultationFee) || 0;
-
-        if (consultationFee > 0 && createdEncounterId) {
-          const bill = await createOPConsultationBill(
-            patientId,
-            createdEncounterId,
-            consultationFee,
-            vitalsData.consultingDoctorName || 'Unknown Doctor',
-            vitalsData.staffId || undefined
-          );
-          console.log('OP consultation bill created successfully:', bill.id);
-          setCreatedBill(bill);
-        } else if (consultationFee > 0 && !createdEncounterId) {
-          console.warn('Skipped bill creation because encounter was not created');
-        } else {
-          console.log('No bill created - consultation fee is zero');
-        }
-      } catch (billError) {
-        console.error('Error creating OP consultation bill:', billError);
-        // Don't fail the entire process if bill creation fails
-        // Just log the error and continue with vitals completion
       }
 
       setSuccess(true);
@@ -390,139 +194,6 @@ export default function EnterVitalsPage() {
     );
   }
 
-  const showThermalPreviewWithLogo = () => {
-    if (!createdBill) return;
-
-    const now = new Date();
-    const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-    // Get patient UHID
-    const patientUhid = patient?.patient_id || 'WALK-IN';
-    
-    // Get payment status
-    let paymentType = createdBill.payment_status?.toUpperCase() || 'CASH';
-    if (createdBill.payment_status === 'paid') {
-      paymentType = 'PAID';
-    } else if (createdBill.payment_status === 'pending') {
-      paymentType = 'PENDING';
-    }
-
-    const itemsHtml = createdBill.items?.map((item: any, index: number) => `
-      <tr>
-        <td class="items-8cm">${index + 1}.</td>
-        <td class="items-8cm">${item.service_name || item.description || 'Consultation'}</td>
-        <td class="items-8cm text-center">${item.quantity || 1}</td>
-        <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
-      </tr>
-    `).join('') || '';
-
-    const thermalContent = `
-      <html>
-        <head>
-          <title>Thermal Receipt - ${createdBill.bill_id}</title>
-          <style>
-            @page { margin: 1mm; size: 77mm 297mm; }
-            body { 
-              font-family: 'Verdana', sans-serif; 
-              font-weight: bold;
-              margin: 0; 
-              padding: 2px;
-              font-size: 14px;
-              line-height: 1.2;
-              width: 77mm;
-            }
-            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
-            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
-            .logo { width: 350px; height: auto; margin-bottom: 5px; }
-          </style>
-        </head>
-        <body>
-          <div class="center">
-            <img src="/logo/annamHospital-bk.png" alt="ANNAM LOGO" class="logo" />
-            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
-            <div class="header-9cm">Phone- 04639 252592</div>
-            <div style="margin-top: 5px; font-weight: bold;">OP CONSULTATION BILL</div>
-          </div>
-          
-          <div style="margin-top: 10px;">
-            <table class="table">
-              <tr>
-                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${createdBill.bill_id}</td>
-              </tr>
-              <tr>
-                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${patientUhid}</td>
-              </tr>
-              <tr>
-                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${patient?.name || 'Unknown Patient'}</td>
-              </tr>
-              <tr>
-                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${new Date(createdBill.created_at).toLocaleDateString()} ${new Date(createdBill.created_at).toLocaleTimeString()}</td>
-              </tr>
-              <tr>
-                <td class="header-10cm">Payment Type&nbsp;:&nbsp;&nbsp;</td>
-                <td class="header-10cm bill-info-bold">${paymentType}</td>
-              </tr>
-            </table>
-          </div>
-
-          <div style="margin-top: 10px;">
-            <table class="table">
-              <tr style="border-bottom: 1px dashed #000;">
-                <td width="10%" class="items-8cm">S.No</td>
-                <td width="60%" class="items-8cm">Service</td>
-                <td width="15%" class="items-8cm text-center">Qty</td>
-                <td width="15%" class="items-8cm text-right">Amt</td>
-              </tr>
-              ${itemsHtml}
-            </table>
-          </div>
-
-          <div style="margin-top: 10px;">
-            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
-              <span>Total Amount</span>
-              <span>${Number(createdBill.total_amount || 0).toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div class="footer">
-            <div class="totals-line footer-7cm">
-              <span>Printed on ${printedDateTime}</span>
-              <span>Authorized Sign</span>
-            </div>
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            }
-          </script>
-        </body>
-      </html>
-    `;
-
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (printWindow) {
-      printWindow.document.write(thermalContent);
-      printWindow.document.close();
-    }
-  };
 
   const handlePrintBarcode = async () => {
     if (!patient) return;
@@ -577,17 +248,7 @@ export default function EnterVitalsPage() {
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Vitals Saved Successfully!</h2>
-          <p className="text-gray-600 mb-6">Patient registration is now complete.</p>
-          
-          {createdBill && (
-            <button
-              onClick={showThermalPreviewWithLogo}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg mb-4"
-            >
-              <Printer className="h-5 w-5" />
-              <span>Print OP Bill</span>
-            </button>
-          )}
+          <p className="text-gray-600 mb-6">Patient vitals have been recorded.</p>
 
           <button
             onClick={handlePrintBarcode}
@@ -832,123 +493,8 @@ export default function EnterVitalsPage() {
               </div>
             </div>
 
-            {/* Consultation Details */}
-            <div className="bg-purple-50/50 p-6 rounded-xl border border-purple-100">
-              <h3 className="text-sm font-bold text-purple-800 mb-6 flex items-center gap-2">
-                <Stethoscope size={18} />
-                Consultation Details
-              </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-purple-600 uppercase mb-2">Consulting Doctor</label>
-                  <select
-                    value={vitalsData.consultingDoctorId}
-                    onChange={(e) => handleDoctorSelect(e.target.value)}
-                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">Select Doctor</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        Dr. {doctor.users?.name || 'Unknown'} {doctor.specialization ? `- ${doctor.specialization}` : ''}
-                        {doctor.consultation_fee ? ` (₹${doctor.consultation_fee})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {vitalsData.consultingDoctorName && (
-                    <p className="text-xs text-purple-600 mt-1">
-                      Selected: Dr. {vitalsData.consultingDoctorName}
-                    </p>
-                  )}
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-purple-600 uppercase mb-2">Diagnosis / Complaint</label>
-                  <input
-                    type="text"
-                    name="diagnosis"
-                    value={vitalsData.diagnosis}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                    placeholder="Brief diagnosis"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Appointment Info */}
-            {vitalsData.consultingDoctorId && (
-              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar size={16} className="text-blue-600" />
-                  <h4 className="text-sm font-bold text-blue-800">Appointment Information</h4>
-                </div>
-                <div className="text-xs text-blue-700 space-y-1">
-                  <p>• An appointment will be automatically created for today</p>
-                  <p>• Time: Current time + 30 minutes</p>
-                  <p>• Duration: 30 minutes consultation</p>
-                  <p>• Status: Scheduled</p>
-                </div>
-              </div>
-            )}
-
-            {/* Billing Details */}
-            <div className="bg-green-50/50 p-6 rounded-xl border border-green-100">
-              <h3 className="text-sm font-bold text-green-800 mb-6 flex items-center gap-2">
-                <IndianRupee size={18} />
-                Billing Information
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Consultation Fee</label>
-                  <input
-                    type="number"
-                    name="consultationFee"
-                    value={vitalsData.consultationFee}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                    placeholder="Enter consultation fee"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">OP Card Amount</label>
-                  <input
-                    type="number"
-                    name="opCardAmount"
-                    value={vitalsData.opCardAmount}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Total Amount</label>
-                  <input
-                    type="text"
-                    value={vitalsData.totalAmount}
-                    readOnly
-                    className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-bold text-green-700"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-green-600 uppercase mb-2">Payment Mode</label>
-                  <select
-                    name="paymentMode"
-                    value={vitalsData.paymentMode}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Card">Card</option>
-                    <option value="UPI">UPI</option>
-                    <option value="Insurance">Insurance</option>
-                  </select>
-                </div>
-              </div>
-            </div>
 
             {/* Staff Selection */}
             <div>

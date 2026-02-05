@@ -65,7 +65,7 @@ export interface PatientRegistrationData {  // Personal Information (Mandatory)
   staffId?: string;
 
   // Outpatient Specific Fields
-  alternatePhone?: string;
+  place?: string;
   city?: string;
   state?: string;
   pincode?: string;
@@ -315,7 +315,7 @@ export async function insertPatientRecord(
       gender: registrationData.gender ? registrationData.gender.toLowerCase() : null,
       marital_status: registrationData.maritalStatus || null,
       phone: registrationData.phone || null,
-      alternate_phone: registrationData.alternatePhone || null,
+      place: registrationData.place || null,
       email: registrationData.email || `${uhid}@annam.com`,
       address: registrationData.address || null,
       city: registrationData.city || null,

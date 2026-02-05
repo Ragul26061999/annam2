@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
     User,
     Phone,
@@ -22,10 +23,16 @@ import {
     CheckCircle,
     Barcode,
     FileText,
-    Upload
+    Upload,
+    AlertTriangle,
+    UserCheck,
+    Eye,
+    UserPlus,
+    Loader2
 } from 'lucide-react';
 import { generateUHID, registerNewPatient, PatientRegistrationData } from '../src/lib/patientService';
 import { getAllDoctorsSimple, Doctor } from '../src/lib/doctorService';
+import { supabase } from '../src/lib/supabase';
 import PatientRegistrationLabel from './PatientRegistrationLabel';
 import BarcodeDisplay from './BarcodeDisplay';
 import StaffSelect from '../src/components/StaffSelect';
@@ -62,6 +69,10 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
     const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [currentBill, setCurrentBill] = useState<PaymentRecord | null>(null);
+    const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+    const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
+    const [duplicatePatient, setDuplicatePatient] = useState<any>(null);
+    const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
 
     const [formData, setFormData] = useState({
         // Step 1: Patient Info
@@ -74,7 +85,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         dob: '',
         gender: '',
         contactNo: '',
-        alternateNo: '',
+        place: '',
         address: '',
         city: '',
         state: 'Tamil Nadu',
@@ -223,16 +234,98 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         setFormData(prev => ({ ...prev, totalAmount: (fee + opAmount).toString() }));
     }, [formData.consultationFee, formData.opCardAmount]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        
+        // Check for duplicate patient when place field is filled
+        if (name === 'place' && value.trim() !== '') {
+            setCheckingDuplicate(true);
+            // Small delay to ensure state is updated
+            setTimeout(async () => {
+                const existingPatient = await checkExistingPatientByNameGenderDOB();
+                if (existingPatient) {
+                    setDuplicatePatient(existingPatient);
+                    setIsDuplicateDetected(true);
+                    setShowDuplicateAlert(true);
+                } else {
+                    setIsDuplicateDetected(false);
+                    setDuplicatePatient(null);
+                    setShowDuplicateAlert(false);
+                }
+                setCheckingDuplicate(false);
+            }, 100);
+        }
     };
 
     const nextStep = () => setStep(2);
     const prevStep = () => setStep(1);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // Check for existing patient with same name, gender, and DOB
+    const checkExistingPatientByNameGenderDOB = async () => {
+        const { firstName, lastName, dob, gender } = formData;
+        
+        // Only validate if all required fields are filled
+        if (!firstName.trim() || !lastName.trim() || !dob || !gender) {
+            return null;
+        }
+
+        try {
+            const fullName = `${firstName} ${lastName}`.trim();
+            
+            const { data: existingPatients, error } = await supabase
+                .from('patients')
+                .select('*')
+                .eq('name', fullName)
+                .eq('date_of_birth', dob)
+                .eq('gender', gender.toLowerCase())
+                .limit(1);
+
+            if (error) {
+                console.error('Error checking existing patient:', error);
+                return null;
+            }
+
+            return existingPatients && existingPatients.length > 0 ? existingPatients[0] : null;
+        } catch (error) {
+            console.error('Error checking existing patient:', error);
+            return null;
+        }
+    };
+
+    // Check for existing patient with same details (original function for submit validation)
+    const checkExistingPatient = async () => {
+        const { firstName, lastName, dob, contactNo, place } = formData;
+        
+        // Only validate if all required fields are filled
+        if (!firstName.trim() || !lastName.trim() || !dob || !contactNo.trim() || !place.trim()) {
+            return null;
+        }
+
+        try {
+            const { data: existingPatients, error } = await supabase
+                .from('patients')
+                .select('*')
+                .eq('name', `${firstName} ${lastName}`.trim())
+                .eq('date_of_birth', dob)
+                .eq('phone', contactNo.trim())
+                .eq('place', place.trim())
+                .limit(1);
+
+            if (error) {
+                console.error('Error checking existing patient:', error);
+                return null;
+            }
+
+            return existingPatients && existingPatients.length > 0 ? existingPatients[0] : null;
+        } catch (error) {
+            console.error('Error checking existing patient:', error);
+            return null;
+        }
+    };
+
+    // Function to proceed with registration after duplicate confirmation
+    const proceedWithRegistration = async () => {
         setLoading(true);
         try {
             const registrationData: PatientRegistrationData = {
@@ -241,7 +334,114 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                 dateOfBirth: formData.dob,
                 age: formData.age,
                 phone: formData.contactNo,
-                alternatePhone: formData.alternateNo,
+                place: formData.place,
+                address: formData.address,
+                city: formData.city,
+                state: formData.state,
+                pincode: formData.pincode,
+                gender: formData.gender,
+                admissionType: 'outpatient',
+                primaryComplaint: formData.diagnosis,
+                emergencyContactName: formData.emergencyName,
+                emergencyContactPhone: formData.emergencyPhone,
+                emergencyContactRelationship: formData.relationship,
+                diagnosis: formData.diagnosis,
+                height: formData.height,
+                weight: formData.weight,
+                bmi: formData.bmi,
+                temperature: formData.temp,
+                tempUnit: formData.tempUnit,
+                bpSystolic: formData.bpSystolic,
+                bpDiastolic: formData.bpDiastolic,
+                pulse: formData.pulse,
+                spo2: formData.spo2,
+                respiratoryRate: formData.respiratoryRate,
+                randomBloodSugar: formData.randomBloodSugar,
+                vitalNotes: formData.vitalNotes,
+                opCardAmount: formData.opCardAmount,
+                consultationFee: formData.consultationFee,
+                totalAmount: formData.totalAmount,
+                paymentMode: formData.paymentMode,
+                consultingDoctorId: formData.doctorId,
+                consultingDoctorName: formData.doctorName,
+                departmentWard: formData.doctorDept,
+                bloodGroup: '',
+                allergies: '',
+                medicalHistory: '',
+                currentMedications: '',
+                chronicConditions: '',
+                previousSurgeries: '',
+                admissionDate: formData.registrationDate,
+                admissionTime: formData.registrationTime,
+                staffId: formData.staffId,
+                advanceAmount: formData.advanceAmount,
+                advancePaymentMethod: formData.advancePaymentMethod,
+                advanceReferenceNumber: formData.advanceReferenceNumber,
+                advanceNotes: formData.advanceNotes
+            };
+
+            const result = await registerNewPatient(registrationData, formData.uhid);
+
+            if (result.success) {
+                // Create OP consultation bill
+                try {
+                    const bill = await createOPConsultationBill(
+                        result.patient.id,
+                        null, // No appointment ID for direct OP registration
+                        parseFloat(formData.consultationFee),
+                        formData.doctorName,
+                        formData.staffId
+                    );
+                    
+                    setCurrentBill(bill);
+                    setShowPaymentModal(true);
+                } catch (billingError) {
+                    console.error('Error creating bill:', billingError);
+                    // Continue with registration even if billing fails
+                }
+
+                setRegistrationResult({
+                    ...result,
+                    patientName: `${formData.firstName} ${formData.lastName}`,
+                    billNo: `BILL-${Date.now().toString().slice(-6)}`,
+                    totalAmount: formData.totalAmount
+                });
+                setIsSuccess(true);
+                if (onComplete) onComplete(result);
+            } else {
+                throw new Error(result.error || 'Registration failed');
+            }
+        } catch (error) {
+            console.error('Registration failed:', error);
+            alert('Registration failed: ' + (error as Error).message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        
+        try {
+            // Check for existing patient
+            const existingPatient = await checkExistingPatient();
+            
+            if (existingPatient) {
+                // Show duplicate alert instead of modal
+                setDuplicatePatient(existingPatient);
+                setShowDuplicateAlert(true);
+                setIsDuplicateDetected(true);
+                setLoading(false);
+                return;
+            }
+            const registrationData: PatientRegistrationData = {
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                dateOfBirth: formData.dob,
+                age: formData.age,
+                phone: formData.contactNo,
+                place: formData.place,
                 address: formData.address,
                 city: formData.city,
                 state: formData.state,
@@ -436,6 +636,57 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
             </div>
 
             <form onSubmit={handleSubmit} className="p-8">
+                {/* Duplicate Patient Alert */}
+                {showDuplicateAlert && duplicatePatient && (
+                    <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 mb-6">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                                <h4 className="text-sm font-semibold text-yellow-800 mb-2">This patient already exists!</h4>
+                                <div className="bg-white rounded-lg p-3 border border-yellow-200 mb-3">
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Patient ID:</strong> {duplicatePatient.patient_id}
+                                    </p>
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Name:</strong> {duplicatePatient.name}
+                                    </p>
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Gender:</strong> {duplicatePatient.gender?.charAt(0).toUpperCase() + duplicatePatient.gender?.slice(1)}
+                                    </p>
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Date of Birth:</strong> {new Date(duplicatePatient.date_of_birth).toLocaleDateString()}
+                                    </p>
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Contact:</strong> {duplicatePatient.phone || 'Not provided'}
+                                    </p>
+                                    <p className="text-sm text-gray-700">
+                                        <strong>Place:</strong> {duplicatePatient.place || 'Not provided'}
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDuplicateAlert(false);
+                                            setDuplicatePatient(null);
+                                            setIsDuplicateDetected(false);
+                                        }}
+                                        className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors"
+                                    >
+                                        I Understand - Continue Registration
+                                    </button>
+                                    <Link
+                                        href="/outpatient"
+                                        className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                                    >
+                                        Go to Patient Search
+                                    </Link>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {step === 1 ? (
                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                         {/* Registration Header Info */}
@@ -526,12 +777,19 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Date of Birth</label>
                                 <input
-                                    type="text"
+                                    type="date"
                                     name="dob"
-                                    placeholder="DD/MM/YYYY"
-                                    maxLength={10}
-                                    value={dobInput}
-                                    onChange={handleDobChange}
+                                    value={formData.dob}
+                                    onChange={(e) => {
+                                        setFormData(prev => ({ ...prev, dob: e.target.value }));
+                                        // Update dobInput for display consistency
+                                        if (e.target.value) {
+                                            const [year, month, day] = e.target.value.split('-');
+                                            setDobInput(`${day}/${month}/${year}`);
+                                        } else {
+                                            setDobInput('');
+                                        }
+                                    }}
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                                 />
                             </div>
@@ -566,17 +824,24 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Alternate Contact No</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Place</label>
                                 <div className="relative">
-                                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                     <input
-                                        type="tel"
-                                        name="alternateNo"
-                                        placeholder="Optional Alternate Number"
-                                        value={formData.alternateNo}
+                                        type="text"
+                                        name="place"
+                                        placeholder="Enter Place/Locality"
+                                        value={formData.place}
                                         onChange={handleInputChange}
-                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                        className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
+                                            checkingDuplicate ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                                        }`}
                                     />
+                                    {checkingDuplicate && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div>
@@ -672,9 +937,10 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             <button
                                 type="button"
                                 onClick={nextStep}
-                                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-orange-100"
+                                disabled={isDuplicateDetected}
+                                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-orange-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Proceed to Vitals
+                                {isDuplicateDetected ? 'Duplicate Patient Detected' : 'Proceed to Vitals'}
                                 <ChevronRight size={18} />
                             </button>
                         </div>
@@ -1093,10 +1359,10 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             </button>
                             <button
                                 type="submit"
-                                disabled={loading}
+                                disabled={loading || isDuplicateDetected}
                                 className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-10 py-3 rounded-xl font-bold transition-all shadow-xl shadow-orange-200 disabled:opacity-50"
                             >
-                                {loading ? 'Processing...' : 'Complete & Generate Bill'}
+                                {loading ? 'Processing...' : isDuplicateDetected ? 'Duplicate Patient Detected' : 'Complete & Generate Bill'}
                                 <Save size={18} />
                             </button>
                         </div>
@@ -1344,17 +1610,24 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Alternate Contact No</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Place</label>
                                 <div className="relative">
-                                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                     <input
-                                        type="tel"
-                                        name="alternateNo"
-                                        placeholder="Optional Alternate Number"
-                                        value={formData.alternateNo}
+                                        type="text"
+                                        name="place"
+                                        placeholder="Enter Place/Locality"
+                                        value={formData.place}
                                         onChange={handleInputChange}
-                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                        className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
+                                            checkingDuplicate ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                                        }`}
                                     />
+                                    {checkingDuplicate && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div>
@@ -1450,9 +1723,10 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             <button
                                 type="button"
                                 onClick={nextStep}
-                                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-orange-100"
+                                disabled={isDuplicateDetected}
+                                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-orange-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Proceed to Vitals
+                                {isDuplicateDetected ? 'Duplicate Patient Detected' : 'Proceed to Vitals'}
                                 <ChevronRight size={18} />
                             </button>
                         </div>
@@ -1792,10 +2066,10 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             </button>
                             <button
                                 type="submit"
-                                disabled={loading}
+                                disabled={loading || isDuplicateDetected}
                                 className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-10 py-3 rounded-xl font-bold transition-all shadow-xl shadow-orange-200 disabled:opacity-50"
                             >
-                                {loading ? 'Processing...' : 'Complete & Generate Bill'}
+                                {loading ? 'Processing...' : isDuplicateDetected ? 'Duplicate Patient Detected' : 'Complete & Generate Bill'}
                                 <Save size={18} />
                             </button>
                         </div>

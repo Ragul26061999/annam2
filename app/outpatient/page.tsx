@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Users, Calendar, Clock, Stethoscope, Filter, Search,
   UserPlus, RefreshCw, Eye, CheckCircle, XCircle,
   AlertCircle, Phone, Hash, ArrowRight, Loader2,
   TrendingUp, Activity, User, X as CloseIcon,
   MoreVertical, Edit3, Trash2, Printer, FileText,
-  Receipt, CreditCard, IndianRupee, Download, Syringe
+  Receipt, CreditCard, IndianRupee, Download, Syringe,
+  MapPin
 } from 'lucide-react';
 import { getDashboardStats } from '../../src/lib/dashboardService';
 import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
@@ -81,6 +82,7 @@ interface Patient {
 
 function OutpatientPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [stats, setStats] = useState<OutpatientStats>({
     totalPatients: 0,
     outpatientPatients: 0,
@@ -123,6 +125,15 @@ function OutpatientPageContent() {
   const [selectedBill, setSelectedBill] = useState<BillingRecord | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showThermalModal, setShowThermalModal] = useState(false);
+
+  // Additional state for patient listing
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [placeFilter, setPlaceFilter] = useState('');
 
   // Effect to update date inputs when date filter changes
   useEffect(() => {
@@ -210,7 +221,7 @@ function OutpatientPageContent() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [selectedDate, statusFilter]);
+  }, [selectedDate, statusFilter, currentPage, searchTerm, startDate, endDate, placeFilter]);
 
 
   const loadQueueStats = async () => {
@@ -496,12 +507,15 @@ function OutpatientPageContent() {
       // Get general dashboard stats
       const dashboardStats = await getDashboardStats();
 
-      // Get patients - fetch a larger batch to filter
+      // Get patients - fetch with pagination and filters
       const response = await getAllPatients({
-        page: 1,
-        limit: 100,
+        page: currentPage,
+        limit: 20,
         status: statusFilter === '' ? undefined : statusFilter,
-        searchTerm: searchTerm || undefined
+        searchTerm: searchTerm || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        place: placeFilter || undefined
       });
 
       // GET TODAY'S APPOINTMENTS FOR THE QUEUE
@@ -537,6 +551,7 @@ function OutpatientPageContent() {
       });
 
       setPatients(outpatientPatients);
+      setTotalPatients(response.total);
       setError(null);
     } catch (err) {
       console.error('Error loading outpatient data:', err);
@@ -567,6 +582,103 @@ function OutpatientPageContent() {
       default: return <Clock className="w-4 h-4" />;
     }
   };
+
+  // Utility functions for patient listing
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadOutpatientData();
+    setRefreshing(false);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status);
+    setCurrentPage(1);
+  };
+
+  const handlePatientStartDateChange = (date: string) => {
+    setStartDate(date);
+    setCurrentPage(1);
+  };
+
+  const handlePatientEndDateChange = (date: string) => {
+    setEndDate(date);
+    setCurrentPage(1);
+  };
+
+  const handlePlaceFilter = (place: string) => {
+    setPlaceFilter(place);
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
+    setStartDate('');
+    setEndDate('');
+    setPlaceFilter('');
+    setCurrentPage(1);
+  };
+
+  const getTruncatedText = (text: string, maxLength: number = 30) => {
+    if (!text) return 'Not specified';
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  const getGradientColors = (name: string) => {
+    const colors = [
+      'from-purple-500 to-pink-500',
+      'from-blue-500 to-cyan-500',
+      'from-green-500 to-emerald-500',
+      'from-orange-500 to-red-500',
+      'from-indigo-500 to-purple-500',
+      'from-pink-500 to-rose-500',
+      'from-cyan-500 to-blue-500',
+      'from-emerald-500 to-green-500'
+    ];
+
+    const hash = name.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const toggleDropdown = (patientId: string) => {
+    setOpenDropdownId(openDropdownId === patientId ? null : patientId);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.dropdown-container')) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    if (openDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openDropdownId]);
 
   const calculateAge = (dateOfBirth: string) => {
     if (!dateOfBirth) return 'N/A';
@@ -1589,8 +1701,370 @@ function OutpatientPageContent() {
 
           {activeTab === 'patients' && (
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recently Registered Outpatients</h3>
-              {/* Patients list will be rendered below */}
+              {/* Header with View Toggle */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Outpatient Patients</h3>
+                  <p className="text-sm text-gray-600 mt-1">Manage outpatient patient records and information</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleRefresh}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                  <button
+                    onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    {viewMode === 'grid' ? 'List View' : 'Grid View'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Search and Filter */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-6">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <input
+                      type="text"
+                      placeholder="Search patients by name, ID, or phone..."
+                      value={searchTerm}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => handleStatusFilter(e.target.value)}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                    >
+                      <option value="">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="critical">Critical</option>
+                    </select>
+
+                    <input
+                      type="date"
+                      placeholder="Start Date"
+                      value={startDate}
+                      onChange={(e) => handlePatientStartDateChange(e.target.value)}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                    />
+
+                    <input
+                      type="date"
+                      placeholder="End Date"
+                      value={endDate}
+                      onChange={(e) => handlePatientEndDateChange(e.target.value)}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Filter by place (city/state/address)"
+                      value={placeFilter}
+                      onChange={(e) => handlePlaceFilter(e.target.value)}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                    />
+
+                    <button
+                      onClick={clearFilters}
+                      className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                  <div className="flex items-center">
+                    <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+                    <p className="text-red-700">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Patients */}
+              {patients.length > 0 ? (
+                <>
+                  {viewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {patients.map((patient) => (
+                        <div key={patient.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center">
+                              <div className={`w-12 h-12 bg-gradient-to-r ${getGradientColors(patient.name)} rounded-xl flex items-center justify-center text-white font-bold text-sm`}>
+                                {getInitials(patient.name)}
+                              </div>
+                              <div className="ml-3">
+                                <h3 className="font-semibold text-gray-900">{patient.name}</h3>
+                                <div className="flex items-center gap-2">
+                                  <Hash className="h-3 w-3 text-gray-400" />
+                                  <p className="text-sm text-orange-600 font-mono">{patient.patient_id}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {/* Show Critical badge for emergency patients */}
+                              {patient.is_critical && (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 flex items-center gap-1">
+                                  <AlertCircle size={10} />
+                                  Critical
+                                </span>
+                              )}
+
+                              {/* Dropdown Menu */}
+                              <div className="relative dropdown-container">
+                                <button
+                                  onClick={() => toggleDropdown(patient.id)}
+                                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                  <MoreVertical size={16} className="text-gray-500" />
+                                </button>
+
+                                {openDropdownId === patient.id && (
+                                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 dropdown-container">
+                                    <div className="py-1">
+                                      <Link href={`/patients/${patient.id}`} className="w-full">
+                                        <button
+                                          onClick={() => setOpenDropdownId(null)}
+                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                          <Eye size={14} />
+                                          View Details
+                                        </button>
+                                      </Link>
+                                      <Link href={`/patients/${patient.id}/edit`} className="w-full">
+                                        <button
+                                          onClick={() => setOpenDropdownId(null)}
+                                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                          <Edit3 size={14} />
+                                          Edit Patient
+                                        </button>
+                                      </Link>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Calendar size={14} className="mr-2 text-blue-500" />
+                              <span className="font-medium">
+                                Age: {patient.age || calculateAge(patient.date_of_birth)} • {patient.gender?.charAt(0).toUpperCase() + patient.gender?.slice(1)} • {patient.blood_group || 'Unknown'}
+                              </span>
+                            </div>
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Phone size={14} className="mr-2 text-green-500" />
+                              {patient.phone}
+                            </div>
+                            <div className="flex items-start text-sm text-gray-600">
+                              <MapPin size={14} className="mr-2 mt-1 text-red-500" />
+                              {getTruncatedText(patient.address, 35)}
+                            </div>
+
+                            {/* Vitals summary if available */}
+                            {(patient.bmi || patient.bp_systolic || patient.pulse) && (
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {patient.bmi && (
+                                  <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-bold border border-green-100">
+                                    BMI: {patient.bmi}
+                                  </span>
+                                )}
+                                {patient.bp_systolic && (
+                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold border border-blue-100">
+                                    BP: {patient.bp_systolic}/{patient.bp_diastolic}
+                                  </span>
+                                )}
+                                {patient.pulse && (
+                                  <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold border border-orange-100">
+                                    Pulse: {patient.pulse}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {patient.primary_complaint && (
+                            <div className="bg-orange-50 rounded-xl p-3 mb-4">
+                              <p className="text-xs font-medium text-orange-700 mb-1">Primary Complaint</p>
+                              <p className="text-sm text-orange-900">{getTruncatedText(patient.primary_complaint, 50)}</p>
+                            </div>
+                          )}
+
+                          {patient.allergies && (
+                            <div className="bg-red-50 rounded-xl p-3 mb-4 border border-red-200">
+                              <p className="text-xs font-medium text-red-700 mb-1 flex items-center">
+                                <AlertCircle size={12} className="mr-1" />
+                                Allergies
+                              </p>
+                              <p className="text-sm text-red-900">{getTruncatedText(patient.allergies, 40)}</p>
+                            </div>
+                          )}
+
+                          {/* Registered By Staff */}
+                          {patient.staff && (
+                            <div className="bg-green-50 rounded-xl p-3 mb-4 border border-green-100">
+                              <p className="text-xs font-medium text-green-700 mb-1 flex items-center">
+                                <Users size={12} className="mr-1" />
+                                Registered By
+                              </p>
+                              <p className="text-sm text-green-900 font-medium">
+                                {patient.staff.first_name} {patient.staff.last_name}
+                                <span className="text-xs text-green-600 ml-1">({patient.staff.employee_id})</span>
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2">
+                            <Link href={`/patients/${patient.id}`} className="flex-1">
+                              <button className="w-full flex items-center justify-center bg-orange-50 text-orange-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
+                                <Eye size={14} className="mr-1" />
+                                View
+                              </button>
+                            </Link>
+                            <button
+                              onClick={() => router.push(`/patients/${patient.id}/edit`)}
+                              className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 py-2 px-3 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors"
+                            >
+                              <Edit3 size={14} className="mr-1" />
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {patients.map((patient) => (
+                              <tr key={patient.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center">
+                                    <div className={`w-10 h-10 bg-gradient-to-r ${getGradientColors(patient.name)} rounded-lg flex items-center justify-center text-white font-bold text-sm`}>
+                                      {getInitials(patient.name)}
+                                    </div>
+                                    <div className="ml-3">
+                                      <div className="text-sm font-medium text-gray-900">{patient.name}</div>
+                                      <div className="text-sm text-orange-600 font-mono">{patient.patient_id}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">{patient.phone}</div>
+                                  <div className="text-sm text-gray-500">{getTruncatedText(patient.address, 25)}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {patient.age || calculateAge(patient.date_of_birth)} • {patient.gender}
+                                  </div>
+                                  <div className="text-sm text-gray-500">{patient.blood_group || 'Unknown'}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2">
+                                    {patient.is_critical && (
+                                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 flex items-center gap-1">
+                                        <AlertCircle size={10} />
+                                        Critical
+                                      </span>
+                                    )}
+                                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                      Outpatient
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                  <div className="flex items-center gap-2">
+                                    <Link href={`/patients/${patient.id}`}>
+                                      <button className="text-orange-600 hover:text-orange-900">
+                                        <Eye size={16} />
+                                      </button>
+                                    </Link>
+                                    <Link href={`/patients/${patient.id}/edit`}>
+                                      <button className="text-blue-600 hover:text-blue-900">
+                                        <Edit3 size={16} />
+                                      </button>
+                                    </Link>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pagination */}
+                  {totalPatients > 20 && (
+                    <div className="flex items-center justify-between mt-6 bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                      <div className="text-sm text-gray-700">
+                        Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalPatients)} of {totalPatients} patients
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1}
+                          className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Previous
+                        </button>
+                        <span className="px-3 py-1 text-sm bg-orange-100 text-orange-700 rounded-md">
+                          {currentPage}
+                        </span>
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalPatients / 20), prev + 1))}
+                          disabled={currentPage >= Math.ceil(totalPatients / 20)}
+                          className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Outpatient Patients Found</h3>
+                  <p className="text-gray-600">
+                    {searchTerm || statusFilter || startDate || endDate || placeFilter
+                      ? 'No patients match your current filters. Try adjusting your search criteria.'
+                      : 'No outpatient patients registered yet.'}
+                  </p>
+                  {(searchTerm || statusFilter || startDate || endDate || placeFilter) && (
+                    <button
+                      onClick={clearFilters}
+                      className="mt-4 px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1728,101 +2202,6 @@ function OutpatientPageContent() {
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* Render patients in the tab if patients tab is active */}
-      {activeTab === 'patients' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
-          {patients.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {patients.slice(0, 6).map((patient) => (
-                <div
-                  key={patient.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h3 className="font-bold text-gray-900">{patient.name}</h3>
-                      <p className="text-gray-500 text-sm font-mono">{patient.patient_id}</p>
-                    </div>
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      Outpatient
-                    </span>
-                  </div>
-
-                  <div className="space-y-3 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-blue-500" />
-                      <span className="font-medium">
-                        Age: {patient.age || calculateAge(patient.date_of_birth)} | {patient.gender}
-                      </span>
-                    </div>
-
-                    {patient.consulting_doctor_name && (
-                      <div className="flex items-center gap-2">
-                        <Stethoscope className="h-4 w-4 text-purple-500" />
-                        <span className="text-purple-700 font-medium">Dr. {patient.consulting_doctor_name}</span>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {patient.bmi && (
-                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-100 text-[10px] font-bold">
-                          BMI: {patient.bmi}
-                        </span>
-                      )}
-                      {patient.bp_systolic && (
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 text-[10px] font-bold">
-                          BP: {patient.bp_systolic}/{patient.bp_diastolic}
-                        </span>
-                      )}
-                    </div>
-
-                    {patient.diagnosis && (
-                      <div className="flex items-start gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                        <AlertCircle className="h-4 w-4 mt-0.5 text-orange-500" />
-                        <span className="text-xs line-clamp-2" title={patient.diagnosis}>
-                          {patient.diagnosis}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <Link
-                      href={`/patients/${patient.id}`}
-                      className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center gap-1 w-full py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
-                    >
-                      View Patient Case File
-                      <ArrowRight size={12} />
-                    </Link>
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => handlePrintBill(patient)}
-                        className="flex-1 text-green-600 hover:text-green-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
-                      >
-                        <Printer size={12} />
-                        Print Bill
-                      </button>
-                      <button
-                        onClick={() => handleBillUHID(patient)}
-                        className="flex-1 text-purple-600 hover:text-purple-800 text-xs font-bold flex items-center justify-center gap-1 py-1.5 rounded bg-purple-50 hover:bg-purple-100 transition-colors"
-                      >
-                        <FileText size={12} />
-                        Bill UHID
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <User className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">No recent outpatients found</p>
-            </div>
-          )}
         </div>
       )}
 

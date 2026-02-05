@@ -91,7 +91,47 @@ export const getCurrentUserProfile = async () => {
   console.log('User profile query result:', { userProfile, error });
 
   if (error || !userProfile) {
-    console.error('Error fetching user profile or profile not found:', error);
+    const errorMessage = error?.message || error;
+    console.error('Error fetching user profile or profile not found:', errorMessage);
+    
+    // Check if it's a "No rows found" error (which is expected for new users)
+    if (error?.code === 'PGRST116') {
+      console.log('No user profile found in database, this might be a new user');
+      
+      // Try to find a user by email that might not have auth_id set yet
+      const { data: existingUser, error: emailError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', user.email)
+        .single();
+      
+      if (existingUser && !emailError) {
+        console.log('Found existing user by email, updating auth_id');
+        // Update the existing user with the auth_id
+        const { data: updatedUser, error: updateError } = await supabase
+          .from('users')
+          .update({ auth_id: user.id })
+          .eq('id', existingUser.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error updating existing user with auth_id:', updateError);
+        } else {
+          console.log('Successfully linked existing user to auth:', updatedUser);
+          return updatedUser;
+        }
+      }
+      
+      // Try to create a user profile for this auth user
+      const newUserProfile = await createOrUpdateUserProfile(user);
+      if (newUserProfile) {
+        console.log('Created new user profile:', newUserProfile);
+        return newUserProfile;
+      }
+    } else if (error) {
+      console.error('Unexpected database error:', error);
+    }
     
     // Fallback: Construct a profile from Auth user metadata if available
     if (user) {
@@ -112,4 +152,37 @@ export const getCurrentUserProfile = async () => {
 
   console.log('Returning user profile:', userProfile);
   return userProfile;
+};
+
+// Helper function to create or update user profile
+const createOrUpdateUserProfile = async (authUser: any) => {
+  try {
+    const userProfile = {
+      auth_id: authUser.id,
+      email: authUser.email,
+      name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+      role: authUser.user_metadata?.role || 'patient',
+      status: 'active',
+      created_at: authUser.created_at
+    };
+
+    const { data, error } = await supabase
+      .from('users')
+      .upsert(userProfile, {
+        onConflict: 'auth_id',
+        ignoreDuplicates: false
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating/updating user profile:', error);
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Exception in createOrUpdateUserProfile:', err);
+    return null;
+  }
 };

@@ -381,7 +381,7 @@ export default function OutpatientRevisitPage() {
         bookingMethod: 'walk_in'
       };
 
-      const appointment = await createAppointment(appointmentData, form.staffId || undefined);
+      const appointment = await createAppointment(appointmentData, form.staffId || undefined, true);
       setCreatedAppointmentId(appointment.id);
 
       // Create OP consultation bill

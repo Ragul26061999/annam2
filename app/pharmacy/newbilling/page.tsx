@@ -286,7 +286,37 @@ function NewBillingPageInner() {
   const [selectedMedicineIndex, setSelectedMedicineIndex] = useState(0);
   const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
   const medicineDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+  const [selectedBatch, setSelectedBatch] = useState<MedicineBatch | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced search handler to prevent hanging
+  const handleMedicineSearch = (value: string) => {
+    setSearchTerm(value);
+    setSelectedMedicine(null);
+    setSelectedBatch(null);
+    
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Show loading state for longer searches
+    if (value.length > 2) {
+      setSearchLoading(true);
+      searchTimeoutRef.current = setTimeout(() => {
+        setSearchLoading(false);
+      }, 300);
+    } else {
+      setSearchLoading(false);
+    }
+    
+    setShowMedicineDropdown(true);
+    setSelectedMedicineIndex(0);
+    setSelectedBatchIndex(0);
+  };
 
   // Smooth scrolling function for dropdown
   const scrollToHighlightedMedicine = (medicineIndex: number, batchIndex: number) => {
@@ -464,99 +494,82 @@ function NewBillingPageInner() {
   };
 
   const handleMedicineKeyDown = (e: React.KeyboardEvent) => {
-    console.log('handleMedicineKeyDown called with key:', e.key);
-    console.log('showMedicineDropdown:', showMedicineDropdown, 'filteredMedicines.length:', filteredMedicines.length);
-    
-    if (!showMedicineDropdown || filteredMedicines.length === 0) {
-      console.log('Early return - dropdown not showing or no medicines');
+    // Early return if dropdown is not showing or no medicines
+    if (!showMedicineDropdown || filteredMedicines.length === 0 || searchLoading) {
       return;
     }
     
-    // Prevent default for arrow keys and enter
+    // Prevent default for navigation keys
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
       e.preventDefault();
     }
     
     const currentMedicine = filteredMedicines[selectedMedicineIndex];
+    if (!currentMedicine) return;
+    
     const matchingBatches = searchTermTrimmed.length > 0 
-      ? currentMedicine?.batches.filter(b => 
+      ? currentMedicine.batches.filter(b => 
           (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
           (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
           ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
         ) || []
-      : currentMedicine?.batches || [];
+      : currentMedicine.batches || [];
     
     const totalBatches = matchingBatches.length;
-    
-    console.log('Current state:', {
-      key: e.key,
-      medicineIndex: selectedMedicineIndex,
-      batchIndex: selectedBatchIndex,
-      totalBatches,
-      hasMedicines: filteredMedicines.length > 0
-    });
     
     switch (e.key) {
       case 'ArrowDown':
         if (selectedBatchIndex < totalBatches - 1) {
-          setSelectedBatchIndex(prev => {
-            const newIndex = prev + 1;
-            setTimeout(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex), 0);
-            return newIndex;
-          });
-          console.log('Moved to next batch:', selectedBatchIndex + 1);
+          const newIndex = selectedBatchIndex + 1;
+          setSelectedBatchIndex(newIndex);
+          // Use requestAnimationFrame for smoother scrolling
+          requestAnimationFrame(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex));
         } else if (selectedMedicineIndex < filteredMedicines.length - 1) {
-          setSelectedMedicineIndex(prev => {
-            const newIndex = prev + 1;
-            setSelectedBatchIndex(0);
-            setTimeout(() => scrollToHighlightedMedicine(newIndex, 0), 0);
-            return newIndex;
-          });
-          console.log('Moved to next medicine:', selectedMedicineIndex + 1);
+          const newMedicineIndex = selectedMedicineIndex + 1;
+          setSelectedMedicineIndex(newMedicineIndex);
+          setSelectedBatchIndex(0);
+          requestAnimationFrame(() => scrollToHighlightedMedicine(newMedicineIndex, 0));
         }
         break;
       case 'ArrowUp':
         if (selectedBatchIndex > 0) {
-          setSelectedBatchIndex(prev => {
-            const newIndex = prev - 1;
-            setTimeout(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex), 0);
-            return newIndex;
-          });
-          console.log('Moved to previous batch:', selectedBatchIndex - 1);
+          const newIndex = selectedBatchIndex - 1;
+          setSelectedBatchIndex(newIndex);
+          requestAnimationFrame(() => scrollToHighlightedMedicine(selectedMedicineIndex, newIndex));
         } else if (selectedMedicineIndex > 0) {
-          setSelectedMedicineIndex(prev => {
-            const newIndex = prev - 1;
-            const prevMedicine = filteredMedicines[newIndex];
-            const prevBatches = searchTermTrimmed.length > 0 
-              ? prevMedicine?.batches.filter(b => 
-                  (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
-                  (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
-                  ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
-                ) || []
-              : prevMedicine?.batches || [];
-            const newBatchIndex = Math.max(0, prevBatches.length - 1);
-            setSelectedBatchIndex(newBatchIndex);
-            setTimeout(() => scrollToHighlightedMedicine(newIndex, newBatchIndex), 0);
-            return newIndex;
-          });
-          console.log('Moved to previous medicine:', selectedMedicineIndex - 1);
+          const newMedicineIndex = selectedMedicineIndex - 1;
+          const prevMedicine = filteredMedicines[newMedicineIndex];
+          const prevBatches = searchTermTrimmed.length > 0 
+            ? prevMedicine?.batches.filter(b => 
+                (b.batch_number || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                (b.batch_barcode || '').toLowerCase().includes(searchTermTrimmed.toLowerCase()) ||
+                ((b.legacy_code || '') as string).toLowerCase().includes(searchTermTrimmed.toLowerCase())
+              ) || []
+            : prevMedicine?.batches || [];
+          const newBatchIndex = Math.max(0, prevBatches.length - 1);
+          setSelectedMedicineIndex(newMedicineIndex);
+          setSelectedBatchIndex(newBatchIndex);
+          requestAnimationFrame(() => scrollToHighlightedMedicine(newMedicineIndex, newBatchIndex));
         }
         break;
       case 'Enter':
-        if (currentMedicine) {
-          if (currentMedicine.is_external) {
-            setPendingExternalAdd({ medicine: currentMedicine, quantity: Number(quantity) || 1 });
-            setExternalPriceInput('');
-            setShowExternalPriceModal(true);
-          } else if (matchingBatches[selectedBatchIndex]) {
-            console.log('Adding batch to bill:', matchingBatches[selectedBatchIndex].batch_number);
-            addToBill(currentMedicine, matchingBatches[selectedBatchIndex]);
-            setSearchTerm('');
-            setQuantity(1);
-            setSelectedMedicineIndex(0);
-            setSelectedBatchIndex(0);
-            setShowMedicineDropdown(false);
-          }
+        e.preventDefault();
+        if (currentMedicine.is_external) {
+          setPendingExternalAdd({ medicine: currentMedicine, quantity: Number(quantity) || 1 });
+          setExternalPriceInput('');
+          setShowExternalPriceModal(true);
+        } else if (matchingBatches[selectedBatchIndex]) {
+          const batch = matchingBatches[selectedBatchIndex];
+          setSelectedMedicine(currentMedicine);
+          setSelectedBatch(batch);
+          setSearchTerm(currentMedicine.name);
+          setSelectedMedicineIndex(0);
+          setSelectedBatchIndex(0);
+          setShowMedicineDropdown(false);
+          setTimeout(() => {
+            const qtyInput = document.querySelector('input[placeholder="Quantity"]') as HTMLInputElement;
+            if (qtyInput) qtyInput.focus();
+          }, 50);
         }
         break;
       case 'Escape':
@@ -571,6 +584,31 @@ function NewBillingPageInner() {
     if (e.key === 'Enter') {
       e.preventDefault();
       // Add item with current quantity and reset
+      if (selectedMedicine && (selectedMedicine.is_external || selectedBatch)) {
+        if (selectedMedicine.is_external) {
+          setPendingExternalAdd({ medicine: selectedMedicine, quantity: Number(quantity) || 1 });
+          setExternalPriceInput('');
+          setShowExternalPriceModal(true);
+          return;
+        }
+        if (selectedBatch) {
+          addToBill(selectedMedicine, selectedBatch, Number(quantity) || 1);
+          setSelectedMedicine(null);
+          setSelectedBatch(null);
+          setSearchTerm('');
+          setQuantity(1);
+          setSelectedMedicineIndex(0);
+          setShowMedicineDropdown(false);
+          setTimeout(() => {
+            const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+            if (medicineInput) {
+              (medicineInput as HTMLElement).focus();
+            }
+          }, 100);
+        }
+        return;
+      }
+
       if (searchTerm && filteredMedicines.length > 0) {
         const medicine = filteredMedicines[0];
         if (medicine.is_external) {
@@ -581,7 +619,7 @@ function NewBillingPageInner() {
         }
         const batch = medicine.batches[0];
         if (batch) {
-          addToBill(medicine, batch);
+          addToBill(medicine, batch, Number(quantity) || 1);
           setSearchTerm('');
           setQuantity(1);
           setSelectedMedicineIndex(0);
@@ -728,6 +766,13 @@ function NewBillingPageInner() {
 
   useEffect(() => {
     loadMedicines();
+    
+    // Cleanup function to clear search timeout
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -990,83 +1035,102 @@ function NewBillingPageInner() {
   };
 
   const addToBill = (medicine: Medicine, batch: MedicineBatch, quantity: number = 1) => {
-    // Validate quantity
-    if (quantity <= 0) {
-      alert('Quantity must be greater than 0');
-      return;
-    }
-
-    // Skip stock check for external medicines
-    if (!medicine.is_external && quantity > batch.current_quantity) {
-      alert(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
-      return;
-    }
-
-    // Check if batch is expired (skip for external)
-    if (!medicine.is_external) {
-      const today = new Date();
-      const expiryDate = new Date(batch.expiry_date);
-      if (expiryDate <= today) {
-        alert('This batch has expired and cannot be sold.');
+    try {
+      // Validate quantity
+      if (quantity <= 0) {
+        setError('Quantity must be greater than 0');
+        setTimeout(() => setError(null), 3000);
         return;
       }
-    }
 
-    const existingItemIndex = billItems.findIndex(
-      item => item.medicine.id === medicine.id && item.batch.id === batch.id
-    );
-
-    if (existingItemIndex >= 0) {
-      const newQuantity = billItems[existingItemIndex].quantity + quantity;
-      if (!medicine.is_external && newQuantity > batch.current_quantity) {
-        alert(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
+      // Skip stock check for external medicines
+      if (!medicine.is_external && quantity > batch.current_quantity) {
+        setError(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
+        setTimeout(() => setError(null), 3000);
         return;
       }
-      updateBillItemQuantity(existingItemIndex, newQuantity);
-    } else {
-      const newItem: BillItem = {
-        medicine,
-        batch,
-        quantity,
-        unit_price: batch.selling_price,
-        total: quantity * batch.selling_price
-      };
-      setBillItems([...billItems, newItem]);
+
+      // Check if batch is expired (skip for external)
+      if (!medicine.is_external) {
+        const today = new Date();
+        const expiryDate = new Date(batch.expiry_date);
+        if (expiryDate <= today) {
+          setError('This batch has expired and cannot be sold.');
+          setTimeout(() => setError(null), 3000);
+          return;
+        }
+      }
+
+      const existingItemIndex = billItems.findIndex(
+        item => item.medicine.id === medicine.id && item.batch.id === batch.id
+      );
+
+      if (existingItemIndex >= 0) {
+        const newQuantity = billItems[existingItemIndex].quantity + quantity;
+        if (!medicine.is_external && newQuantity > batch.current_quantity) {
+          setError(`Insufficient stock available. Only ${batch.current_quantity} units in stock.`);
+          setTimeout(() => setError(null), 3000);
+          return;
+        }
+        updateBillItemQuantity(existingItemIndex, newQuantity);
+      } else {
+        const newItem: BillItem = {
+          medicine,
+          batch,
+          quantity,
+          unit_price: batch.selling_price,
+          total: quantity * batch.selling_price
+        };
+        setBillItems([...billItems, newItem]);
+      }
+    } catch (error) {
+      console.error('Error adding item to bill:', error);
+      setError('Failed to add item to bill. Please try again.');
+      setTimeout(() => setError(null), 3000);
     }
   };
 
   // Update bill item quantity
   const updateBillItemQuantity = (index: number, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeBillItem(index);
-      return;
-    }
-
-    const item = billItems[index];
-
-    // Validate new quantity (skip for external)
-    if (!item.medicine.is_external && newQuantity > item.batch.current_quantity) {
-      alert(`Insufficient stock available. Only ${item.batch.current_quantity} units in stock.`);
-      return;
-    }
-
-    // Check if batch is expired (skip for external)
-    if (!item.medicine.is_external) {
-      const today = new Date();
-      const expiryDate = new Date(item.batch.expiry_date);
-      if (expiryDate <= today) {
-        alert('This batch has expired and cannot be sold.');
+    try {
+      if (newQuantity <= 0) {
+        removeBillItem(index);
         return;
       }
-    }
 
-    const updatedItems = [...billItems];
-    updatedItems[index] = {
-      ...item,
-      quantity: newQuantity,
-      total: newQuantity * item.unit_price
-    };
-    setBillItems(updatedItems);
+      const item = billItems[index];
+      if (!item) return;
+
+      // Validate new quantity (skip for external)
+      if (!item.medicine.is_external && newQuantity > item.batch.current_quantity) {
+        setError(`Insufficient stock available. Only ${item.batch.current_quantity} units in stock.`);
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+
+      // Check if batch is expired (skip for external)
+      if (!item.medicine.is_external) {
+        const today = new Date();
+        const expiryDate = new Date(item.batch.expiry_date);
+        if (expiryDate <= today) {
+          setError('This batch has expired and cannot be sold.');
+          setTimeout(() => setError(null), 3000);
+          return;
+        }
+      }
+
+      const updatedItems = [...billItems];
+      updatedItems[index] = {
+        ...item,
+        quantity: newQuantity,
+        total: newQuantity * item.unit_price
+      };
+      setBillItems(updatedItems);
+    } catch (error) {
+      console.error('Error updating bill item quantity:', error);
+      setError('Failed to update quantity. Please try again.');
+      setTimeout(() => setError(null), 3000);
+    }
   };
 
   // Update bill item price
@@ -1998,14 +2062,8 @@ function NewBillingPageInner() {
                       type="text"
                       placeholder="Search medicine, batch, or legacy code..."
                       value={searchTerm}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setSearchTerm(e.target.value);
-                        setShowMedicineDropdown(true);
-                        setSelectedMedicineIndex(0);
-                        setSelectedBatchIndex(0); // Reset batch index when search changes
-                      }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleMedicineSearch(e.target.value)}
                       onKeyDown={(e) => {
-                        console.log('Key pressed in search input:', e.key);
                         handleMedicineKeyDown(e);
                       }}
                       onFocus={() => setShowMedicineDropdown(true)}
@@ -2016,20 +2074,27 @@ function NewBillingPageInner() {
                         ref={medicineDropdownRef}
                         className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-96 overflow-auto"
                       >
-                        <div className="px-3 py-1 text-xs text-slate-400 border-b">
-                          Debug: {filteredMedicines.length} medicines found
-                        </div>
-                        {filteredMedicines.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-slate-500 flex justify-between items-center">
-                            <span>No medicines found</span>
-                            <button
-                              onClick={() => setShowUnlistedModal(true)}
-                              className="text-blue-600 hover:text-blue-800 font-medium"
-                            >
-                              + Add Unlisted Medicine
-                            </button>
+                        {searchLoading ? (
+                          <div className="px-3 py-4 text-xs text-slate-500 flex justify-center items-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                            Searching...
                           </div>
                         ) : (
+                          <>
+                            <div className="px-3 py-1 text-xs text-slate-400 border-b">
+                              {filteredMedicines.length} medicines found
+                            </div>
+                            {filteredMedicines.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-slate-500 flex justify-between items-center">
+                                <span>No medicines found</span>
+                                <button
+                                  onClick={() => setShowUnlistedModal(true)}
+                                  className="text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  + Add Unlisted Medicine
+                                </button>
+                              </div>
+                            ) : (
                           filteredMedicines.map((medicine, index) => {
                             const matchingBatches = searchTermTrimmed.length > 0 
                               ? medicine.batches.filter(b => 
@@ -2095,19 +2160,16 @@ function NewBillingPageInner() {
                                             }`}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              console.log('Selected batch:', batch.batch_number, 'ID:', batch.id);
-                                              addToBill(medicine, batch);
-                                              setSearchTerm('');
-                                              setQuantity(1);
+                                              setSelectedMedicine(medicine);
+                                              setSelectedBatch(batch);
+                                              setSearchTerm(medicine.name);
                                               setSelectedMedicineIndex(0);
                                               setSelectedBatchIndex(0);
                                               setShowMedicineDropdown(false);
                                               setTimeout(() => {
-                                                const medicineInput = document.querySelector('input[placeholder*="medicine"]');
-                                                if (medicineInput) {
-                                                  (medicineInput as HTMLElement).focus();
-                                                }
-                                              }, 100);
+                                                const qtyInput = document.querySelector('input[placeholder="Quantity"]') as HTMLInputElement;
+                                                if (qtyInput) qtyInput.focus();
+                                              }, 50);
                                             }}
                                           >
                                             <div className="flex justify-between items-center">
@@ -2142,6 +2204,8 @@ function NewBillingPageInner() {
                             );
                           })
                         )}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2163,10 +2227,37 @@ function NewBillingPageInner() {
                   <button
                     type="button"
                     onClick={() => {
+                      const addQty = Number(quantity) || 1;
+
+                      if (selectedMedicine && (selectedMedicine.is_external || selectedBatch)) {
+                        if (selectedMedicine.is_external) {
+                          setPendingExternalAdd({ medicine: selectedMedicine, quantity: addQty });
+                          setExternalPriceInput('');
+                          setShowExternalPriceModal(true);
+                          return;
+                        }
+                        if (selectedBatch) {
+                          addToBill(selectedMedicine, selectedBatch, addQty);
+                          setSelectedMedicine(null);
+                          setSelectedBatch(null);
+                          setSearchTerm('');
+                          setQuantity(1);
+                          setSelectedMedicineIndex(0);
+                          setShowMedicineDropdown(false);
+                          setTimeout(() => {
+                            const medicineInput = document.querySelector('input[placeholder*="medicine"]');
+                            if (medicineInput) {
+                              (medicineInput as HTMLElement).focus();
+                            }
+                          }, 100);
+                        }
+                        return;
+                      }
+
                       if (searchTerm && filteredMedicines.length > 0) {
                         const medicine = filteredMedicines[0];
                         if (medicine.is_external) {
-                          setPendingExternalAdd({ medicine, quantity: Number(quantity) || 1 });
+                          setPendingExternalAdd({ medicine, quantity: addQty });
                           setExternalPriceInput('');
                           setShowExternalPriceModal(true);
                           return;
@@ -2184,7 +2275,7 @@ function NewBillingPageInner() {
                           }
                         }
                         if (targetBatch) {
-                          addToBill(medicine, targetBatch);
+                          addToBill(medicine, targetBatch, addQty);
                           setSearchTerm('');
                           setQuantity(1);
                           setSelectedMedicineIndex(0);
@@ -2198,7 +2289,7 @@ function NewBillingPageInner() {
                         }
                       }
                     }}
-                    disabled={!searchTerm || filteredMedicines.length === 0}
+                    disabled={(!selectedMedicine && (!searchTerm || filteredMedicines.length === 0)) || !!(selectedMedicine && !selectedMedicine.is_external && !selectedBatch)}
                     className="w-full rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:bg-slate-300 disabled:cursor-not-allowed"
                   >
                     Add Item
@@ -2225,11 +2316,11 @@ function NewBillingPageInner() {
                 </div>
               ) : (
                 <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <div className="grid grid-cols-[40px,1.7fr,0.7fr,0.7fr,0.9fr,60px] bg-slate-50 text-[11px] font-medium text-slate-600 px-3 py-2">
+                  <div className="grid grid-cols-[40px,1.7fr,0.7fr,0.9fr,0.9fr,60px] bg-slate-50 text-[11px] font-medium text-slate-600 px-3 py-2">
                     <span>Sl.</span>
                     <span>Drug / Batch</span>
                     <span className="text-right">Rate</span>
-                    <span className="text-center">Qty</span>
+                    <span className="text-center">Qty (Units)</span>
                     <span className="text-right">Total</span>
                     <span className="text-center">Action</span>
                   </div>
@@ -2237,7 +2328,7 @@ function NewBillingPageInner() {
                     {billItems.map((item, index) => (
                       <div
                         key={`${item.medicine.id}-${item.batch.id}`}
-                        className="grid grid-cols-[40px,1.7fr,0.7fr,0.7fr,0.9fr,60px] items-center px-3 py-2 text-slate-700"
+                        className="grid grid-cols-[40px,1.7fr,0.7fr,0.9fr,0.9fr,60px] items-center px-3 py-2 text-slate-700"
                       >
                         <span>{index + 1}</span>
                         <div className="flex flex-col">
