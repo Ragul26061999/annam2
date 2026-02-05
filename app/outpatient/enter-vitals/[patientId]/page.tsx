@@ -161,6 +161,38 @@ export default function EnterVitalsPage() {
         await updateQueueStatus(queueId, 'completed', vitalsData.staffId);
       }
 
+      // Update patient's appointment status to move them to Today's OP Queue
+      try {
+        const { data: appointments, error: appointmentError } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('patient_id', patientId)
+          .eq('appointment_date', new Date().toISOString().split('T')[0])
+          .in('status', ['scheduled', 'confirmed'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!appointmentError && appointments && appointments.length > 0) {
+          const appointment = appointments[0];
+          const { error: updateError } = await supabase
+            .from('appointments')
+            .update({ 
+              status: 'in_progress',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', appointment.id);
+
+          if (updateError) {
+            console.warn('Failed to update appointment status:', updateError);
+          } else {
+            console.log('Updated appointment status to in_progress:', appointment.id);
+          }
+        }
+      } catch (appointmentUpdateError) {
+        console.warn('Error updating appointment status:', appointmentUpdateError);
+        // Don't fail the vitals save if appointment update fails
+      }
+
       setSuccess(true);
 
       // Redirect after 2 seconds

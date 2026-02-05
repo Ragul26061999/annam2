@@ -73,6 +73,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
     const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
     const [duplicatePatient, setDuplicatePatient] = useState<any>(null);
     const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
+    const [contactDuplicateAlert, setContactDuplicateAlert] = useState(false);
+    const [contactValidationError, setContactValidationError] = useState('');
 
     const [formData, setFormData] = useState({
         // Step 1: Patient Info
@@ -236,6 +238,41 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
     const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        
+        // Special handling for contact number field
+        if (name === 'contactNo') {
+            // Only allow digits
+            const digitsOnly = value.replace(/\D/g, '');
+            
+            // Limit to 10 digits
+            const truncatedValue = digitsOnly.slice(0, 10);
+            
+            // Update form data
+            setFormData(prev => ({ ...prev, [name]: truncatedValue }));
+            
+            // Validate 10-digit requirement
+            if (truncatedValue.length > 0 && truncatedValue.length < 10) {
+                setContactValidationError('Contact number must be exactly 10 digits');
+            } else {
+                setContactValidationError('');
+            }
+            
+            // Check for duplicate contact number when exactly 10 digits are entered
+            if (truncatedValue.length === 10) {
+                const existingPatient = await checkExistingContactNumber(truncatedValue);
+                if (existingPatient) {
+                    setContactDuplicateAlert(true);
+                } else {
+                    setContactDuplicateAlert(false);
+                }
+            } else {
+                setContactDuplicateAlert(false);
+            }
+            
+            return; // Don't continue with general handling
+        }
+        
+        // General handling for other fields
         setFormData(prev => ({ ...prev, [name]: value }));
         
         // Check for duplicate patient when place field is filled
@@ -260,6 +297,31 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
     const nextStep = () => setStep(2);
     const prevStep = () => setStep(1);
+
+    // Check for existing patient with same contact number
+    const checkExistingContactNumber = async (contactNo: string) => {
+        if (!contactNo || contactNo.length !== 10) {
+            return null;
+        }
+
+        try {
+            const { data: existingPatients, error } = await supabase
+                .from('patients')
+                .select('*')
+                .eq('phone', contactNo)
+                .limit(1);
+
+            if (error) {
+                console.error('Error checking existing contact number:', error);
+                return null;
+            }
+
+            return existingPatients && existingPatients.length > 0 ? existingPatients[0] : null;
+        } catch (error) {
+            console.error('Error checking existing contact number:', error);
+            return null;
+        }
+    };
 
     // Check for existing patient with same name, gender, and DOB
     const checkExistingPatientByNameGenderDOB = async () => {
@@ -416,6 +478,153 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
             alert('Registration failed: ' + (error as Error).message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Thermal print function
+    const showThermalPreview = () => {
+        if (!registrationResult) return;
+
+        const now = new Date();
+        const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+        // Get sales type
+        let salesType = formData.paymentMode?.toUpperCase() || 'CASH';
+        if (salesType === 'CREDIT') {
+            salesType = 'CREDIT';
+        }
+
+        const thermalContent = `
+            <html>
+                <head>
+                    <title>Thermal Receipt - ${registrationResult.billNo}</title>
+                    <style>
+                        @page { margin: 1mm; size: 77mm 297mm; }
+                        body { 
+                            font-family: 'Verdana', sans-serif; 
+                            font-weight: bold;
+                            color: #000;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                            margin: 0; 
+                            padding: 2px;
+                            font-size: 14px;
+                            line-height: 1.2;
+                            width: 77mm;
+                        }
+                        html, body { background: #fff; }
+                        .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+                        .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+                        .logo { width: 350px; height: auto; margin-bottom: 5px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="center">
+                        <img src="/logo/annamHospital-bk.png" alt="ANNAM LOGO" class="logo" />
+                        <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+                        <div class="header-9cm">Phone- 04639 252592</div>
+                        <div style="margin-top: 5px; font-weight: bold;">OUTPATIENT BILL</div>
+                    </div>
+                    
+                    <div style="margin-top: 10px;">
+                        <table class="table">
+                            <tr>
+                                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                                <td class="bill-info-10cm bill-info-bold">${registrationResult.billNo}</td>
+                            </tr>
+                            <tr>
+                                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                                <td class="bill-info-10cm bill-info-bold">${registrationResult.uhid}</td>
+                            </tr>
+                            <tr>
+                                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                                <td class="bill-info-10cm bill-info-bold">${registrationResult.patientName}</td>
+                            </tr>
+                            <tr>
+                                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                                <td class="bill-info-10cm bill-info-bold">${formData.registrationDate} ${formData.registrationTime}</td>
+                            </tr>
+                            <tr>
+                                <td class="header-10cm">Payment Type&nbsp;:&nbsp;&nbsp;</td>
+                                <td class="header-10cm bill-info-bold">${salesType}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <table class="table">
+                            <tr style="border-bottom: 1px dashed #000;">
+                                <td width="30%" class="items-8cm">S.No</td>
+                                <td width="40%" class="items-8cm">Service</td>
+                                <td width="15%" class="items-8cm text-center">Qty</td>
+                                <td width="15%" class="items-8cm text-right">Amt</td>
+                            </tr>
+                            <tr>
+                                <td class="items-8cm">1.</td>
+                                <td class="items-8cm">Consultation Fee</td>
+                                <td class="items-8cm text-center">1</td>
+                                <td class="items-8cm text-right">${Number(formData.consultationFee || 0).toFixed(2)}</td>
+                            </tr>
+                            ${formData.opCardAmount && parseFloat(formData.opCardAmount) > 0 ? `
+                            <tr>
+                                <td class="items-8cm">2.</td>
+                                <td class="items-8cm">OP Card</td>
+                                <td class="items-8cm text-center">1</td>
+                                <td class="items-8cm text-right">${Number(formData.opCardAmount).toFixed(2)}</td>
+                            </tr>
+                            ` : ''}
+                        </table>
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+                            <span>Total Amount</span>
+                            <span>${(parseFloat(formData.totalAmount || '0')).toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <div class="footer">
+                        <div class="totals-line footer-7cm">
+                            <span>Printed on ${printedDateTime}</span>
+                            <span>Authorized Sign</span>
+                        </div>
+                    </div>
+
+                    <script>
+                        (function() {
+                            function triggerPrint() {
+                                try {
+                                    window.print();
+                                } catch (error) {
+                                    console.error('Print failed:', error);
+                                }
+                            }
+                            
+                            // Auto-trigger print after content loads
+                            setTimeout(triggerPrint, 500);
+                        })();
+                    </script>
+                </body>
+            </html>
+        `;
+
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+        if (printWindow) {
+            printWindow.document.write(thermalContent);
+            printWindow.document.close();
         }
     };
 
@@ -576,7 +785,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
                         <button
-                            onClick={() => window.print()}
+                            onClick={showThermalPreview}
                             className="flex items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-200"
                         >
                             <Printer size={18} className="mr-2" />
@@ -815,10 +1024,30 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         placeholder="Primary Number"
                                         value={formData.contactNo}
                                         onChange={handleInputChange}
-                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                        className={`w-full pl-10 pr-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${contactValidationError ? 'border-red-300 bg-red-50' : contactDuplicateAlert ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
                                         required
                                     />
                                 </div>
+                                
+                                {/* Contact validation error */}
+                                {contactValidationError && (
+                                    <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                                        <AlertCircle size={12} />
+                                        {contactValidationError}
+                                    </div>
+                                )}
+                                
+                                {/* Contact duplicate alert */}
+                                {contactDuplicateAlert && (
+                                    <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                                            <span className="text-sm text-yellow-800 font-medium">
+                                                Already existing contact patient
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1423,7 +1652,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
                         <button
-                            onClick={() => window.print()}
+                            onClick={showThermalPreview}
                             className="flex items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-200"
                         >
                             <Printer size={18} className="mr-2" />
@@ -1601,10 +1830,30 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         placeholder="Primary Number"
                                         value={formData.contactNo}
                                         onChange={handleInputChange}
-                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                        className={`w-full pl-10 pr-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${contactValidationError ? 'border-red-300 bg-red-50' : contactDuplicateAlert ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
                                         required
                                     />
                                 </div>
+                                
+                                {/* Contact validation error */}
+                                {contactValidationError && (
+                                    <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                                        <AlertCircle size={12} />
+                                        {contactValidationError}
+                                    </div>
+                                )}
+                                
+                                {/* Contact duplicate alert */}
+                                {contactDuplicateAlert && (
+                                    <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                                            <span className="text-sm text-yellow-800 font-medium">
+                                                Already existing contact patient
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

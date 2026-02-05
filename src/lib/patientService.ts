@@ -3,6 +3,7 @@ import { generateBarcodeId, updatePatientWithBarcode } from './barcodeUtils';
 import { generateQRCode } from './qrCodeService';
 import { allocateBed, BedAllocationData } from './bedAllocationService';
 import { createAppointment, generateAppointmentId, AppointmentData } from './appointmentService';
+import { addToQueue } from './outpatientQueueService';
 // Types - Updated to match comprehensive registration form
 export interface PatientRegistrationData {  // Personal Information (Mandatory)
   firstName: string;
@@ -120,39 +121,83 @@ export async function generateUHID(): Promise<string> {
   const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Month with leading zero
   const prefix = `AH${yearTwoDigits}${month}`;
 
-  try {
-    // Get the count of patients registered this month
-    const { count, error } = await supabase
-      .from('patients')
-      .select('patient_id', { count: 'exact', head: true })
-      .like('patient_id', `${prefix}-%`);
+  const maxRetries = 10;
+  let retryCount = 0;
 
-    if (error) {
-      console.error('Error getting patient count for UHID:', error);
-      throw new Error('Failed to generate UHID');
+  while (retryCount < maxRetries) {
+    try {
+      // Get the maximum sequential number for this month prefix
+      const { data: existingPatients, error: fetchError } = await supabase
+        .from('patients')
+        .select('patient_id')
+        .like('patient_id', `${prefix}-%`)
+        .order('patient_id', { ascending: false })
+        .limit(1);
+
+      if (fetchError) {
+        console.error('Error fetching existing patients for UHID:', fetchError);
+        throw new Error('Failed to generate UHID');
+      }
+
+      let nextSequentialNumber = 1; // Default to first patient of the month
+
+      if (existingPatients && existingPatients.length > 0) {
+        // Extract the sequential number from the highest existing UHID
+        const lastUHID = existingPatients[0].patient_id;
+        const lastNumber = lastUHID.split('-')[1];
+        
+        if (lastNumber && /^\d{4}$/.test(lastNumber)) {
+          nextSequentialNumber = parseInt(lastNumber) + 1;
+        }
+      }
+
+      // Ensure we don't exceed 9999
+      if (nextSequentialNumber > 9999) {
+        throw new Error('Maximum patient count reached for this month');
+      }
+
+      const sequentialNumber = nextSequentialNumber.toString().padStart(4, '0');
+      const uhid = `${prefix}-${sequentialNumber}`;
+
+      // Double-check uniqueness before returning
+      const { data: existingCheck, error: checkError } = await supabase
+        .from('patients')
+        .select('patient_id')
+        .eq('patient_id', uhid)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 is "not found", which is what we want
+        console.error('Error checking UHID uniqueness:', checkError);
+        throw new Error('Failed to generate UHID');
+      }
+
+      if (!existingCheck) {
+        // UHID is unique, return it
+        return uhid;
+      }
+
+      // If we get here, there was a race condition - try again with next number
+      console.warn(`UHID collision detected for ${uhid}, retrying...`);
+      retryCount++;
+      
+      // Add a small delay to avoid rapid-fire race conditions
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error) {
+      console.error(`Error in UHID generation attempt ${retryCount + 1}:`, error);
+      retryCount++;
+      
+      if (retryCount >= maxRetries) {
+        throw new Error('Failed to generate UHID after multiple attempts');
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
-
-    // Sequential number starts from 0001 each month
-    const sequentialNumber = ((count || 0) + 1).toString().padStart(4, '0');
-    const uhid = `${prefix}-${sequentialNumber}`;
-
-    // Verify uniqueness (should always be unique with sequential numbering)
-    const { data: existing, error: checkError } = await supabase
-      .from('patients')
-      .select('patient_id')
-      .eq('patient_id', uhid)
-      .single();
-
-    if (existing) {
-      // If somehow exists, throw error (shouldn't happen with sequential)
-      throw new Error('Generated UHID already exists');
-    }
-
-    return uhid;
-  } catch (error) {
-    console.error('Error generating UHID:', error);
-    throw new Error('Failed to generate UHID');
   }
+
+  throw new Error('Failed to generate UHID after maximum retries');
 }
 
 /**
@@ -872,6 +917,29 @@ export async function registerNewPatient(
       } catch (appointmentError) {
         console.error('Error creating outpatient appointment:', appointmentError);
         // Don't fail the entire registration if appointment creation fails
+      }
+
+      // Step 7.5: Add outpatient to queue for vitals
+      if (registrationData.admissionType === 'outpatient') {
+        try {
+          const queueResult = await addToQueue(
+            patient.id,
+            registrationData.admissionDate || new Date().toISOString().split('T')[0],
+            0, // Default priority
+            `New outpatient registration - ${registrationData.primaryComplaint || 'General consultation'}`,
+            registrationData.staffId
+          );
+          
+          if (queueResult.success) {
+            console.log('Added patient to outpatient queue:', queueResult.queueEntry?.id);
+          } else {
+            console.warn('Failed to add patient to queue:', queueResult.error);
+            // Don't fail registration if queue addition fails
+          }
+        } catch (queueError) {
+          console.error('Error adding patient to queue:', queueError);
+          // Don't fail the registration if queue addition fails
+        }
       }
     }
 

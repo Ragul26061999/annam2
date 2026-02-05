@@ -71,6 +71,7 @@ export default function QuickRegisterPage() {
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [contactValidationError, setContactValidationError] = useState('');
 
   const [formData, setFormData] = useState({
     registrationDate: new Date().toISOString().split('T')[0],
@@ -226,6 +227,36 @@ export default function QuickRegisterPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    
+    // Special handling for contact number field
+    if (name === 'contactNo') {
+      // Only allow digits
+      const digitsOnly = value.replace(/\D/g, '');
+      
+      // Limit to 10 digits
+      const truncatedValue = digitsOnly.slice(0, 10);
+      
+      // Update form data
+      setFormData(prev => ({ ...prev, [name]: truncatedValue }));
+      
+      // Validate 10-digit requirement
+      if (truncatedValue.length > 0 && truncatedValue.length < 10) {
+        setContactValidationError('Contact number must be exactly 10 digits');
+      } else {
+        setContactValidationError('');
+      }
+      
+      // Check if contact number exists when exactly 10 digits are entered
+      if (truncatedValue.length === 10) {
+        checkContactExists(truncatedValue);
+      } else {
+        setContactExists(false);
+      }
+      
+      return; // Don't continue with general handling
+    }
+    
+    // General handling for other fields
     setFormData(prev => ({ ...prev, [name]: value }));
     
     // Recalculate total when consultation fee or OP card amount changes
@@ -236,7 +267,7 @@ export default function QuickRegisterPage() {
       setFormData(prev => ({ ...prev, totalAmount: total.toString() }));
     }
     
-    // Check if contact number exists when it changes
+    // Check if contact number exists when it changes (for non-contact fields)
     if (name === 'contactNo' && value.length >= 10) {
       checkContactExists(value);
     } else if (name === 'contactNo' && value.length < 10) {
@@ -822,6 +853,12 @@ export default function QuickRegisterPage() {
                     </div>
                   )}
                 </div>
+                {contactValidationError && (
+                  <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                    <AlertCircle size={12} />
+                    {contactValidationError}
+                  </p>
+                )}
                 {contactExists && (
                   <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                     <AlertTriangle size={12} />
