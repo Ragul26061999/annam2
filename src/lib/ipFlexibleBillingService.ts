@@ -210,7 +210,6 @@ export async function createAdvanceFromPatientRegistration(
     notes: notes,
     advance_date: new Date().toISOString(),
     used_amount: 0,
-    available_amount: advanceAmount,
     status: 'active',
     created_by: createdBy
   };

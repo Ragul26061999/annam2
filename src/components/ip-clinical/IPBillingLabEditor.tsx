@@ -165,59 +165,56 @@ export default function IPBillingLabEditor({
           <p>No laboratory tests found for this IP stay</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {labOrders.map((order, orderIdx) => (
-            <div key={orderIdx} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="flex justify-between items-center p-3 bg-teal-50">
-                <div>
-                  <h3 className="font-semibold text-gray-900">Order #{order.order_number}</h3>
-                  <p className="text-sm text-gray-600">{new Date(order.order_date).toLocaleDateString()}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600">
-                    {order.tests.length} test{order.tests.length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="font-bold text-blue-600">
-                    {formatCurrency(calculateOrderTotal(order))}
-                  </span>
-                  {isEditing && (
-                    <button
-                      onClick={() => handleAddTest(orderIdx)}
-                      className="flex items-center gap-1 px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add Test
-                    </button>
-                  )}
-                </div>
-              </div>
+            <div key={orderIdx} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-center p-4 bg-white">
+                <div className="flex items-center gap-6 flex-1">
+                  {/* Order Number */}
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 bg-teal-100 rounded-full flex items-center justify-center">
+                      <span className="text-xs font-bold text-teal-700">#</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Order</p>
+                      <p className="font-semibold text-gray-900">{order.order_number}</p>
+                    </div>
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Test Name</th>
-                      <th className="px-4 py-2 text-right">Cost</th>
-                      {isEditing && <th className="px-4 py-2 text-center">Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.tests.map((test, testIdx) => (
-                      <tr key={testIdx} className="border-t">
-                        <td className="px-4 py-2">
+                  {/* Date */}
+                  <div className="flex items-center gap-2">
+                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Date</p>
+                      <p className="font-medium text-gray-900">
+                        {new Date(order.order_date).toLocaleDateString('en-IN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tests */}
+                  <div className="flex-1 max-w-md">
+                    <p className="text-xs text-gray-500 uppercase mb-1">Tests</p>
+                    <div className="flex flex-wrap gap-2">
+                      {order.tests.map((test, testIdx) => (
+                        <div key={testIdx} className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-sm">
                           {isEditing && editingOrderIndex === orderIdx && editingTestIndex === testIdx ? (
                             <input
                               type="text"
                               value={test.test_name}
                               onChange={(e) => handleUpdateTest(orderIdx, testIdx, 'test_name', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="w-24 px-1 py-0.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-teal-500 focus:border-transparent"
                               placeholder="Test name"
                             />
                           ) : (
-                            <span className="font-medium text-gray-900">{test.test_name || 'Unnamed Test'}</span>
+                            <span className="font-medium text-gray-700 text-xs">{test.test_name || 'Unnamed Test'}</span>
                           )}
-                        </td>
-                        <td className="px-4 py-2 text-right">
                           {isEditing && editingOrderIndex === orderIdx && editingTestIndex === testIdx ? (
                             <input
                               type="number"
@@ -225,42 +222,64 @@ export default function IPBillingLabEditor({
                               step="0.01"
                               value={test.test_cost}
                               onChange={(e) => handleUpdateTest(orderIdx, testIdx, 'test_cost', e.target.value)}
-                              className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                              className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs text-right focus:ring-1 focus:ring-teal-500 focus:border-transparent"
                               placeholder="0.00"
                             />
                           ) : (
-                            <span className="font-semibold text-gray-900">{formatCurrency(test.test_cost)}</span>
+                            <span className="text-blue-600 font-semibold text-xs">{formatCurrency(test.test_cost)}</span>
                           )}
-                        </td>
-                        {isEditing && (
-                          <td className="px-4 py-2 text-center">
-                            <div className="flex justify-center gap-2">
-                              <button
-                                onClick={() => handleEditTest(orderIdx, testIdx)}
-                                className="text-blue-600 hover:text-blue-800 transition-colors"
-                                title="Edit test"
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTest(orderIdx, testIdx)}
-                                className="text-red-600 hover:text-red-800 transition-colors"
-                                title="Delete test"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-bold">
-                      <td className="px-4 py-2 text-right">Order Total:</td>
-                      <td className="px-4 py-2 text-right text-blue-600">{formatCurrency(calculateOrderTotal(order))}</td>
-                      {isEditing && <td></td>}
-                    </tr>
-                  </tbody>
-                </table>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Test Count */}
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 uppercase">Count</p>
+                    <div className="bg-teal-100 px-3 py-1 rounded-full inline-block mt-1">
+                      <span className="text-sm font-bold text-teal-800">
+                        {order.tests.length} test{order.tests.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Total and Actions */}
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500 uppercase">Total</p>
+                    <p className="text-xl font-bold text-blue-600">{formatCurrency(calculateOrderTotal(order))}</p>
+                  </div>
+                  {isEditing && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleAddTest(orderIdx)}
+                        className="flex items-center gap-1 px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-sm"
+                        title="Add Test"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                      {order.tests.map((test, testIdx) => (
+                        <div key={testIdx} className="flex gap-1">
+                          <button
+                            onClick={() => handleEditTest(orderIdx, testIdx)}
+                            className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
+                            title="Edit test"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTest(orderIdx, testIdx)}
+                            className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                            title="Delete test"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -268,9 +287,14 @@ export default function IPBillingLabEditor({
       )}
 
       {/* Lab Total Summary */}
-      <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="mt-6 p-4 bg-gradient-to-r from-teal-50 to-blue-50 rounded-xl border border-teal-200">
         <div className="flex justify-between items-center">
-          <span className="text-lg font-semibold text-gray-700">Total Laboratory Charges:</span>
+          <div>
+            <span className="text-lg font-semibold text-gray-700">Total Laboratory Charges:</span>
+            <p className="text-sm text-gray-500 mt-1">
+              {labOrders.length} order{labOrders.length !== 1 ? 's' : ''} • {labOrders.reduce((sum, order) => sum + order.tests.length, 0)} test{labOrders.reduce((sum, order) => sum + order.tests.length, 0) !== 1 ? 's' : ''}
+            </p>
+          </div>
           <span className="text-2xl font-bold text-blue-600">{formatCurrency(calculateLabTotal())}</span>
         </div>
       </div>

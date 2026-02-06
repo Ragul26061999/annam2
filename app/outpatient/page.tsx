@@ -107,7 +107,7 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('queue');
+  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('queue');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
   
   // Injection queue state
@@ -179,7 +179,7 @@ function OutpatientPageContent() {
 
     // Check for tab parameter
     const tab = searchParams?.get('tab');
-    if (tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
+    if (tab === 'outpatient' || tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
       setActiveTab(tab);
     }
 
@@ -1311,7 +1311,17 @@ function OutpatientPageContent() {
       {/* Tabs Navigation */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="border-b border-gray-200">
-          <div className="flex gap-1 p-2">
+          <div className="flex items-center gap-1 p-1 bg-gray-50 rounded-xl">
+            <button
+              onClick={() => setActiveTab('outpatient')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'outpatient'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              <Users className="h-4 w-4" />
+              Outpatient
+            </button>
             <button
               onClick={() => setActiveTab('queue')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'queue'
@@ -1366,340 +1376,7 @@ function OutpatientPageContent() {
         </div>
 
         <div className="p-6">
-          {activeTab === 'queue' && (
-            <VitalsQueueCard
-              selectedDate={selectedDate}
-              onRefresh={() => {
-                loadOutpatientData();
-                loadQueueStats();
-              }}
-            />
-          )}
-
-          {activeTab === 'injection' && (
-            <div>
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Waiting for Injection</h3>
-                  <p className="text-sm text-gray-600 mt-1">Patients prescribed with injection medications</p>
-                </div>
-                <button
-                  onClick={() => {
-                    loadInjectionQueue();
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </button>
-              </div>
-
-              {injectionLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                  <span className="ml-3 text-gray-600">Loading injection queue...</span>
-                </div>
-              ) : injectionQueue.length === 0 ? (
-                <div className="text-center py-12">
-                  <Syringe className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Patients Waiting for Injection</h3>
-                  <p className="text-gray-600">No patients have been prescribed injection medications today.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {injectionQueue.map((item) => (
-                    <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 bg-red-100 rounded-lg">
-                              <Syringe className="h-5 w-5 text-red-600" />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
-                              <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                            <div className="text-sm">
-                              <span className="font-medium text-gray-700">Age/Gender:</span>
-                              <span className="ml-2 text-gray-600">
-                                {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
-                              </span>
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium text-gray-700">Phone:</span>
-                              <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium text-gray-700">Prescription ID:</span>
-                              <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium text-gray-700">Time:</span>
-                              <span className="ml-2 text-gray-600">
-                                {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                }) : 'N/A'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="border-t pt-3">
-                            <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
-                            <div className="space-y-2">
-                              {item.injection_items.map((injection: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between p-2 bg-red-50 rounded-lg">
-                                  <div className="flex items-center gap-2">
-                                    <Syringe className="h-4 w-4 text-red-600" />
-                                    <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
-                                    <span className="text-sm text-gray-600">
-                                      ({injection.dosage} • {injection.frequency} • {injection.duration})
-                                    </span>
-                                  </div>
-                                  <div className="text-sm text-gray-600">
-                                    Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Status Controls with Staff Name Input */}
-                          <div className="border-t pt-3 mt-3">
-                            <div className="space-y-3">
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Staff Name</label>
-                                <input
-                                  type="text"
-                                  placeholder="Enter staff name..."
-                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                  onChange={(e) => {
-                                    setInjectionQueue(prev => prev.map(queueItem => 
-                                      queueItem.id === item.id ? { ...queueItem, staffName: e.target.value } : queueItem
-                                    ));
-                                  }}
-                                  value={item.staffName || ''}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Update Status</label>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      console.log('Dispensed button clicked:', { 
-                                        itemId: item.id, 
-                                        staffName: item.staffName,
-                                        item: item 
-                                      });
-                                      updateInjectionStatus(item.id, 'completed', item.staffName);
-                                    }}
-                                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors"
-                                  >
-                                    Dispensed
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      console.log('Active button clicked:', { 
-                                        itemId: item.id, 
-                                        staffName: item.staffName,
-                                        item: item 
-                                      });
-                                      updateInjectionStatus(item.id, 'pending', item.staffName);
-                                    }}
-                                    className="px-3 py-1.5 text-xs font-medium text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-md hover:bg-yellow-200 transition-colors"
-                                  >
-                                    Active
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      console.log('Expired button clicked:', { 
-                                        itemId: item.id, 
-                                        staffName: item.staffName,
-                                        item: item 
-                                      });
-                                      updateInjectionStatus(item.id, 'cancelled', item.staffName);
-                                    }}
-                                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors"
-                                  >
-                                    Expired
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          {item.status && item.updatedByName && (
-                            <div className="mt-2 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                              Status: <span className="font-medium">
-                                {item.status === 'completed' ? 'Dispensed' : 
-                                 item.status === 'pending' ? 'Active' : 
-                                 item.status === 'cancelled' ? 'Expired' : 
-                                 item.status}
-                              </span> by 
-                              <span className="font-medium">
-                                {item.updatedByName || 'Unknown Staff'}
-                              </span>
-                              {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Updated Injections Section */}
-              {updatedInjections.length > 0 && (
-                <div className="mt-8">
-                  <div className="mb-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Updated Injections</h3>
-                      <p className="text-sm text-gray-600 mt-1">Injections that have been completed or cancelled</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {updatedInjections.map((item) => (
-                      <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow opacity-75">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-3">
-                              <div className={`p-2 rounded-lg ${
-                                item.status === 'completed' ? 'bg-green-100' : 
-                                item.status === 'pending' ? 'bg-yellow-100' : 
-                                'bg-red-100'
-                              }`}>
-                                <Syringe className={`h-5 w-5 ${
-                                  item.status === 'completed' ? 'text-green-600' : 
-                                  item.status === 'pending' ? 'text-yellow-600' : 
-                                  'text-red-600'
-                                }`} />
-                              </div>
-                              <div>
-                                <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
-                                <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
-                              </div>
-                              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                item.status === 'completed' 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : item.status === 'pending'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {item.status === 'completed' ? 'Dispensed' : 
-                                 item.status === 'pending' ? 'Active' : 
-                                 item.status === 'cancelled' ? 'Expired' : 
-                                 item.status}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                              <div className="text-sm">
-                                <span className="font-medium text-gray-700">Age/Gender:</span>
-                                <span className="ml-2 text-gray-600">
-                                  {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
-                                </span>
-                              </div>
-                              <div className="text-sm">
-                                <span className="font-medium text-gray-700">Phone:</span>
-                                <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
-                              </div>
-                              <div className="text-sm">
-                                <span className="font-medium text-gray-700">Prescription ID:</span>
-                                <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
-                              </div>
-                              <div className="text-sm">
-                                <span className="font-medium text-gray-700">Time:</span>
-                                <span className="ml-2 text-gray-600">
-                                  {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  }) : 'N/A'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="border-t pt-3">
-                              <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
-                              <div className="space-y-2">
-                                {item.injection_items.map((injection: any, index: number) => (
-                                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                      <Syringe className="h-4 w-4 text-gray-600" />
-                                      <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
-                                      <span className="text-sm text-gray-600">
-                                        ({injection.dosage} • {injection.frequency} • {injection.duration})
-                                      </span>
-                                    </div>
-                                    <div className="text-sm text-gray-600">
-                                      Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Status Update Information */}
-                            <div className="border-t pt-3 mt-3">
-                              <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                                Status: <span className="font-medium">
-                                  {item.status === 'completed' ? 'Dispensed' : 
-                                   item.status === 'pending' ? 'Active' : 
-                                   item.status === 'cancelled' ? 'Expired' : 
-                                   item.status}
-                                </span> by 
-                                <span className="font-medium">
-                                  {item.updatedByName || 'Unknown Staff'}
-                                </span>
-                                {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'appointments' && (
-            <div>
-              {/* Existing appointments section will go here */}
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Today's Appointment Queue</h3>
-                <div className="flex gap-3">
-                  <div className="flex items-center px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                    <Calendar size={14} className="mr-2 text-gray-400" />
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="bg-transparent focus:outline-none"
-                    />
-                  </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="scheduled">Waiting</option>
-                    <option value="in_progress">In Consultation</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-              </div>
-              {/* Appointments list will be rendered below */}
-            </div>
-          )}
-
-          {activeTab === 'patients' && (
+          {activeTab === 'outpatient' && (
             <div>
               {/* Header with View Toggle */}
               <div className="flex items-center justify-between mb-6">
@@ -2065,6 +1742,355 @@ function OutpatientPageContent() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'queue' && (
+            <VitalsQueueCard
+              selectedDate={selectedDate}
+              onRefresh={() => {
+                loadOutpatientData();
+                loadQueueStats();
+              }}
+            />
+          )}
+
+          {activeTab === 'injection' && (
+            <div>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Waiting for Injection</h3>
+                  <p className="text-sm text-gray-600 mt-1">Patients prescribed with injection medications</p>
+                </div>
+                <button
+                  onClick={() => {
+                    loadInjectionQueue();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </button>
+              </div>
+
+              {injectionLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  <span className="ml-3 text-gray-600">Loading injection queue...</span>
+                </div>
+              ) : injectionQueue.length === 0 ? (
+                <div className="text-center py-12">
+                  <Syringe className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Patients Waiting for Injection</h3>
+                  <p className="text-gray-600">No patients have been prescribed injection medications today.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {injectionQueue.map((item) => (
+                    <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                              <Syringe className="h-5 w-5 text-red-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
+                              <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Age/Gender:</span>
+                              <span className="ml-2 text-gray-600">
+                                {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Phone:</span>
+                              <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Prescription ID:</span>
+                              <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Time:</span>
+                              <span className="ml-2 text-gray-600">
+                                {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                }) : 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="border-t pt-3">
+                            <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
+                            <div className="space-y-2">
+                              {item.injection_items.map((injection: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-red-50 rounded-lg">
+                                  <div className="flex items-center gap-2">
+                                    <Syringe className="h-4 w-4 text-red-600" />
+                                    <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
+                                    <span className="text-sm text-gray-600">
+                                      ({injection.dosage} • {injection.frequency} • {injection.duration})
+                                    </span>
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Status Controls with Staff Name Input */}
+                          <div className="border-t pt-3 mt-3">
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Staff Name</label>
+                                <input
+                                  type="text"
+                                  placeholder="Enter staff name..."
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  onChange={(e) => {
+                                    setInjectionQueue(prev => prev.map(queueItem => 
+                                      queueItem.id === item.id ? { ...queueItem, staffName: e.target.value } : queueItem
+                                    ));
+                                  }}
+                                  value={item.staffName || ''}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Update Status</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      console.log('Dispensed button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'completed', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors"
+                                  >
+                                    Dispensed
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      console.log('Active button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'pending', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-md hover:bg-yellow-200 transition-colors"
+                                  >
+                                    Active
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      console.log('Expired button clicked:', { 
+                                        itemId: item.id, 
+                                        staffName: item.staffName,
+                                        item: item 
+                                      });
+                                      updateInjectionStatus(item.id, 'cancelled', item.staffName);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors"
+                                  >
+                                    Expired
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          {item.status && item.updatedByName && (
+                            <div className="mt-2 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                              Status: <span className="font-medium">
+                                {item.status === 'completed' ? 'Dispensed' : 
+                                 item.status === 'pending' ? 'Active' : 
+                                 item.status === 'cancelled' ? 'Expired' : 
+                                 item.status}
+                              </span> by 
+                              <span className="font-medium">
+                                {item.updatedByName || 'Unknown Staff'}
+                              </span>
+                              {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Updated Injections Section */}
+              {updatedInjections.length > 0 && (
+                <div className="mt-8">
+                  <div className="mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Updated Injections</h3>
+                      <p className="text-sm text-gray-600 mt-1">Injections that have been completed or cancelled</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {updatedInjections.map((item) => (
+                      <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow opacity-75">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`p-2 rounded-lg ${
+                                item.status === 'completed' ? 'bg-green-100' : 
+                                item.status === 'pending' ? 'bg-yellow-100' : 
+                                'bg-red-100'
+                              }`}>
+                                <Syringe className={`h-5 w-5 ${
+                                  item.status === 'completed' ? 'text-green-600' : 
+                                  item.status === 'pending' ? 'text-yellow-600' : 
+                                  'text-red-600'
+                                }`} />
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900">{item.patient?.name || 'Unknown Patient'}</h4>
+                                <p className="text-sm text-gray-600">UHID: {item.patient?.patient_id || 'N/A'}</p>
+                              </div>
+                              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                item.status === 'completed' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : item.status === 'pending'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {item.status === 'completed' ? 'Dispensed' : 
+                                 item.status === 'pending' ? 'Active' : 
+                                 item.status === 'cancelled' ? 'Expired' : 
+                                 item.status}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Age/Gender:</span>
+                                <span className="ml-2 text-gray-600">
+                                  {item.patient?.date_of_birth ? calculateAge(item.patient.date_of_birth) : 'N/A'} / {item.patient?.gender || 'N/A'}
+                                </span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Phone:</span>
+                                <span className="ml-2 text-gray-600">{item.patient?.phone || 'N/A'}</span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Prescription ID:</span>
+                                <span className="ml-2 text-gray-600">{item.prescription_id || 'N/A'}</span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Time:</span>
+                                <span className="ml-2 text-gray-600">
+                                  {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="border-t pt-3">
+                              <h5 className="font-medium text-gray-900 mb-2">Prescribed Injections:</h5>
+                              <div className="space-y-2">
+                                {item.injection_items.map((injection: any, index: number) => (
+                                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                      <Syringe className="h-4 w-4 text-gray-600" />
+                                      <span className="font-medium text-gray-900">{injection.medication?.name || 'Unknown'}</span>
+                                      <span className="text-sm text-gray-600">
+                                        ({injection.dosage} • {injection.frequency} • {injection.duration})
+                                      </span>
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                      Qty: {injection.quantity} | Dispensed: {injection.dispensed_quantity || 0}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Status Update Information */}
+                            <div className="border-t pt-3 mt-3">
+                              <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                                Status: <span className="font-medium">
+                                  {item.status === 'completed' ? 'Dispensed' : 
+                                   item.status === 'pending' ? 'Active' : 
+                                   item.status === 'cancelled' ? 'Expired' : 
+                                   item.status}
+                                </span> by 
+                                <span className="font-medium">
+                                  {item.updatedByName || 'Unknown Staff'}
+                                </span>
+                                {item.updatedAt && ` at ${new Date(item.updatedAt).toLocaleTimeString()}`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'appointments' && (
+            <div>
+              {/* Existing appointments section will go here */}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Today's Appointment Queue</h3>
+                <div className="flex gap-3">
+                  <div className="flex items-center px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <Calendar size={14} className="mr-2 text-gray-400" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="bg-transparent focus:outline-none"
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="scheduled">Waiting</option>
+                    <option value="in_progress">In Consultation</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+              {/* Appointments list will be rendered below */}
+            </div>
+          )}
+
+          {activeTab === 'patients' && (
+            <div className="text-center py-12">
+              <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Recent Patients Moved</h3>
+              <p className="text-gray-600 mb-4">
+                Outpatient patient records have been moved to the dedicated "Outpatient" tab.
+              </p>
+              <button
+                onClick={() => setActiveTab('outpatient')}
+                className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors"
+              >
+                Go to Outpatient Tab
+              </button>
             </div>
           )}
         </div>

@@ -835,7 +835,27 @@ export default function LabOrderPage() {
                                             <div className="md:col-span-5">
                                                 <SearchableSelect
                                                     value={pendingTestId}
-                                                    onChange={(value: string) => setPendingTestId(value)}
+                                                    onChange={(value: string) => {
+                                                        setPendingTestId(value);
+                                                        // Auto-add test when selected
+                                                        if (value) {
+                                                            const test = labCatalog.find(t => t.id === value);
+                                                            if (test) {
+                                                                setSelectedTests(prev => [
+                                                                    {
+                                                                        testId: test.id,
+                                                                        testName: test.test_name,
+                                                                        groupName: test.category || 'N/A',
+                                                                        amount: test.test_cost || 0
+                                                                    },
+                                                                    ...prev.filter(t => t.testId !== test.id)
+                                                                ]);
+                                                                // Reset pending selection
+                                                                setPendingTestId('');
+                                                                setPendingAmount(0);
+                                                            }
+                                                        }
+                                                    }}
                                                     options={labCatalog.map(item => ({
                                                         value: item.id,
                                                         label: item.test_name,

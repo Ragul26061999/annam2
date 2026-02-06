@@ -123,19 +123,7 @@ export async function uploadLabXrayAttachment(
 
     // If bucket was missing (common misconfig), attempt to create/ensure then retry once.
     if (uploadError?.message?.toLowerCase?.().includes('bucket not found')) {
-      try {
-        await ensureLabXrayAttachmentBucket();
-      } catch (ensureErr) {
-        console.error('Error ensuring lab-xray bucket:', ensureErr);
-      }
-
-      const retry = await supabase.storage
-        .from('lab-xray-attachments')
-        .upload(filePath, data.file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-      uploadError = retry.error;
+      throw new Error('Storage bucket "lab-xray-attachments" not found. Please contact administrator to create the storage bucket.');
     }
 
     if (uploadError) {

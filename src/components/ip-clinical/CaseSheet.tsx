@@ -95,7 +95,7 @@ export default function CaseSheet({ bedAllocationId, patientId, selectedDate }: 
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, fieldIndex: number, totalFields: number) => {
-    // ONLY handle Tab key, completely ignore Enter key
+    // Handle Tab key for navigation between fields
     if (e.key === 'Tab') {
       e.preventDefault();
       // Move to next field or wrap around to first
@@ -108,7 +108,14 @@ export default function CaseSheet({ bedAllocationId, patientId, selectedDate }: 
         nextTextArea.setSelectionRange(len, len);
       }
     }
-    // Completely ignore Enter key - let browser handle it naturally
+    // Allow Enter key for natural line breaks within the textarea
+    // This enables proper line-by-line text entry
+  };
+
+  const handleTextChange = (field: keyof IPCaseSheet, value: string) => {
+    // Preserve line breaks and whitespace for structured text entry
+    setCaseSheet(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
   };
 
   if (loading) {
@@ -169,17 +176,36 @@ export default function CaseSheet({ bedAllocationId, patientId, selectedDate }: 
 
         <div className="space-y-6">
           {sections.map((section, index) => (
-            <div key={section.key} className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">{section.label}</label>
-              <textarea
-                data-field-index={index}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                rows={section.rows}
-                value={(caseSheet[section.key as keyof IPCaseSheet] as string) || ''}
-                onChange={(e) => handleSaveField(section.key as keyof IPCaseSheet, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, index, sections.length)}
-                placeholder={`Enter ${section.label.toLowerCase()}...`}
-              />
+            <div key={section.key} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">{section.label}</label>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd>
+                  <span>for new line</span>
+                  <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs">Tab</kbd>
+                  <span>to next field</span>
+                </div>
+              </div>
+              <div className="relative">
+                <textarea
+                  data-field-index={index}
+                  className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono leading-relaxed resize-vertical bg-gray-50 focus:bg-white transition-colors"
+                  rows={section.rows}
+                  value={(caseSheet[section.key as keyof IPCaseSheet] as string) || ''}
+                  onChange={(e) => handleTextChange(section.key as keyof IPCaseSheet, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, index, sections.length)}
+                  placeholder={`Enter ${section.label.toLowerCase()} line by line...${section.key === 'present_complaints' ? '\n• Symptom 1\n• Symptom 2\n• Symptom 3' : section.key === 'examination_notes' ? '\nGeneral: \nCVS: \nRS: \nCNS: \nOther:' : '\n• Point 1\n• Point 2\n• Point 3'}`}
+                  style={{
+                    minHeight: `${section.rows * 1.5}rem`,
+                    lineHeight: '1.6',
+                    tabSize: 4,
+                    whiteSpace: 'pre-wrap'
+                  }}
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-400 bg-white px-2 py-1 rounded border">
+                  Line-by-line entry
+                </div>
+              </div>
             </div>
           ))}
         </div>

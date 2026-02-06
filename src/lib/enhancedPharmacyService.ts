@@ -64,6 +64,7 @@ export interface DrugPurchaseItem {
   manufacturing_date?: string;
   expiry_date: string;
   quantity: number;
+  pack_counting: number;
   free_quantity: number;
   unit_price: number;
   mrp: number;

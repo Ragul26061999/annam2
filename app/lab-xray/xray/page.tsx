@@ -410,9 +410,9 @@ export default function XrayOrderPage() {
             const bill = await createRadiologyBill(patientDetails.id, orders, staffId);
             setGeneratedBill(bill);
 
-            // Show payment modal
+            // Show payment modal first
             setShowPaymentModal(true);
-            setSuccess(true);
+            // Don't show success modal yet - wait for payment interaction
         } catch (err: any) {
             console.error('Submission error:', err);
             setError(err.message || 'Failed to create radiology orders.');
@@ -422,10 +422,15 @@ export default function XrayOrderPage() {
     };
 
     const handlePaymentSuccess = () => {
-        // Reset form and redirect
-        setTimeout(() => {
-            router.push('/lab-xray');
-        }, 1000);
+        // Close payment modal and show success modal
+        setShowPaymentModal(false);
+        setSuccess(true);
+    };
+
+    const handlePaymentClose = () => {
+        // Even if payment is cancelled/skipped, show success modal because orders were created
+        setShowPaymentModal(false);
+        setSuccess(true);
     };
 
     if (loading) {
@@ -1023,7 +1028,7 @@ export default function XrayOrderPage() {
             {generatedBill && (
                 <UniversalPaymentModal
                     isOpen={showPaymentModal}
-                    onClose={() => setShowPaymentModal(false)}
+                    onClose={handlePaymentClose}
                     bill={generatedBill}
                     onSuccess={handlePaymentSuccess}
                 />

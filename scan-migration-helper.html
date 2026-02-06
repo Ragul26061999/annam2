@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Tables Migration - One Click</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f8fafc; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #1e293b; margin-bottom: 20px; }
+        .step { background: #f1f5f9; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #3b82f6; }
+        .button { background: #3b82f6; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 10px 5px; }
+        .button:hover { background: #2563eb; }
+        .button.success { background: #10b981; }
+        .button.success:hover { background: #059669; }
+        .sql-box { background: #1e293b; color: #e2e8f0; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 14px; overflow-x: auto; }
+        .status { padding: 15px; border-radius: 6px; margin: 20px 0; display: none; }
+        .status.success { background: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+        .status.error { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; }
+        .copy-feedback { position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 10px 20px; border-radius: 6px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Scan Tables Migration</h1>
+        <p style="font-size: 18px; color: #64748b;">Complete the scan module setup in 2 easy steps</p>
+        
+        <div class="step">
+            <h3>Step 1: Copy SQL</h3>
+            <p>Click the button below to copy the complete SQL migration to your clipboard:</p>
+            <button class="button" onclick="copySQL()">📋 Copy SQL to Clipboard</button>
+            <button class="button success" onclick="openDashboard()">🌐 Open Supabase Dashboard</button>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Run SQL in Supabase</h3>
+            <p>1. The dashboard will open in a new tab</p>
+            <p>2. Go to the SQL Editor</p>
+            <p>3. Paste the SQL and click "Run"</p>
+            <p>4. Return to your app - scan functionality will work immediately!</p>
+        </div>
+        
+        <div class="sql-box" id="sqlContent">
+-- ============================================
+-- Scan Module - Database Schema Extension
+-- Hospital Management System
+-- ============================================
+
+-- Create scan_test_catalog table
+CREATE TABLE IF NOT EXISTS scan_test_catalog (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    test_code VARCHAR(50) UNIQUE NOT NULL,
+    test_name VARCHAR(200) NOT NULL,
+    modality VARCHAR(50) NOT NULL,
+    body_part VARCHAR(100),
+    contrast_required BOOLEAN DEFAULT FALSE,
+    radiation_exposure VARCHAR(50),
+    requires_sedation BOOLEAN DEFAULT FALSE,
+    requires_prep BOOLEAN DEFAULT FALSE,
+    prep_instructions TEXT,
+    average_duration INTEGER,
+    normal_turnaround_time INTEGER,
+    urgent_turnaround_time INTEGER,
+    test_cost NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    is_active BOOLEAN DEFAULT TRUE,
+    requires_radiologist BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create scan_test_orders table
+CREATE TABLE IF NOT EXISTS scan_test_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    encounter_id UUID,
+    appointment_id UUID REFERENCES appointments(id) ON DELETE CASCADE,
+    ordering_doctor_id UUID NOT NULL REFERENCES doctors(id),
+    test_catalog_id UUID NOT NULL REFERENCES scan_test_catalog(id),
+    clinical_indication TEXT NOT NULL,
+    provisional_diagnosis TEXT,
+    special_instructions TEXT,
+    body_part VARCHAR(100),
+    laterality VARCHAR(20),
+    contrast_required BOOLEAN DEFAULT FALSE,
+    contrast_type VARCHAR(100),
+    patient_preparation_notes TEXT,
+    allergies_checked BOOLEAN DEFAULT FALSE,
+    prep_completed BOOLEAN DEFAULT FALSE,
+    urgency VARCHAR(20) DEFAULT 'routine' CHECK (urgency IN ('routine', 'urgent', 'stat', 'emergency')),
+    preferred_scan_date DATE,
+    preferred_scan_time TIME,
+    status VARCHAR(30) DEFAULT 'ordered' CHECK (status IN ('ordered', 'scheduled', 'patient_arrived', 'in_progress', 'scan_completed', 'report_pending', 'completed', 'cancelled')),
+    scheduled_at TIMESTAMP WITH TIME ZONE,
+    scheduled_by UUID REFERENCES users(id),
+    scan_started_at TIMESTAMP WITH TIME ZONE,
+    scan_completed_at TIMESTAMP WITH TIME ZONE,
+    technician_id UUID REFERENCES users(id),
+    report_drafted_at TIMESTAMP WITH TIME ZONE,
+    report_verified_at TIMESTAMP WITH TIME ZONE,
+    radiologist_id UUID REFERENCES doctors(id),
+    images_url TEXT[],
+    report_url TEXT,
+    report_generated_at TIMESTAMP WITH TIME ZONE,
+    findings_summary TEXT,
+    impression TEXT,
+    recommendations TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    cancelled_at TIMESTAMP WITH TIME ZONE,
+    cancellation_reason TEXT
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_scan_orders_patient ON scan_test_orders(patient_id);
+CREATE INDEX IF NOT EXISTS idx_scan_orders_doctor ON scan_test_orders(ordering_doctor_id);
+CREATE INDEX IF NOT EXISTS idx_scan_orders_status ON scan_test_orders(status);
+CREATE INDEX IF NOT EXISTS idx_scan_orders_date ON scan_test_orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_scan_orders_urgency ON scan_test_orders(urgency);
+CREATE INDEX IF NOT EXISTS idx_scan_orders_order_number ON scan_test_orders(order_number);
+CREATE INDEX IF NOT EXISTS idx_scan_catalog_modality ON scan_test_catalog(modality);
+CREATE INDEX IF NOT EXISTS idx_scan_catalog_active ON scan_test_catalog(is_active);
+
+-- Enable RLS
+ALTER TABLE scan_test_catalog ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_test_orders ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY IF NOT EXISTS "Allow authenticated users to view scan test catalog" ON scan_test_catalog FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY IF NOT EXISTS "Allow authenticated users to view scan orders" ON scan_test_orders FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY IF NOT EXISTS "Allow authenticated users to create scan orders" ON scan_test_orders FOR INSERT TO authenticated WITH CHECK (TRUE);
+CREATE POLICY IF NOT EXISTS "Allow authenticated users to update scan orders" ON scan_test_orders FOR UPDATE TO authenticated USING (TRUE);
+
+-- Insert seed data
+INSERT INTO scan_test_catalog (test_code, test_name, modality, body_part, contrast_required, radiation_exposure, requires_sedation, average_duration, normal_turnaround_time, urgent_turnaround_time, test_cost) VALUES
+('CT-HEAD', 'CT Scan Head', 'CT', 'Head', FALSE, 'Medium', FALSE, 20, 6, 3, 2500.00),
+('CT-ABD', 'CT Scan Abdomen', 'CT', 'Abdomen', TRUE, 'Medium', FALSE, 30, 6, 3, 3500.00),
+('MRI-BRAIN', 'MRI Brain', 'MRI', 'Brain', FALSE, 'None', FALSE, 45, 24, 12, 5000.00),
+('MRI-SPINE', 'MRI Spine', 'MRI', 'Spine', FALSE, 'None', FALSE, 45, 24, 12, 5500.00),
+('USG-ABD', 'Ultrasound Abdomen', 'Ultrasound', 'Abdomen', FALSE, 'None', FALSE, 30, 4, 2, 800.00),
+('USG-PELVIS', 'Ultrasound Pelvis', 'Ultrasound', 'Pelvis', FALSE, 'None', FALSE, 30, 4, 2, 800.00),
+('PET-CT', 'PET CT Scan', 'PET-CT', 'Whole Body', TRUE, 'High', FALSE, 60, 48, 24, 12000.00),
+('MAMMO', 'Mammography', 'Mammography', 'Breast', FALSE, 'Low', FALSE, 20, 6, 3, 1200.00)
+ON CONFLICT (test_code) DO NOTHING;
+        </div>
+        
+        <div class="status" id="status"></div>
+    </div>
+    
+    <div class="copy-feedback" id="copyFeedback">✅ SQL Copied!</div>
+    
+    <script>
+        function copySQL() {
+            const sqlContent = document.getElementById('sqlContent');
+            const textArea = document.createElement('textarea');
+            textArea.value = sqlContent.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            showCopyFeedback();
+            showStatus('✅ SQL copied to clipboard! Now open the Supabase dashboard and paste it.', 'success');
+        }
+        
+        function openDashboard() {
+            window.open('https://supabase.com/dashboard/project/zusheijhebsmjiyyeiqq/sql', '_blank');
+            showStatus('🌐 Supabase dashboard opened. Go to SQL Editor and paste the SQL.', 'success');
+        }
+        
+        function showCopyFeedback() {
+            const feedback = document.getElementById('copyFeedback');
+            feedback.style.display = 'block';
+            setTimeout(() => {
+                feedback.style.display = 'none';
+            }, 2000);
+        }
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        // Auto-copy on page load
+        window.onload = function() {
+            setTimeout(copySQL, 1000);
+        };
+    </script>
+</body>
+</html>

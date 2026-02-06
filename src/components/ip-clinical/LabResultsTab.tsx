@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Upload, FileText, Download, Eye, Calendar, User, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Upload, FileText, Download, Eye, Calendar, User, Check, AlertCircle, Paperclip } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getPatientLabXrayAttachments, type LabXrayAttachment } from '../../lib/labXrayAttachmentService';
 
 interface LabResult {
   id: string;
@@ -26,6 +27,7 @@ interface LabResultsTabProps {
 export default function LabResultsTab({ bedAllocationId, patientId }: LabResultsTabProps) {
   const [loading, setLoading] = useState(true);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
+  const [labAttachments, setLabAttachments] = useState<LabXrayAttachment[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadNotes, setUploadNotes] = useState<Record<string, string>>({});
 
@@ -36,6 +38,7 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
   const loadLabResults = async () => {
     setLoading(true);
     try {
+      // Fetch lab test orders
       const { data, error } = await supabase
         .from('lab_test_orders')
         .select(
@@ -64,6 +67,17 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
       }));
 
       setLabResults(formattedData);
+
+      // Fetch lab xray attachments
+      try {
+        const attachments = await getPatientLabXrayAttachments(patientId);
+        // Filter only lab-type attachments
+        const labOnlyAttachments = attachments.filter(att => att.test_type === 'lab');
+        setLabAttachments(labOnlyAttachments);
+      } catch (attachmentError) {
+        console.error('Error loading lab attachments:', attachmentError);
+        setLabAttachments([]);
+      }
     } catch (error) {
       console.error('Error loading lab results:', error);
     } finally {
@@ -134,12 +148,14 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
     );
   }
 
-  if (labResults.length === 0) {
+  const hasNoData = labResults.length === 0 && labAttachments.length === 0;
+
+  if (hasNoData) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
         <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
         <h4 className="text-gray-900 font-medium">No Lab Tests Found</h4>
-        <p className="text-gray-500 text-sm mt-1">Lab test results will appear here once ordered.</p>
+        <p className="text-gray-500 text-sm mt-1">Lab test results and uploaded documents will appear here once ordered.</p>
       </div>
     );
   }
@@ -148,116 +164,70 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900">Laboratory Test Results</h3>
-        <span className="text-sm text-gray-600">{labResults.length} test(s)</span>
+        <span className="text-sm text-gray-600">{labResults.length} test(s) • {labAttachments.length} uploaded document(s)</span>
       </div>
 
-      {labResults.map((result) => (
-        <div key={result.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h4 className="font-semibold text-gray-900">{result.test_name}</h4>
-                {result.result_file_url && (
-                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded flex items-center gap-1">
-                    <Check className="h-3 w-3" /> Result Available
-                  </span>
-                )}
-                {!result.result_file_url && result.status === 'pending' && (
-                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> Pending
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(result.preferred_collection_date || result.created_at)}
-                </span>
-                <span>Order #{result.order_number}</span>
-              </div>
-            </div>
-          </div>
-
-          {result.result_file_url ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-green-600" />
-                  <div>
-                    <p className="text-sm font-medium text-green-900">Result Uploaded</p>
-                    {result.result_uploaded_at && (
-                      <p className="text-xs text-green-700">
-                        {formatDate(result.result_uploaded_at)}
-                      </p>
-                    )}
+      {/* Display Lab Xray Attachments */}
+      {labAttachments.length > 0 && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+              <Paperclip className="h-5 w-5" />
+              Uploaded Documents ({labAttachments.length})
+            </h4>
+            <div className="space-y-3">
+              {labAttachments.map((attachment) => (
+                <div key={attachment.id} className="bg-white border border-blue-100 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h5 className="font-medium text-gray-900 truncate">{attachment.test_name}</h5>
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                          Uploaded Document
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {formatDate(attachment.uploaded_at)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileText className="h-3 w-3" />
+                          {attachment.file_name}
+                        </span>
+                        <span>{(attachment.file_size / 1024).toFixed(1)} KB</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                      {attachment.file_url && (
+                        <a
+                          href={attachment.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </a>
+                      )}
+                      <a
+                        href={attachment.file_url}
+                        download
+                        className="flex items-center gap-1 px-3 py-1.5 bg-white text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download
+                      </a>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <a
-                    href={result.result_file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-                  >
-                    <Eye className="h-4 w-4" />
-                    View
-                  </a>
-                  <a
-                    href={result.result_file_url}
-                    download
-                    className="flex items-center gap-1 px-3 py-1.5 bg-white text-green-600 border border-green-600 rounded-lg hover:bg-green-50 transition-colors text-sm"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </a>
-                </div>
-              </div>
-              {result.result_notes && (
-                <p className="text-sm text-green-800 mt-2 pl-7">{result.result_notes}</p>
-              )}
+              ))}
             </div>
-          ) : (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Upload Lab Result
-                </label>
-                <input
-                  type="text"
-                  placeholder="Add notes (optional)"
-                  value={uploadNotes[result.id] || ''}
-                  onChange={(e) => setUploadNotes({ ...uploadNotes, [result.id]: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2"
-                />
-                <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer text-sm w-fit">
-                  {uploading === result.id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4" />
-                      Choose File
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload(result.id, file);
-                    }}
-                    className="hidden"
-                    disabled={uploading === result.id}
-                  />
-                </label>
-                <p className="text-xs text-gray-600">Supported: PDF, Images, Word documents</p>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
-      ))}
+      )}
+
+      {/* Individual lab test results display removed */}
     </div>
   );
 }

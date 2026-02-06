@@ -490,6 +490,7 @@ export async function createRadiologyBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
+    bill_type: 'radiology',
   });
 }
 

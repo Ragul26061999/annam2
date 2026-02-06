@@ -1311,101 +1311,129 @@ export default function PrescriptionForm({
                         />
                       </div>
                       
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Duration (Days) *</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.duration_days}
-                          onChange={(e) => updatePrescriptionItem(index, 'duration_days', parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Frequency Times */}
-                    <div className="mb-4">
-                      <label className="block text-xs font-medium text-gray-700 mb-2">Frequency Times *</label>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {['Morning', 'Afternoon', 'Evening', 'Night'].map((time) => (
-                          <label key={time} className="flex items-center space-x-2 p-2 border border-gray-200 rounded hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={item.frequency_times.includes(time)}
-                              onChange={(e) => {
-                                const newTimes = e.target.checked
-                                  ? [...item.frequency_times, time]
-                                  : item.frequency_times.filter(t => t !== time);
-                                updatePrescriptionItem(index, 'frequency_times', newTimes);
-                              }}
-                              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                            />
-                            <span className="text-sm text-gray-700">{time}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Meal Timing */}
-                    <div className="mb-4">
-                      <label className="block text-xs font-medium text-gray-700 mb-2">Meal Timing</label>
-                      <select
-                        value={item.meal_timing}
-                        onChange={(e) => updatePrescriptionItem(index, 'meal_timing', e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      >
-                        <option value="">Select meal timing</option>
-                        <option value="before_meal">Before Meal</option>
-                        <option value="after_meal">After Meal</option>
-                        <option value="with_meal">With Meal</option>
-                        <option value="empty_stomach">Empty Stomach</option>
-                      </select>
-                    </div>
-
-                    {/* Quantity Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="flex items-center space-x-2 mb-2">
-                          <input
-                            type="checkbox"
-                            checked={item.auto_calculate_quantity}
-                            onChange={(e) => updatePrescriptionItem(index, 'auto_calculate_quantity', e.target.checked)}
-                            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                          />
-                          <span className="text-xs font-medium text-gray-700">Auto Calculate Quantity</span>
-                        </label>
-                        {item.auto_calculate_quantity ? (
-                          <div className="px-3 py-2 text-sm bg-green-50 border border-green-300 rounded font-medium text-green-600">
-                            Auto: {calculateAutoQuantity(item.frequency_times, item.duration_days)} units
-                          </div>
-                        ) : (
+                      {/* Duration (Days) - Hide for injections */}
+                      {!(medications.find(m => m.id === item.medication_id)?.dosage_form === 'Injection' || medications.find(m => m.id === item.medication_id)?.category === 'Injection') && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Duration (Days) *</label>
                           <input
                             type="number"
                             min="1"
-                            max={item.stock_quantity}
-                            value={item.quantity}
-                            onChange={(e) => updatePrescriptionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                            value={item.duration_days}
+                            onChange={(e) => updatePrescriptionItem(index, 'duration_days', parseInt(e.target.value) || 1)}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                            placeholder="Custom quantity"
+                            required
                           />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Frequency Times - Hide for injections */}
+                    {!(medications.find(m => m.id === item.medication_id)?.dosage_form === 'Injection' || medications.find(m => m.id === item.medication_id)?.category === 'Injection') && (
+                      <div className="mb-4">
+                        <label className="block text-xs font-medium text-gray-700 mb-2">Frequency Times *</label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {['Morning', 'Afternoon', 'Evening', 'Night'].map((time) => (
+                            <label key={time} className="flex items-center space-x-2 p-2 border border-gray-200 rounded hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={item.frequency_times.includes(time)}
+                                onChange={(e) => {
+                                  const newTimes = e.target.checked
+                                    ? [...item.frequency_times, time]
+                                    : item.frequency_times.filter(t => t !== time);
+                                  updatePrescriptionItem(index, 'frequency_times', newTimes);
+                                }}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-sm text-gray-700">{time}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meal Timing - Hide for injections */}
+                    {!(medications.find(m => m.id === item.medication_id)?.dosage_form === 'Injection' || medications.find(m => m.id === item.medication_id)?.category === 'Injection') && (
+                      <div className="mb-4">
+                        <label className="block text-xs font-medium text-gray-700 mb-2">Meal Timing</label>
+                        <select
+                          value={item.meal_timing}
+                          onChange={(e) => updatePrescriptionItem(index, 'meal_timing', e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        >
+                          <option value="">Select meal timing</option>
+                          <option value="before_meal">Before Meal</option>
+                          <option value="after_meal">After Meal</option>
+                          <option value="with_meal">With Meal</option>
+                          <option value="empty_stomach">Empty Stomach</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Quantity Section - Hide auto calculate and random quantity for injections */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        {!(medications.find(m => m.id === item.medication_id)?.dosage_form === 'Injection' || medications.find(m => m.id === item.medication_id)?.category === 'Injection') ? (
+                          <>
+                            <label className="flex items-center space-x-2 mb-2">
+                              <input
+                                type="checkbox"
+                                checked={item.auto_calculate_quantity}
+                                onChange={(e) => updatePrescriptionItem(index, 'auto_calculate_quantity', e.target.checked)}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-xs font-medium text-gray-700">Auto Calculate Quantity</span>
+                            </label>
+                            {item.auto_calculate_quantity ? (
+                              <div className="px-3 py-2 text-sm bg-green-50 border border-green-300 rounded font-medium text-green-600">
+                                Auto: {calculateAutoQuantity(item.frequency_times, item.duration_days)} units
+                              </div>
+                            ) : (
+                              <input
+                                type="number"
+                                min="1"
+                                max={item.stock_quantity}
+                                value={item.quantity}
+                                onChange={(e) => updatePrescriptionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                placeholder="Custom quantity"
+                              />
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Quantity *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max={item.stock_quantity}
+                              value={item.quantity}
+                              onChange={(e) => updatePrescriptionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="Enter quantity"
+                              required
+                            />
+                          </>
                         )}
                       </div>
                       
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Random Quantity</label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const randomQty = Math.floor(Math.random() * Math.min(item.stock_quantity, 30)) + 1;
-                            updatePrescriptionItem(index, 'quantity', randomQty);
-                            updatePrescriptionItem(index, 'auto_calculate_quantity', false);
-                          }}
-                          className="w-full px-3 py-2 text-sm bg-purple-100 text-purple-700 border border-purple-300 rounded hover:bg-purple-200 transition-colors"
-                        >
-                          Generate Random
-                        </button>
-                      </div>
+                      {/* Random Quantity - Hide for injections */}
+                      {!(medications.find(m => m.id === item.medication_id)?.dosage_form === 'Injection' || medications.find(m => m.id === item.medication_id)?.category === 'Injection') && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Random Quantity</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const randomQty = Math.floor(Math.random() * Math.min(item.stock_quantity, 30)) + 1;
+                              updatePrescriptionItem(index, 'quantity', randomQty);
+                              updatePrescriptionItem(index, 'auto_calculate_quantity', false);
+                            }}
+                            className="w-full px-3 py-2 text-sm bg-purple-100 text-purple-700 border border-purple-300 rounded hover:bg-purple-200 transition-colors"
+                          >
+                            Generate Random
+                          </button>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="mt-4">

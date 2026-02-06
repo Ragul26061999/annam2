@@ -190,10 +190,13 @@ export default function ScanOrderPage() {
     const loadInitialData = async () => {
         try {
             setLoading(true);
+            console.log('Loading initial data for scan page...');
             const [catalog, doctorsList] = await Promise.all([
                 getScanTestCatalog(),
                 getAllDoctorsSimple()
             ]);
+            console.log('Scan catalog loaded:', catalog);
+            console.log('Doctors loaded:', doctorsList);
             setScanCatalog(catalog || []);
             setDoctors(doctorsList || []);
         } catch (err) {
@@ -351,9 +354,13 @@ if (!patientDetails.id) {
 setError('Please search and select a patient first.');
 return;
 }
-// Remove required validation for ordering doctor and staff - make them optional
 if (selectedTests.some(t => !t.testId)) {
 setError('Please select all tests or remove empty rows.');
+return;
+}
+// Add validation for ordering doctor since it's required by the database
+if (!orderingDoctorId) {
+setError('Please select an ordering doctor.');
 return;
 }
 
@@ -365,12 +372,11 @@ try {
             const orderPromises = selectedTests.map(test =>
                 createScanTestOrder({
                     patient_id: patientDetails.id,
-                    ordering_doctor_id: orderingDoctorId || undefined, // Make optional
+                    ordering_doctor_id: orderingDoctorId,
                     test_catalog_id: test.testId,
                     clinical_indication: clinicalIndication,
                     urgency: urgency,
-                    status: 'ordered',
-                    staff_id: staffId || undefined // Make optional
+                    status: 'ordered'
                 })
             );
 
@@ -378,7 +384,7 @@ try {
             setCreatedOrders(orders);
 
             // Create bill for the scan tests
-            const bill = await createScanBill(patientDetails.id, orders, staffId);
+            const bill = await createScanBill(patientDetails.id, orders);
             setGeneratedBill(bill);
 
             // Show payment modal first

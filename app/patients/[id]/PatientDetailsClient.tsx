@@ -1715,6 +1715,20 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     ))}
                   </div>
                 )}
+
+                {/* Laboratory Test Results */}
+                <div className="mt-8">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Laboratory Test Results</h3>
+                      <p className="text-sm text-gray-500">View all uploaded lab tests, radiology reports, and scan documents.</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white border border-gray-200 rounded-xl p-6">
+                    <LabXrayAttachments patientId={patient.id} readOnly={true} />
+                  </div>
+                </div>
               </div>
             )}
 

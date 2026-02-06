@@ -671,7 +671,7 @@ export default function PharmacyPage() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('newbilling')}
+              onClick={() => router.push('/pharmacy/newbilling')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'newbilling'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -681,7 +681,7 @@ export default function PharmacyPage() {
               New Billing
             </button>
             <button
-              onClick={() => setActiveTab('inventory')}
+              onClick={() => router.push('/pharmacy/inventory')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'inventory'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -691,7 +691,7 @@ export default function PharmacyPage() {
               Inventory
             </button>
             <button
-              onClick={() => setActiveTab('billing')}
+              onClick={() => router.push('/pharmacy/billing')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'billing'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -996,41 +996,8 @@ export default function PharmacyPage() {
         </div>
       )}
 
-      {activeTab === 'newbilling' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-6 text-center">
-            <p className="mb-4 text-gray-700">Open the New Billing flow in its dedicated page.</p>
-            <Link href="/pharmacy/newbilling" className="btn-primary inline-flex items-center">
-              <Receipt className="w-4 h-4 mr-2" />
-              Go to New Billing
-            </Link>
-          </div>
-        </div>
-      )}
 
-      {activeTab === 'inventory' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-6 text-center">
-            <p className="mb-4 text-gray-700">Open the Inventory view in its dedicated page.</p>
-            <Link href="/pharmacy/inventory" className="btn-primary inline-flex items-center">
-              <Package className="w-4 h-4 mr-2" />
-              Go to Inventory
-            </Link>
-          </div>
-        </div>
-      )}
 
-      {activeTab === 'billing' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-6 text-center">
-            <p className="mb-4 text-gray-700">Open the Billing History in its dedicated page.</p>
-            <Link href="/pharmacy/billing" className="btn-primary inline-flex items-center">
-              <IndianRupee className="w-4 h-4 mr-2" />
-              Go to Billing History
-            </Link>
-          </div>
-        </div>
-      )}
       {showMedicineModal && (
         <MedicineEntryForm
           preselectedMedicine={selectedMedicine ? { id: selectedMedicine.id, name: selectedMedicine.name, medication_code: selectedMedicine.medicine_code } : undefined}

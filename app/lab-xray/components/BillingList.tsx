@@ -323,6 +323,32 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
     }
   };
 
+  const getBillTypeColor = (billType: string) => {
+    switch (billType?.toLowerCase()) {
+      case 'lab':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'radiology':
+        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+      case 'scan':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getBillTypeIcon = (billType: string) => {
+    switch (billType?.toLowerCase()) {
+      case 'lab':
+        return '🧪';
+      case 'radiology':
+        return '📷';
+      case 'scan':
+        return '📡';
+      default:
+        return '📄';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
@@ -362,6 +388,9 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-extrabold text-gray-900 truncate">Bill #{billNo}</div>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-black border ${getBillTypeColor(bill.bill_type)}`}>
+                      {getBillTypeIcon(bill.bill_type)} {String(bill.bill_type || 'lab').toUpperCase()}
+                    </span>
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${getStatusColor(status)}`}>
                       {String(status).toUpperCase()}
                     </span>
@@ -460,6 +489,14 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
                           <label className="text-sm font-medium text-gray-500">Bill Number</label>
                           <p className="text-lg font-semibold text-gray-900">
                             {selectedBill.bill_number || selectedBill.invoice_number || String(selectedBill.id).slice(0, 8).toUpperCase()}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-500">Bill Type</label>
+                          <p className="text-lg font-semibold text-gray-900">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-black border ${getBillTypeColor(selectedBill.bill_type)} mr-2`}>
+                              {getBillTypeIcon(selectedBill.bill_type)} {String(selectedBill.bill_type || 'lab').toUpperCase()}
+                            </span>
                           </p>
                         </div>
                         <div>

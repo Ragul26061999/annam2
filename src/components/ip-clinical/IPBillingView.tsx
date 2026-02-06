@@ -651,40 +651,75 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               <h2 className="text-xl font-bold text-gray-900">Pharmacy Bills</h2>
               <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.pharmacy_total)}</span>
             </div>
-            {billing.pharmacy_billing.map((pb, idx) => (
-              <div key={idx} className="mb-4 last:mb-0">
-                <div className="flex justify-between items-center mb-2 p-3 bg-purple-50 rounded-t-lg">
-                  <h3 className="font-semibold text-gray-900">Bill #{pb.bill_number}</h3>
-                  <span className="text-sm text-gray-600">{new Date(pb.bill_date).toLocaleDateString()}</span>
+            <div className="space-y-3">
+              {billing.pharmacy_billing.map((pb, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-center p-4 bg-white">
+                    <div className="flex items-center gap-6 flex-1">
+                      {/* Bill Number */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-purple-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-purple-700">#</span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Bill</p>
+                          <p className="font-semibold text-gray-900">{pb.bill_number}</p>
+                        </div>
+                      </div>
+
+                      {/* Date */}
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Date</p>
+                          <p className="font-medium text-gray-900">
+                            {new Date(pb.bill_date).toLocaleDateString('en-IN', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              year: 'numeric' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Medicines */}
+                      <div className="flex-1 max-w-md">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Medicines</p>
+                        <div className="flex flex-wrap gap-2">
+                          {pb.items.map((item, itemIdx) => (
+                            <div key={itemIdx} className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-sm">
+                              <span className="font-medium text-gray-700 text-xs">{item.medicine_name}</span>
+                              <span className="text-gray-500 text-xs">×{item.quantity}</span>
+                              <span className="text-blue-600 font-semibold text-xs">{formatCurrency(item.total)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Item Count */}
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 uppercase">Items</p>
+                        <div className="bg-purple-100 px-3 py-1 rounded-full inline-block mt-1">
+                          <span className="text-sm font-bold text-purple-800">
+                            {pb.items.length} item{pb.items.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bill Total */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 uppercase">Total</p>
+                        <p className="text-xl font-bold text-blue-600">{formatCurrency(pb.total_amount)}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="border border-gray-200 rounded-b-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left">Medicine</th>
-                        <th className="px-4 py-2 text-center">Qty</th>
-                        <th className="px-4 py-2 text-right">Price</th>
-                        <th className="px-4 py-2 text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pb.items.map((item, itemIdx) => (
-                        <tr key={itemIdx} className="border-t">
-                          <td className="px-4 py-2">{item.medicine_name}</td>
-                          <td className="px-4 py-2 text-center">{item.quantity}</td>
-                          <td className="px-4 py-2 text-right">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
-                        </tr>
-                      ))}
-                      <tr className="bg-gray-50 font-bold">
-                        <td colSpan={3} className="px-4 py-2 text-right">Bill Total:</td>
-                        <td className="px-4 py-2 text-right">{formatCurrency(pb.total_amount)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -702,36 +737,74 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               <h2 className="text-xl font-bold text-gray-900">Radiology / X-Ray</h2>
               <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.radiology_total)}</span>
             </div>
-            {billing.radiology_billing.map((rb, idx) => (
-              <div key={idx} className="mb-4 last:mb-0">
-                <div className="flex justify-between items-center mb-2 p-3 bg-indigo-50 rounded-t-lg">
-                  <h3 className="font-semibold text-gray-900">Order #{rb.order_number}</h3>
-                  <span className="text-sm text-gray-600">{new Date(rb.order_date).toLocaleDateString()}</span>
+            <div className="space-y-3">
+              {billing.radiology_billing.map((rb, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-center p-4 bg-white">
+                    <div className="flex items-center gap-6 flex-1">
+                      {/* Order Number */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-indigo-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-indigo-700">#</span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Order</p>
+                          <p className="font-semibold text-gray-900">{rb.order_number}</p>
+                        </div>
+                      </div>
+
+                      {/* Date */}
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Date</p>
+                          <p className="font-medium text-gray-900">
+                            {new Date(rb.order_date).toLocaleDateString('en-IN', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              year: 'numeric' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Scans */}
+                      <div className="flex-1 max-w-md">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Scans</p>
+                        <div className="flex flex-wrap gap-2">
+                          {rb.scans.map((scan, scanIdx) => (
+                            <div key={scanIdx} className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-sm">
+                              <span className="font-medium text-gray-700 text-xs">{scan.scan_name}</span>
+                              <span className="text-blue-600 font-semibold text-xs">{formatCurrency(scan.scan_cost)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Scan Count */}
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 uppercase">Count</p>
+                        <div className="bg-indigo-100 px-3 py-1 rounded-full inline-block mt-1">
+                          <span className="text-sm font-bold text-indigo-800">
+                            {rb.scans.length} scan{rb.scans.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order Total */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 uppercase">Total</p>
+                        <p className="text-xl font-bold text-blue-600">{formatCurrency(rb.scans.reduce((sum, scan) => sum + scan.scan_cost, 0))}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="border border-gray-200 rounded-b-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left">Scan Name</th>
-                        <th className="px-4 py-2 text-right">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rb.scans.map((scan, scanIdx) => (
-                        <tr key={scanIdx} className="border-t">
-                          <td className="px-4 py-2">{scan.scan_name}</td>
-                          <td className="px-4 py-2 text-right font-semibold">{formatCurrency(scan.scan_cost)}</td>
-                        </tr>
-                      ))}
-                      <tr className="bg-gray-50 font-bold">
-                        <td className="px-4 py-2 text-right">Order Total:</td>
-                        <td className="px-4 py-2 text-right">{formatCurrency(rb.scans.reduce((sum, scan) => sum + scan.scan_cost, 0))}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -742,27 +815,67 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               <h2 className="text-xl font-bold text-gray-900">Other Charges</h2>
               <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.other_charges_total)}</span>
             </div>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Service</th>
-                    <th className="px-4 py-2 text-center">Qty</th>
-                    <th className="px-4 py-2 text-right">Rate</th>
-                    <th className="px-4 py-2 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {billing.other_charges.map((charge, idx) => (
-                    <tr key={idx} className="border-t">
-                      <td className="px-4 py-2">{charge.service_name}</td>
-                      <td className="px-4 py-2 text-center">{charge.quantity}</td>
-                      <td className="px-4 py-2 text-right">{formatCurrency(charge.rate)}</td>
-                      <td className="px-4 py-2 text-right font-semibold">{formatCurrency(charge.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {billing.other_charges.map((charge, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-center p-4 bg-white">
+                    <div className="flex items-center gap-6 flex-1">
+                      {/* Service Name */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-orange-700">$</span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Service</p>
+                          <p className="font-semibold text-gray-900">{charge.service_name}</p>
+                        </div>
+                      </div>
+
+                      {/* Quantity */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-700">#</span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Quantity</p>
+                          <p className="font-medium text-gray-900">{charge.quantity}</p>
+                        </div>
+                      </div>
+
+                      {/* Rate */}
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Rate</p>
+                          <p className="font-medium text-gray-900">{formatCurrency(charge.rate)}</p>
+                        </div>
+                      </div>
+
+                      {/* Calculation */}
+                      <div className="flex-1 max-w-xs">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Calculation</p>
+                        <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded">
+                          <span className="text-sm text-gray-600">{charge.quantity}</span>
+                          <span className="text-gray-400">×</span>
+                          <span className="text-sm text-gray-600">{formatCurrency(charge.rate)}</span>
+                          <span className="text-gray-400">=</span>
+                          <span className="text-blue-600 font-bold text-sm">{formatCurrency(charge.amount)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Amount */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 uppercase">Amount</p>
+                        <p className="text-xl font-bold text-blue-600">{formatCurrency(charge.amount)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

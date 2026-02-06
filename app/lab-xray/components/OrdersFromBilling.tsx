@@ -44,6 +44,32 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
+
+  const getBillTypeColor = (billType: string) => {
+    switch (billType?.toLowerCase()) {
+      case 'lab':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'radiology':
+        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+      case 'scan':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getBillTypeIcon = (billType: string) => {
+    switch (billType?.toLowerCase()) {
+      case 'lab':
+        return '🧪';
+      case 'radiology':
+        return '📷';
+      case 'scan':
+        return '📡';
+      default:
+        return '📄';
+    }
+  };
  
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -253,6 +279,23 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
       const testName = (bill.items || []).map((it: any) => it.description).filter(Boolean).join(', ') || `Bill ${billNo}`;
       const testType = String(bill.bill_type || 'lab');
 
+      // Try to find associated lab orders for this billing
+      let labOrderId: string | null = null;
+      try {
+        const { data: labOrders } = await supabase
+          .from('lab_test_orders')
+          .select('id')
+          .eq('patient_id', patientId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (labOrders && labOrders.length > 0) {
+          labOrderId = labOrders[0].id;
+        }
+      } catch (err) {
+        console.warn('Could not fetch lab order ID:', err);
+      }
+
       for (const file of Array.from(files)) {
         const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
         const ts = Date.now();
@@ -273,8 +316,9 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
           .insert({
             patient_id: patientId,
             billing_id: bill.id,
+            lab_order_id: labOrderId, // Link to lab order if found
             test_name: testName,
-            test_type: testType,
+            test_type: testType as 'lab' | 'radiology',
             file_name: file.name,
             file_path: filePath,
             file_type: file.type || 'application/pdf',
@@ -370,6 +414,9 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-extrabold text-gray-900 truncate">Order #{billNo}</div>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-black border ${getBillTypeColor(bill.bill_type)}`}>
+                      {getBillTypeIcon(bill.bill_type)} {String(bill.bill_type || 'lab').toUpperCase()}
+                    </span>
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${getStatusColor(status)}`}>
                       {String(status).toUpperCase()}
                     </span>

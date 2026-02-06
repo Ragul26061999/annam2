@@ -143,9 +143,15 @@ export default function LabXrayAttachments({
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      console.error('Error uploading file:', err);
-      setError(toErrorMessage(err));
+    } catch (error: any) {
+      console.error('Error uploading file:', error);
+      if (error?.message?.includes('bucket not found')) {
+        setError('Storage bucket not found. Please contact administrator to set up the lab-xray-attachments bucket.');
+      } else if (error?.message?.includes('row-level security policy')) {
+        setError('Permission denied. Please contact administrator to check storage permissions.');
+      } else {
+        setError(toErrorMessage(error));
+      }
     } finally {
       setUploading(false);
       setSelectedFile(null);

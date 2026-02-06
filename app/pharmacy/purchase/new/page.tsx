@@ -170,13 +170,14 @@ export default function NewDrugPurchasePage() {
       batch_number: '',
       expiry_date: '',
       quantity: 0,
+      pack_counting: 1,
       free_quantity: 0,
       unit_price: 0,
       mrp: 0,
       discount_percent: 0,
-      gst_percent: 12,
-      cgst_percent: 6,
-      sgst_percent: 6,
+      gst_percent: 5,
+      cgst_percent: 2.5,
+      sgst_percent: 2.5,
       igst_percent: 0,
       gst_amount: 0,
       total_amount: 0,
@@ -196,6 +197,14 @@ export default function NewDrugPurchasePage() {
     const newItems = [...items]
     const item = { ...newItems[index], [field]: value }
     
+    // Validate date fields to prevent 5-6 digit years
+    if ((field === 'expiry_date' || field === 'free_expiry_date') && value) {
+      const year = parseInt(value.split('-')[0]);
+      if (year < 2000 || year > 2100) {
+        return; // Don't update if year is invalid
+      }
+    }
+    
     // Auto-fill medication details
     if (field === 'medication_id') {
       const med = medications.find(m => m.id === value)
@@ -206,7 +215,7 @@ export default function NewDrugPurchasePage() {
         item.free_mrp = item.mrp // Default free MRP to same
         
         // Handle GST defaults with consistency
-        const defaultGst = med.gst_percent || 12
+        const defaultGst = med.gst_percent || 5
         item.gst_percent = defaultGst
         
         if (med.cgst_percent !== undefined && med.sgst_percent !== undefined) {
@@ -236,7 +245,8 @@ export default function NewDrugPurchasePage() {
     }
 
     // Recalculate totals
-    const subtotal = (item.quantity * item.unit_price)
+    const totalQuantity = (item.quantity || 0) * (item.pack_counting || 1)
+    const subtotal = totalQuantity * item.unit_price
     const discountAmount = subtotal * ((item.discount_percent || 0) / 100)
     const taxableAmount = subtotal - discountAmount
     const gstAmount = taxableAmount * ((item.gst_percent || 0) / 100)
@@ -251,7 +261,10 @@ export default function NewDrugPurchasePage() {
   }
 
   const calculateTotals = () => {
-    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+    const subtotal = items.reduce((sum, item) => {
+      const totalQuantity = (item.quantity || 0) * (item.pack_counting || 1)
+      return sum + (totalQuantity * item.unit_price)
+    }, 0)
     const discount = items.reduce((sum, item) => sum + (item.discount_amount || 0), 0)
     const taxable = items.reduce((sum, item) => sum + (item.taxable_amount || 0), 0)
     const totalGst = items.reduce((sum, item) => sum + (item.gst_amount || 0), 0)
@@ -268,9 +281,9 @@ export default function NewDrugPurchasePage() {
     }
 
     // Validate items
-    const invalidItems = items.filter(i => !i.medication_id || !i.batch_number || !i.expiry_date || i.quantity <= 0)
+    const invalidItems = items.filter(i => !i.medication_id || !i.batch_number || !i.expiry_date || i.quantity <= 0 || (i.pack_counting || 0) <= 0)
     if (invalidItems.length > 0) {
-      alert('Please fill in all required fields for all items (Medicine, Batch, Expiry, Qty)')
+      alert('Please fill in all required fields for all items (Medicine, Batch, Expiry, Qty, Pack Count)')
       return
     }
 
@@ -366,7 +379,7 @@ export default function NewDrugPurchasePage() {
                 <select
                   value={formData.supplier_id}
                   onChange={(e) => setFormData({...formData, supplier_id: e.target.value})}
-                  className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   required
                 >
                   <option value="">Select Supplier</option>
@@ -380,7 +393,7 @@ export default function NewDrugPurchasePage() {
                  <select
                     value={formData.payment_mode}
                     onChange={(e) => setFormData({...formData, payment_mode: e.target.value as any})}
-                    className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="credit">Credit</option>
                     <option value="cash">Cash</option>
@@ -405,7 +418,7 @@ export default function NewDrugPurchasePage() {
                   type="text"
                   value={formData.invoice_number}
                   onChange={(e) => setFormData({...formData, invoice_number: e.target.value})}
-                  className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Enter invoice no."
                 />
               </div>
@@ -414,8 +427,21 @@ export default function NewDrugPurchasePage() {
                 <input
                   type="date"
                   value={formData.invoice_date}
-                  onChange={(e) => setFormData({...formData, invoice_date: e.target.value})}
-                  className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  onChange={(e) => {
+                    const date = e.target.value;
+                    // Validate year is between 2000 and 2100
+                    if (date) {
+                      const year = parseInt(date.split('-')[0]);
+                      if (year >= 2000 && year <= 2100) {
+                        setFormData({...formData, invoice_date: date});
+                      }
+                    } else {
+                      setFormData({...formData, invoice_date: date});
+                    }
+                  }}
+                  className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  min="2000-01-01"
+                  max="2100-12-31"
                 />
               </div>
               <div>
@@ -423,8 +449,21 @@ export default function NewDrugPurchasePage() {
                 <input
                   type="date"
                   value={formData.purchase_date}
-                  onChange={(e) => setFormData({...formData, purchase_date: e.target.value})}
-                  className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  onChange={(e) => {
+                    const date = e.target.value;
+                    // Validate year is between 2000 and 2100
+                    if (date) {
+                      const year = parseInt(date.split('-')[0]);
+                      if (year >= 2000 && year <= 2100) {
+                        setFormData({...formData, purchase_date: date});
+                      }
+                    } else {
+                      setFormData({...formData, purchase_date: date});
+                    }
+                  }}
+                  className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  min="2000-01-01"
+                  max="2100-12-31"
                   required
                 />
               </div>
@@ -443,7 +482,7 @@ export default function NewDrugPurchasePage() {
                 <textarea
                   value={formData.remarks}
                   onChange={(e) => setFormData({...formData, remarks: e.target.value})}
-                  className="w-full border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Any additional notes or comments..."
                   rows={4}
                 />
@@ -546,7 +585,7 @@ export default function NewDrugPurchasePage() {
                       <select
                         value={item.medication_id}
                         onChange={(e) => updateItem(index, 'medication_id', e.target.value)}
-                        className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                         required
                       >
                         <option value="">Select Medicine</option>
@@ -560,7 +599,7 @@ export default function NewDrugPurchasePage() {
                         type="text"
                         value={item.batch_number}
                         onChange={(e) => updateItem(index, 'batch_number', e.target.value)}
-                        className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                         placeholder="Batch No."
                         required
                       />
@@ -572,7 +611,9 @@ export default function NewDrugPurchasePage() {
                                 type="date"
                                 value={item.expiry_date}
                                 onChange={(e) => updateItem(index, 'expiry_date', e.target.value)}
-                                className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                                min="2000-01-01"
+                                max="2100-12-31"
                                 required
                             />
                         </div>
@@ -583,28 +624,46 @@ export default function NewDrugPurchasePage() {
                                     type="date"
                                     value={item.free_expiry_date || ''}
                                     onChange={(e) => updateItem(index, 'free_expiry_date', e.target.value)}
-                                    className="w-full border-orange-200 rounded-md text-sm focus:ring-orange-500 focus:border-orange-500 bg-orange-50"
+                                    className="w-full border-2 border-orange-200 rounded-md text-sm focus:ring-orange-500 focus:border-orange-500 bg-orange-50"
+                                    min="2000-01-01"
+                                    max="2100-12-31"
                                 />
                             </div>
                         )}
                     </td>
                     <td className="px-4 py-4 align-top">
-                      <input
-                        type="number"
-                        value={item.quantity || ''}
-                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                        min="1"
-                        placeholder="Qty"
-                        required
-                      />
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-xs text-gray-500 block">Qty</label>
+                          <input
+                            type="number"
+                            value={item.quantity || ''}
+                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                            className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            min="1"
+                            placeholder="Qty"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block">Pack Count</label>
+                          <input
+                            type="number"
+                            value={item.pack_counting || ''}
+                            onChange={(e) => updateItem(index, 'pack_counting', parseInt(e.target.value) || 1)}
+                            className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            min="1"
+                            placeholder="Pack"
+                          />
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-4 align-top">
                       <input
                         type="number"
                         value={item.free_quantity || ''}
                         onChange={(e) => updateItem(index, 'free_quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                         min="0"
                         placeholder="Free"
                       />
@@ -616,7 +675,7 @@ export default function NewDrugPurchasePage() {
                                 type="number"
                                 value={item.unit_price || ''}
                                 onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                                className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                                 min="0"
                                 step="0.01"
                             />
@@ -627,7 +686,7 @@ export default function NewDrugPurchasePage() {
                                 type="number"
                                 value={item.mrp || ''}
                                 onChange={(e) => updateItem(index, 'mrp', parseFloat(e.target.value) || 0)}
-                                className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                                 min="0"
                                 step="0.01"
                             />
@@ -639,7 +698,7 @@ export default function NewDrugPurchasePage() {
                                     type="number"
                                     value={item.free_mrp || ''}
                                     onChange={(e) => updateItem(index, 'free_mrp', parseFloat(e.target.value) || 0)}
-                                    className="w-full border-orange-200 rounded-md text-sm focus:ring-orange-500 focus:border-orange-500 bg-orange-50"
+                                    className="w-full border-2 border-orange-200 rounded-md text-sm focus:ring-orange-500 focus:border-orange-500 bg-orange-50"
                                     min="0"
                                     step="0.01"
                                 />
@@ -651,7 +710,7 @@ export default function NewDrugPurchasePage() {
                                 type="number"
                                 value={item.discount_percent || ''}
                                 onChange={(e) => updateItem(index, 'discount_percent', parseFloat(e.target.value) || 0)}
-                                className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                                 min="0"
                                 max="100"
                             />
@@ -662,7 +721,7 @@ export default function NewDrugPurchasePage() {
                         type="number"
                         value={item.gst_percent || ''}
                         onChange={(e) => updateItem(index, 'gst_percent', parseFloat(e.target.value) || 0)}
-                        className="w-full border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full border-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                         min="0"
                         max="28"
                       />
