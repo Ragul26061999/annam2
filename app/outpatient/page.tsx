@@ -263,7 +263,7 @@ function OutpatientPageContent() {
             medication:medications(id, name, dosage_form)
           )
         `)
-        .eq('status', 'active')
+        .neq('status', 'expired')
         .gte('created_at', `${today}T00:00:00`)
         .lt('created_at', `${today}T23:59:59`);
 
@@ -397,18 +397,10 @@ function OutpatientPageContent() {
 
         console.log('Updating local state with item:', updatedItem);
 
-        // If status is 'completed' or 'cancelled', move to updated injections
-        if (status === 'completed' || status === 'cancelled') {
-          setUpdatedInjections(prev => [...prev, updatedItem]);
-          setInjectionQueue(prev => prev.filter(item => item.id !== itemId));
-          console.log('Moved item to updated injections');
-        } else {
-          // Update local state for pending status
-          setInjectionQueue(prev => prev.map(item => 
-            item.id === itemId ? updatedItem : item
-          ));
-          console.log('Updated item in current queue');
-        }
+        // Move to updated injections for all processed items
+        setUpdatedInjections(prev => [...prev, updatedItem]);
+        setInjectionQueue(prev => prev.filter(item => item.id !== itemId));
+        console.log('Moved item to updated injections');
       } else {
         console.error('Item not found in local queue:', itemId);
       }
