@@ -134,6 +134,7 @@ export default function LabXRayPage() {
 
       setLabOrders(lab || []);
       setRadiologyOrders(radiology || []);
+      setScanOrders(scan || []);
       setBillingItems(billing || []);
 
     } catch (error) {

@@ -2,7 +2,7 @@
 
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, FileText, Paperclip, Printer, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
+import { Eye, FileText, Paperclip, Printer, RefreshCw, Search, Trash2, Upload, X, Loader2 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
 
 interface OrdersFromBillingProps {
@@ -15,6 +15,9 @@ type PaymentStatus = 'pending' | 'partial' | 'paid';
 type AttachmentMap = Record<string, any[]>;
 
 export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillingProps) {
+  console.log('OrdersFromBilling component - items received:', items);
+  console.log('OrdersFromBilling component - items length:', items?.length);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [selectedBill, setSelectedBill] = useState<any>(null);
@@ -112,10 +115,12 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
 
   const fetchAttachments = async (billIds: string[]) => {
     if (!billIds.length) {
+      console.log('fetchAttachments: No bill IDs provided');
       setAttachmentsByBillId({});
       return;
     }
 
+    console.log('fetchAttachments: Querying for bill IDs:', billIds);
     const { data, error: fetchError } = await supabase
       .from('lab_xray_attachments')
       .select('*')
@@ -128,6 +133,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
       return;
     }
 
+    console.log('fetchAttachments: Raw data from Supabase:', data);
     const byBill: AttachmentMap = {};
     (data || []).forEach((row: any) => {
       const id = row.billing_id;
@@ -135,6 +141,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
       byBill[id] = byBill[id] || [];
       byBill[id].push(row);
     });
+    console.log('fetchAttachments: Processed byBill map:', byBill);
     setAttachmentsByBillId(byBill);
   };
 
@@ -231,6 +238,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
   useEffect(() => {
     const billIds = (items || []).map((b: any) => b.id).filter(Boolean);
     console.log('Loading attachments for bill IDs:', billIds);
+    console.log('Items received:', items);
     
     if (!billIds.length) {
       console.log('No bill IDs found, clearing attachments');
@@ -560,15 +568,29 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Attachments</h4>
-                    <div className="mb-3 flex items-center gap-2">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Paperclip className="w-5 h-5 text-blue-600" />
+                      Documents & Attachments
+                      <span className="text-sm font-normal text-gray-500">
+                        ({(attachmentsByBillId[selectedBill.id] || []).length} files)
+                      </span>
+                    </h4>
+
+                    {/* Upload Status Indicator */}
+                    {uploadingBillId === selectedBill.id && (
+                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                          <span className="text-sm text-blue-700 font-medium">Uploading documents...</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-4 flex items-center gap-3">
                       <button
                         onClick={() => {
                           console.log('Force refreshing attachments...');
-                          // Clear deletion tracking to allow fresh reload
                           setLastDeletedAttachmentId(null);
-                          
-                          // Force reload attachments
                           const billIds = (items || []).map((b: any) => b.id).filter(Boolean);
                           if (billIds.length && selectedBill) {
                             (async () => {
@@ -579,6 +601,8 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                                 .order('uploaded_at', { ascending: false });
 
                               if (!fetchError) {
+                                console.log('Fetched attachments data:', data);
+                                console.log('Selected bill ID:', selectedBill.id);
                                 const byBill: AttachmentMap = {};
                                 (data || []).forEach((row: any) => {
                                   const id = row.billing_id;
@@ -592,59 +616,88 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                             })();
                           }
                         }}
-                        className="px-3 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-black hover:bg-gray-200 inline-flex items-center gap-2"
+                        className="px-3 py-2 rounded-xl bg-indigo-100 text-indigo-700 text-xs font-bold hover:bg-indigo-200 inline-flex items-center gap-2 transition-colors"
                       >
                         <RefreshCw size={14} />
-                        Force Refresh
+                        Refresh Files
                       </button>
-                      <span className="text-xs text-gray-500">
-                        Total: {(attachmentsByBillId[selectedBill.id] || []).length} files
-                      </span>
+
+                      <div className="text-xs text-gray-500 flex items-center gap-4">
+                        <span>Files uploaded: {(attachmentsByBillId[selectedBill.id] || []).length}</span>
+                        {lastDeletedAttachmentId && (
+                          <span className="text-green-600 font-medium">✓ Last file deleted</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-3">
+
+                    <div className="space-y-4">
                       {(attachmentsByBillId[selectedBill.id] || []).length === 0 ? (
-                        <div className="text-sm text-gray-500">No files uploaded yet. Use the drop zone above.</div>
+                        <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                          <Paperclip className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <div className="text-sm text-gray-500 font-medium">No documents uploaded yet</div>
+                          <div className="text-xs text-gray-400 mt-1">Use the upload area above to add files</div>
+                        </div>
                       ) : (
-                        (attachmentsByBillId[selectedBill.id] || []).map((att: any) => (
-                          <div
-                            key={att.id}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Paperclip className="w-4 h-4 text-blue-600" />
-                              <div className="min-w-0">
-                                <p className="font-medium text-gray-900 truncate">{att.file_name}</p>
-                                <p className="text-sm text-gray-600">
-                                  {(Number(att.file_size || 0) / 1024).toFixed(1)} KB • {att.file_type}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  ID: {att.id?.slice(0, 8)}... • Path: {att.file_path?.slice(-20)}
-                                </p>
+                        <div className="grid gap-3">
+                          {(attachmentsByBillId[selectedBill.id] || [])
+                            .sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+                            .map((att: any) => (
+                            <div
+                              key={att.id}
+                              className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="p-2 bg-blue-50 rounded-lg flex-shrink-0">
+                                  <FileText className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium text-gray-900 truncate text-sm">
+                                    {att.file_name}
+                                  </div>
+                                  <div className="text-xs text-gray-500 flex items-center gap-3 mt-1">
+                                    <span>{(Number(att.file_size || 0) / 1024).toFixed(1)} KB</span>
+                                    <span>•</span>
+                                    <span>{att.file_type || 'Unknown type'}</span>
+                                    <span>•</span>
+                                    <span>Uploaded {new Date(att.uploaded_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-1 font-mono">
+                                    ID: {att.id?.slice(0, 8)}...{att.id?.slice(-4)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {att.file_url ? (
+                                  <a
+                                    href={att.file_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 inline-flex items-center gap-2 transition-colors"
+                                    title="Open document in new tab"
+                                  >
+                                    <Eye size={14} />
+                                    View
+                                  </a>
+                                ) : (
+                                  <span className="px-3 py-2 rounded-lg bg-gray-100 text-gray-500 text-xs font-medium">
+                                    No URL
+                                  </span>
+                                )}
+
+                                <button
+                                  onClick={() => void handleDeleteAttachment(att)}
+                                  className="px-3 py-2 rounded-lg bg-red-100 text-red-700 text-xs font-bold hover:bg-red-200 inline-flex items-center gap-2 transition-colors"
+                                  title="Delete this document"
+                                  disabled={uploadingBillId === selectedBill.id}
+                                >
+                                  <Trash2 size={14} />
+                                  Delete
+                                </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              {att.file_url ? (
-                                <a
-                                  href={att.file_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-3 py-2 rounded-xl bg-gray-100 text-gray-900 text-xs font-black hover:bg-gray-200 inline-flex items-center gap-2"
-                                >
-                                  <Eye size={16} />
-                                  Open
-                                </a>
-                              ) : null}
-                              <button
-                                onClick={() => void handleDeleteAttachment(att)}
-                                className="px-3 py-2 rounded-xl bg-red-100 text-red-700 text-xs font-black hover:bg-red-200 inline-flex items-center gap-2"
-                                title="Delete attachment"
-                              >
-                                <Trash2 size={16} />
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

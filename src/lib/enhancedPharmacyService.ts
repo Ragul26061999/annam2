@@ -1362,13 +1362,32 @@ export async function getDrugBrokenRecords(filters?: {
     const { data, error } = await query.order('record_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching drug broken records:', error);
+      console.error('Error fetching drug broken records:', {
+        error: error,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        raw: error
+      });
+
+      // Check if the table doesn't exist
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.warn('drug_broken_records table does not exist. This feature may not be fully implemented yet.');
+      }
+
       return [];
     }
 
     return data || [];
   } catch (error) {
-    console.error('Error in getDrugBrokenRecords:', error);
+    console.error('Error in getDrugBrokenRecords:', {
+      error: error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
+      raw: error
+    });
     return [];
   }
 }

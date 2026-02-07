@@ -20,7 +20,8 @@ import {
   Printer,
   Eye,
   X,
-  Pill
+  Pill,
+  ArrowRight
 } from 'lucide-react';
 import StaffSelect from '@/src/components/StaffSelect';
 
@@ -36,6 +37,8 @@ interface Medicine {
   combination?: string;
   batches: MedicineBatch[];
   is_external?: boolean;
+  available_stock?: number;
+  total_stock?: number;
 }
 
 interface MedicineBatch {
@@ -60,10 +63,11 @@ interface BillItem {
 }
 
 interface Customer {
-  type: 'patient' | 'walk_in';
+  type: 'patient' | 'walk_in' | 'intent';
   name: string;
   phone?: string;
   patient_id?: string;
+  intent_type?: string;
 }
 
 interface BillTotals {
@@ -86,6 +90,7 @@ interface Payment {
 function NewBillingPageInner() {
   const searchParams = useSearchParams();
   const prescriptionIdFromUrl = searchParams?.get('prescriptionId') || null;
+  const typeFromUrl = searchParams?.get('type') || null;
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [billItems, setBillItems] = useState<BillItem[]>([]);
@@ -96,10 +101,11 @@ function NewBillingPageInner() {
     quantity: number;
   } | null>(null);
   const [customer, setCustomer] = useState<Customer>({
-    type: 'walk_in',
+    type: typeFromUrl === 'intent' ? 'intent' : 'walk_in',
     name: '',
     phone: ''
   });
+  const [intentType, setIntentType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrPreviewBatch, setQrPreviewBatch] = useState<MedicineBatch | null>(null);
@@ -234,7 +240,8 @@ function NewBillingPageInner() {
   const canReceivePayment = (
     billItems.length > 0 && (
       (customer.type === 'patient' && !!customer.patient_id && !!(customer.name || '').trim()) ||
-      (customer.type === 'walk_in' && !!(customer.name || '').trim())
+      (customer.type === 'walk_in' && !!(customer.name || '').trim()) ||
+      (customer.type === 'intent' && !!(customer.name || '').trim() && !!intentType)
     )
   );
 
@@ -506,6 +513,39 @@ function NewBillingPageInner() {
     }
   };
 
+  // Filter medicines based on search (including batch number, barcode, and legacy code); guard undefined fields
+  // Only show results when there is a search term (hide catalogue by default)
+  const searchTermTrimmed = (searchTerm || '').trim();
+  const filteredMedicines = searchTermTrimmed.length === 0
+    ? []
+    : medicines.filter((medicine) => {
+      const term = searchTermTrimmed.toLowerCase();
+      const name = (medicine.name || '').toLowerCase();
+      const combination = (medicine.combination || '').toLowerCase();
+      const code = (medicine.medicine_code || '').toLowerCase();
+      const manufacturer = (medicine.manufacturer || '').toLowerCase();
+      const category = (medicine.category || '').toLowerCase();
+      const unit = (medicine.unit || '').toLowerCase();
+      const baseMatch =
+        name.includes(term) ||
+        combination.includes(term) ||
+        code.includes(term) ||
+        manufacturer.includes(term) ||
+        category.includes(term) ||
+        unit.includes(term);
+
+      // If base match, include all batches; otherwise search within batches
+      if (baseMatch) return true;
+
+      // Search within batch numbers, barcodes, and legacy codes
+      return medicine.batches?.some((batch: any) => {
+        const batchNum = (batch.batch_number || '').toLowerCase();
+        const barcode = (batch.batch_barcode || '').toLowerCase();
+        const legacyCode = ((batch.legacy_code || '') as string).toLowerCase();
+        return batchNum.includes(term) || barcode.includes(term) || legacyCode.includes(term);
+      });
+    });
+
   const handleMedicineKeyDown = (e: React.KeyboardEvent) => {
     // Early return if dropdown is not showing or no medicines
     if (!showMedicineDropdown || filteredMedicines.length === 0 || searchLoading) {
@@ -731,7 +771,7 @@ function NewBillingPageInner() {
       setLoading(true);
       const { data: medicinesData, error: medicinesError } = await supabase
         .from('medications')
-        .select('id, name, medication_code, manufacturer, category, dosage_form, combination')
+        .select('id, name, medication_code, manufacturer, category, dosage_form, combination, available_stock, total_stock')
         .eq('status', 'active')
         .order('name');
 
@@ -765,12 +805,14 @@ function NewBillingPageInner() {
         unit: m.dosage_form || 'units',
         description: '',
         combination: m.combination,
+        available_stock: m.available_stock || 0,
+        total_stock: m.total_stock || 0,
         batches: batchesByMedicine[m.id] || []
       }));
 
       setMedicines(medicinesWithBatches);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || 'Unknown error occurred');
       console.error('Error loading medicines:', err);
     } finally {
       setLoading(false);
@@ -972,35 +1014,6 @@ function NewBillingPageInner() {
       med.dosage.toLowerCase().includes(term)
     );
   });
-
-  // Filter medicines based on search (including batch number, barcode, and legacy code); guard undefined fields
-  // Only show results when there is a search term (hide catalogue by default)
-  const searchTermTrimmed = (searchTerm || '').trim();
-  const filteredMedicines = searchTermTrimmed.length === 0
-    ? []
-    : medicines.filter((medicine) => {
-      const term = searchTermTrimmed.toLowerCase();
-      const name = (medicine.name || '').toLowerCase();
-      const combination = (medicine.combination || '').toLowerCase();
-      const code = (medicine.medicine_code || '').toLowerCase();
-      const manufacturer = (medicine.manufacturer || '').toLowerCase();
-      const category = (medicine.category || '').toLowerCase();
-      const unit = (medicine.unit || '').toLowerCase();
-      const baseMatch =
-        name.includes(term) ||
-        combination.includes(term) ||
-        code.includes(term) ||
-        manufacturer.includes(term) ||
-        category.includes(term) ||
-        unit.includes(term);
-      // Also match batch_number, batch_barcode, and legacy_code
-      const batchMatch = Array.isArray(medicine.batches) && medicine.batches.some((b) =>
-        (b.batch_number || '').toLowerCase().includes(term) ||
-        (b.batch_barcode || '').toLowerCase().includes(term) ||
-        ((b.legacy_code || '') as string).toLowerCase().includes(term)
-      );
-      return baseMatch || batchMatch;
-    });
 
   // Add medicine to bill (or just to database as external)
   const handleSaveUnlisted = async () => {
@@ -1220,6 +1233,63 @@ function NewBillingPageInner() {
     };
   };
 
+  // Transfer medicines to intent
+  const handleTransferToIntent = async () => {
+    if (!intentType || billItems.length === 0) {
+      alert('Please select intent type and add medicines');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Transfer each item to intent_medicines table
+      for (const item of billItems) {
+        const { error: insertError } = await supabase
+          .from('intent_medicines')
+          .insert({
+            intent_type: intentType,
+            medication_id: item.medicine.id,
+            medication_name: item.medicine.name,
+            batch_number: item.batch.batch_number,
+            quantity: item.quantity,
+            mrp: item.unit_price,
+            combination: item.medicine.combination || '',
+            dosage_type: item.medicine.unit || '',
+            manufacturer: item.medicine.manufacturer || '',
+            medicine_status: 'active',
+            medicine_code: '',
+            expiry_date: item.batch.expiry_date || null
+          });
+
+        if (insertError) throw insertError;
+
+        // Update medication stock
+        const { error: updateError } = await supabase
+          .from('medications')
+          .update({
+            available_stock: (item.medicine.available_stock ?? 0) - item.quantity,
+            total_stock: (item.medicine.total_stock ?? 0) - item.quantity
+          })
+          .eq('id', item.medicine.id);
+
+        if (updateError) throw updateError;
+      }
+
+      // Clear the bill items
+      setBillItems([]);
+      
+      // Refresh medicines to show updated stock
+      await loadMedicines();
+      
+      alert(`Successfully transferred ${billItems.length} medicines to ${intentType.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`);
+    } catch (error) {
+      console.error('Error transferring medicines:', error);
+      alert('Error transferring medicines. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Update totals when items or discount/tax change
   useEffect(() => {
     const totals = calculateTotals();
@@ -1246,6 +1316,15 @@ function NewBillingPageInner() {
       }
       if (!customer.name?.trim()) {
         alert('Selected patient record has no name. Please re-select or contact admin.');
+        return;
+      }
+    } else if (customer.type === 'intent') {
+      if (!customer.name?.trim()) {
+        alert('Please enter customer name');
+        return;
+      }
+      if (!intentType) {
+        alert('Please select an intent type');
         return;
       }
     } else {
@@ -1373,6 +1452,49 @@ function NewBillingPageInner() {
         .insert(billItemsData);
 
       if (itemsError) throw itemsError;
+
+      // Populate GST ledger for each bill item
+      try {
+        for (const item of billItems) {
+          // Skip external medicines as they don't have GST
+          if (item.medicine.is_external) continue;
+
+          // Calculate GST components
+          const taxableAmount = item.total / (1 + (billTotals.taxPercent / 100));
+          const gstAmount = item.total - taxableAmount;
+          const cgstAmount = gstAmount / 2;
+          const sgstAmount = gstAmount / 2;
+
+          // Add to GST ledger
+          const { error: gstError } = await supabase
+            .from('pharmacy_gst_ledger')
+            .insert({
+              transaction_date: new Date().toISOString().split('T')[0],
+              transaction_type: 'sale',
+              reference_id: billData!.id,
+              reference_number: billNumber,
+              party_name: customer.name,
+              party_gstin: null, // Customer GSTIN not collected in current system
+              taxable_amount: Math.round(taxableAmount * 100) / 100,
+              cgst_percent: billTotals.taxPercent / 2,
+              cgst_amount: Math.round(cgstAmount * 100) / 100,
+              sgst_percent: billTotals.taxPercent / 2,
+              sgst_amount: Math.round(sgstAmount * 100) / 100,
+              igst_percent: 0,
+              igst_amount: 0,
+              total_gst: Math.round(gstAmount * 100) / 100,
+              total_amount: item.total
+            });
+
+          if (gstError) {
+            console.error('Error inserting GST ledger entry:', gstError);
+            // Don't throw here - GST failure shouldn't block billing
+          }
+        }
+      } catch (gstLedgerError) {
+        console.error('Error populating GST ledger:', gstLedgerError);
+        // Continue with billing even if GST ledger fails
+      }
 
       // If bill originated from a prescription, update dispensed quantities/status.
       if (linkedPrescriptionId && linkedPrescriptionItems.length > 0) {
@@ -1512,6 +1634,7 @@ function NewBillingPageInner() {
       // Reset form
       setBillItems([]);
       setCustomer({ type: 'walk_in', name: '', phone: '' });
+      setIntentType('');
       setPayments([{ method: 'cash', amount: 0, reference: '' }]);
       setBillTotals({
         subtotal: 0,
@@ -1546,7 +1669,7 @@ function NewBillingPageInner() {
     const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     
     // Get patient UHID
-    const patientUhid = customer.type === 'patient' ? customer.patient_id : 'WALK-IN';
+    const patientUhid = customer.type === 'patient' ? customer.patient_id : customer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
     
     // Get sales type
     let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
@@ -1693,7 +1816,7 @@ function NewBillingPageInner() {
     const now = new Date();
     const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-    const patientUhid = customer.type === 'patient' ? customer.patient_id : 'WALK-IN';
+    const patientUhid = customer.type === 'patient' ? customer.patient_id : customer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
 
     let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
     if (salesType === 'CREDIT') {
@@ -1851,7 +1974,7 @@ function NewBillingPageInner() {
                 <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-100">
                   Entry Type:
                   <span className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                    {customer.type === 'patient' ? 'Registered' : 'Walk-in'}
+                    {customer.type === 'patient' ? 'Registered' : customer.type === 'intent' ? 'Intent' : 'Walk-in'}
                   </span>
                 </span>
               </div>
@@ -1894,7 +2017,7 @@ function NewBillingPageInner() {
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-semibold text-slate-900">Pharmacy Billing</h1>
                 <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-100">
-                  {customer.type === 'patient' ? 'Patient' : 'Walk-in'}
+                  {customer.type === 'patient' ? 'Patient' : customer.type === 'intent' ? 'Intent' : 'Walk-in'}
                 </span>
               </div>
               <div className="flex items-center gap-4">
@@ -1961,16 +2084,38 @@ function NewBillingPageInner() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
                     <select
                       value={customer.type}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        setCustomer({ ...customer, type: e.target.value as 'patient' | 'walk_in' })
-                      }
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                        const newType = e.target.value as 'patient' | 'walk_in' | 'intent';
+                        setCustomer({ ...customer, type: newType });
+                        if (newType !== 'intent') {
+                          setIntentType('');
+                        }
+                      }}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="patient">Patient</option>
                       <option value="walk_in">Walk-in</option>
+                      <option value="intent">Intent</option>
                     </select>
                   </div>
 
+                  {/* Show Customer Name for patient and walk_in only */}
+                  {customer.type !== 'intent' && (
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
+                      <input
+                        type="text"
+                        value={customer.name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCustomer({ ...customer, name: e.target.value })
+                        }
+                        placeholder="Enter customer name"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
+
+                  {/* Conditional second field based on type */}
                   {customer.type === 'patient' ? (
                     <>
                       <div className="col-span-4">
@@ -2022,18 +2167,6 @@ function NewBillingPageInner() {
                         </div>
                       </div>
                       <div className="col-span-3">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Patient Name</label>
-                        <input
-                          type="text"
-                          value={customer.name}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setCustomer({ ...customer, name: e.target.value })
-                          }
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700"
-                          readOnly
-                        />
-                      </div>
-                      <div className="col-span-3">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
                         <input
                           type="text"
@@ -2046,39 +2179,46 @@ function NewBillingPageInner() {
                         />
                       </div>
                     </>
+                  ) : customer.type === 'intent' ? (
+                    <div className="col-span-7">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Intent Type *</label>
+                      <select
+                        value={intentType}
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                          setIntentType(e.target.value);
+                          setCustomer({ ...customer, intent_type: e.target.value });
+                        }}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Select intent type...</option>
+                        <option value="injection room">Injection Room</option>
+                        <option value="icu">ICU</option>
+                        <option value="causath">Causath</option>
+                        <option value="nicu">NICU</option>
+                        <option value="labour word">Labour Word</option>
+                        <option value="miones">Miones</option>
+                        <option value="major ot">Major OT</option>
+                      </select>
+                    </div>
                   ) : (
-                    <>
-                      <div className="col-span-5">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
-                        <input
-                          type="text"
-                          value={customer.name}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setCustomer({ ...customer, name: e.target.value })
-                          }
-                          placeholder="Enter customer name"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="col-span-5">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
-                        <input
-                          type="text"
-                          value={customer.phone || ''}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            const raw = e.target.value;
-                            const digits = raw.replace(/\D/g, '');
-                            setCustomer({ ...customer, phone: raw });
-                            setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
-                          }}
-                          placeholder="Enter phone number"
-                          className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
-                        />
-                        {phoneError && (
-                          <p className="mt-1 text-xs text-red-600">{phoneError}</p>
-                        )}
-                      </div>
-                    </>
+                    <div className="col-span-7">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={customer.phone || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const raw = e.target.value;
+                          const digits = raw.replace(/\D/g, '');
+                          setCustomer({ ...customer, phone: raw });
+                          setPhoneError(digits.length > 10 ? 'Phone number cannot exceed 10 digits' : '');
+                        }}
+                        placeholder="Enter phone number"
+                        className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${phoneError ? 'border-red-300' : 'border-slate-200'}`}
+                      />
+                      {phoneError && (
+                        <p className="mt-1 text-xs text-red-600">{phoneError}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -2472,8 +2612,9 @@ function NewBillingPageInner() {
               </div>
             </div>
 
-          {/* Right side: Bill Items + Billing Summary */}
-          <div className="flex flex-col gap-4">
+          {/* Right side: Bill Items + Billing Summary - Hide for intent */}
+          {customer.type !== 'intent' && (
+            <div className="flex flex-col gap-4">
             {/* Bill Items in table style */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
               <div className="flex items-center justify-between mb-3">
@@ -2710,6 +2851,103 @@ function NewBillingPageInner() {
                 </div>
               )}
             </div>
+            </div>
+          )}
+
+            {/* Transfer Section for Intent Type */}
+            {customer.type === 'intent' && (
+              <div className="flex flex-col gap-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-5 w-5 text-purple-600" />
+                      <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Transfer Items</h2>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      Intent: {intentType || 'Not selected'}
+                    </span>
+                  </div>
+
+                  {billItems.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-sm text-slate-500">
+                      <Package className="h-10 w-10 text-slate-200 mb-2" />
+                      No items added yet for transfer
+                    </div>
+                  ) : (
+                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <div className="grid grid-cols-[40px,1.7fr,0.7fr,0.9fr,0.9fr,60px] bg-slate-50 text-[11px] font-medium text-slate-600 px-3 py-2">
+                        <span>Sl.</span>
+                        <span>Drug / Batch</span>
+                        <span className="text-right">Rate</span>
+                        <span className="text-center">Qty (Units)</span>
+                        <span className="text-right">Total</span>
+                        <span className="text-center">Action</span>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 text-[11px]">
+                        {billItems.map((item, index) => (
+                          <div
+                            key={`${item.medicine.id}-${item.batch.id}`}
+                            className="grid grid-cols-[40px,1.7fr,0.7fr,0.9fr,0.9fr,60px] items-center px-3 py-2 text-slate-700"
+                          >
+                            <span>{index + 1}</span>
+                            <div className="flex flex-col">
+                              <span className="font-medium truncate">{item.medicine.name}</span>
+                              <span className="text-[10px] text-slate-500 truncate">Batch: {item.medicine.is_external ? 'EXT' : item.batch.batch_number.slice(-4)}</span>
+                            </div>
+                            <span className="text-right">₹{item.unit_price.toFixed(2)}</span>
+                            <span className="text-center">{item.quantity}</span>
+                            <span className="text-right font-medium">₹{(item.quantity * item.unit_price).toFixed(2)}</span>
+                            <button
+                              onClick={() => removeBillItem(index)}
+                              className="text-red-500 hover:text-red-700 mx-auto"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transfer Summary */}
+                  {billItems.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50 px-4 py-3 text-xs flex flex-col gap-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Total Items</span>
+                        <span className="font-medium text-slate-900">{billItems.length}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Total Quantity</span>
+                        <span className="font-medium text-slate-900">
+                          {billItems.reduce((sum, item) => sum + item.quantity, 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Total Value</span>
+                        <span className="font-medium text-purple-700">
+                          ₹{Math.round(billTotals.subtotal)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transfer Button */}
+                  {billItems.length > 0 && intentType && (
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTransferToIntent}
+                        disabled={loading}
+                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        {loading ? 'Transferring...' : `Transfer to ${intentType.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -3419,7 +3657,6 @@ function NewBillingPageInner() {
 
       </div>
     </div>
-  </div>
   );
 }
 

@@ -2171,12 +2171,21 @@ export async function getScanOrders(filters?: {
       ]);
 
       // Combine the data
-      return orders.map((order: any) => ({
-        ...order,
-        patient: patients.data?.find((p: any) => p.id === order.patient_id),
-        ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
-        test_catalog: catalog.data?.find((c: any) => c.id === order.test_catalog_id)
-      }));
+      return orders.map((order: any) => {
+        const catalogItem = catalog.data?.find((c: any) => c.id === order.test_catalog_id);
+        // Normalize scan catalog to have test_name field for UI consistency
+        const normalizedCatalog = catalogItem ? {
+          ...catalogItem,
+          test_name: catalogItem.test_name || catalogItem.scan_name || 'Unknown Scan'
+        } : null;
+        
+        return {
+          ...order,
+          patient: patients.data?.find((p: any) => p.id === order.patient_id),
+          ordering_doctor: doctors.data?.find((d: any) => d.id === order.ordering_doctor_id),
+          test_catalog: normalizedCatalog
+        };
+      });
     }
 
     return [];

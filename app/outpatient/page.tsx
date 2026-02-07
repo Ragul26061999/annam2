@@ -107,7 +107,7 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('queue');
+  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('outpatient');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
   
   // Injection queue state

@@ -6,10 +6,12 @@ import { Edit2, Save, X, Plus, Trash2 } from 'lucide-react';
 interface LabTest {
   test_name: string;
   test_cost: number;
+  status: 'paid' | 'pending' | 'partial';
 }
 
 interface LabOrder {
   order_number: string;
+  bill_number: string;
   order_date: string;
   tests: LabTest[];
 }
@@ -77,7 +79,8 @@ export default function IPBillingLabEditor({
     const updatedOrders = [...labOrders];
     const newTest: LabTest = {
       test_name: '',
-      test_cost: 0
+      test_cost: 0,
+      status: 'pending'
     };
     
     updatedOrders[orderIndex].tests.push(newTest);
@@ -170,14 +173,14 @@ export default function IPBillingLabEditor({
             <div key={orderIdx} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
               <div className="flex justify-between items-center p-4 bg-white">
                 <div className="flex items-center gap-6 flex-1">
-                  {/* Order Number */}
+                  {/* Bill Number */}
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 bg-teal-100 rounded-full flex items-center justify-center">
                       <span className="text-xs font-bold text-teal-700">#</span>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 uppercase">Order</p>
-                      <p className="font-semibold text-gray-900">{order.order_number}</p>
+                      <p className="text-xs text-gray-500 uppercase">Bill</p>
+                      <p className="font-semibold text-gray-900">{order.bill_number}</p>
                     </div>
                   </div>
 
@@ -203,7 +206,7 @@ export default function IPBillingLabEditor({
                     <p className="text-xs text-gray-500 uppercase mb-1">Tests</p>
                     <div className="flex flex-wrap gap-2">
                       {order.tests.map((test, testIdx) => (
-                        <div key={testIdx} className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-sm">
+                        <div key={testIdx} className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded text-sm">
                           {isEditing && editingOrderIndex === orderIdx && editingTestIndex === testIdx ? (
                             <input
                               type="text"
@@ -228,6 +231,13 @@ export default function IPBillingLabEditor({
                           ) : (
                             <span className="text-blue-600 font-semibold text-xs">{formatCurrency(test.test_cost)}</span>
                           )}
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            test.status === 'paid' ? 'bg-green-100 text-green-800' :
+                            test.status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {test.status}
+                          </span>
                         </div>
                       ))}
                     </div>

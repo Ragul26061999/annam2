@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity, RotateCcw, Building2, Wallet } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity, RotateCcw, Building2, Wallet, Target } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -631,9 +631,9 @@ export default function PharmacyPage() {
           <IndianRupee className="w-6 h-6 mx-auto text-teal-600 mb-1" />
           <div className="text-xs font-medium text-teal-800">GST Report</div>
         </Link>
-        <Link href="/pharmacy/reports?tab=stock" className="bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg p-3 text-center transition-colors">
-          <Package className="w-6 h-6 mx-auto text-cyan-600 mb-1" />
-          <div className="text-xs font-medium text-cyan-800">Stock Report</div>
+        <Link href="/pharmacy/intent" className="bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg p-3 text-center transition-colors">
+          <Target className="w-6 h-6 mx-auto text-purple-600 mb-1" />
+          <div className="text-xs font-medium text-purple-800">Intent</div>
         </Link>
         <Link href="/pharmacy/collection-report" className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg p-3 text-center transition-colors">
           <Wallet className="w-6 h-6 mx-auto text-emerald-600 mb-1" />

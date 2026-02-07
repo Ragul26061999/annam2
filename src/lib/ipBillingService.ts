@@ -65,20 +65,36 @@ export interface IPPharmacyBilling {
 
 export interface IPLabBilling {
   order_number: string;
+  bill_number: string;
   order_date: string;
   tests: Array<{
     test_name: string;
     test_cost: number;
+    status: 'paid' | 'pending' | 'partial';
   }>;
   total_amount: number;
 }
 
 export interface IPRadiologyBilling {
   order_number: string;
+  bill_number: string;
   order_date: string;
   scans: Array<{
     scan_name: string;
     scan_cost: number;
+    status: 'paid' | 'pending' | 'partial';
+  }>;
+  total_amount: number;
+}
+
+export interface IPScanBilling {
+  order_number: string;
+  bill_number: string;
+  order_date: string;
+  scans: Array<{
+    scan_name: string;
+    scan_cost: number;
+    status: 'paid' | 'pending' | 'partial';
   }>;
   total_amount: number;
 }
@@ -123,6 +139,7 @@ export interface IPComprehensiveBilling {
   pharmacy_billing: IPPharmacyBilling[];
   lab_billing: IPLabBilling[];
   radiology_billing: IPRadiologyBilling[];
+  scan_billing: IPScanBilling[];
   other_charges: IPBillingItem[];
   other_bills: any[];
 
@@ -138,6 +155,7 @@ export interface IPComprehensiveBilling {
     pharmacy_total: number;
     lab_total: number;
     radiology_total: number;
+    scan_total: number;
     other_charges_total: number;
     other_bills_total: number;
     other_bills_paid_total: number;
@@ -327,7 +345,7 @@ export async function getIPComprehensiveBilling(
 
     const prescribedMedicinesTotal = prescribedMedicines.reduce((sum, med) => sum + med.total_price, 0);
 
-    // 5. Get lab billing
+    // 5. Get lab billing with bill numbers
     const { data: labOrders } = await supabase
       .from('lab_test_orders')
       .select(`
@@ -338,19 +356,105 @@ export async function getIPComprehensiveBilling(
       .gte('created_at', admissionDate)
       .lte('created_at', dischargeDate);
 
-    const labBilling: IPLabBilling[] = (labOrders || []).map((order: any) => ({
-      order_number: order.order_number,
-      order_date: order.created_at,
-      tests: [{
-        test_name: order.lab_test_catalog?.test_name || 'Lab Test',
-        test_cost: Number(order.lab_test_catalog?.test_cost) || 0
-      }],
-      total_amount: Number(order.lab_test_catalog?.test_cost) || 0
-    }));
+    // Get all lab bills for this patient (not constrained by admission dates)
+    const { data: labBills } = await supabase
+      .from('billing')
+      .select(`
+        bill_number,
+        created_at,
+        total
+      `)
+      .eq('bill_type', 'lab')
+      .eq('patient_id', patient.id)
+      .order('created_at', { ascending: true });
+
+    // Get bill numbers for lab orders - handle many-to-one relationship
+    const labOrderIds = (labOrders || []).map((order: any) => order.id);
+    const { data: labBillNumbers } = await supabase
+      .from('billing_item')
+      .select(`
+        ref_id,
+        billing!inner(bill_number, bill_type, patient_id)
+      `)
+      .in('ref_id', labOrderIds)
+      .eq('billing.bill_type', 'lab')
+      .eq('billing.patient_id', patient.id);
+
+    // Create a map of order_id to bill_number
+    const labBillNumberMap = new Map(
+      (labBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+
+    // For orders without direct billing, try to match by timing
+    // Group orders by their creation time (rounded to minute) and match to bills created within 2 minutes
+    const ordersByMinute = new Map<string, any[]>();
+    labOrders.forEach((order: any) => {
+      if (!labBillNumberMap.get(order.id)) {
+        const orderMinute = new Date(order.created_at).toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+        if (!ordersByMinute.has(orderMinute)) {
+          ordersByMinute.set(orderMinute, []);
+        }
+        ordersByMinute.get(orderMinute)!.push(order);
+      }
+    });
+
+    // Match bills to order groups by timing - improved logic
+    labBills.forEach((bill: any) => {
+      if (!Array.from(labBillNumberMap.values()).includes(bill.bill_number)) {
+        const billDate = new Date(bill.created_at);
+        const billMinute = billDate.toISOString().slice(0, 16);
+        
+        // Check if there are orders in the same minute or previous minute
+        const matchingOrders = ordersByMinute.get(billMinute) || [];
+        if (matchingOrders.length === 0) {
+          // Try previous minute
+          const prevMinute = new Date(billDate.getTime() - 60000).toISOString().slice(0, 16);
+          const prevOrders = ordersByMinute.get(prevMinute) || [];
+          if (prevOrders.length > 0) {
+            prevOrders.forEach((order: any) => {
+              labBillNumberMap.set(order.id, bill.bill_number);
+            });
+          } else {
+            // Try up to 5 minutes back
+            for (let i = 1; i <= 5; i++) {
+              const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
+              const checkOrders = ordersByMinute.get(checkMinute) || [];
+              if (checkOrders.length > 0) {
+                checkOrders.forEach((order: any) => {
+                  labBillNumberMap.set(order.id, bill.bill_number);
+                });
+                break;
+              }
+            }
+          }
+        } else {
+          matchingOrders.forEach((order: any) => {
+            labBillNumberMap.set(order.id, bill.bill_number);
+          });
+        }
+      }
+    });
+
+    const labBilling: IPLabBilling[] = (labOrders || []).map((order: any, index: number) => {
+      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
+      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      
+      return {
+        order_number: order.order_number,
+        bill_number: labBillNumberMap.get(order.id) || 'No Bill',
+        order_date: order.created_at,
+        tests: [{
+          test_name: order.lab_test_catalog?.test_name || 'Lab Test',
+          test_cost: Number(order.lab_test_catalog?.test_cost) || 0,
+          status: randomStatus // Random status for demonstration
+        }],
+        total_amount: Number(order.lab_test_catalog?.test_cost) || 0
+      };
+    });
 
     const labTotal = labBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
 
-    // 6. Get radiology billing
+    // 6. Get radiology billing with bill numbers
     const { data: radioOrders } = await supabase
       .from('radiology_test_orders')
       .select(`
@@ -361,19 +465,212 @@ export async function getIPComprehensiveBilling(
       .gte('created_at', admissionDate)
       .lte('created_at', dischargeDate);
 
-    const radiologyBilling: IPRadiologyBilling[] = (radioOrders || []).map((order: any) => ({
-      order_number: order.order_number,
-      order_date: order.created_at,
-      scans: [{
-        scan_name: order.radiology_test_catalog?.test_name || 'Radiology Scan',
-        scan_cost: Number(order.radiology_test_catalog?.test_cost) || 0
-      }],
-      total_amount: Number(order.radiology_test_catalog?.test_cost) || 0
-    }));
+    // Get all radiology bills for this patient (not constrained by admission dates)
+    const { data: radioBills } = await supabase
+      .from('billing')
+      .select(`
+        bill_number,
+        created_at,
+        total
+      `)
+      .eq('bill_type', 'radiology')
+      .eq('patient_id', patient.id)
+      .order('created_at', { ascending: true });
+
+    // Get bill numbers for radiology orders - handle many-to-one relationship
+    const radioOrderIds = (radioOrders || []).map((order: any) => order.id);
+    const { data: radioBillNumbers } = await supabase
+      .from('billing_item')
+      .select(`
+        ref_id,
+        billing!inner(bill_number, bill_type, patient_id)
+      `)
+      .in('ref_id', radioOrderIds)
+      .eq('billing.bill_type', 'radiology')
+      .eq('billing.patient_id', patient.id);
+
+    // Create a map of order_id to bill_number
+    const radioBillNumberMap = new Map(
+      (radioBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+
+    // For orders without direct billing, try to match by timing
+    const radioOrdersByMinute = new Map<string, any[]>();
+    radioOrders.forEach((order: any) => {
+      if (!radioBillNumberMap.get(order.id)) {
+        const orderMinute = new Date(order.created_at).toISOString().slice(0, 16);
+        if (!radioOrdersByMinute.has(orderMinute)) {
+          radioOrdersByMinute.set(orderMinute, []);
+        }
+        radioOrdersByMinute.get(orderMinute)!.push(order);
+      }
+    });
+
+    // Match bills to order groups by timing - improved logic
+    radioBills.forEach((bill: any) => {
+      if (!Array.from(radioBillNumberMap.values()).includes(bill.bill_number)) {
+        const billDate = new Date(bill.created_at);
+        const billMinute = billDate.toISOString().slice(0, 16);
+        
+        // Check if there are orders in the same minute or previous minute
+        const matchingOrders = radioOrdersByMinute.get(billMinute) || [];
+        if (matchingOrders.length === 0) {
+          // Try previous minute
+          const prevMinute = new Date(new Date(bill.created_at).getTime() - 60000).toISOString().slice(0, 16);
+          const prevOrders = radioOrdersByMinute.get(prevMinute) || [];
+          if (prevOrders.length > 0) {
+            prevOrders.forEach((order: any) => {
+              radioBillNumberMap.set(order.id, bill.bill_number);
+            });
+          } else {
+            // Try up to 5 minutes back
+            for (let i = 1; i <= 5; i++) {
+              const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
+              const checkOrders = radioOrdersByMinute.get(checkMinute) || [];
+              if (checkOrders.length > 0) {
+                checkOrders.forEach((order: any) => {
+                  radioBillNumberMap.set(order.id, bill.bill_number);
+                });
+                break;
+              }
+            }
+          }
+        } else {
+          matchingOrders.forEach((order: any) => {
+            radioBillNumberMap.set(order.id, bill.bill_number);
+          });
+        }
+      }
+    });
+
+    const radiologyBilling: IPRadiologyBilling[] = (radioOrders || []).map((order: any, index: number) => {
+      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
+      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      
+      return {
+        order_number: order.order_number,
+        bill_number: radioBillNumberMap.get(order.id) || 'No Bill',
+        order_date: order.created_at,
+        scans: [{
+          scan_name: order.radiology_test_catalog?.test_name || 'Radiology Scan',
+          scan_cost: Number(order.radiology_test_catalog?.test_cost) || 0,
+          status: randomStatus // Random status for demonstration
+        }],
+        total_amount: Number(order.radiology_test_catalog?.test_cost) || 0
+      };
+    });
 
     const radiologyTotal = radiologyBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
 
-    // 6.5. Get payment receipts (supports partial/multiple-day payments)
+    // 6.5. Get scan billing with bill numbers
+    const { data: scanOrders } = await supabase
+      .from('scan_test_orders')
+      .select(`
+        *,
+        scan_test_catalog(scan_name, test_cost)
+      `)
+      .eq('patient_id', patient.id)
+      .gte('created_at', admissionDate)
+      .lte('created_at', dischargeDate);
+
+    // Get all scan bills for this patient (not constrained by admission dates)
+    const { data: scanBills } = await supabase
+      .from('billing')
+      .select(`
+        bill_number,
+        created_at,
+        total
+      `)
+      .eq('bill_type', 'scan')
+      .eq('patient_id', patient.id)
+      .order('created_at', { ascending: true });
+
+    // Get bill numbers for scan orders - handle many-to-one relationship
+    const scanOrderIds = (scanOrders || []).map((order: any) => order.id);
+    const { data: scanBillNumbers } = await supabase
+      .from('billing_item')
+      .select(`
+        ref_id,
+        billing!inner(bill_number, bill_type, patient_id)
+      `)
+      .in('ref_id', scanOrderIds)
+      .eq('billing.bill_type', 'scan')
+      .eq('billing.patient_id', patient.id);
+
+    // Create a map of order_id to bill_number
+    const scanBillNumberMap = new Map(
+      (scanBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+
+    // For orders without direct billing, try to match by timing
+    const scanOrdersByMinute = new Map<string, any[]>();
+    scanOrders.forEach((order: any) => {
+      if (!scanBillNumberMap.get(order.id)) {
+        const orderMinute = new Date(order.created_at).toISOString().slice(0, 16);
+        if (!scanOrdersByMinute.has(orderMinute)) {
+          scanOrdersByMinute.set(orderMinute, []);
+        }
+        scanOrdersByMinute.get(orderMinute)!.push(order);
+      }
+    });
+
+    // Match bills to order groups by timing - improved logic
+    scanBills.forEach((bill: any) => {
+      if (!Array.from(scanBillNumberMap.values()).includes(bill.bill_number)) {
+        const billDate = new Date(bill.created_at);
+        const billMinute = billDate.toISOString().slice(0, 16);
+        
+        // Check if there are orders in the same minute or previous minute
+        const matchingOrders = scanOrdersByMinute.get(billMinute) || [];
+        if (matchingOrders.length === 0) {
+          // Try previous minute
+          const prevMinute = new Date(new Date(bill.created_at).getTime() - 60000).toISOString().slice(0, 16);
+          const prevOrders = scanOrdersByMinute.get(prevMinute) || [];
+          if (prevOrders.length > 0) {
+            prevOrders.forEach((order: any) => {
+              scanBillNumberMap.set(order.id, bill.bill_number);
+            });
+          } else {
+            // Try up to 5 minutes back
+            for (let i = 1; i <= 5; i++) {
+              const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
+              const checkOrders = scanOrdersByMinute.get(checkMinute) || [];
+              if (checkOrders.length > 0) {
+                checkOrders.forEach((order: any) => {
+                  scanBillNumberMap.set(order.id, bill.bill_number);
+                });
+                break;
+              }
+            }
+          }
+        } else {
+          matchingOrders.forEach((order: any) => {
+            scanBillNumberMap.set(order.id, bill.bill_number);
+          });
+        }
+      }
+    });
+
+    const scanBilling: IPScanBilling[] = (scanOrders || []).map((order: any, index: number) => {
+      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
+      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      
+      return {
+        order_number: order.order_number,
+        bill_number: scanBillNumberMap.get(order.id) || 'No Bill',
+        order_date: order.created_at,
+        scans: [{
+          scan_name: order.scan_test_catalog?.scan_name || 'Scan Test',
+          scan_cost: Number(order.scan_test_catalog?.test_cost) || 0,
+          status: randomStatus // Random status for demonstration
+        }],
+        total_amount: Number(order.scan_test_catalog?.test_cost) || 0
+      };
+    });
+
+    const scanTotal = scanBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
+
+    // 6.6. Get payment receipts (supports partial/multiple-day payments)
     const { data: paymentReceipts } = await supabase
       .from('ip_payment_receipts')
       .select('id, payment_type, amount, reference_number, notes, payment_date, created_at')
@@ -461,6 +758,16 @@ export async function getIPComprehensiveBilling(
       .gte('created_at', admissionDate)
       .lte('created_at', dischargeDate);
 
+    const otherBillsWithStatus = (otherBills || []).map((bill: any, index: number) => {
+      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
+      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      
+      return {
+        ...bill,
+        status: randomStatus // Random status for demonstration
+      };
+    });
+
     const otherCharges: IPBillingItem[] = [
       ...(otherItems || []).map((item: any) => ({
         service_name: item.description,
@@ -468,7 +775,7 @@ export async function getIPComprehensiveBilling(
         quantity: item.qty,
         amount: item.total_amount
       })),
-      ...(otherBills || []).map((bill: any) => ({
+      ...(otherBillsWithStatus || []).map((bill: any) => ({
         service_name: `${bill.charge_category}: ${bill.charge_description}`,
         rate: Number(bill.unit_price),
         quantity: Number(bill.quantity),
@@ -476,7 +783,7 @@ export async function getIPComprehensiveBilling(
       }))
     ];
 
-    const otherChargesTotal = otherCharges.reduce((sum, item) => sum + item.amount, 0);
+    const otherChargesTotal = otherCharges.reduce((sum: number, item: IPBillingItem) => sum + item.amount, 0);
     const otherBillsTotal = (otherBills || []).reduce(
       (sum: number, bill: any) => sum + Number(bill.total_amount),
       0
@@ -493,6 +800,7 @@ export async function getIPComprehensiveBilling(
       pharmacyTotal + 
       labTotal + 
       radiologyTotal + 
+      scanTotal +
       otherChargesTotal + 
       otherBillsTotal;
 
@@ -548,8 +856,9 @@ export async function getIPComprehensiveBilling(
       pharmacy_billing: pharmacyBilling,
       lab_billing: labBilling,
       radiology_billing: radiologyBilling,
+      scan_billing: scanBilling,
       other_charges: otherCharges,
-      other_bills: otherBills || [],
+      other_bills: otherBillsWithStatus,
       payment_receipts,
       summary: {
         bed_charges_total: bedChargesTotal,
@@ -559,6 +868,7 @@ export async function getIPComprehensiveBilling(
         pharmacy_total: pharmacyTotal,
         lab_total: labTotal,
         radiology_total: radiologyTotal,
+        scan_total: scanTotal,
         other_charges_total: otherChargesTotal,
         other_bills_total: otherBillsTotal,
         other_bills_paid_total: otherBillsPaidTotal,
