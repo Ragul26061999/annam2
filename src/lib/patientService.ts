@@ -246,40 +246,50 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
     if (authError) {
       console.error('Error creating auth user:', authError);
 
-      // If user already registered in auth, try to get the existing user
-      if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
-        console.log('Auth user already exists, attempting to retrieve');
+      // Handle user already registered case
+      if (authError.message?.includes('already registered') ||
+          authError.message?.includes('already been registered') ||
+          authError.message?.includes('User already registered')) {
+        console.log('Auth user already exists, attempting to retrieve existing user');
 
-        // Try to sign in to get the user ID
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
+        try {
+          // Try to sign in to get the user ID
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
 
-        if (signInData?.user) {
-          console.log('Retrieved existing auth user via sign-in:', signInData.user.id);
-          return {
-            authUser: { id: signInData.user.id },
-            credentials: { email, password }
-          };
+          if (signInData?.user) {
+            console.log('Retrieved existing auth user via sign-in:', signInData.user.id);
+            return {
+              authUser: { id: signInData.user.id },
+              credentials: { email, password }
+            };
+          }
+        } catch (signInException) {
+          console.warn('Sign-in attempt failed, trying alternative retrieval methods');
         }
 
         // If sign in fails, check if user exists in auth.users via users table
-        const { data: existingAuthUser } = await supabase
-          .from('users')
-          .select('auth_id')
-          .eq('email', email)
-          .single();
+        try {
+          const { data: existingAuthUser } = await supabase
+            .from('users')
+            .select('auth_id')
+            .eq('email', email)
+            .single();
 
-        if (existingAuthUser?.auth_id) {
-          console.log('Retrieved existing auth user via users table:', existingAuthUser.auth_id);
-          return {
-            authUser: { id: existingAuthUser.auth_id },
-            credentials: { email, password }
-          };
+          if (existingAuthUser?.auth_id) {
+            console.log('Retrieved existing auth user via users table:', existingAuthUser.auth_id);
+            return {
+              authUser: { id: existingAuthUser.auth_id },
+              credentials: { email, password }
+            };
+          }
+        } catch (userTableException) {
+          console.warn('Could not retrieve auth user from users table');
         }
 
-        // If we can't retrieve the auth user, return null auth but continue
+        // If we can't retrieve the auth user, return null auth but continue with registration
         console.warn('Auth user exists but could not be retrieved, continuing without auth_id');
         return {
           authUser: { id: null },
@@ -288,7 +298,7 @@ export async function createPatientAuthCredentials(uhid: string): Promise<{
       }
 
       // For other auth errors, return null auth to allow registration to continue
-      console.warn('Auth creation failed with non-duplicate error, continuing without auth_id');
+      console.warn('Auth creation failed with non-duplicate error, continuing without auth_id:', authError.message);
       return {
         authUser: { id: null },
         credentials: { email, password }
@@ -678,6 +688,23 @@ export async function createInitialAppointment(
       return null; // No appointment needed if no symptoms
     }
 
+    // Try to get a default doctor for initial appointment
+    let doctorId = null;
+    try {
+      const { data: doctors } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1);
+
+      if (doctors && doctors.length > 0) {
+        doctorId = doctors[0].id;
+      }
+    } catch (doctorError) {
+      console.warn('Could not fetch default doctor for initial appointment:', doctorError);
+      // Continue without doctor - appointment can be assigned later
+    }
+
     // Generate appointment ID
     const appointmentId = `APT${Date.now()}`;
 
@@ -690,10 +717,13 @@ export async function createInitialAppointment(
       patient_id: patientId,
       appointment_date: tomorrow.toISOString().split('T')[0],
       appointment_time: '09:00:00',
+      duration_minutes: 30,
       type: 'consultation',
       status: 'scheduled',
       symptoms: registrationData.initialSymptoms || registrationData.primaryComplaint,
-      notes: `Initial consultation for newly registered patient. Primary complaint: ${registrationData.primaryComplaint}`
+      notes: `Initial consultation for newly registered patient. Primary complaint: ${registrationData.primaryComplaint || 'General consultation'}`,
+      // Only add doctor_id if we have one
+      ...(doctorId && { doctor_id: doctorId })
     };
 
     const { data: appointment, error } = await supabase
@@ -704,6 +734,27 @@ export async function createInitialAppointment(
 
     if (error) {
       console.error('Error creating initial appointment:', error);
+
+      // If the error is due to missing doctor_id, try without it (if table allows)
+      if (error.message?.includes('null value') && error.message?.includes('doctor_id')) {
+        console.log('Retrying appointment creation without doctor_id');
+        const appointmentDataWithoutDoctor = { ...appointmentData };
+        delete appointmentDataWithoutDoctor.doctor_id;
+
+        const { data: fallbackAppointment, error: fallbackError } = await supabase
+          .from('appointments')
+          .insert([appointmentDataWithoutDoctor])
+          .select()
+          .single();
+
+        if (fallbackError) {
+          console.error('Error creating fallback appointment:', fallbackError);
+          return null;
+        }
+
+        return fallbackAppointment;
+      }
+
       // Don't throw error for appointment creation failure
       return null;
     }

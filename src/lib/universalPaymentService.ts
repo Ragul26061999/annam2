@@ -19,7 +19,7 @@ export interface PaymentItem {
   quantity: number;
   unit_rate: number;
   total_amount: number;
-  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology';
+  item_type: 'service' | 'medicine' | 'procedure' | 'accommodation' | 'lab_test' | 'radiology' | 'scan';
   reference_id?: string | null; // Links to specific service (lab_order, radiology_order, etc.)
 }
 
@@ -36,7 +36,7 @@ export interface PaymentData {
   payment_method?: string; // Default for backward compatibility
   notes?: string;
   created_by?: string;
-  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'outpatient' | 'other';
+  bill_type?: 'consultation' | 'lab' | 'radiology' | 'pharmacy' | 'ipd' | 'outpatient' | 'other' | 'scan';
 }
 
 export interface PaymentSplit {
@@ -505,7 +505,7 @@ export async function createScanBill(
     quantity: 1,
     unit_rate: order.test_catalog?.test_cost || 0,
     total_amount: order.test_catalog?.test_cost || 0,
-    item_type: 'radiology' as const, // Using radiology type for scans
+    item_type: 'scan' as const, // Using scan type for scans
     reference_id: order.id,
   }));
 
@@ -522,7 +522,7 @@ export async function createScanBill(
     total_amount: totalAmount,
     payment_method: 'cash',
     created_by: staffId,
-    bill_type: 'radiology', // Using radiology type for scans
+    bill_type: 'scan', // Using scan type for scans
   });
 }
 

@@ -177,7 +177,7 @@ export default function EnterVitalsPage() {
           const { error: updateError } = await supabase
             .from('appointments')
             .update({ 
-              status: 'in_progress',
+              status: 'scheduled',
               updated_at: new Date().toISOString()
             })
             .eq('id', appointment.id);
@@ -185,7 +185,7 @@ export default function EnterVitalsPage() {
           if (updateError) {
             console.warn('Failed to update appointment status:', updateError);
           } else {
-            console.log('Updated appointment status to in_progress:', appointment.id);
+            console.log('Updated appointment status to scheduled:', appointment.id);
           }
         }
       } catch (appointmentUpdateError) {

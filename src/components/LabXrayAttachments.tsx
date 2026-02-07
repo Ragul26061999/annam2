@@ -58,6 +58,7 @@ export default function LabXrayAttachments({
   const [filterType, setFilterType] = useState<'all' | 'lab' | 'radiology'>('all');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [showAttachments, setShowAttachments] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function LabXrayAttachments({
     setSuccess(false);
 
     try {
+      console.log('LabXrayAttachments: Starting upload for patient:', patientId, 'test_type:', testType, 'file:', file.name);
       const uploadData: LabXrayAttachmentUploadData = {
         patient_id: patientId,
         lab_order_id: labOrderId,
@@ -137,8 +139,10 @@ export default function LabXrayAttachments({
       };
 
       const attachment = await uploadLabXrayAttachment(uploadData);
+      console.log('LabXrayAttachments: Upload successful, attachment:', attachment);
       setAttachments(prev => [attachment, ...prev]);
       setSuccess(true);
+      setShowAttachments(true); // Show attachments after upload
       onAttachmentChange?.();
       
       // Clear success message after 3 seconds
@@ -244,70 +248,95 @@ export default function LabXrayAttachments({
 
   return (
     <div className="space-y-4">
-      {/* Upload Section */}
+      {/* Upload and View Section */}
       {showFileBrowser && !readOnly && (
-        <div 
-          className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-            dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <div className="text-center">
-            <Upload className="mx-auto h-12 w-12 text-gray-400" />
-            <div className="mt-4">
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <span className="mt-2 block text-sm font-medium text-gray-900">
-                  Click to upload or drag and drop
-                </span>
-                <span className="mt-1 block text-xs text-gray-500">
-                  PDF, Images, DICOM, or Text files up to 20MB
-                </span>
-                <input
-                  ref={fileInputRef}
-                  id="file-upload"
-                  type="file"
-                  className="sr-only"
-                  accept=".pdf,.jpg,.jpeg,.png,.gif,.txt,.doc,.docx,.dcm,.dicom,.tiff"
-                  onChange={handleFileInputChange}
-                  disabled={uploading}
-                />
-              </label>
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Upload Area */}
+          <div className="flex-1">
+            <div 
+              className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+                dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
+              }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <div className="text-center">
+                <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                <div className="mt-4">
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <span className="mt-2 block text-sm font-medium text-gray-900">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-500">
+                      PDF, Images, DICOM, or Text files up to 20MB
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      id="file-upload"
+                      type="file"
+                      className="sr-only"
+                      accept=".pdf,.jpg,.jpeg,.png,.gif,.txt,.doc,.docx,.dcm,.dicom,.tiff"
+                      onChange={handleFileInputChange}
+                      disabled={uploading}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Upload Progress */}
+              {uploading && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Uploading file...
+                  </div>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {success && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-green-600">
+                  <CheckCircle className="w-4 h-4" />
+                  File uploaded successfully!
+                </div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-red-600">
+                  <AlertCircle className="w-4 h-4" />
+                  {error}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Upload Progress */}
-          {uploading && (
-            <div className="mt-4">
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading file...
-              </div>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {success && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              File uploaded successfully!
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-red-600">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
+          {/* View Documents Button */}
+          <div className="flex-1 lg:flex-none">
+            <button
+              onClick={() => setShowAttachments(!showAttachments)}
+              className={`w-full lg:w-auto flex items-center justify-center gap-3 px-6 py-6 border-2 border-dashed rounded-lg transition-colors ${
+                showAttachments ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              <Eye className={`w-6 h-6 ${showAttachments ? 'text-blue-600' : 'text-gray-400'}`} />
+              <span className="text-sm font-medium">
+                {showAttachments ? 'Hide Documents' : 'View Documents'}
+              </span>
+              {attachments.length > 0 && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
+                  {attachments.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Search and Filter */}
-      {showFileBrowser && !readOnly && attachments.length > 0 && (
+      {showFileBrowser && !readOnly && showAttachments && attachments.length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -355,7 +384,7 @@ export default function LabXrayAttachments({
       )}
 
       {/* Attachments List */}
-      {filteredAttachments.length > 0 && (
+      {showAttachments && filteredAttachments.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-gray-900">
             Attachments ({filteredAttachments.length})
@@ -417,7 +446,7 @@ export default function LabXrayAttachments({
       )}
 
       {/* Empty State */}
-      {filteredAttachments.length === 0 && !uploading && (
+      {showAttachments && filteredAttachments.length === 0 && !uploading && (
         <div className="text-center py-8 text-gray-500">
           <FileText className="mx-auto h-12 w-12 text-gray-300" />
           <p className="mt-2 text-sm">

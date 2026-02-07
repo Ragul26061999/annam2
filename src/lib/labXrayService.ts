@@ -136,7 +136,7 @@ export async function getDiagnosticBillsFromBilling(filters?: {
   searchTerm?: string;
 }): Promise<DiagnosticBill[]> {
   try {
-    let billTypes: string[] = ['lab', 'radiology'];
+    let billTypes: string[] = ['lab', 'radiology', 'scan'];
     if (filters?.bill_type) {
       billTypes = [filters.bill_type];
     }
@@ -678,7 +678,7 @@ export async function createScanOrder(orderData: ScanOrder): Promise<any> {
         ? supabase.from('scan_test_catalog').select('*').eq('id', order.scan_test_catalog_id).maybeSingle()
         : Promise.resolve({ data: null } as any),
       supabase.from('patients').select('id, patient_id, name, phone, date_of_birth, gender').eq('id', order.patient_id).maybeSingle(),
-      supabase.from('doctors').select('id, name, specialization').eq('id', order.doctor_id).maybeSingle(),
+      supabase.from('doctors').select('id, name, specialization').eq('id', order.ordering_doctor_id).maybeSingle(),
     ]);
 
     return {
@@ -928,7 +928,7 @@ export async function createLabTestOrder(orderData: LabTestOrder): Promise<any> 
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.doctor_id)
+          .eq('id', order.ordering_doctor_id)
           .single(),
         supabase
           .from('lab_test_catalog')
@@ -1130,7 +1130,7 @@ export async function updateLabOrderStatus(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.doctor_id)
+          .eq('id', order.ordering_doctor_id)
           .single(),
         supabase
           .from('lab_test_catalog')
@@ -1342,7 +1342,7 @@ export async function createRadiologyTestOrder(orderData: RadiologyTestOrder): P
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.doctor_id)
+          .eq('id', order.ordering_doctor_id)
           .single(),
         supabase
           .from('radiology_test_catalog')
@@ -1548,7 +1548,7 @@ export async function updateRadiologyOrder(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.doctor_id)
+          .eq('id', order.ordering_doctor_id)
           .single(),
         supabase
           .from('radiology_test_catalog')
@@ -1863,25 +1863,18 @@ function normalizeScanCatalogRow(row: any): ScanTestCatalog {
  */
 export async function getScanTestCatalog(): Promise<ScanTestCatalog[]> {
   try {
-    console.log('Attempting to fetch scan test catalog...');
     const { data, error } = await supabase
       .from('scan_test_catalog')
       .select('*')
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    console.log('Scan catalog query result:', { data, error });
-
     if (error) {
       console.warn('Scan test catalog not available:', error.message);
-      console.warn('Full error details:', error);
       return [];
     }
 
-    console.log('Raw scan catalog data:', data);
-    const result = (data || []).map(normalizeScanCatalogRow);
-    console.log('Normalized scan catalog data:', result);
-    return result;
+    return (data || []).map(normalizeScanCatalogRow);
   } catch (error) {
     console.error('Error in getScanTestCatalog:', error);
     return [];
@@ -1970,65 +1963,72 @@ export interface ScanTestOrder {
 /**
  * Create a new scan test order
  */
-export async function createScanTestOrder(scanOrderData: any) {
-  console.log('🚀 Scan order received:', scanOrderData);
-  
-  // TEMPORARY SOLUTION: Store scan orders as JSON in a text field
-  // until the scan_test_orders table is created
-  
+export async function createScanTestOrder(orderData: ScanTestOrder): Promise<any> {
   try {
-    // Try to create the order in the main table first
-    const { data: testTable, error: tableError } = await supabase
+    const orderNumber = generateScanOrderNumber();
+
+    const { data: order, error } = await supabase
       .from('scan_test_orders')
-      .select('id')
-      .limit(1);
-    
-    if (!tableError) {
-      // Table exists, proceed with normal flow
-      console.log('✅ scan_test_orders table exists, proceeding normally...');
-      
-      const insertData = {
-        order_number: scanOrderData.order_number || `SCN-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
-        patient_id: scanOrderData.patient_id,
-        ordering_doctor_id: scanOrderData.ordering_doctor_id,
-        test_catalog_id: scanOrderData.test_catalog_id,
-        clinical_indication: scanOrderData.clinical_indication || 'Scan requested',
-        status: 'ordered',
-        created_at: new Date().toISOString()
-      };
-      
-      const { data: order, error } = await supabase
-        .from('scan_test_orders')
-        .insert([insertData])
-        .select('*')
-        .single();
-        
-      if (error) throw error;
-      return order;
+      .insert([{
+        ...orderData,
+        order_number: orderNumber,
+        status: 'ordered'
+      }])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Failed to create scan test order:', error);
+      throw new Error(`Failed to create scan test order: ${error.message}`);
     }
-    
-    // Table doesn't exist, use temporary storage
-    console.log('⚠️  Using temporary storage for scan orders');
-    
-    // Store in a temporary location (could be a different table or file)
-    const tempOrder = {
-      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      ...scanOrderData,
-      created_at: new Date().toISOString(),
-      temp_storage: true,
-      message: 'This scan order is temporarily stored. Please create the scan_test_orders table to enable full functionality.'
-    };
-    
-    // Store in localStorage-like solution or return temp data
-    console.log('✅ Scan order temporarily stored:', tempOrder);
-    
-    // Show user-friendly message
-    const errorMessage = `🚀 Scan order created temporarily!\n\nTo enable full scan functionality, please:\n1. Go to: https://supabase.com/dashboard/project/zusheijhebsmjiyyeiqq/sql\n2. Run the SQL from CREATE_SCAN_TABLES.sql\n3. Your scan orders will then be properly stored\n\nTemporary Order ID: ${tempOrder.id}`;
-    
-    throw new Error(errorMessage);
-    
+
+    // Create billing item
+    if (order) {
+      // Fetch catalog data separately
+      const { data: catalog, error: catalogError } = await supabase
+        .from('scan_test_catalog')
+        .select('*')
+        .eq('id', order.test_catalog_id)
+        .single();
+
+      if (catalogError) {
+        console.error('Error fetching catalog for billing:', catalogError);
+      } else if (catalog) {
+        await createDiagnosticBilling('scan', order.id, orderData.patient_id, catalog.test_name, catalog.test_cost);
+      }
+    }
+
+    // Return the complete order with related data
+    if (order) {
+      const [patient, doctor, catalog] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('id, patient_id, name, phone, date_of_birth, gender')
+          .eq('id', order.patient_id)
+          .single(),
+        supabase
+          .from('doctors')
+          .select('id, name, specialization')
+          .eq('id', order.ordering_doctor_id)
+          .single(),
+        supabase
+          .from('scan_test_catalog')
+          .select('*')
+          .eq('id', order.test_catalog_id)
+          .single()
+      ]);
+
+      return {
+        ...order,
+        patient: patient.data,
+        ordering_doctor: doctor.data,
+        test_catalog: catalog.data
+      };
+    }
+
+    return order;
   } catch (error) {
-    console.error('Scan order creation failed:', error);
+    console.error('Error in createScanTestOrder:', error);
     throw error;
   }
 }
@@ -2220,7 +2220,7 @@ export async function updateScanOrder(
         supabase
           .from('doctors')
           .select('id, name, specialization')
-          .eq('id', order.doctor_id)
+          .eq('id', order.ordering_doctor_id)
           .single(),
         supabase
           .from('scan_test_catalog')
@@ -2300,7 +2300,7 @@ export async function createGroupedLabOrder(params: CreateGroupedLabOrderParams)
       p_ordering_doctor_id: params.ordering_doctor_id || null,
       p_clinical_indication: params.clinical_indication || null,
       p_urgency: params.urgency || 'routine',
-      p_service_items: JSON.stringify(params.service_items),
+      p_service_items: params.service_items,
       p_is_ip: params.is_ip || false,
       p_bed_allocation_id: params.bed_allocation_id || null,
       p_group_id: params.group_id || null,

@@ -180,9 +180,13 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
       const subtab = searchParams.get('subtab');
       
       if (tab === 'clinical-records') {
+        console.log('PatientDetailsClient: Opening clinical records modal');
         setShowClinicalRecordsModal(true);
         if (subtab) {
           setClinicalRecordsSubTab(subtab as any);
+          console.log('PatientDetailsClient: Setting subtab to:', subtab);
+        } else {
+          console.log('PatientDetailsClient: No subtab provided, using default:', clinicalRecordsSubTab);
         }
       } else if (tab) {
         setActiveTab(tab);
@@ -205,7 +209,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [medicationRefreshTrigger, setMedicationRefreshTrigger] = useState(0);
   const [temporaryDocuments, setTemporaryDocuments] = useState<any[]>([]);
   const [showClinicalRecordsModal, setShowClinicalRecordsModal] = useState(false);
-  const [clinicalRecordsSubTab, setClinicalRecordsSubTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge'>('overview');
+  const [clinicalRecordsSubTab, setClinicalRecordsSubTab] = useState<'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge' | 'lab'>('lab');
 
   const [ipAllocation, setIpAllocation] = useState<any | null>(null);
   const [ipBilling, setIpBilling] = useState<IpBilling | null>(null);

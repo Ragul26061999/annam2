@@ -38,6 +38,8 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
   const loadLabResults = async () => {
     setLoading(true);
     try {
+      console.log('LabResultsTab: Loading for patientId:', patientId, 'bedAllocationId:', bedAllocationId);
+
       // Fetch lab test orders
       const { data, error } = await supabase
         .from('lab_test_orders')
@@ -70,16 +72,19 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
 
       // Fetch lab xray attachments
       try {
+        console.log('LabResultsTab: Fetching attachments for patientId:', patientId);
         const attachments = await getPatientLabXrayAttachments(patientId);
+        console.log('LabResultsTab: Raw attachments fetched:', attachments);
         // Filter only lab-type attachments
         const labOnlyAttachments = attachments.filter(att => att.test_type === 'lab');
+        console.log('LabResultsTab: Filtered lab attachments:', labOnlyAttachments);
         setLabAttachments(labOnlyAttachments);
       } catch (attachmentError) {
-        console.error('Error loading lab attachments:', attachmentError);
+        console.error('LabResultsTab: Error loading lab attachments:', attachmentError);
         setLabAttachments([]);
       }
     } catch (error) {
-      console.error('Error loading lab results:', error);
+      console.error('LabResultsTab: Error loading lab results:', error);
     } finally {
       setLoading(false);
     }

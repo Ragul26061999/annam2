@@ -7,7 +7,7 @@ interface ClinicalRecordsModalProps {
   onClose: () => void;
   allocation: any;
   patient: any;
-  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge';
+  defaultTab?: 'overview' | 'doctor' | 'nurse' | 'casesheet' | 'discharge' | 'lab';
 }
 
 export default function ClinicalRecordsModal({ isOpen, onClose, allocation, patient, defaultTab }: ClinicalRecordsModalProps) {

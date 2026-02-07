@@ -2400,9 +2400,17 @@ function OutpatientPageContent() {
           </Link>
         </div>
 
-        {patients.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {patients.slice(0, 3).map((patient) => (
+        {(() => {
+          // Filter patients for current day only
+          const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
+          const todaysPatients = patients.filter(patient => {
+            const patientDate = new Date(patient.created_at).toISOString().split('T')[0];
+            return patientDate === today;
+          });
+
+          return todaysPatients.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {todaysPatients.slice(0, 3).map((patient) => (
               <div
                 key={patient.id}
                 className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -2510,10 +2518,10 @@ function OutpatientPageContent() {
         ) : (
           <div className="text-center py-8">
             <User className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No recent outpatients found</p>
+            <p className="text-gray-500">No patients registered today</p>
           </div>
-        )
-        }
+        );
+        })()}
       </div >
 
       {/* Appointments Section */}
