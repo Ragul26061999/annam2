@@ -66,6 +66,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [dosageFilter, setDosageFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc') // Add sorting state
   const [showAddMedicine, setShowAddMedicine] = useState(false)
   const [showAddBatch, setShowAddBatch] = useState(false)
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null)
@@ -695,6 +696,15 @@ export default function InventoryPage() {
     }
 
     return matchesSearch && matchesStatus && matchesAttr && matchesDosage && matchesTimeframe
+  }).sort((a, b) => {
+    // Sort by medicine name
+    const nameA = (a.name || '').toLowerCase()
+    const nameB = (b.name || '').toLowerCase()
+    if (sortOrder === 'asc') {
+      return nameA.localeCompare(nameB)
+    } else {
+      return nameB.localeCompare(nameA)
+    }
   })
 
   const getStockStatus = (medicine: Medicine) => {
@@ -2183,6 +2193,34 @@ export default function InventoryPage() {
                   <option value="out_of_stock">Out of Stock</option>
                   <option value="expired">Expired</option>
                 </select>
+              </div>
+
+              {/* Sorting Controls */}
+              <div className="flex items-center bg-white/50 backdrop-blur-sm border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setSortOrder('asc')}
+                  className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                    sortOrder === 'asc'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-gray-100 hover:text-blue-600'
+                  }`}
+                  title="Sort A-Z (Ascending)"
+                >
+                  <span className="text-xs">A-Z</span>
+                  {sortOrder === 'asc' && <span className="text-xs">↑</span>}
+                </button>
+                <button
+                  onClick={() => setSortOrder('desc')}
+                  className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                    sortOrder === 'desc'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-gray-100 hover:text-blue-600'
+                  }`}
+                  title="Sort Z-A (Descending)"
+                >
+                  <span className="text-xs">Z-A</span>
+                  {sortOrder === 'desc' && <span className="text-xs">↓</span>}
+                </button>
               </div>
 
               {/* Results Counter */}

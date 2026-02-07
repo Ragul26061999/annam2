@@ -1226,9 +1226,6 @@ export async function updatePatientRecord(
   }
 }
 
-/**
- * Get all patients with pagination and filtering
- */
 export async function getAllPatients(
   options: {
     page?: number;
@@ -1244,6 +1241,79 @@ export async function getAllPatients(
     const { page = 1, limit = 20, status, searchTerm, startDate, endDate, place } = options;
     const offset = (page - 1) * limit;
 
+    if (status === 'admitted') {
+      // Special handling for admitted patients - get patient IDs from bed_allocations first
+      let bedQuery = supabase
+        .from('bed_allocations')
+        .select('patient_id')
+        .eq('status', 'active')
+        .is('discharge_date', null);
+
+      const { data: bedData, error: bedError } = await bedQuery;
+
+      if (bedError) {
+        console.error('Error fetching bed allocations:', bedError);
+        throw new Error(`Failed to fetch bed allocations: ${bedError.message}`);
+      }
+
+      const admittedPatientIds = (bedData || []).map((b: any) => b.patient_id).filter(Boolean);
+
+      if (admittedPatientIds.length === 0) {
+        return {
+          patients: [],
+          total: 0,
+          page,
+          limit
+        };
+      }
+
+      // Now fetch patients with these IDs, applying other filters
+      let patientQuery = supabase
+        .from('patients')
+        .select('*, staff:staff_id(first_name, last_name, employee_id)', { count: 'exact' })
+        .in('id', admittedPatientIds);
+
+      // Apply other filters
+      if (searchTerm) {
+        patientQuery = patientQuery.or(`name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+      }
+
+      if (startDate) {
+        patientQuery = patientQuery.gte('created_at', startDate);
+      }
+      if (endDate) {
+        patientQuery = patientQuery.lte('created_at', endDate);
+      }
+
+      if (place) {
+        patientQuery = patientQuery.or(`city.ilike.%${place}%,state.ilike.%${place}%,address.ilike.%${place}%`);
+      }
+
+      const { data: patients, error, count } = await patientQuery
+        .range(offset, offset + limit - 1)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching admitted patients:', error);
+        throw new Error(`Failed to fetch patients: ${error.message}`);
+      }
+
+      // Enhance patients with admission status
+      const enhancedPatients = (patients || []).map((patient: any) => ({
+        ...patient,
+        is_admitted: true, // Since they have active bed allocation
+        bed_id: null // Could fetch this if needed
+      }));
+
+      return {
+        patients: enhancedPatients,
+        total: count || 0,
+        page,
+        limit
+      };
+    }
+
+    // Normal query for other statuses
     let query = supabase
       .from('patients')
       .select('*, staff:staff_id(first_name, last_name, employee_id)', { count: 'exact' });
@@ -1252,9 +1322,6 @@ export async function getAllPatients(
     if (status) {
       if (status === 'critical') {
         query = query.eq('is_critical', true);
-      } else if (status === 'admitted') {
-        // For admitted status, we need to check bed_allocations, so we'll filter after fetching
-        // Don't apply filter here, will handle in post-processing
       } else {
         query = query.eq('status', status);
       }
@@ -1309,15 +1376,9 @@ export async function getAllPatients(
       bed_allocations: undefined // Remove the join data
     }));
 
-    // Apply additional filtering for 'admitted' status (since it requires bed allocation data)
-    let finalPatients = enhancedPatients;
-    if (status === 'admitted') {
-      finalPatients = enhancedPatients.filter((patient: any) => patient.is_admitted);
-    }
-
     return {
-      patients: finalPatients,
-      total: status === 'admitted' ? finalPatients.length : (count || 0), // Update total for admitted filter
+      patients: enhancedPatients,
+      total: count || 0,
       page,
       limit
     };

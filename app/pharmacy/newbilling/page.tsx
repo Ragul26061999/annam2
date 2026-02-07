@@ -19,7 +19,8 @@ import {
   Trash2,
   Printer,
   Eye,
-  X
+  X,
+  Pill
 } from 'lucide-react';
 import StaffSelect from '@/src/components/StaffSelect';
 
@@ -272,6 +273,18 @@ function NewBillingPageInner() {
   const [linkedPrescriptionId, setLinkedPrescriptionId] = useState<string | null>(null);
   const [linkedPrescriptionEncounterId, setLinkedPrescriptionEncounterId] = useState<string | null>(null);
   const [linkedPrescriptionItems, setLinkedPrescriptionItems] = useState<Array<{ prescription_item_id: string; medication_id: string; quantity: number; dispensed_quantity: number }>>([]);
+  // Prescribed medications search state
+  const [prescribedSearchTerm, setPrescribedSearchTerm] = useState('');
+  const [prescribedMedications, setPrescribedMedications] = useState<Array<{
+    prescription_item_id: string;
+    medication_id: string;
+    medication_name: string;
+    dosage: string;
+    quantity: number;
+    dispensed_quantity: number;
+    frequency: string;
+    duration: string;
+  }>>([]);
   // Hospital details for receipt (persisted)
   const [hospitalDetails, setHospitalDetails] = useState({
     name: 'ANNAM PHARMACY',
@@ -795,7 +808,11 @@ function NewBillingPageInner() {
               medication_id,
               quantity,
               dispensed_quantity,
-              status
+              status,
+              dosage,
+              frequency,
+              duration,
+              medications:medication_id(name, medication_code)
             )
           `)
           .eq('id', prescriptionIdFromUrl)
@@ -810,6 +827,18 @@ function NewBillingPageInner() {
           medication_id: it.medication_id,
           quantity: Number(it.quantity) || 0,
           dispensed_quantity: Number(it.dispensed_quantity) || 0
+        })));
+
+        // Set prescribed medications with full details for search
+        setPrescribedMedications((data.prescription_items || []).map((it: any) => ({
+          prescription_item_id: it.id,
+          medication_id: it.medication_id,
+          medication_name: it.medications?.name || 'Unknown Medicine',
+          dosage: it.dosage || '',
+          quantity: Number(it.quantity) || 0,
+          dispensed_quantity: Number(it.dispensed_quantity) || 0,
+          frequency: it.frequency || '',
+          duration: it.duration || ''
         })));
 
         const patientRow = Array.isArray((data as any).patient)
@@ -933,6 +962,16 @@ function NewBillingPageInner() {
     };
     run();
   }, [patientSearch, customer.type]);
+
+  // Filter prescribed medications based on search term
+  const filteredPrescribedMedications = prescribedMedications.filter(med => {
+    if (!prescribedSearchTerm.trim()) return true;
+    const term = prescribedSearchTerm.toLowerCase();
+    return (
+      med.medication_name.toLowerCase().includes(term) ||
+      med.dosage.toLowerCase().includes(term)
+    );
+  });
 
   // Filter medicines based on search (including batch number, barcode, and legacy code); guard undefined fields
   // Only show results when there is a search term (hide catalogue by default)
@@ -2044,6 +2083,141 @@ function NewBillingPageInner() {
                 </div>
               </div>
             </div> {/* Added closing div tag here */}
+            {/* Prescribed Medications Search - Only show when prescription is linked */}
+            {prescribedMedications.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Pill className="h-5 w-5 text-green-600" />
+                    <h2 className="text-sm font-semibold tracking-wide text-slate-900 uppercase">Prescribed Medications</h2>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Search Prescribed Medications</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search prescribed medications..."
+                      value={prescribedSearchTerm}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPrescribedSearchTerm(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto space-y-2">
+                  {filteredPrescribedMedications.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-slate-500">
+                      {prescribedSearchTerm ? 'No matching prescribed medications found' : 'No prescribed medications available'}
+                    </div>
+                  ) : (
+                    filteredPrescribedMedications.map((med, index) => {
+                      const remainingQty = med.quantity - med.dispensed_quantity;
+                      const isAlreadyInBill = billItems.some(item => 
+                        item.medicine.id === med.medication_id
+                      );
+
+                      return (
+                        <div
+                          key={med.prescription_item_id}
+                          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                            isAlreadyInBill 
+                              ? 'bg-green-50 border-green-200 hover:bg-green-100' 
+                              : 'bg-slate-50 border-slate-200 hover:bg-blue-50'
+                          }`}
+                          onClick={() => {
+                            if (isAlreadyInBill) return; // Already in bill
+
+                            // Find the medicine and best batch
+                            const medicine = medicines.find(m => m.id === med.medication_id);
+                            if (!medicine) return;
+
+                            const bestBatch = medicine.batches
+                              .filter(b => (Number(b.current_quantity) || 0) > 0)
+                              .filter(b => {
+                                const exp = new Date(b.expiry_date);
+                                return !Number.isNaN(exp.getTime()) && exp >= new Date();
+                              })
+                              .sort((a, b) => {
+                                const ea = new Date(a.expiry_date).getTime();
+                                const eb = new Date(b.expiry_date).getTime();
+                                return eb - ea;
+                              })[0];
+
+                            if (!bestBatch) return;
+
+                            const qty = Math.min(remainingQty, bestBatch.current_quantity);
+                            if (qty <= 0) return;
+
+                            addToBill(medicine, bestBatch, qty);
+                          }}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-slate-900 text-sm">{med.medication_name}</h4>
+                              <p className="text-xs text-slate-600 mt-1">
+                                {med.dosage && `Dosage: ${med.dosage}`}
+                                {med.frequency && ` • Frequency: ${med.frequency}`}
+                                {med.duration && ` • Duration: ${med.duration}`}
+                              </p>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                                <span>Prescribed: {med.quantity}</span>
+                                <span>Dispensed: {med.dispensed_quantity}</span>
+                                <span>Remaining: {remainingQty}</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              {isAlreadyInBill ? (
+                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                  Added to Bill
+                                </span>
+                              ) : remainingQty > 0 ? (
+                                <button
+                                  className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Find the medicine and best batch
+                                    const medicine = medicines.find(m => m.id === med.medication_id);
+                                    if (!medicine) return;
+
+                                    const bestBatch = medicine.batches
+                                      .filter(b => (Number(b.current_quantity) || 0) > 0)
+                                      .filter(b => {
+                                        const exp = new Date(b.expiry_date);
+                                        return !Number.isNaN(exp.getTime()) && exp >= new Date();
+                                      })
+                                      .sort((a, b) => {
+                                        const ea = new Date(a.expiry_date).getTime();
+                                        const eb = new Date(b.expiry_date).getTime();
+                                        return eb - ea;
+                                      })[0];
+
+                                    if (!bestBatch) return;
+
+                                    const qty = Math.min(remainingQty, bestBatch.current_quantity);
+                                    if (qty <= 0) return;
+
+                                    addToBill(medicine, bestBatch, qty);
+                                  }}
+                                >
+                                  Add ({remainingQty})
+                                </button>
+                              ) : (
+                                <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs font-medium rounded">
+                                  Fully Dispensed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
             {/* Single Row Billing Entry */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
               <div className="flex items-center justify-between mb-4">

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ConditionalLayout from "@/components/ConditionalLayout";
 import EnterKeyHandler from "@/src/components/EnterKeyHandler";
+import ScrollButtons from "@/components/ScrollButtons";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({
         <ConditionalLayout>
           {children}
         </ConditionalLayout>
+        <ScrollButtons />
       </body>
     </html>
   );
