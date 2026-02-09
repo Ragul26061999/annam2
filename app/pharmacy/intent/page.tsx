@@ -1,13 +1,29 @@
 'use client';
 
 import React, { Suspense, useState, useEffect } from 'react';
-import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar } from 'lucide-react';
+import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar, BarChart3, CheckCircle, Bell, ArrowRightLeft } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+interface MovedMedicine {
+  id: string;
+  medicine_id: string;
+  medicine_name: string;
+  moved_quantity: number;
+  original_quantity: number;
+  moved_from: string;
+  moved_to: string;
+  moved_by: string;
+  moved_at: string;
+  reason: string;
+  batch_number: string;
+  manufacturer: string;
+  mrp: number;
+}
 
 interface IntentMedicine {
   id: string;
@@ -34,6 +50,7 @@ interface Medication {
   available_stock: number;
   mrp: number;
   status: string;
+  category?: string;
 }
 
 function IntentPageInner() {
@@ -41,17 +58,36 @@ function IntentPageInner() {
   const [intentMedicines, setIntentMedicines] = useState<IntentMedicine[]>([]);
   const [allIntentMedicines, setAllIntentMedicines] = useState<IntentMedicine[]>([]);
   const [allMedicines, setAllMedicines] = useState<Medication[]>([]);
-  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showBuyMedicineModal, setShowBuyMedicineModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMedicine, setSelectedMedicine] = useState<Medication | null>(null);
-  const [transferQuantity, setTransferQuantity] = useState(1);
+  const [buyMedicineData, setBuyMedicineData] = useState({
+    name: '',
+    manufacturer: '',
+    category: '',
+    quantity: 1,
+    mrp: 0,
+    batch_number: '',
+    expiry_date: ''
+  });
+  const [medicineSearchTerm, setMedicineSearchTerm] = useState('');
+  const [showMedicineDropdown, setShowMedicineDropdown] = useState(false);
+  const [selectedMedicineFromIntent, setSelectedMedicineFromIntent] = useState<IntentMedicine | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [dateRange, setDateRange] = useState('all');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedEditMedicine, setSelectedEditMedicine] = useState<IntentMedicine | null>(null);
+  const [editQuantity, setEditQuantity] = useState(1);
+  const [movedMedicines, setMovedMedicines] = useState<MovedMedicine[]>([]);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [selectedMoveMedicine, setSelectedMoveMedicine] = useState<IntentMedicine | null>(null);
+  const [moveQuantity, setMoveQuantity] = useState(1);
+  const [showBellNotifications, setShowBellNotifications] = useState(false);
+  const [zeroQuantityAlerts, setZeroQuantityAlerts] = useState<IntentMedicine[]>([]);
 
-  // Load all medicines (for transfer modal)
   const loadAllMedicines = async () => {
     try {
       console.log('Loading medicines from database...');
@@ -154,6 +190,125 @@ function IntentPageInner() {
     return Object.values(groupedByMedicine);
   };
 
+  // Load moved medicines history
+  const loadMovedMedicines = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('moved_medicines')
+        .select('*')
+        .order('moved_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error loading moved medicines:', error);
+        // If table doesn't exist, create it
+        if (error.code === 'PGRST116') {
+          console.log('moved_medicines table does not exist, will create on first move');
+          setMovedMedicines([]);
+          return;
+        }
+        throw error;
+      }
+
+      setMovedMedicines(data || []);
+    } catch (error) {
+      console.error('Error loading moved medicines:', error);
+      setMovedMedicines([]);
+    }
+  };
+
+  // Check for zero quantity medicines
+  const checkZeroQuantityMedicines = () => {
+    const zeroQtyMedicines = allIntentMedicines.filter(med => med.quantity === 0);
+    setZeroQuantityAlerts(zeroQtyMedicines);
+  };
+
+  // Move medicine function
+  const moveMedicine = async () => {
+    if (!selectedMoveMedicine || moveQuantity <= 0 || moveQuantity > selectedMoveMedicine.quantity) {
+      alert('Invalid move quantity');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newQuantity = selectedMoveMedicine.quantity - moveQuantity;
+      
+      // Update intent medicine quantity
+      const { error: updateError } = await supabase
+        .from('intent_medicines')
+        .update({ quantity: newQuantity })
+        .eq('id', selectedMoveMedicine.id);
+
+      if (updateError) throw updateError;
+
+      // Record the move in moved_medicines table
+      const moveRecord = {
+        medicine_id: selectedMoveMedicine.medication_id,
+        medicine_name: selectedMoveMedicine.medication_name,
+        moved_quantity: moveQuantity,
+        original_quantity: selectedMoveMedicine.quantity,
+        moved_from: selectedMoveMedicine.intent_type,
+        moved_to: 'updated stock medicine',
+        moved_by: 'System',
+        moved_at: new Date().toISOString(),
+        reason: 'Quantity reduction',
+        batch_number: selectedMoveMedicine.batch_number,
+        manufacturer: selectedMoveMedicine.manufacturer || '',
+        mrp: selectedMoveMedicine.mrp
+      };
+
+      const { error: moveError } = await supabase
+        .from('moved_medicines')
+        .insert(moveRecord);
+
+      if (moveError) {
+        // If table doesn't exist, create it
+        if (moveError.code === 'PGRST116') {
+          console.log('Creating moved_medicines table...');
+          // Table creation would need to be done via migration
+          console.warn('Please create moved_medicines table with appropriate schema');
+        } else {
+          throw moveError;
+        }
+      }
+
+      // If quantity becomes 0, move to updated stock medicine
+      if (newQuantity === 0) {
+        const { error: moveError } = await supabase
+          .from('intent_medicines')
+          .update({ intent_type: 'updated stock medicine' })
+          .eq('id', selectedMoveMedicine.id);
+
+        if (moveError) throw moveError;
+      }
+
+      // Refresh data
+      await fetchIntentMedicines();
+      await loadAllIntentMedicines();
+      await loadMovedMedicines();
+      checkZeroQuantityMedicines();
+
+      // Reset modal
+      setShowMoveModal(false);
+      setSelectedMoveMedicine(null);
+      setMoveQuantity(1);
+
+      alert(`Successfully moved ${moveQuantity} units of ${selectedMoveMedicine.medication_name}`);
+    } catch (error) {
+      console.error('Error moving medicine:', error);
+      alert('Error moving medicine. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openMoveModal = (medicine: IntentMedicine) => {
+    setSelectedMoveMedicine(medicine);
+    setMoveQuantity(1);
+    setShowMoveModal(true);
+  };
+
   const intentTypes = [
     { key: 'injection room', label: 'Injection Room', icon: '💉' },
     { key: 'icu', label: 'ICU', icon: '🏥' },
@@ -161,7 +316,8 @@ function IntentPageInner() {
     { key: 'nicu', label: 'NICU', icon: '👶' },
     { key: 'labour word', label: 'Labour Word', icon: '🤰' },
     { key: 'miones', label: 'Miones', icon: '🔬' },
-    { key: 'major ot', label: 'Major OT', icon: '🔪' }
+    { key: 'major ot', label: 'Major OT', icon: '🔪' },
+    { key: 'updated stock medicine', label: 'Updated Stock Medicine', icon: '📦' }
   ];
 
   // Fetch intent medicines for selected type
@@ -172,7 +328,13 @@ function IntentPageInner() {
   // Fetch all available medicines
   useEffect(() => {
     fetchAllMedicines();
+    loadMovedMedicines();
   }, []);
+
+  // Check for zero quantity medicines when data changes
+  useEffect(() => {
+    checkZeroQuantityMedicines();
+  }, [allIntentMedicines]);
 
   const fetchIntentMedicines = async () => {
     try {
@@ -205,58 +367,251 @@ function IntentPageInner() {
     }
   };
 
-  const transferMedicine = async () => {
-    if (!selectedMedicine || transferQuantity <= 0) return;
+  const buyMedicine = async () => {
+    // Enhanced validation
+    const errors = [];
 
-    if (transferQuantity > selectedMedicine.available_stock) {
-      alert('Insufficient stock available!');
+    if (!buyMedicineData.name.trim()) {
+      errors.push('Medicine name is required');
+    }
+
+    if (!buyMedicineData.manufacturer.trim()) {
+      errors.push('Manufacturer is required');
+    }
+
+    if (buyMedicineData.quantity <= 0) {
+      errors.push('Quantity must be greater than 0');
+    }
+
+    if (buyMedicineData.mrp <= 0) {
+      errors.push('MRP must be greater than 0');
+    }
+
+    if (buyMedicineData.name.trim().length < 2) {
+      errors.push('Medicine name must be at least 2 characters long');
+    }
+
+    if (buyMedicineData.manufacturer.trim().length < 2) {
+      errors.push('Manufacturer name must be at least 2 characters long');
+    }
+
+    if (errors.length > 0) {
+      alert(`Please fix the following errors:\n\n${errors.join('\n')}`);
       return;
     }
 
     setLoading(true);
     try {
-      // Add to intent_medicines table
-      const { error: insertError } = await supabase
-        .from('intent_medicines')
-        .insert({
-          intent_type: selectedIntentType,
-          medication_id: selectedMedicine.id,
-          medication_name: selectedMedicine.name,
-          batch_number: 'AUTO',
-          quantity: transferQuantity,
-          mrp: selectedMedicine.mrp
-        });
-
-      if (insertError) throw insertError;
-
-      // Update medication stock
-      const { error: updateError } = await supabase
+      // Check if medicine already exists (case-insensitive)
+      const { data: existingMedicine, error: checkError } = await supabase
         .from('medications')
-        .update({
-          available_stock: selectedMedicine.available_stock - transferQuantity,
-          total_stock: selectedMedicine.total_stock - transferQuantity
-        })
-        .eq('id', selectedMedicine.id);
+        .select('id, name, manufacturer, available_stock, total_stock, mrp, category')
+        .eq('name', buyMedicineData.name.trim())
+        .eq('manufacturer', buyMedicineData.manufacturer.trim())
+        .eq('status', 'active')
+        .single();
 
-      if (updateError) throw updateError;
+      let successMessage = '';
+      let medicineId = '';
+
+      if (existingMedicine) {
+        // Update existing medicine stock and potentially other fields
+        const newAvailableStock = existingMedicine.available_stock + buyMedicineData.quantity;
+        const newTotalStock = existingMedicine.total_stock + buyMedicineData.quantity;
+
+        const { error: updateError } = await supabase
+          .from('medications')
+          .update({
+            available_stock: newAvailableStock,
+            total_stock: newTotalStock,
+            mrp: buyMedicineData.mrp, // Update MRP if changed
+            category: buyMedicineData.category || existingMedicine.category || 'General'
+          })
+          .eq('id', existingMedicine.id);
+
+        if (updateError) throw updateError;
+
+        medicineId = existingMedicine.id;
+        successMessage = `Stock updated for "${buyMedicineData.name}" by ${buyMedicineData.manufacturer}. New stock: ${newAvailableStock}`;
+      } else {
+        // Create new medicine with comprehensive data
+        const newMedicineData = {
+          name: buyMedicineData.name.trim(),
+          manufacturer: buyMedicineData.manufacturer.trim(),
+          category: buyMedicineData.category || 'General',
+          available_stock: buyMedicineData.quantity,
+          total_stock: buyMedicineData.quantity,
+          mrp: buyMedicineData.mrp,
+          status: 'active',
+          unit: 'Tablet',
+          combination: '',
+          batch_number: buyMedicineData.batch_number || 'AUTO',
+          expiry_date: buyMedicineData.expiry_date || null
+        };
+
+        const { data: newMedicine, error: insertError } = await supabase
+          .from('medications')
+          .insert(newMedicineData)
+          .select('id')
+          .single();
+
+        if (insertError) throw insertError;
+
+        medicineId = newMedicine.id;
+        successMessage = `New medicine "${buyMedicineData.name}" added to inventory with ${buyMedicineData.quantity} units`;
+      }
+
+      // Refresh data to show updated inventory
+      await fetchAllMedicines();
+
+      // Reset form with success feedback
+      setShowBuyMedicineModal(false);
+      setBuyMedicineData({
+        name: '',
+        manufacturer: '',
+        category: '',
+        quantity: 1,
+        mrp: 0,
+        batch_number: '',
+        expiry_date: ''
+      });
+      setMedicineSearchTerm('');
+      setSelectedMedicineFromIntent(null);
+      setShowMedicineDropdown(false);
+
+      // Show success message
+      alert(`✅ ${successMessage}`);
+
+    } catch (error: any) {
+      console.error('Error buying medicine:', error);
+
+      // Provide user-friendly error messages
+      let errorMessage = 'Error purchasing medicine. Please try again.';
+
+      if (error?.message) {
+        if (error.message.includes('duplicate key')) {
+          errorMessage = 'This medicine already exists with the same name and manufacturer.';
+        } else if (error.message.includes('permission')) {
+          errorMessage = 'You do not have permission to add medicines.';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        }
+      }
+
+      alert(`❌ ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteIntentMedicine = async (medicine: IntentMedicine) => {
+    if (!confirm('Are you sure you want to remove this medicine from the department?')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Remove from intent_medicines table
+      const { error: deleteError } = await supabase
+        .from('intent_medicines')
+        .delete()
+        .eq('id', medicine.id);
+
+      if (deleteError) throw deleteError;
+
+      // Restore stock to medications table
+      // First get current stock values
+      const { data: currentMed } = await supabase
+        .from('medications')
+        .select('available_stock, total_stock')
+        .eq('id', medicine.medication_id)
+        .single();
+
+      if (currentMed) {
+        const { error: updateError } = await supabase
+          .from('medications')
+          .update({
+            available_stock: (currentMed.available_stock || 0) + medicine.quantity,
+            total_stock: (currentMed.total_stock || 0) + medicine.quantity
+          })
+          .eq('id', medicine.medication_id);
+
+        if (updateError) throw updateError;
+      }
+
+      // Refresh data
+      await fetchIntentMedicines();
+      await fetchAllMedicines();
+
+      alert('Medicine removed successfully!');
+    } catch (error) {
+      console.error('Error removing medicine:', error);
+      alert('Error removing medicine. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editIntentMedicine = async () => {
+    if (!selectedEditMedicine || editQuantity <= 0) return;
+
+    setLoading(true);
+    try {
+      const quantityDifference = editQuantity - selectedEditMedicine.quantity;
+
+      // Update intent_medicines table
+      const { error: updateIntentError } = await supabase
+        .from('intent_medicines')
+        .update({ quantity: editQuantity })
+        .eq('id', selectedEditMedicine.id);
+
+      if (updateIntentError) throw updateIntentError;
+
+      // Update medication stock (subtract the difference if positive, add if negative)
+      if (quantityDifference !== 0) {
+        // First get current stock values
+        const { data: currentMed } = await supabase
+          .from('medications')
+          .select('available_stock, total_stock')
+          .eq('id', selectedEditMedicine.medication_id)
+          .single();
+
+        if (currentMed) {
+          const stockChange = -quantityDifference; // If we increase intent quantity, we decrease available stock
+          const { error: updateStockError } = await supabase
+            .from('medications')
+            .update({
+              available_stock: (currentMed.available_stock || 0) + stockChange,
+              total_stock: (currentMed.total_stock || 0) + stockChange
+            })
+            .eq('id', selectedEditMedicine.medication_id);
+
+          if (updateStockError) throw updateStockError;
+        }
+      }
 
       // Refresh data
       await fetchIntentMedicines();
       await fetchAllMedicines();
 
       // Reset modal
-      setShowTransferModal(false);
-      setSelectedMedicine(null);
-      setTransferQuantity(1);
-      setSearchTerm('');
+      setShowEditModal(false);
+      setSelectedEditMedicine(null);
+      setEditQuantity(1);
 
-      alert('Medicine transferred successfully!');
+      alert('Medicine updated successfully!');
     } catch (error) {
-      console.error('Error transferring medicine:', error);
-      alert('Error transferring medicine. Please try again.');
+      console.error('Error updating medicine:', error);
+      alert('Error updating medicine. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const openEditModal = (medicine: IntentMedicine) => {
+    setSelectedEditMedicine(medicine);
+    setEditQuantity(medicine.quantity);
+    setShowEditModal(true);
   };
 
   const filteredMedicines = intentMedicines.filter(med =>
@@ -308,11 +663,30 @@ function IntentPageInner() {
     loadAllIntentMedicines();
   }, []);
 
+  const getFilteredIntentMedicines = () => {
+    if (!medicineSearchTerm.trim()) return [];
+    return intentMedicines.filter(med =>
+      med.medication_name.toLowerCase().includes(medicineSearchTerm.toLowerCase())
+    );
+  };
+
+  const selectMedicineFromIntent = (medicine: IntentMedicine) => {
+    setBuyMedicineData(prev => ({
+      ...prev,
+      name: medicine.medication_name,
+      manufacturer: medicine.manufacturer || '',
+      mrp: medicine.mrp
+    }));
+    setSelectedMedicineFromIntent(medicine);
+    setMedicineSearchTerm(medicine.medication_name);
+    setShowMedicineDropdown(false);
+  };
+
   const getExpiringSoonCount = () => {
     const today = new Date();
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(today.getDate() + 30);
-    
+
     return intentMedicines.filter(med => {
       if (!med.expiry_date) return false;
       const expiryDate = new Date(med.expiry_date);
@@ -327,6 +701,18 @@ function IntentPageInner() {
       const expiryDate = new Date(med.expiry_date);
       return expiryDate < today;
     }).length;
+  };
+
+  const clearMedicineSelection = () => {
+    setSelectedMedicineFromIntent(null);
+    setMedicineSearchTerm('');
+    setBuyMedicineData(prev => ({
+      ...prev,
+      name: '',
+      manufacturer: '',
+      mrp: 0,
+      category: ''
+    }));
   };
 
   return (
@@ -346,21 +732,30 @@ function IntentPageInner() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex items-center gap-3 px-5 py-3 bg-white/10 backdrop-blur-sm rounded-2xl text-white shadow-lg">
-                <span className="inline-flex items-center rounded-full bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-100 border border-purple-400/30">
-                  <Target className="w-4 h-4 mr-2" />
-                  {selectedIntentType.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                </span>
+            <div className="flex flex-col sm:flex-row gap-4"> 
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowBellNotifications(true)}
+                  className="group relative px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-3"
+                >
+                  <Bell className="w-6 h-6 group-hover:animate-pulse transition-transform duration-300" />
+                  Notifications
+                  {zeroQuantityAlerts.length > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-bold">
+                      {zeroQuantityAlerts.length}
+                    </span>
+                  )}
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-600/20 to-red-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
+                </button>
+                <button
+                  onClick={() => setShowReportsModal(true)}
+                  className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-3"
+                >
+                  <BarChart3 className="w-6 h-6 group-hover:scale-110 transition-transform duration-300" />
+                  Reports
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-600/20 to-indigo-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
+                </button>
               </div>
-              <button
-                onClick={() => setShowTransferModal(true)}
-                className="group relative px-8 py-4 bg-gradient-to-r from-white to-white/90 text-purple-700 font-bold rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-3 border border-white/30"
-              >
-                <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
-                Transfer Medicine
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600/10 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
-              </button>
             </div>
           </div>
         </div>
@@ -553,7 +948,7 @@ function IntentPageInner() {
           </div>
           
           <div className="space-y-3">
-            {searchResults.map((result: any, index) => (
+            {searchResults.map((result: any, index: number) => (
               <div key={index} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
@@ -617,14 +1012,14 @@ function IntentPageInner() {
             </div>
             <p className="text-slate-500 text-lg font-medium mb-2">No medicines found</p>
             <p className="text-slate-400 text-sm mb-6">
-              Click "Transfer Medicine" to add medicines to this department
+              Click "Buy Medicine" to add medicines to inventory
             </p>
             <button
-              onClick={() => setShowTransferModal(true)}
+              onClick={() => setShowBuyMedicineModal(true)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
             >
-              <Plus className="w-5 h-5" />
-              Transfer Medicine
+              <Package className="w-5 h-5" />
+              Buy Medicine
             </button>
           </div>
         ) : (
@@ -721,19 +1116,19 @@ function IntentPageInner() {
                       <div className="flex items-center gap-2">
                         <button
                           className="text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 px-2 py-1 rounded-md transition-colors"
-                          onClick={() => {
-                            console.log('Edit medicine:', medicine.id);
-                          }}
+                          onClick={() => openEditModal(medicine)}
                         >
                           Edit
                         </button>
                         <button
+                          className="text-green-600 hover:text-green-900 hover:bg-green-50 px-2 py-1 rounded-md transition-colors"
+                          onClick={() => openMoveModal(medicine)}
+                        >
+                          Move
+                        </button>
+                        <button
                           className="text-red-600 hover:text-red-900 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to remove this medicine?')) {
-                              console.log('Remove medicine:', medicine.id);
-                            }
-                          }}
+                          onClick={() => deleteIntentMedicine(medicine)}
                         >
                           Remove
                         </button>
@@ -754,7 +1149,515 @@ function IntentPageInner() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+
+      {/* Move Modal */}
+      {showMoveModal && selectedMoveMedicine && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <ArrowRightLeft className="w-6 h-6 text-green-600" />
+                Move Medicine
+              </h3>
+              <button
+                onClick={() => setShowMoveModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-lg font-semibold text-slate-900 mb-2">
+                  {selectedMoveMedicine.medication_name}
+                </h4>
+                <p className="text-sm text-slate-600">
+                  Current quantity: {selectedMoveMedicine.quantity}
+                </p>
+                <p className="text-sm text-slate-600">
+                  From: {selectedMoveMedicine.intent_type}
+                </p>
+                <p className="text-sm text-slate-600">
+                  To: Updated Stock Medicine
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Quantity to Move
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedMoveMedicine.quantity}
+                  value={moveQuantity}
+                  onChange={(e) => setMoveQuantity(Math.min(selectedMoveMedicine.quantity, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="Enter quantity to move"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Remaining quantity: {selectedMoveMedicine.quantity - moveQuantity}
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMoveModal(false)}
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={moveMedicine}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-xl hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Moving...
+                    </div>
+                  ) : (
+                    'Move Medicine'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && selectedEditMedicine && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900">Edit Medicine Quantity</h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-lg font-semibold text-slate-900 mb-2">
+                  {selectedEditMedicine.medication_name}
+                </h4>
+                <p className="text-sm text-slate-600">
+                  Current quantity: {selectedEditMedicine.quantity}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  New Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={editQuantity}
+                  onChange={(e) => setEditQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Enter quantity"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editIntentMedicine}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-xl hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Updating...
+                    </div>
+                  ) : (
+                    'Update'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buy Medicine Modal */}
+      {showBuyMedicineModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <Package className="w-6 h-6 text-purple-600" />
+                Buy Medicine
+              </h3>
+              <button
+                onClick={() => setShowBuyMedicineModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Medicine Name *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={medicineSearchTerm}
+                      onChange={(e) => {
+                        setMedicineSearchTerm(e.target.value);
+                        if (e.target.value !== buyMedicineData.name) {
+                          setSelectedMedicineFromIntent(null);
+                          setBuyMedicineData(prev => ({
+                            ...prev,
+                            name: e.target.value,
+                            manufacturer: '',
+                            mrp: 0,
+                            category: ''
+                          }));
+                        }
+                        setShowMedicineDropdown(e.target.value.trim() !== '');
+                      }}
+                      onFocus={() => setShowMedicineDropdown(medicineSearchTerm.trim() !== '')}
+                      onBlur={() => {
+                        // Delay hiding dropdown to allow clicks on options
+                        setTimeout(() => setShowMedicineDropdown(false), 200);
+                      }}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Search medicine in intent..."
+                    />
+                    {medicineSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={clearMedicineSelection}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {showMedicineDropdown && getFilteredIntentMedicines().length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                        {getFilteredIntentMedicines().map((medicine) => (
+                          <div
+                            key={medicine.id}
+                            onClick={() => selectMedicineFromIntent(medicine)}
+                            className="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-slate-900">{medicine.medication_name}</div>
+                            <div className="text-sm text-slate-600">
+                              {medicine.manufacturer || 'No manufacturer'} • ₹{medicine.mrp} • Qty: {medicine.quantity}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {selectedMedicineFromIntent && (
+                    <div className="mt-2 text-sm text-green-600 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Auto-filled from intent medicine
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Manufacturer *
+                  </label>
+                  <input
+                    type="text"
+                    value={buyMedicineData.manufacturer}
+                    onChange={(e) => setBuyMedicineData(prev => ({ ...prev, manufacturer: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Enter manufacturer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Category
+                </label>
+                <select
+                  value={buyMedicineData.category}
+                  onChange={(e) => setBuyMedicineData(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="">Select Category</option>
+                  <option value="Antibiotics">Antibiotics</option>
+                  <option value="Pain Killers">Pain Killers</option>
+                  <option value="Vitamins">Vitamins</option>
+                  <option value="Cardiac">Cardiac</option>
+                  <option value="Diabetes">Diabetes</option>
+                  <option value="Respiratory">Respiratory</option>
+                  <option value="Gastrointestinal">Gastrointestinal</option>
+                  <option value="Dermatology">Dermatology</option>
+                  <option value="Neurology">Neurology</option>
+                  <option value="General">General</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={buyMedicineData.quantity}
+                    onChange={(e) => setBuyMedicineData(prev => ({ ...prev, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Enter quantity"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    MRP (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={buyMedicineData.mrp}
+                    onChange={(e) => setBuyMedicineData(prev => ({ ...prev, mrp: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Enter MRP"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Batch Number
+                  </label>
+                  <input
+                    type="text"
+                    value={buyMedicineData.batch_number}
+                    onChange={(e) => setBuyMedicineData(prev => ({ ...prev, batch_number: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="AUTO (optional)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={buyMedicineData.expiry_date}
+                    onChange={(e) => setBuyMedicineData(prev => ({ ...prev, expiry_date: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reports Modal */}
+      {showReportsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-7xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <BarChart3 className="w-6 h-6 text-blue-600" />
+                Buy Medicine Reports
+              </h3>
+              <button
+                onClick={() => setShowReportsModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-slate-50 rounded-xl p-6">
+                <h4 className="text-lg font-semibold text-slate-900 mb-4">Medicine Inventory Summary</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <Package className="w-8 h-8 text-green-600" />
+                      <div>
+                        <p className="text-2xl font-bold text-slate-900">{allMedicines.length}</p>
+                        <p className="text-sm text-slate-600">Total Medicines</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <Package className="w-8 h-8 text-blue-600" />
+                      <div>
+                        <p className="text-2xl font-bold text-slate-900">
+                          {allMedicines.reduce((sum, med) => sum + med.available_stock, 0)}
+                        </p>
+                        <p className="text-sm text-slate-600">Total Stock</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <Package className="w-8 h-8 text-purple-600" />
+                      <div>
+                        <p className="text-2xl font-bold text-slate-900">
+                          ₹{allMedicines.reduce((sum, med) => sum + (med.available_stock * med.mrp), 0).toLocaleString()}
+                        </p>
+                        <p className="text-sm text-slate-600">Total Value</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-6 border-b border-slate-100">
+                  <h4 className="text-lg font-semibold text-slate-900">Moved Medicines History</h4>
+                  <p className="text-sm text-slate-600 mt-1">Recent medicine movements and transfers</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Medicine</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">From</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">To</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Quantity</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {movedMedicines.slice(0, 10).map((move) => (
+                        <tr key={move.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
+                            {move.medicine_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            {move.moved_from}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            {move.moved_to}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                            {move.moved_quantity}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            {new Date(move.moved_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            {move.reason}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {movedMedicines.length === 0 && (
+                  <div className="p-12 text-center">
+                    <ArrowRightLeft className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-500">No medicine movements recorded</p>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bell Notifications Modal */}
+      {showBellNotifications && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <Bell className="w-6 h-6 text-orange-600" />
+                Notifications
+              </h3>
+              <button
+                onClick={() => setShowBellNotifications(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {zeroQuantityAlerts.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold text-red-900 mb-4 flex items-center gap-2">
+                    <span className="text-red-600">⚠️</span>
+                    Zero Quantity Medicines
+                  </h4>
+                  <p className="text-sm text-red-700 mb-4">
+                    The following medicines have reached zero quantity and have been moved to "Updated Stock Medicine":
+                  </p>
+                  <div className="space-y-3">
+                    {zeroQuantityAlerts.map((medicine, index) => (
+                      <div key={medicine.id} className="bg-white rounded-lg p-4 border border-red-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h5 className="font-medium text-slate-900">{medicine.medication_name}</h5>
+                            <p className="text-sm text-slate-600">
+                              {medicine.manufacturer || 'Unknown manufacturer'} • Batch: {medicine.batch_number}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              Originally from: {medicine.intent_type}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              Out of Stock
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {zeroQuantityAlerts.length === 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-green-900 mb-2">All Good!</h4>
+                  <p className="text-sm text-green-700">
+                    No medicines with zero quantity. All departments have sufficient stock.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

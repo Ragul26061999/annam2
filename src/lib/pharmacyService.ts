@@ -1919,11 +1919,13 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
       .eq('batch_number', batchNumber);
 
     if (txAllError) {
-      console.error('Error fetching stock_transactions for batch:', batchNumber, txAllError);
-      
-      // Check if it's an authentication error
-      if (txAllError.message?.includes('JWT') || txAllError.message?.includes('auth') || txAllError.code === 'PGRST301') {
-        console.warn('Authentication error when fetching stock transactions. User may not be logged in.');
+      if (txAllError.message || txAllError.code) {
+        console.error('Error fetching stock_transactions for batch:', batchNumber, txAllError);
+        
+        // Check if it's an authentication error
+        if (txAllError.message?.includes('JWT') || txAllError.message?.includes('auth') || txAllError.code === 'PGRST301') {
+          console.warn('Authentication error when fetching stock transactions. User may not be logged in.');
+        }
       }
       
       // Return default values when there's an error fetching transactions
@@ -1960,11 +1962,13 @@ export async function getBatchStockStats(batchNumber: string): Promise<{
         .limit(1)
         .maybeSingle();
       if (batchError) {
-        console.error('Error fetching batch fallback quantity:', batchNumber, batchError);
-        
-        // Check if it's an authentication error
-        if (batchError.message?.includes('JWT') || batchError.message?.includes('auth') || batchError.code === 'PGRST301') {
-          console.warn('Authentication error when fetching medicine batch. User may not be logged in.');
+        if (batchError.message || batchError.code) {
+          console.error('Error fetching batch fallback quantity:', batchNumber, batchError);
+          
+          // Check if it's an authentication error
+          if (batchError.message?.includes('JWT') || batchError.message?.includes('auth') || batchError.code === 'PGRST301') {
+            console.warn('Authentication error when fetching medicine batch. User may not be logged in.');
+          }
         }
       }
       remainingUnits = Number(batchRow?.current_quantity ?? 0);

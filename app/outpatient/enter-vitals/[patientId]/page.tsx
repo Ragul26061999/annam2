@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../../../src/lib/supabase';
-import { updateQueueStatus } from '../../../../src/lib/outpatientQueueService';
+import { addToQueue, updateQueueStatus } from '../../../../src/lib/outpatientQueueService';
 import { generateBarcodeForPatient, generatePrintableBarcodeData } from '../../../../src/lib/barcodeUtils';
 import StaffSelect from '../../../../src/components/StaffSelect';
 
@@ -186,6 +186,26 @@ export default function EnterVitalsPage() {
             console.warn('Failed to update appointment status:', updateError);
           } else {
             console.log('Updated appointment status to scheduled:', appointment.id);
+          }
+        } else {
+          // No appointment found - add patient to outpatient queue so they appear in Today's Queue
+          console.log('No appointment found for patient, adding to outpatient queue');
+          console.log('Patient ID for queue:', patientId);
+          
+          // Validate patientId before calling addToQueue
+          if (!patientId || patientId.trim() === '') {
+            console.warn('Patient ID is empty, cannot add to queue');
+          } else {
+            try {
+              const queueResult = await addToQueue(patientId, new Date().toISOString().split('T')[0], 0, 'Vitals completed - ready for consultation', vitalsData.staffId);
+              if (queueResult.success) {
+                console.log('Successfully added patient to outpatient queue:', queueResult.queueEntry);
+              } else {
+                console.warn('Failed to add patient to outpatient queue:', queueResult.error);
+              }
+            } catch (queueError) {
+              console.warn('Error adding patient to outpatient queue:', queueError);
+            }
           }
         }
       } catch (appointmentUpdateError) {

@@ -45,6 +45,18 @@ export async function addToQueue(
   staffId?: string
 ): Promise<{ success: boolean; queueEntry?: QueueEntry; error?: string }> {
   try {
+    // Validate patientId
+    if (!patientId || patientId.trim() === '') {
+      return { success: false, error: 'Patient ID is required and cannot be empty' };
+    }
+
+    // Basic UUID validation (PostgreSQL UUID format)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(patientId)) {
+      return { success: false, error: `Invalid patient ID format: ${patientId}. Must be a valid UUID.` };
+    }
+
+    console.log('Adding patient to queue:', { patientId, registrationDate, priority, notes, staffId });
     // Generate queue number for today
     const { data: queueNumberData, error: queueError } = await supabase
       .rpc('generate_queue_number', { reg_date: registrationDate });

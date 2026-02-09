@@ -17,7 +17,7 @@ import { getAppointments, type Appointment } from '../../src/lib/appointmentServ
 import { getPatientByUHID, registerNewPatient, getAllPatients } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import VitalsQueueCard from '../../components/VitalsQueueCard';
-import { getQueueStats } from '../../src/lib/outpatientQueueService';
+import { getQueueEntries, getQueueStats, type QueueEntry } from '../../src/lib/outpatientQueueService';
 import { getBillingRecords, type BillingRecord } from '../../src/lib/financeService';
 import StaffSelect from '../../src/components/StaffSelect';
 
@@ -114,6 +114,10 @@ function OutpatientPageContent() {
   const [injectionQueue, setInjectionQueue] = useState<any[]>([]);
   const [updatedInjections, setUpdatedInjections] = useState<any[]>([]);
   const [injectionLoading, setInjectionLoading] = useState(false);
+  
+  // Outpatient queue state for Today's Queue tab
+  const [outpatientQueueEntries, setOutpatientQueueEntries] = useState<QueueEntry[]>([]);
+  const [queueEntriesLoading, setQueueEntriesLoading] = useState(false);
 
   // Billing state
   const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
@@ -205,6 +209,8 @@ function OutpatientPageContent() {
     loadOutpatientData();
     loadQueueStats();
     loadInjectionQueue();
+    loadUpdatedInjections();
+    loadOutpatientQueueEntries();
 
     // Auto-refresh every 30 seconds
     const intervalMs = 0;
@@ -215,6 +221,7 @@ function OutpatientPageContent() {
         loadOutpatientData();
         loadQueueStats();
         loadInjectionQueue();
+        loadUpdatedInjections();
       }, intervalMs);
     }
 
@@ -235,15 +242,13 @@ function OutpatientPageContent() {
     }
   };
 
-  const loadInjectionQueue = async () => {
+  const loadUpdatedInjections = async () => {
     try {
-      setInjectionLoading(true);
-      
       // Get today's date in YYYY-MM-DD format
       const today = new Date().toISOString().split('T')[0];
       
-      // Fetch prescriptions with injection medications for today
-      const { data: prescriptions, error } = await supabase
+      // Fetch prescriptions with injection medications that have been updated (dispensed or expired)
+      const { data: updatedPrescriptions, error } = await supabase
         .from('prescriptions')
         .select(`
           id,
@@ -251,6 +256,9 @@ function OutpatientPageContent() {
           patient_id,
           issue_date,
           created_at,
+          status,
+          edited_by_name,
+          updated_at,
           patient:patients(id, patient_id, name, date_of_birth, gender, phone),
           prescription_items(
             id,
@@ -263,12 +271,257 @@ function OutpatientPageContent() {
             medication:medications(id, name, dosage_form)
           )
         `)
-        .neq('status', 'expired')
+        .in('status', ['dispensed', 'expired'])
         .gte('created_at', `${today}T00:00:00`)
         .lt('created_at', `${today}T23:59:59`);
 
       if (error) {
-        console.error('Error fetching injection prescriptions:', error);
+        console.error('Error fetching updated injections:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        setUpdatedInjections([]);
+        return;
+      }
+
+      // Filter prescriptions that have injection medications
+      const updatedInjectionPrescriptions = (updatedPrescriptions || []).filter((prescription: any) => {
+        const items = prescription.prescription_items || [];
+        return items.some((item: any) => {
+          const dosageForm = item.medication?.dosage_form?.toLowerCase() || '';
+          return dosageForm.includes('injection') || 
+                 dosageForm.includes('inject') || 
+                 dosageForm.includes('iv') || 
+                 dosageForm.includes('im') || 
+                 dosageForm.includes('sc') || 
+                 dosageForm.includes('vial') || 
+                 dosageForm.includes('ampoule');
+        });
+      });
+
+      // Format data for display and map database status back to UI status
+      const formattedUpdatedInjections = updatedInjectionPrescriptions.map((prescription: any) => {
+        const patient = prescription.patient;
+        const items = prescription.prescription_items || [];
+        const injectionItems = items.filter((item: any) => {
+          const dosageForm = item.medication?.dosage_form?.toLowerCase() || '';
+          return dosageForm.includes('injection') || 
+                 dosageForm.includes('inject') || 
+                 dosageForm.includes('iv') || 
+                 dosageForm.includes('im') || 
+                 dosageForm.includes('sc') || 
+                 dosageForm.includes('vial') || 
+                 dosageForm.includes('ampoule');
+        });
+
+        // Map database status back to UI status
+        let uiStatus = 'pending';
+        if (prescription.status === 'dispensed') uiStatus = 'completed';
+        else if (prescription.status === 'expired') uiStatus = 'cancelled';
+        else if (prescription.status === 'active') uiStatus = 'pending';
+
+        return {
+          id: prescription.id,
+          prescription_id: prescription.prescription_id,
+          patient: patient,
+          injection_items: injectionItems,
+          created_at: prescription.created_at,
+          issue_date: prescription.issue_date,
+          status: uiStatus, // UI status for display
+          dbStatus: prescription.status, // Database status
+          updatedByName: prescription.edited_by_name || 'Unknown Staff',
+          updatedAt: prescription.updated_at
+        };
+      });
+
+      setUpdatedInjections(formattedUpdatedInjections);
+    } catch (err) {
+      console.error('Error loading updated injections:', err);
+      setUpdatedInjections([]);
+    }
+  };
+
+  const loadOutpatientQueueEntries = async () => {
+    try {
+      setQueueEntriesLoading(true);
+      const result = await getQueueEntries(selectedDate, 'waiting');
+      if (result.success && result.entries) {
+        setOutpatientQueueEntries(result.entries);
+      } else {
+        setOutpatientQueueEntries([]);
+      }
+    } catch (err) {
+      console.error('Error loading outpatient queue entries:', err);
+      setOutpatientQueueEntries([]);
+    } finally {
+      setQueueEntriesLoading(false);
+    }
+  };
+
+  const loadInjectionQueue = async () => {
+    try {
+      setInjectionLoading(true);
+      
+      // Check authentication status before querying
+      try {
+        console.log('Checking Supabase authentication status...');
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        console.log('Auth status:', { 
+          user: authData?.user ? 'authenticated' : 'not authenticated', 
+          error: authError,
+          userId: authData?.user?.id
+        });
+        
+        if (authError || !authData?.user) {
+          console.warn('User is not authenticated - this will cause RLS to block prescriptions table access');
+          console.warn('RLS Policy requires: auth.role() = authenticated, but auth.role() returns null');
+        }
+      } catch (authCheckErr) {
+        console.error('Error checking auth status:', authCheckErr);
+      }
+      
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
+      
+      console.log('Loading injection queue for today:', today);
+      
+      // First, try a simple query to test connectivity
+      try {
+        console.log('Testing basic Supabase connectivity...');
+        const { data: testData, error: testError } = await supabase
+          .from('prescriptions')
+          .select('count')
+          .limit(1)
+          .single();
+        
+        if (testError) {
+          console.error('Basic connectivity test failed:', testError);
+          setInjectionQueue([]);
+          return;
+        }
+        console.log('Basic connectivity test passed');
+      } catch (testErr) {
+        console.error('Basic connectivity test exception:', testErr);
+        setInjectionQueue([]);
+        return;
+      }
+      
+      // Fetch prescriptions with injection medications for today
+      // First try a simpler query without joins to isolate the issue
+      console.log('Trying simplified query first...');
+      let prescriptions = null;
+      let error = null;
+      
+      try {
+        const { data: simpleData, error: simpleError } = await supabase
+          .from('prescriptions')
+          .select('id, prescription_id, patient_id, issue_date, created_at, status')
+          .not('status', 'expired')
+          .not('status', 'dispensed')
+          .gte('created_at', `${today}T00:00:00`)
+          .lt('created_at', `${today}T23:59:59`)
+          .limit(50); // Limit to prevent large responses
+        
+        console.log('Simplified query result:', { data: simpleData, error: simpleError });
+        
+        if (simpleError) {
+          console.error('Simplified query failed:', simpleError);
+          
+          // Check if this is an RLS issue
+          if (!simpleError.message && !simpleError.details && !simpleError.hint && !simpleError.code) {
+            console.error('🔒 RLS ISSUE DETECTED: Empty error object suggests Row Level Security is blocking access');
+            console.error('💡 SOLUTION: The prescriptions table has RLS enabled but user is not authenticated');
+            console.error('💡 QUICK FIX: Run: ALTER TABLE public.prescriptions DISABLE ROW LEVEL SECURITY;');
+            console.error('💡 LONG FIX: Implement proper Supabase authentication');
+            // Don't throw - handle gracefully by setting empty queue
+            console.warn('Injection queue failed due to RLS, but continuing with empty queue. This is likely due to RLS policies.');
+            setInjectionQueue([]);
+            return;
+          }
+          
+          throw simpleError;
+        }
+        
+        if (!simpleData || simpleData.length === 0) {
+          console.log('No prescriptions found for today');
+          setInjectionQueue([]);
+          return;
+        }
+        
+        // Now try the complex query with joins
+        console.log('Simplified query succeeded, trying complex query...');
+        const { data: complexData, error: complexError } = await supabase
+          .from('prescriptions')
+          .select(`
+            id,
+            prescription_id,
+            patient_id,
+            issue_date,
+            created_at,
+            patient:patients(id, patient_id, name, date_of_birth, gender, phone),
+            prescription_items(
+              id,
+              medication_id,
+              dosage,
+              frequency,
+              duration,
+              quantity,
+              dispensed_quantity,
+              medication:medications(id, name, dosage_form)
+            )
+          `)
+          .not('status', 'expired')
+          .not('status', 'dispensed')
+          .gte('created_at', `${today}T00:00:00`)
+          .lt('created_at', `${today}T23:59:59`);
+        
+        prescriptions = complexData;
+        error = complexError;
+        
+      } catch (queryError) {
+        console.error('Query failed:', queryError);
+        error = queryError;
+      }
+
+      console.log('Query executed, checking results...');
+      console.log('Prescriptions data:', prescriptions);
+      console.log('Error object:', error);
+
+      if (error) {
+        console.error('Error fetching injection prescriptions:', {
+          message: error?.message || 'Unknown error',
+          details: error?.details || null,
+          hint: error?.hint || null,
+          code: error?.code || null,
+          error: error,
+          errorType: typeof error,
+          errorKeys: error ? Object.keys(error) : 'error is null/undefined'
+        });
+        
+        // Check if this is an RLS issue
+        if (!error?.message && !error?.details && !error?.hint && !error?.code) {
+          console.error('🔒 RLS ISSUE DETECTED: Empty error object suggests Row Level Security is blocking access');
+          console.error('💡 SOLUTION: The prescriptions table has RLS enabled but user is not authenticated');
+          console.error('💡 QUICK FIX: Run: ALTER TABLE public.prescriptions DISABLE ROW LEVEL SECURITY;');
+          console.error('💡 LONG FIX: Implement proper Supabase authentication');
+        }
+        
+        // For now, don't fail the entire page load due to injection queue issues
+        // This allows the outpatient page to work even if injection queue has RLS issues
+        console.warn('Injection queue failed, but continuing with empty queue. This is likely due to RLS policies.');
+        setInjectionQueue([]);
+        return;
+      }
+
+      // Debug: Log the raw data to understand what's happening
+      console.log('Raw prescriptions data:', prescriptions);
+      console.log('Prescriptions type:', typeof prescriptions);
+      console.log('Prescriptions is array:', Array.isArray(prescriptions));
+      
+      if (!prescriptions || !Array.isArray(prescriptions)) {
+        console.warn('Prescriptions data is not an array:', prescriptions);
         setInjectionQueue([]);
         return;
       }
@@ -315,7 +568,12 @@ function OutpatientPageContent() {
 
       setInjectionQueue(formattedQueue);
     } catch (err) {
-      console.error('Error loading injection queue:', err);
+      console.error('Error loading injection queue:', {
+        error: err,
+        errorMessage: err instanceof Error ? err.message : 'Unknown error',
+        errorStack: err instanceof Error ? err.stack : null,
+        errorType: typeof err
+      });
       setInjectionQueue([]);
     } finally {
       setInjectionLoading(false);
@@ -408,6 +666,7 @@ function OutpatientPageContent() {
       // Refresh the queue
       console.log('Refreshing injection queue...');
       loadInjectionQueue();
+      loadUpdatedInjections();
     } catch (err) {
       console.error('Unexpected error in updateInjectionStatus:', {
         error: err,
@@ -684,6 +943,20 @@ function OutpatientPageContent() {
     }
 
     return age;
+  };
+
+  const calculateWaitTime = (createdAt: string) => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - created.getTime()) / (1000 * 60));
+    
+    if (diffMinutes < 60) {
+      return `${diffMinutes} min`;
+    } else {
+      const hours = Math.floor(diffMinutes / 60);
+      const minutes = diffMinutes % 60;
+      return `${hours}h ${minutes}m`;
+    }
   };
 
   const handlePatientSearch = async (patientId: string) => {
@@ -1342,7 +1615,7 @@ function OutpatientPageContent() {
                 }`}
             >
               <Calendar className="h-4 w-4" />
-              Today's Queue
+              Today's Queue ({filteredAppointments.length + outpatientQueueEntries.length})
             </button>
             <button
               onClick={() => setActiveTab('patients')}
@@ -2168,57 +2441,135 @@ function OutpatientPageContent() {
         </div>
       )}
 
-      {/* Render appointments in the tab if appointments tab is active */}
-      {activeTab === 'appointments' && filteredAppointments.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mt-6">
-          <div className="divide-y divide-gray-100">
-            {filteredAppointments.map((appointment, index) => {
-              const patientName = appointment.patient?.name || 'Unknown Patient';
-              const doctorName = appointment.doctor?.user?.name ||
-                appointment.patient?.consulting_doctor_name ||
-                'Unknown Doctor';
+      {/* Render appointments and queue entries in the appointments tab */}
+      {activeTab === 'appointments' && (filteredAppointments.length > 0 || outpatientQueueEntries.length > 0) && (
+        <div className="space-y-6 mt-6">
+          {/* Appointments Section */}
+          {filteredAppointments.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+              <div className="p-4 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Scheduled Appointments</h3>
+                <p className="text-sm text-gray-600">Patients with confirmed appointments</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {filteredAppointments.map((appointment, index) => {
+                  const patientName = appointment.patient?.name || 'Unknown Patient';
+                  const doctorName = appointment.doctor?.user?.name ||
+                    appointment.patient?.consulting_doctor_name ||
+                    'Unknown Doctor';
 
-              return (
-                <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-orange-500 rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">{index + 1}</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="font-semibold text-gray-900">{patientName}</h3>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(appointment.status)}`}>
-                            {getStatusIcon(appointment.status)}
-                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
-                          </span>
+                  return (
+                    <div key={appointment.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-blue-500 rounded-lg flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">{index + 1}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-semibold text-gray-900">{patientName}</h3>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(appointment.status)}`}>
+                                {getStatusIcon(appointment.status)}
+                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                              <span className="flex items-center gap-1">
+                                <Clock size={12} />
+                                {appointment.appointment_time}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Stethoscope size={12} />
+                                Dr. {doctorName}
+                              </span>
+                              {appointment.chief_complaint && (
+                                <span className="text-gray-500">• {appointment.chief_complaint}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Clock size={12} />
-                            {appointment.appointment_time}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Stethoscope size={12} />
-                            Dr. {doctorName}
-                          </span>
-                          {appointment.chief_complaint && (
-                            <span className="text-gray-500">• {appointment.chief_complaint}</span>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <Link href={`/patients/${appointment.patient_id}`}>
+                            <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
+                              <Eye size={18} />
+                            </button>
+                          </Link>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Link href={`/patients/${appointment.patient_id}`}>
-                        <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
-                          <Eye size={18} />
-                        </button>
-                      </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Outpatient Queue Section - Patients who completed vitals */}
+          {outpatientQueueEntries.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+              <div className="p-4 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Today's OP Queue</h3>
+                <p className="text-sm text-gray-600">Patients who completed vitals and are ready for consultation</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {outpatientQueueEntries.map((queueEntry, index) => {
+                  const patient = queueEntry.patient;
+                  if (!patient) return null;
+
+                  const waitTime = calculateWaitTime(queueEntry.created_at);
+
+                  return (
+                    <div key={queueEntry.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-green-500 rounded-lg flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">Q{queueEntry.queue_number}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-semibold text-gray-900">{patient.name}</h3>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                <CheckCircle size={12} />
+                                Ready for Consultation
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                              <span className="flex items-center gap-1">
+                                <User size={12} />
+                                UHID: {patient.patient_id}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock size={12} />
+                                Wait: {waitTime}
+                              </span>
+                              {patient.primary_complaint && (
+                                <span className="text-gray-500">• {patient.primary_complaint}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/patients/${patient.id}`}>
+                            <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Patient">
+                              <Eye size={18} />
+                            </button>
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'appointments' && filteredAppointments.length === 0 && outpatientQueueEntries.length === 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mt-6">
+          <div className="text-center">
+            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Patients in Today's Queue</h3>
+            <p className="text-gray-600">There are no scheduled appointments or patients ready for consultation today.</p>
           </div>
         </div>
       )}

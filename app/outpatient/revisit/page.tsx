@@ -20,6 +20,7 @@ import {
 import { supabase } from '../../../src/lib/supabase';
 import { createAppointment, type AppointmentData } from '../../../src/lib/appointmentService';
 import { createOPConsultationBill, type PaymentRecord } from '../../../src/lib/universalPaymentService';
+import { addToQueue } from '../../../src/lib/outpatientQueueService';
 import StaffSelect from '../../../src/components/StaffSelect';
 import UniversalPaymentModal from '../../../src/components/UniversalPaymentModal';
 
@@ -384,6 +385,27 @@ export default function OutpatientRevisitPage() {
       const appointment = await createAppointment(appointmentData, form.staffId || undefined, true);
       setCreatedAppointmentId(appointment.id);
 
+      // Add patient to outpatient queue for vitals
+      try {
+        const queueResult = await addToQueue(
+          selectedPatient.id,
+          appointmentDate,
+          0, // normal priority
+          `Revisit patient - ${form.complaints || 'No complaints'}`,
+          form.staffId || undefined
+        );
+        
+        if (queueResult.success) {
+          console.log('Patient added to vitals queue:', queueResult.queueEntry);
+        } else {
+          console.error('Failed to add patient to queue:', queueResult.error);
+          // Don't fail the entire process if queue addition fails
+        }
+      } catch (queueError) {
+        console.error('Error adding patient to vitals queue:', queueError);
+        // Don't fail the entire process if queue addition fails
+      }
+
       // Create OP consultation bill
       try {
         if (!appointment.encounter?.id) {
@@ -425,7 +447,7 @@ export default function OutpatientRevisitPage() {
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Revisit Created</h2>
-          <p className="text-gray-600 mb-4">Appointment created successfully.</p>
+          <p className="text-gray-600 mb-4">Appointment created and patient added to vitals queue.</p>
           {createdAppointmentId && (
             <p className="text-xs text-gray-500 mb-6">Appointment ID: {createdAppointmentId}</p>
           )}
@@ -452,10 +474,17 @@ export default function OutpatientRevisitPage() {
             )}
 
             <button
-              onClick={() => router.push('/outpatient?tab=appointments')}
+              onClick={() => router.push('/outpatient')}
               className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors"
             >
-              Return to Appointments
+              Return to Outpatient
+            </button>
+
+            <button
+              onClick={() => router.push('/outpatient')}
+              className="w-full py-3 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl font-semibold transition-colors"
+            >
+              View Vitals Queue
             </button>
           </div>
         </div>
