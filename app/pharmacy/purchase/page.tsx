@@ -293,8 +293,11 @@ export default function DrugPurchasePage() {
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Returned</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Qty</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Pack Count</th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Free</th>
-                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Unit Price</th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">MRP</th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">GST%</th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
@@ -307,6 +310,13 @@ export default function DrugPurchasePage() {
                                 <td className="px-4 py-3 text-sm text-gray-500">{item.batch_number}</td>
                                 <td className="px-4 py-3 text-sm text-gray-500">{formatDate(item.expiry_date)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900 text-right">{item.quantity}</td>
+                                <td className="px-4 py-3 text-sm text-red-600 text-right font-medium">
+                                    {(item as any).returned_quantity || 0}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900 text-right font-medium">
+                                    {(item as any).net_quantity || item.quantity}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900 text-right">{item.pack_counting || 1}</td>
                                 <td className="px-4 py-3 text-sm text-gray-500 text-right">{item.free_quantity || 0}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(item.unit_price)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-500 text-right">{formatCurrency(item.mrp)}</td>
@@ -317,15 +327,15 @@ export default function DrugPurchasePage() {
                     </tbody>
                     <tfoot className="bg-gray-50">
                         <tr>
-                            <td colSpan={8} className="px-4 py-3 text-right font-medium text-gray-900">Subtotal</td>
+                            <td colSpan={11} className="px-4 py-3 text-right font-medium text-gray-900">Subtotal</td>
                             <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(selectedPurchase.subtotal)}</td>
                         </tr>
                          <tr>
-                            <td colSpan={8} className="px-4 py-3 text-right font-medium text-gray-900">Total GST</td>
+                            <td colSpan={11} className="px-4 py-3 text-right font-medium text-gray-900">Total GST</td>
                             <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(selectedPurchase.total_gst)}</td>
                         </tr>
                         <tr>
-                            <td colSpan={8} className="px-4 py-3 text-right font-bold text-gray-900">Grand Total</td>
+                            <td colSpan={11} className="px-4 py-3 text-right font-bold text-gray-900">Grand Total</td>
                             <td className="px-4 py-3 text-right font-bold text-blue-600">{formatCurrency(selectedPurchase.total_amount)}</td>
                         </tr>
                     </tfoot>

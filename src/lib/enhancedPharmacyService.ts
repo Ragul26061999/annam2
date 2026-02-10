@@ -456,21 +456,43 @@ export async function getDrugPurchaseById(id: string): Promise<DrugPurchase | nu
       console.error('Error fetching purchase items:', JSON.stringify(itemsError, null, 2));
     }
 
+    // Get returned quantities for each item
+    const itemIds = items?.map((item: any) => item.id) || [];
+    const { data: returnedItems } = await supabase
+      .from('purchase_return_items')
+      .select('quantity, batch_number, medication_id')
+      .in('batch_number', items?.map((item: any) => item.batch_number) || [])
+      .eq('medication_id', items?.[0]?.medication_id || '');
+
+    // Create a map of returned quantities by batch number
+    const returnedMap = new Map<string, number>();
+    returnedItems?.forEach((ret: any) => {
+      const key = `${ret.medication_id}-${ret.batch_number}`;
+      returnedMap.set(key, (returnedMap.get(key) || 0) + Number(ret.quantity));
+    });
+
     return {
       ...purchase,
       subtotal: Number(purchase.taxable_amount || 0),
       total_gst: Number(purchase.total_tax || 0),
       total_amount: Number(purchase.total_amount || 0),
       discount_amount: Number(purchase.discount_amount || 0),
-      items: items?.map((item: any) => ({
-        ...item,
-        medication_name: item.medication?.name || '',
-        unit_price: Number(item.purchase_rate || 0),
-        mrp: Number(item.mrp || 0),
-        total_amount: Number(item.total_amount || 0),
-        gst_amount: (Number(item.cgst_amount || 0) + Number(item.sgst_amount || 0) + Number(item.igst_amount || 0)),
-        gst_percent: item.gst_percent ? Number(item.gst_percent) : (Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0) + Number(item.igst_percent || 0))
-      })) || []
+      items: items?.map((item: any) => {
+        const returnKey = `${item.medication_id}-${item.batch_number}`;
+        const returnedQty = returnedMap.get(returnKey) || 0;
+        return {
+          ...item,
+          medication_name: item.medication?.name || '',
+          unit_price: Number(item.purchase_rate || 0),
+          mrp: Number(item.mrp || 0),
+          pack_counting: Number(item.pack_size || item.pack_counting || 1),
+          total_amount: Number(item.total_amount || 0),
+          gst_amount: (Number(item.cgst_amount || 0) + Number(item.sgst_amount || 0) + Number(item.igst_amount || 0)),
+          gst_percent: item.gst_percent ? Number(item.gst_percent) : (Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0) + Number(item.igst_amount || 0)),
+          returned_quantity: returnedQty,
+          net_quantity: Number(item.quantity || 0) - returnedQty
+        };
+      }) || []
     };
   } catch (error) {
     console.error('Error in getDrugPurchaseById:', error);
@@ -576,6 +598,48 @@ export async function getPurchaseReturns(filters?: {
   }
 }
 
+export async function getPurchaseReturnById(id: string): Promise<PurchaseReturn | null> {
+  try {
+    const { data: ret, error } = await supabase
+      .from('purchase_returns')
+      .select(`*, supplier:suppliers(*)`)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching purchase return:', error);
+      return null;
+    }
+
+    const { data: items, error: itemsError } = await supabase
+      .from('purchase_return_items')
+      .select(`*, medication:medications(id, name, medication_code, generic_name)`)
+      .eq('return_id', id);
+
+    if (itemsError) {
+      console.error('Error fetching return items:', itemsError);
+    }
+
+    return {
+      ...ret,
+      subtotal: Number(ret.taxable_amount || 0),
+      gst_amount: Number(ret.total_tax || 0),
+      total_amount: Number(ret.total_amount || 0),
+      items: items?.map((item: any) => ({
+        ...item,
+        medication_name: item.medication?.name || '',
+        unit_price: Number(item.purchase_rate || 0),
+        gst_percent: Number(item.cgst_percent || 0) + Number(item.sgst_percent || 0),
+        gst_amount: Number(item.cgst_amount || 0) + Number(item.sgst_amount || 0),
+        total_amount: Number(item.total_amount || 0),
+      })) || []
+    };
+  } catch (error) {
+    console.error('Error in getPurchaseReturnById:', error);
+    return null;
+  }
+}
+
 export async function createPurchaseReturn(
   returnData: Partial<PurchaseReturn>,
   items: PurchaseReturnItem[]
@@ -583,78 +647,175 @@ export async function createPurchaseReturn(
   try {
     const { data: returnNumber } = await supabase.rpc('generate_purchase_return_number');
 
-    let subtotal = 0;
-    let totalGst = 0;
+    let totalQty = 0;
+    let totalDiscount = 0;
+    let totalTaxable = 0;
+    let totalCgst = 0;
+    let totalSgst = 0;
+    let totalTax = 0;
+    let totalAmount = 0;
 
     items.forEach(item => {
-      subtotal += item.quantity * item.unit_price;
-      totalGst += item.gst_amount || 0;
+      const lineSubtotal = item.quantity * item.unit_price;
+      const discPct = (item as any).discount_percent || 0;
+      const discAmt = lineSubtotal * discPct / 100;
+      const taxable = lineSubtotal - discAmt;
+      const gstPct = item.gst_percent || 0;
+      const gstAmt = taxable * gstPct / 100;
+      const cgst = gstAmt / 2;
+      const sgst = gstAmt / 2;
+      totalQty += item.quantity;
+      totalDiscount += discAmt;
+      totalTaxable += taxable;
+      totalCgst += cgst;
+      totalSgst += sgst;
+      totalTax += gstAmt;
+      totalAmount += taxable + gstAmt;
     });
 
+    // Insert into purchase_returns (matching actual DB schema)
     const { data: prData, error } = await supabase
       .from('purchase_returns')
       .insert({
         return_number: returnNumber || `PR-${Date.now()}`,
-        purchase_id: returnData.purchase_id,
+        purchase_id: returnData.purchase_id || null,
         supplier_id: returnData.supplier_id,
         return_date: returnData.return_date || new Date().toISOString().split('T')[0],
-        subtotal,
-        gst_amount: totalGst,
-        total_amount: subtotal + totalGst,
-        reason: returnData.reason,
-        reason_details: returnData.reason_details,
+        reason: returnData.reason || null,
+        return_reason_code: (returnData as any).return_reason_code || returnData.reason || null,
         status: returnData.status || 'draft',
-        processed_by: returnData.processed_by
+        total_quantity: totalQty,
+        total_amount: totalAmount,
+        discount_amount: totalDiscount,
+        taxable_amount: totalTaxable,
+        cgst_amount: totalCgst,
+        sgst_amount: totalSgst,
+        igst_amount: 0,
+        total_tax: totalTax,
+        net_amount: totalAmount,
+        remarks: returnData.reason_details || (returnData as any).remarks || null,
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    // Insert items
-    const itemsToInsert = items.map(item => ({
-      return_id: prData.id,
-      medication_id: item.medication_id,
-      batch_number: item.batch_number,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      gst_percent: item.gst_percent || 0,
-      gst_amount: item.gst_amount || 0,
-      total_amount: item.total_amount,
-      reason: item.reason
-    }));
-
-    await supabase.from('purchase_return_items').insert(itemsToInsert);
-
-    // Update stock (reduce)
-    for (const item of items) {
-      await supabase
-        .from('medications')
-        .select('available_stock')
-        .eq('id', item.medication_id)
-        .single()
-        .then(async ({ data: med }: any) => {
-          if (med) {
-            await supabase
-              .from('medications')
-              .update({ 
-                available_stock: Math.max(0, (med.available_stock || 0) - item.quantity),
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', item.medication_id);
-          }
-        });
-
-      // Add stock transaction
-      await supabase.from('stock_transactions').insert({
+    // Insert items into purchase_return_items (matching actual DB schema)
+    const itemsToInsert = items.map(item => {
+      const lineSubtotal = item.quantity * item.unit_price;
+      const discPct = (item as any).discount_percent || 0;
+      const discAmt = lineSubtotal * discPct / 100;
+      const taxable = lineSubtotal - discAmt;
+      const gstPct = item.gst_percent || 0;
+      const gstAmt = taxable * gstPct / 100;
+      const cgst = gstAmt / 2;
+      const sgst = gstAmt / 2;
+      return {
+        return_id: prData.id,
         medication_id: item.medication_id,
-        transaction_type: 'return',
+        batch_number: item.batch_number || '',
+        expiry_date: (item as any).expiry_date || new Date().toISOString().split('T')[0],
+        quantity: item.quantity,
+        purchase_rate: item.unit_price,
+        discount_percent: discPct,
+        discount_amount: discAmt,
+        taxable_amount: taxable,
+        cgst_percent: gstPct / 2,
+        cgst_amount: cgst,
+        sgst_percent: gstPct / 2,
+        sgst_amount: sgst,
+        igst_percent: 0,
+        igst_amount: 0,
+        total_amount: taxable + gstAmt,
+        return_reason: item.reason || returnData.reason || null,
+      };
+    });
+
+    const { error: itemsError } = await supabase.from('purchase_return_items').insert(itemsToInsert);
+    if (itemsError) {
+      console.error('Error inserting return items:', itemsError);
+      // Rollback header
+      await supabase.from('purchase_returns').delete().eq('id', prData.id);
+      throw itemsError;
+    }
+
+    // Update stock (reduce) and add stock transactions
+    for (const item of items) {
+      // Update overall medication stock
+      const { data: med, error: medError } = await supabase
+        .from('medications')
+        .select('available_stock, total_stock')
+        .eq('id', item.medication_id)
+        .single();
+
+      if (medError) {
+        console.error('Error fetching medication stock:', medError);
+      } else if (med) {
+        const newAvailableStock = Math.max(0, (med.available_stock || 0) - item.quantity);
+        const newTotalStock = Math.max(0, (med.total_stock || 0) - item.quantity);
+        
+        const { error: updateError } = await supabase
+          .from('medications')
+          .update({
+            available_stock: newAvailableStock,
+            total_stock: newTotalStock,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', item.medication_id);
+
+        if (updateError) {
+          console.error('Error updating medication stock:', updateError);
+        }
+      }
+
+      // Update specific batch quantity
+      if (item.batch_number) {
+        const { data: batch, error: batchError } = await supabase
+          .from('medicine_batches')
+          .select('current_quantity')
+          .eq('medicine_id', item.medication_id)
+          .eq('batch_number', item.batch_number)
+          .eq('status', 'active')
+          .single();
+
+        if (batchError) {
+          console.error('Error fetching batch stock:', batchError);
+        } else if (batch) {
+          const newBatchQuantity = Math.max(0, (batch.current_quantity || 0) - item.quantity);
+          
+          const { error: batchUpdateError } = await supabase
+            .from('medicine_batches')
+            .update({
+              current_quantity: newBatchQuantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('medicine_id', item.medication_id)
+            .eq('batch_number', item.batch_number);
+
+          if (batchUpdateError) {
+            console.error('Error updating batch stock:', batchUpdateError);
+          }
+        }
+      }
+
+      // Add stock transaction for audit trail
+      const { error: transError } = await supabase.from('stock_transactions').insert({
+        medication_id: item.medication_id,
+        transaction_type: 'purchase_return',
         quantity: -item.quantity,
         unit_price: item.unit_price,
-        batch_number: item.batch_number,
+        reference_id: prData.id,
+        reference_type: 'purchase_return',
+        batch_number: item.batch_number || null,
+        expiry_date: (item as any).expiry_date || null,
+        supplier_id: returnData.supplier_id || null,
         notes: `Purchase Return: ${prData.return_number}`,
         transaction_date: new Date().toISOString()
       });
+
+      if (transError) {
+        console.error('Error inserting stock transaction:', transError);
+      }
     }
 
     return prData;
