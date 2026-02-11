@@ -225,8 +225,9 @@ export default function ClinicalEntryForm2({
   const fetchVitalsAndComplaints = async () => {
     setVitalsLoading(true);
     try {
-      // Fetch vitals for this appointment
-      const { data: vitals } = await supabase
+      // Fetch vitals for this appointment - try appointment_id first
+      let vitals: any = null;
+      const { data: vitalsById } = await supabase
         .from('vitals')
         .select('*')
         .eq('patient_id', patientId)
@@ -234,10 +235,61 @@ export default function ClinicalEntryForm2({
         .order('recorded_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      vitals = vitalsById;
+
+      // If not found by appointment_id, try encounter_id
+      if (!vitals && encounterId) {
+        const { data: vitalsByEnc } = await supabase
+          .from('vitals')
+          .select('*')
+          .eq('patient_id', patientId)
+          .eq('encounter_id', encounterId)
+          .order('recorded_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        vitals = vitalsByEnc;
+      }
+
+      // If still not found, try latest vitals for this patient
+      if (!vitals) {
+        const { data: latestVitals } = await supabase
+          .from('vitals')
+          .select('*')
+          .eq('patient_id', patientId)
+          .order('recorded_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        vitals = latestVitals;
+      }
+
+      // If no vitals in vitals table, fall back to patient record
+      if (!vitals) {
+        const { data: patientVitals } = await supabase
+          .from('patients')
+          .select('bp_systolic, bp_diastolic, pulse, temperature, spo2, respiratory_rate, weight, height, bmi, random_blood_sugar, vital_notes')
+          .eq('id', patientId)
+          .single();
+        if (patientVitals && (patientVitals.bp_systolic || patientVitals.pulse || patientVitals.temperature || patientVitals.weight || patientVitals.height || patientVitals.spo2)) {
+          vitals = {
+            blood_pressure_systolic: patientVitals.bp_systolic,
+            blood_pressure_diastolic: patientVitals.bp_diastolic,
+            heart_rate: patientVitals.pulse,
+            temperature: patientVitals.temperature,
+            oxygen_saturation: patientVitals.spo2,
+            respiratory_rate: patientVitals.respiratory_rate,
+            weight: patientVitals.weight,
+            height: patientVitals.height,
+            blood_glucose: patientVitals.random_blood_sugar,
+            notes: patientVitals.vital_notes,
+            recorded_at: null
+          };
+        }
+      }
       setVitalsData(vitals);
 
       // Fetch clinical notes (complaints) for this appointment
-      const { data: notes } = await supabase
+      let notes: any = null;
+      const { data: notesById } = await supabase
         .from('clinical_notes')
         .select('chief_complaint, history_of_present_illness, physical_examination, assessment, clinical_impression, doctor_notes')
         .eq('patient_id', patientId)
@@ -245,6 +297,20 @@ export default function ClinicalEntryForm2({
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      notes = notesById;
+
+      // If not found by appointment_id, try encounter_id
+      if (!notes && encounterId) {
+        const { data: notesByEnc } = await supabase
+          .from('clinical_notes')
+          .select('chief_complaint, history_of_present_illness, physical_examination, assessment, clinical_impression, doctor_notes')
+          .eq('patient_id', patientId)
+          .eq('encounter_id', encounterId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        notes = notesByEnc;
+      }
       setComplaintsData(notes);
 
       // Fetch patient primary complaint

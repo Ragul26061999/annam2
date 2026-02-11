@@ -1691,9 +1691,14 @@ function NewBillingPageInner() {
         <td class="items-8cm">${index + 1}.</td>
         <td class="items-8cm">${item.medicine?.name || item.name}</td>
         <td class="items-8cm text-center">${item.quantity}</td>
-        <td class="items-8cm text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+        <td class="items-8cm text-right">${Number(item.total || item.total_amount || item.amount || 0).toFixed(2)}</td>
       </tr>
     `).join('');
+
+    const subtotal = Number(generatedBill.totals?.subtotal || generatedBill.items?.reduce((s: number, i: any) => s + Number(i.total || i.total_amount || i.amount || 0), 0) || 0);
+    const discount = Number(generatedBill.totals?.discountAmount || generatedBill.totals?.discount || 0);
+    const tax = Number(generatedBill.totals?.taxAmount || generatedBill.totals?.tax || 0);
+    const totalAmount = Number(generatedBill.totals?.totalAmount || generatedBill.totals?.total || generatedBill.total || 0);
 
     const thermalContent = `
       <html>
@@ -1775,23 +1780,23 @@ function NewBillingPageInner() {
           <div style="margin-top: 10px;">
             <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
-              <span>${Number(generatedBill.totals?.subtotal || 0).toFixed(2)}</span>
+              <span>${(subtotal - discount).toFixed(2)}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-              <span>${Number(generatedBill.totals?.discountAmount || 0).toFixed(2)}</span>
+              <span>${discount.toFixed(2)}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-              <span>${Number((generatedBill.totals?.taxAmount || 0) / 2).toFixed(2)}</span>
+              <span>${(tax / 2).toFixed(2)}</span>
             </div>
             <div class="totals-line header-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-              <span>${Number((generatedBill.totals?.taxAmount || 0) / 2).toFixed(2)}</span>
+              <span>${(tax / 2).toFixed(2)}</span>
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${Number(generatedBill.totals?.totalAmount || 0).toFixed(2)}</span>
+              <span>${totalAmount.toFixed(2)}</span>
             </div>
           </div>
 
@@ -1836,7 +1841,7 @@ function NewBillingPageInner() {
         <td class="items-8cm">${index + 1}.</td>
         <td class="items-8cm">${item.medicine?.name || item.name}</td>
         <td class="items-8cm text-center">${item.quantity}</td>
-        <td class="items-8cm text-right">${Number(item.total_amount || item.amount || 0).toFixed(2)}</td>
+        <td class="items-8cm text-right">${Number(item.total || item.total_amount || item.amount || 0).toFixed(2)}</td>
       </tr>
     `).join('');
 
