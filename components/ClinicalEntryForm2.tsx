@@ -16,7 +16,8 @@ import {
   AlertCircle,
   Search,
   Stethoscope,
-  Clock
+  Clock,
+  Syringe
 } from 'lucide-react';
 import { supabase } from '../src/lib/supabase';
 import { SearchableSelect } from '../src/components/ui/SearchableSelect';
@@ -42,7 +43,7 @@ interface ClinicalEntryForm2Props {
   onSuccess?: () => void;
 }
 
-type TabType = 'notes' | 'lab' | 'xray' | 'prescriptions' | 'followup' | 'vitals';
+type TabType = 'notes' | 'lab' | 'xray' | 'prescriptions' | 'injections' | 'followup' | 'vitals';
 
 // Lab Test Interface
 interface LabTest {
@@ -122,7 +123,7 @@ export default function ClinicalEntryForm2({
   patientUHID,
   onSuccess
 }: ClinicalEntryForm2Props) {
-  const [activeTab, setActiveTab] = useState<TabType>('notes');
+  const [activeTab, setActiveTab] = useState<TabType>('vitals');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,6 +190,16 @@ export default function ClinicalEntryForm2({
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
   const [expandedPrescriptionIndexes, setExpandedPrescriptionIndexes] = useState<number[]>([]);
 
+  // Injection State
+  const [injectionItems, setInjectionItems] = useState<PrescriptionItem[]>([]);
+  const [showInjectionSearch, setShowInjectionSearch] = useState(false);
+  const [injectionSearchTerm, setInjectionSearchTerm] = useState('');
+  const [injectionSearchResults, setInjectionSearchResults] = useState<any[]>([]);
+  const [isAddingNewInjection, setIsAddingNewInjection] = useState(false);
+  const [newInjectionName, setNewInjectionName] = useState('');
+  const [newInjectionDosage, setNewInjectionDosage] = useState('');
+  const [expandedInjectionIndexes, setExpandedInjectionIndexes] = useState<number[]>([]);
+
   // Vitals & Complaints State
   const [vitalsData, setVitalsData] = useState<any>(null);
   const [complaintsData, setComplaintsData] = useState<any>(null);
@@ -210,6 +221,7 @@ export default function ClinicalEntryForm2({
     { id: 'lab' as TabType, label: 'Lab Tests', icon: Activity },
     { id: 'xray' as TabType, label: 'X-Ray & Scans', icon: Activity },
     { id: 'prescriptions' as TabType, label: 'Prescriptions', icon: Pill },
+    { id: 'injections' as TabType, label: 'Injections', icon: Syringe },
     { id: 'followup' as TabType, label: 'Follow-up', icon: Calendar }
   ];
 
@@ -455,6 +467,113 @@ export default function ClinicalEntryForm2({
     }
     
     setPrescriptions(updatedItems);
+  };
+
+  // Injection Functions
+  const searchInjections = (term: string) => {
+    if (!term.trim()) {
+      setInjectionSearchResults([]);
+      return;
+    }
+    const filtered = medications.filter(med =>
+      (med.dosage_form?.toLowerCase() === 'injection' || med.category?.toLowerCase() === 'injection') &&
+      (med.name.toLowerCase().includes(term.toLowerCase()) ||
+        (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase())))
+    );
+    // Also search all medications if no injection-specific results
+    if (filtered.length === 0) {
+      const allFiltered = medications.filter(med =>
+        med.name.toLowerCase().includes(term.toLowerCase()) ||
+        (med.generic_name && med.generic_name.toLowerCase().includes(term.toLowerCase()))
+      );
+      setInjectionSearchResults(allFiltered);
+    } else {
+      setInjectionSearchResults(filtered);
+    }
+  };
+
+  const addInjectionToList = (medication: any) => {
+    const newItem: PrescriptionItem = {
+      medication_id: medication.id,
+      medication_name: medication.name,
+      generic_name: medication.generic_name || '',
+      dosage: medication.strength || '',
+      frequency_times: [],
+      meal_timing: '',
+      duration_days: 1,
+      instructions: '',
+      quantity: 1,
+      auto_calculate_quantity: false,
+      stock_quantity: medication.available_stock || 0
+    };
+    setInjectionItems((prev) => {
+      const next = [...prev, newItem];
+      const newIndex = next.length - 1;
+      setExpandedInjectionIndexes((expanded) => Array.from(new Set([...expanded, newIndex])));
+      return next;
+    });
+    setInjectionSearchTerm('');
+    setInjectionSearchResults([]);
+    setShowInjectionSearch(true);
+  };
+
+  const handleAddNewInjection = async () => {
+    if (!newInjectionName.trim() || !newInjectionDosage.trim()) return;
+    try {
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const medicationCode = `INJ${timestamp}${random}`;
+
+      const { data: newInj, error } = await supabase
+        .from('medications')
+        .insert({
+          medication_code: medicationCode,
+          name: newInjectionName.trim(),
+          generic_name: null,
+          manufacturer: 'External Pharmacy',
+          category: 'Injection',
+          dosage_form: 'Injection',
+          strength: newInjectionDosage.trim(),
+          selling_price: 0,
+          purchase_price: 0,
+          is_external: true,
+          is_active: true,
+          available_stock: 0,
+          total_stock: 0,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMedications(prev => [...prev, newInj]);
+      addInjectionToList(newInj);
+      setNewInjectionName('');
+      setNewInjectionDosage('');
+      setIsAddingNewInjection(false);
+    } catch (err) {
+      console.error('Error adding new injection:', err);
+    }
+  };
+
+  const toggleInjectionExpanded = (index: number) => {
+    setExpandedInjectionIndexes((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const removeInjectionAtIndex = (index: number) => {
+    setInjectionItems((prev) => prev.filter((_, i) => i !== index));
+    setExpandedInjectionIndexes((prev) =>
+      prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i))
+    );
+  };
+
+  const updateInjectionItem = (index: number, field: keyof PrescriptionItem, value: any) => {
+    const updatedItems = [...injectionItems];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    setInjectionItems(updatedItems);
   };
 
   const addLabRow = () => {
@@ -789,6 +908,37 @@ export default function ClinicalEntryForm2({
 
         const { error: prescriptionsError } = await createPrescription(prescriptionData);
         if (prescriptionsError) throw prescriptionsError;
+      }
+
+      // Save Injections (as prescriptions with injection type)
+      if (injectionItems.length > 0) {
+        try {
+          const injectionMedicines = injectionItems.map(inj => ({
+            medication_id: inj.medication_id,
+            medicine_name: inj.medication_name,
+            dosage: inj.dosage || 'As prescribed',
+            frequency: formatFrequency(inj.frequency_times),
+            duration: `${inj.duration_days} days`,
+            quantity: inj.quantity || 1,
+            instructions: inj.instructions || 'Injection'
+          }));
+
+          const injectionPrescriptionData: PrescriptionData = {
+            patient_id: patientId,
+            doctor_id: doctorId,
+            appointment_id: appointmentId,
+            encounter_id: encounterId,
+            medicines: injectionMedicines,
+            instructions: 'Injection prescribed during clinical encounter'
+          };
+
+          const { error: injectionError } = await createPrescription(injectionPrescriptionData);
+          if (injectionError) {
+            console.error('Failed to save injections:', injectionError);
+          }
+        } catch (injErr) {
+          console.error('Error saving injections:', injErr);
+        }
       }
 
       // Save Follow-up
@@ -1723,6 +1873,277 @@ export default function ClinicalEntryForm2({
                   <div className="text-center py-8 text-gray-500">
                     <Pill className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                     <p>No medications added yet. Click "Add Medication" to start prescribing.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Injections Tab */}
+          {activeTab === 'injections' && (
+            <div className="max-w-6xl mx-auto">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Syringe className="h-5 w-5 text-blue-600" />
+                    Injections
+                  </h3>
+                  <button
+                    onClick={() => setShowInjectionSearch(!showInjectionSearch)}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Injection
+                  </button>
+                </div>
+
+                {showInjectionSearch && (
+                  <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                    <div className="relative">
+                      <Search className="h-4 w-4 absolute left-3 top-3 text-blue-400" />
+                      {isAddingNewInjection ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={newInjectionName}
+                              onChange={(e) => setNewInjectionName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  document.getElementById('cf2-injection-dosage-input')?.focus();
+                                } else if (e.key === 'Escape') {
+                                  setIsAddingNewInjection(false);
+                                  setNewInjectionName('');
+                                  setNewInjectionDosage('');
+                                }
+                              }}
+                              className="flex-1 pl-10 pr-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Enter injection name..."
+                              autoFocus
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id="cf2-injection-dosage-input"
+                              type="text"
+                              value={newInjectionDosage}
+                              onChange={(e) => setNewInjectionDosage(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddNewInjection();
+                                } else if (e.key === 'Escape') {
+                                  setIsAddingNewInjection(false);
+                                  setNewInjectionName('');
+                                  setNewInjectionDosage('');
+                                }
+                              }}
+                              className="flex-1 px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Dosage (e.g., 500mg, 1ml)..."
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddNewInjection}
+                              className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                              Add
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddingNewInjection(false);
+                                setNewInjectionName('');
+                                setNewInjectionDosage('');
+                              }}
+                              className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            value={injectionSearchTerm}
+                            onChange={(e) => {
+                              setInjectionSearchTerm(e.target.value);
+                              searchInjections(e.target.value);
+                            }}
+                            className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Search injections by name, generic name, or category..."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddingNewInjection(true);
+                              setInjectionSearchTerm('');
+                              setInjectionSearchResults([]);
+                            }}
+                            className="absolute right-2 top-2 p-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                            title="Add new injection"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {injectionSearchResults.length > 0 && !isAddingNewInjection && (
+                      <div className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                        {injectionSearchResults.map((medication) => (
+                          <div
+                            key={medication.id}
+                            onClick={() => addInjectionToList(medication)}
+                            className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-medium text-gray-900">{medication.name}</p>
+                                <p className="text-sm text-gray-600">{medication.generic_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {medication.strength} • {medication.dosage_form}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">Stock: {medication.available_stock || 0}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Injection Items */}
+                {injectionItems.length > 0 && (
+                  <div className="space-y-4">
+                    {injectionItems.map((item, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleInjectionExpanded(index)}
+                          className="w-full p-4 flex items-start justify-between hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex-1 pr-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
+                                {item.generic_name && (
+                                  <p className="text-sm text-gray-600">{item.generic_name}</p>
+                                )}
+                                {item.dosage && (
+                                  <p className="text-xs text-blue-600 mt-0.5">Dosage: {item.dosage}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 text-xs rounded-full border bg-blue-50 border-blue-200 text-blue-700">
+                                  Qty: {item.quantity}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeInjectionAtIndex(index);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="pt-1 text-gray-500">
+                            {expandedInjectionIndexes.includes(index) ? (
+                              <ChevronUp className="h-5 w-5" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5" />
+                            )}
+                          </div>
+                        </div>
+
+                        {expandedInjectionIndexes.includes(index) && (
+                          <div className="p-4 border-t border-gray-200 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Dosage</label>
+                                <input
+                                  type="text"
+                                  value={item.dosage}
+                                  onChange={(e) => updateInjectionItem(index, 'dosage', e.target.value)}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  placeholder="e.g., 500mg, 1ml"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => updateInjectionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Duration (Days)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.duration_days}
+                                  onChange={(e) => updateInjectionItem(index, 'duration_days', parseInt(e.target.value) || 1)}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-2">Frequency</label>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {['Morning', 'Afternoon', 'Evening', 'Night'].map((time) => (
+                                  <label key={time} className="flex items-center space-x-2 p-2 border border-gray-200 rounded hover:bg-gray-50">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.frequency_times.includes(time)}
+                                      onChange={(e) => {
+                                        const newTimes = e.target.checked
+                                          ? [...item.frequency_times, time]
+                                          : item.frequency_times.filter(t => t !== time);
+                                        updateInjectionItem(index, 'frequency_times', newTimes);
+                                      }}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">{time}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Instructions</label>
+                              <textarea
+                                value={item.instructions}
+                                onChange={(e) => updateInjectionItem(index, 'instructions', e.target.value)}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                placeholder="e.g., IM injection, IV drip over 30 mins, SC injection..."
+                                rows={2}
+                                data-allow-enter="true"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {injectionItems.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Syringe className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>No injections added yet. Click &quot;Add Injection&quot; to start.</p>
                   </div>
                 )}
               </div>

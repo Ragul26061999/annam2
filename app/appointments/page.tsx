@@ -494,14 +494,6 @@ export default function AppointmentsPage() {
                       {appointment.status === 'scheduled' && (
                         <>
                           <button
-                            onClick={() => handleOpenClinicalForm(appointment)}
-                            className="flex items-center space-x-1 px-3 py-1.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-200 transition-colors"
-                            title="Open clinical entry form"
-                          >
-                            <FileText size={14} />
-                            <span>Entry Form</span>
-                          </button>
-                          <button
                             onClick={() => handleOpenClinicalForm2(appointment)}
                             className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-lg hover:bg-indigo-200 transition-colors"
                             title="Open clinical entry form 2.0"

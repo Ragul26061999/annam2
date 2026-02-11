@@ -3286,13 +3286,6 @@ function NewBillingPageInner() {
                   Print Receipt
                 </button>
                 <button
-                  onClick={() => showThermalPreview()}
-                  className="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Eye className="w-4 h-4" />
-                  Thermal Preview
-                </button>
-                <button
                   onClick={() => showThermalPreviewWithLogo()}
                   className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
                 >
