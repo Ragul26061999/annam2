@@ -42,7 +42,7 @@ interface ClinicalEntryForm2Props {
   onSuccess?: () => void;
 }
 
-type TabType = 'notes' | 'lab' | 'xray' | 'prescriptions' | 'followup';
+type TabType = 'notes' | 'lab' | 'xray' | 'prescriptions' | 'followup' | 'vitals';
 
 // Lab Test Interface
 interface LabTest {
@@ -189,6 +189,12 @@ export default function ClinicalEntryForm2({
   const [showMedicationSearch, setShowMedicationSearch] = useState(false);
   const [expandedPrescriptionIndexes, setExpandedPrescriptionIndexes] = useState<number[]>([]);
 
+  // Vitals & Complaints State
+  const [vitalsData, setVitalsData] = useState<any>(null);
+  const [complaintsData, setComplaintsData] = useState<any>(null);
+  const [patientComplaint, setPatientComplaint] = useState<string>('');
+  const [vitalsLoading, setVitalsLoading] = useState(false);
+
   // Follow-up State
   const [followUp, setFollowUp] = useState({
     follow_up_date: '',
@@ -199,6 +205,7 @@ export default function ClinicalEntryForm2({
   });
 
   const tabs = [
+    { id: 'vitals' as TabType, label: 'Vitals & Complaints', icon: Activity },
     { id: 'notes' as TabType, label: 'Clinical Notes', icon: FileText },
     { id: 'lab' as TabType, label: 'Lab Tests', icon: Activity },
     { id: 'xray' as TabType, label: 'X-Ray & Scans', icon: Activity },
@@ -211,8 +218,48 @@ export default function ClinicalEntryForm2({
       fetchMedications();
       fetchRadiologyCatalog();
       fetchLabCatalog();
+      fetchVitalsAndComplaints();
     }
   }, [isOpen]);
+
+  const fetchVitalsAndComplaints = async () => {
+    setVitalsLoading(true);
+    try {
+      // Fetch vitals for this appointment
+      const { data: vitals } = await supabase
+        .from('vitals')
+        .select('*')
+        .eq('patient_id', patientId)
+        .eq('appointment_id', appointmentId)
+        .order('recorded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setVitalsData(vitals);
+
+      // Fetch clinical notes (complaints) for this appointment
+      const { data: notes } = await supabase
+        .from('clinical_notes')
+        .select('chief_complaint, history_of_present_illness, physical_examination, assessment, clinical_impression, doctor_notes')
+        .eq('patient_id', patientId)
+        .eq('appointment_id', appointmentId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setComplaintsData(notes);
+
+      // Fetch patient primary complaint
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('primary_complaint')
+        .eq('id', patientId)
+        .single();
+      setPatientComplaint(patient?.primary_complaint || '');
+    } catch (err) {
+      console.error('Error fetching vitals/complaints:', err);
+    } finally {
+      setVitalsLoading(false);
+    }
+  };
 
   const fetchMedications = async () => {
     try {
@@ -819,6 +866,171 @@ export default function ClinicalEntryForm2({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          {/* Vitals & Complaints Tab */}
+          {activeTab === 'vitals' && (
+            <div className="max-w-5xl mx-auto space-y-6">
+              {vitalsLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  <span className="ml-3 text-gray-500">Loading vitals & complaints...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Vitals Card */}
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center gap-2 mb-5">
+                      <Activity className="h-5 w-5 text-blue-600" />
+                      <h3 className="text-lg font-semibold text-gray-900">Vital Signs</h3>
+                      {vitalsData?.recorded_at && (
+                        <span className="ml-auto text-xs text-gray-400 flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5" />
+                          {new Date(vitalsData.recorded_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {vitalsData ? (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {vitalsData.blood_pressure_systolic != null && (
+                          <div className="bg-red-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-red-400 uppercase tracking-wider">Blood Pressure</p>
+                            <p className="text-xl font-bold text-red-700 mt-1">{vitalsData.blood_pressure_systolic}/{vitalsData.blood_pressure_diastolic}</p>
+                            <p className="text-[10px] text-red-400">mmHg</p>
+                          </div>
+                        )}
+                        {vitalsData.heart_rate != null && (
+                          <div className="bg-pink-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-pink-400 uppercase tracking-wider">Heart Rate</p>
+                            <p className="text-xl font-bold text-pink-700 mt-1">{vitalsData.heart_rate}</p>
+                            <p className="text-[10px] text-pink-400">bpm</p>
+                          </div>
+                        )}
+                        {vitalsData.temperature != null && (
+                          <div className="bg-orange-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-orange-400 uppercase tracking-wider">Temperature</p>
+                            <p className="text-xl font-bold text-orange-700 mt-1">{vitalsData.temperature}</p>
+                            <p className="text-[10px] text-orange-400">&deg;F</p>
+                          </div>
+                        )}
+                        {vitalsData.oxygen_saturation != null && (
+                          <div className="bg-blue-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">SpO2</p>
+                            <p className="text-xl font-bold text-blue-700 mt-1">{vitalsData.oxygen_saturation}%</p>
+                            <p className="text-[10px] text-blue-400">Oxygen</p>
+                          </div>
+                        )}
+                        {vitalsData.respiratory_rate != null && (
+                          <div className="bg-teal-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-teal-400 uppercase tracking-wider">Resp. Rate</p>
+                            <p className="text-xl font-bold text-teal-700 mt-1">{vitalsData.respiratory_rate}</p>
+                            <p className="text-[10px] text-teal-400">breaths/min</p>
+                          </div>
+                        )}
+                        {vitalsData.weight != null && (
+                          <div className="bg-green-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-green-400 uppercase tracking-wider">Weight</p>
+                            <p className="text-xl font-bold text-green-700 mt-1">{vitalsData.weight}</p>
+                            <p className="text-[10px] text-green-400">kg</p>
+                          </div>
+                        )}
+                        {vitalsData.height != null && (
+                          <div className="bg-indigo-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider">Height</p>
+                            <p className="text-xl font-bold text-indigo-700 mt-1">{vitalsData.height}</p>
+                            <p className="text-[10px] text-indigo-400">cm</p>
+                          </div>
+                        )}
+                        {vitalsData.blood_glucose != null && (
+                          <div className="bg-amber-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">Blood Glucose</p>
+                            <p className="text-xl font-bold text-amber-700 mt-1">{vitalsData.blood_glucose}</p>
+                            <p className="text-[10px] text-amber-400">mg/dL</p>
+                          </div>
+                        )}
+                        {vitalsData.pain_scale != null && (
+                          <div className="bg-purple-50 rounded-lg p-3 text-center">
+                            <p className="text-[11px] font-semibold text-purple-400 uppercase tracking-wider">Pain Scale</p>
+                            <p className="text-xl font-bold text-purple-700 mt-1">{vitalsData.pain_scale}/10</p>
+                            <p className="text-[10px] text-purple-400">severity</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-400">
+                        <Activity className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                        <p className="text-sm">No vitals recorded for this appointment</p>
+                      </div>
+                    )}
+                    {vitalsData?.notes && (
+                      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Notes</p>
+                        <p className="text-sm text-gray-700">{vitalsData.notes}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Complaints Card */}
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center gap-2 mb-5">
+                      <Stethoscope className="h-5 w-5 text-purple-600" />
+                      <h3 className="text-lg font-semibold text-gray-900">Complaints & History</h3>
+                    </div>
+                    {(patientComplaint || complaintsData) ? (
+                      <div className="space-y-4">
+                        {patientComplaint && (
+                          <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                            <p className="text-xs font-semibold text-purple-500 uppercase tracking-wider mb-1">Primary Complaint (Registration)</p>
+                            <p className="text-sm text-purple-900">{patientComplaint}</p>
+                          </div>
+                        )}
+                        {complaintsData?.chief_complaint && (
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                            <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1">Chief Complaint</p>
+                            <p className="text-sm text-blue-900">{complaintsData.chief_complaint}</p>
+                          </div>
+                        )}
+                        {complaintsData?.history_of_present_illness && (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">History of Present Illness</p>
+                            <p className="text-sm text-gray-700">{complaintsData.history_of_present_illness}</p>
+                          </div>
+                        )}
+                        {complaintsData?.physical_examination && (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Physical Examination</p>
+                            <p className="text-sm text-gray-700">{complaintsData.physical_examination}</p>
+                          </div>
+                        )}
+                        {complaintsData?.assessment && (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Assessment / Provisional Diagnosis</p>
+                            <p className="text-sm text-gray-700">{complaintsData.assessment}</p>
+                          </div>
+                        )}
+                        {complaintsData?.clinical_impression && (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Clinical Impression</p>
+                            <p className="text-sm text-gray-700">{complaintsData.clinical_impression}</p>
+                          </div>
+                        )}
+                        {complaintsData?.doctor_notes && (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Doctor Notes</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{complaintsData.doctor_notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-400">
+                        <Stethoscope className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                        <p className="text-sm">No complaints recorded for this appointment</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Clinical Notes Tab - IP Case Sheet Style */}
           {activeTab === 'notes' && (
             <div className="max-w-5xl mx-auto">
