@@ -1273,6 +1273,18 @@ function NewBillingPageInner() {
           .eq('id', item.medicine.id);
 
         if (updateError) throw updateError;
+
+        // Update batch stock (skip for external medicines)
+        if (!item.medicine.is_external) {
+          const { error: batchUpdateError } = await supabase
+            .from('medicine_batches')
+            .update({
+              current_quantity: (item.batch.current_quantity ?? 0) - item.quantity
+            })
+            .eq('id', item.batch.id);
+
+          if (batchUpdateError) throw batchUpdateError;
+        }
       }
 
       // Clear the bill items
