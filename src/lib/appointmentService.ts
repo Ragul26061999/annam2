@@ -1656,3 +1656,98 @@ export async function getUpcomingAppointments(
     throw error;
   }
 }
+
+/**
+ * Get recent patients based on latest appointments (last 10)
+ */
+export async function getRecentPatients(limit: number = 10): Promise<{
+  patients: Array<{
+    id: string;
+    patient_id: string;
+    name: string;
+    phone: string;
+    last_appointment_date: string;
+    last_appointment_time: string;
+    doctor_name?: string;
+    appointment_status: string;
+  }>;
+}> {
+  try {
+    // Get recent appointments with patient data
+    const { data: appointments, error } = await supabase
+      .from('appointment')
+      .select(`
+        *,
+        encounter:encounter(
+          id,
+          patient_id
+        )
+      `)
+      .order('scheduled_at', { ascending: false })
+      .limit(limit * 2); // Get more to account for duplicates
+
+    if (error) throw error;
+
+    // Get unique patients with their latest appointment
+    const patientMap = new Map();
+
+    for (const apt of appointments || []) {
+      if (!apt.encounter?.patient_id) continue;
+
+      const patientId = apt.encounter.patient_id;
+      
+      // Skip if we already have this patient
+      if (patientMap.has(patientId)) continue;
+
+      // Fetch patient data
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('id, patient_id, name, phone')
+        .eq('id', patientId)
+        .single();
+
+      if (!patient) continue;
+
+      // Fetch doctor data
+      let doctorName = '';
+      if (apt.encounter?.clinician_id) {
+        const { data: doctor } = await supabase
+          .from('doctors')
+          .select('user_id')
+          .eq('id', apt.encounter.clinician_id)
+          .single();
+
+        if (doctor?.user_id) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('name')
+            .eq('id', doctor.user_id)
+            .single();
+
+          doctorName = user?.name || '';
+        }
+      }
+
+      patientMap.set(patientId, {
+        id: patient.id,
+        patient_id: patient.patient_id,
+        name: patient.name,
+        phone: patient.phone,
+        last_appointment_date: apt.scheduled_at ? new Date(apt.scheduled_at).toISOString().split('T')[0] : '',
+        last_appointment_time: apt.scheduled_at ? new Date(apt.scheduled_at).toTimeString().split(' ')[0] : '',
+        doctor_name: doctorName,
+        appointment_status: 'completed' // Assume recent appointments are completed
+      });
+
+      // Stop when we have enough patients
+      if (patientMap.size >= limit) break;
+    }
+
+    return {
+      patients: Array.from(patientMap.values()).slice(0, limit)
+    };
+  } catch (error) {
+    console.error('Error fetching recent patients:', error);
+    return { patients: [] };
+  }
+}

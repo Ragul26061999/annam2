@@ -13,7 +13,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { getDashboardStats } from '../../src/lib/dashboardService';
-import { getAppointments, type Appointment } from '../../src/lib/appointmentService';
+import { getAppointments, getRecentPatients, type Appointment } from '../../src/lib/appointmentService';
 import { getPatientByUHID, registerNewPatient, getAllPatients } from '../../src/lib/patientService';
 import { supabase } from '../../src/lib/supabase';
 import VitalsQueueCard from '../../components/VitalsQueueCard';
@@ -94,6 +94,7 @@ function OutpatientPageContent() {
   });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [recentPatients, setRecentPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -107,7 +108,7 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'billing'>('outpatient');
+  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'recent' | 'billing'>('outpatient');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
   
   // Injection queue state
@@ -183,7 +184,7 @@ function OutpatientPageContent() {
 
     // Check for tab parameter
     const tab = searchParams?.get('tab');
-    if (tab === 'outpatient' || tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'billing') {
+    if (tab === 'outpatient' || tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'recent' || tab === 'billing') {
       setActiveTab(tab);
     }
 
@@ -211,6 +212,7 @@ function OutpatientPageContent() {
     loadInjectionQueue();
     loadUpdatedInjections();
     loadOutpatientQueueEntries();
+    loadRecentPatients();
 
     // Auto-refresh every 30 seconds
     const intervalMs = 0;
@@ -809,6 +811,15 @@ function OutpatientPageContent() {
       setError('Failed to load outpatient data. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadRecentPatients = async () => {
+    try {
+      const response = await getRecentPatients(10);
+      setRecentPatients(response.patients);
+    } catch (err) {
+      console.error('Error loading recent patients:', err);
     }
   };
 
@@ -1604,8 +1615,8 @@ function OutpatientPageContent() {
               Today's Queue ({filteredAppointments.length + outpatientQueueEntries.length})
             </button>
             <button
-              onClick={() => setActiveTab('patients')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'patients'
+              onClick={() => setActiveTab('recent')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'recent'
                 ? 'bg-orange-100 text-orange-700'
                 : 'text-gray-600 hover:bg-gray-100'
                 }`}
@@ -2332,9 +2343,9 @@ function OutpatientPageContent() {
           {activeTab === 'patients' && (
             <div className="text-center py-12">
               <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Recent Patients Moved</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Patient Registration</h3>
               <p className="text-gray-600 mb-4">
-                Outpatient patient records have been moved to the dedicated "Outpatient" tab.
+                Register new patients and manage their records.
               </p>
               <button
                 onClick={() => setActiveTab('outpatient')}
@@ -2342,6 +2353,77 @@ function OutpatientPageContent() {
               >
                 Go to Outpatient Tab
               </button>
+            </div>
+          )}
+
+          {activeTab === 'recent' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-orange-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">Recent Patients</h3>
+                  </div>
+                  <span className="text-sm text-gray-500">Last 10 appointments</span>
+                </div>
+                
+                {recentPatients.length > 0 ? (
+                  <div className="space-y-3">
+                    {recentPatients.map((patient, index) => (
+                      <div key={patient.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-semibold text-sm">
+                                {index + 1}
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-gray-900">{patient.name}</h4>
+                                <p className="text-sm text-gray-500">UHID: {patient.patient_id}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {patient.appointment_status}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 text-sm">
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Phone className="h-4 w-4" />
+                              <span>{patient.phone || 'Not provided'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Calendar className="h-4 w-4" />
+                              <span>{patient.last_appointment_date}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Clock className="h-4 w-4" />
+                              <span>{patient.last_appointment_time}</span>
+                            </div>
+                          </div>
+                          
+                          {patient.doctor_name && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Stethoscope className="h-4 w-4" />
+                                <span>Dr. {patient.doctor_name}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Recent Patients</h3>
+                    <p className="text-gray-600">No patient appointments found in the system.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
