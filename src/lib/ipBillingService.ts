@@ -362,27 +362,31 @@ export async function getIPComprehensiveBilling(
       .select(`
         bill_number,
         created_at,
-        total
+        total,
+        payment_status
       `)
       .eq('bill_type', 'lab')
       .eq('patient_id', patient.id)
       .order('created_at', { ascending: true });
 
-    // Get bill numbers for lab orders - handle many-to-one relationship
+    // Get bill numbers and payment status for lab orders - handle many-to-one relationship
     const labOrderIds = (labOrders || []).map((order: any) => order.id);
     const { data: labBillNumbers } = await supabase
       .from('billing_item')
       .select(`
         ref_id,
-        billing!inner(bill_number, bill_type, patient_id)
+        billing!inner(bill_number, bill_type, patient_id, payment_status)
       `)
       .in('ref_id', labOrderIds)
       .eq('billing.bill_type', 'lab')
       .eq('billing.patient_id', patient.id);
 
-    // Create a map of order_id to bill_number
+    // Create maps of order_id to bill_number and payment_status
     const labBillNumberMap = new Map(
       (labBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+    const labBillStatusMap = new Map(
+      (labBillNumbers || []).map((item: any) => [item.ref_id, item.billing.payment_status || 'pending'])
     );
 
     // For orders without direct billing, try to match by timing
@@ -399,10 +403,14 @@ export async function getIPComprehensiveBilling(
     });
 
     // Match bills to order groups by timing - improved logic
-    labBills.forEach((bill: any) => {
+    (labBills || []).forEach((bill: any) => {
       if (!Array.from(labBillNumberMap.values()).includes(bill.bill_number)) {
         const billDate = new Date(bill.created_at);
         const billMinute = billDate.toISOString().slice(0, 16);
+        const setOrderBill = (order: any) => {
+          labBillNumberMap.set(order.id, bill.bill_number);
+          labBillStatusMap.set(order.id, bill.payment_status || 'pending');
+        };
         
         // Check if there are orders in the same minute or previous minute
         const matchingOrders = ordersByMinute.get(billMinute) || [];
@@ -411,33 +419,26 @@ export async function getIPComprehensiveBilling(
           const prevMinute = new Date(billDate.getTime() - 60000).toISOString().slice(0, 16);
           const prevOrders = ordersByMinute.get(prevMinute) || [];
           if (prevOrders.length > 0) {
-            prevOrders.forEach((order: any) => {
-              labBillNumberMap.set(order.id, bill.bill_number);
-            });
+            prevOrders.forEach(setOrderBill);
           } else {
             // Try up to 5 minutes back
             for (let i = 1; i <= 5; i++) {
               const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
               const checkOrders = ordersByMinute.get(checkMinute) || [];
               if (checkOrders.length > 0) {
-                checkOrders.forEach((order: any) => {
-                  labBillNumberMap.set(order.id, bill.bill_number);
-                });
+                checkOrders.forEach(setOrderBill);
                 break;
               }
             }
           }
         } else {
-          matchingOrders.forEach((order: any) => {
-            labBillNumberMap.set(order.id, bill.bill_number);
-          });
+          matchingOrders.forEach(setOrderBill);
         }
       }
     });
 
     const labBilling: IPLabBilling[] = (labOrders || []).map((order: any, index: number) => {
-      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
-      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      const billStatus = labBillStatusMap.get(order.id) || 'pending';
       
       return {
         order_number: order.order_number,
@@ -446,7 +447,7 @@ export async function getIPComprehensiveBilling(
         tests: [{
           test_name: order.lab_test_catalog?.test_name || 'Lab Test',
           test_cost: Number(order.lab_test_catalog?.test_cost) || 0,
-          status: randomStatus // Random status for demonstration
+          status: billStatus as 'paid' | 'pending' | 'partial'
         }],
         total_amount: Number(order.lab_test_catalog?.test_cost) || 0
       };
@@ -471,27 +472,31 @@ export async function getIPComprehensiveBilling(
       .select(`
         bill_number,
         created_at,
-        total
+        total,
+        payment_status
       `)
       .eq('bill_type', 'radiology')
       .eq('patient_id', patient.id)
       .order('created_at', { ascending: true });
 
-    // Get bill numbers for radiology orders - handle many-to-one relationship
+    // Get bill numbers and payment status for radiology orders - handle many-to-one relationship
     const radioOrderIds = (radioOrders || []).map((order: any) => order.id);
     const { data: radioBillNumbers } = await supabase
       .from('billing_item')
       .select(`
         ref_id,
-        billing!inner(bill_number, bill_type, patient_id)
+        billing!inner(bill_number, bill_type, patient_id, payment_status)
       `)
       .in('ref_id', radioOrderIds)
       .eq('billing.bill_type', 'radiology')
       .eq('billing.patient_id', patient.id);
 
-    // Create a map of order_id to bill_number
+    // Create maps of order_id to bill_number and payment_status
     const radioBillNumberMap = new Map(
       (radioBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+    const radioBillStatusMap = new Map(
+      (radioBillNumbers || []).map((item: any) => [item.ref_id, item.billing.payment_status || 'pending'])
     );
 
     // For orders without direct billing, try to match by timing
@@ -507,45 +512,42 @@ export async function getIPComprehensiveBilling(
     });
 
     // Match bills to order groups by timing - improved logic
-    radioBills.forEach((bill: any) => {
+    (radioBills || []).forEach((bill: any) => {
       if (!Array.from(radioBillNumberMap.values()).includes(bill.bill_number)) {
         const billDate = new Date(bill.created_at);
         const billMinute = billDate.toISOString().slice(0, 16);
+        const setOrderBill = (order: any) => {
+          radioBillNumberMap.set(order.id, bill.bill_number);
+          radioBillStatusMap.set(order.id, bill.payment_status || 'pending');
+        };
         
         // Check if there are orders in the same minute or previous minute
         const matchingOrders = radioOrdersByMinute.get(billMinute) || [];
         if (matchingOrders.length === 0) {
           // Try previous minute
-          const prevMinute = new Date(new Date(bill.created_at).getTime() - 60000).toISOString().slice(0, 16);
+          const prevMinute = new Date(billDate.getTime() - 60000).toISOString().slice(0, 16);
           const prevOrders = radioOrdersByMinute.get(prevMinute) || [];
           if (prevOrders.length > 0) {
-            prevOrders.forEach((order: any) => {
-              radioBillNumberMap.set(order.id, bill.bill_number);
-            });
+            prevOrders.forEach(setOrderBill);
           } else {
             // Try up to 5 minutes back
             for (let i = 1; i <= 5; i++) {
               const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
               const checkOrders = radioOrdersByMinute.get(checkMinute) || [];
               if (checkOrders.length > 0) {
-                checkOrders.forEach((order: any) => {
-                  radioBillNumberMap.set(order.id, bill.bill_number);
-                });
+                checkOrders.forEach(setOrderBill);
                 break;
               }
             }
           }
         } else {
-          matchingOrders.forEach((order: any) => {
-            radioBillNumberMap.set(order.id, bill.bill_number);
-          });
+          matchingOrders.forEach(setOrderBill);
         }
       }
     });
 
     const radiologyBilling: IPRadiologyBilling[] = (radioOrders || []).map((order: any, index: number) => {
-      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
-      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      const billStatus = radioBillStatusMap.get(order.id) || 'pending';
       
       return {
         order_number: order.order_number,
@@ -554,7 +556,7 @@ export async function getIPComprehensiveBilling(
         scans: [{
           scan_name: order.radiology_test_catalog?.test_name || 'Radiology Scan',
           scan_cost: Number(order.radiology_test_catalog?.test_cost) || 0,
-          status: randomStatus // Random status for demonstration
+          status: billStatus as 'paid' | 'pending' | 'partial'
         }],
         total_amount: Number(order.radiology_test_catalog?.test_cost) || 0
       };
@@ -579,27 +581,31 @@ export async function getIPComprehensiveBilling(
       .select(`
         bill_number,
         created_at,
-        total
+        total,
+        payment_status
       `)
       .eq('bill_type', 'scan')
       .eq('patient_id', patient.id)
       .order('created_at', { ascending: true });
 
-    // Get bill numbers for scan orders - handle many-to-one relationship
+    // Get bill numbers and payment status for scan orders - handle many-to-one relationship
     const scanOrderIds = (scanOrders || []).map((order: any) => order.id);
     const { data: scanBillNumbers } = await supabase
       .from('billing_item')
       .select(`
         ref_id,
-        billing!inner(bill_number, bill_type, patient_id)
+        billing!inner(bill_number, bill_type, patient_id, payment_status)
       `)
       .in('ref_id', scanOrderIds)
       .eq('billing.bill_type', 'scan')
       .eq('billing.patient_id', patient.id);
 
-    // Create a map of order_id to bill_number
+    // Create maps of order_id to bill_number and payment_status
     const scanBillNumberMap = new Map(
       (scanBillNumbers || []).map((item: any) => [item.ref_id, item.billing.bill_number])
+    );
+    const scanBillStatusMap = new Map(
+      (scanBillNumbers || []).map((item: any) => [item.ref_id, item.billing.payment_status || 'pending'])
     );
 
     // For orders without direct billing, try to match by timing
@@ -615,45 +621,42 @@ export async function getIPComprehensiveBilling(
     });
 
     // Match bills to order groups by timing - improved logic
-    scanBills.forEach((bill: any) => {
+    (scanBills || []).forEach((bill: any) => {
       if (!Array.from(scanBillNumberMap.values()).includes(bill.bill_number)) {
         const billDate = new Date(bill.created_at);
         const billMinute = billDate.toISOString().slice(0, 16);
+        const setOrderBill = (order: any) => {
+          scanBillNumberMap.set(order.id, bill.bill_number);
+          scanBillStatusMap.set(order.id, bill.payment_status || 'pending');
+        };
         
         // Check if there are orders in the same minute or previous minute
         const matchingOrders = scanOrdersByMinute.get(billMinute) || [];
         if (matchingOrders.length === 0) {
           // Try previous minute
-          const prevMinute = new Date(new Date(bill.created_at).getTime() - 60000).toISOString().slice(0, 16);
+          const prevMinute = new Date(billDate.getTime() - 60000).toISOString().slice(0, 16);
           const prevOrders = scanOrdersByMinute.get(prevMinute) || [];
           if (prevOrders.length > 0) {
-            prevOrders.forEach((order: any) => {
-              scanBillNumberMap.set(order.id, bill.bill_number);
-            });
+            prevOrders.forEach(setOrderBill);
           } else {
             // Try up to 5 minutes back
             for (let i = 1; i <= 5; i++) {
               const checkMinute = new Date(billDate.getTime() - (i * 60000)).toISOString().slice(0, 16);
               const checkOrders = scanOrdersByMinute.get(checkMinute) || [];
               if (checkOrders.length > 0) {
-                checkOrders.forEach((order: any) => {
-                  scanBillNumberMap.set(order.id, bill.bill_number);
-                });
+                checkOrders.forEach(setOrderBill);
                 break;
               }
             }
           }
         } else {
-          matchingOrders.forEach((order: any) => {
-            scanBillNumberMap.set(order.id, bill.bill_number);
-          });
+          matchingOrders.forEach(setOrderBill);
         }
       }
     });
 
     const scanBilling: IPScanBilling[] = (scanOrders || []).map((order: any, index: number) => {
-      const statusOptions: ('paid' | 'pending' | 'partial')[] = ['paid', 'pending', 'partial'];
-      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      const billStatus = scanBillStatusMap.get(order.id) || 'pending';
       
       return {
         order_number: order.order_number,
@@ -662,7 +665,7 @@ export async function getIPComprehensiveBilling(
         scans: [{
           scan_name: order.scan_test_catalog?.scan_name || 'Scan Test',
           scan_cost: Number(order.scan_test_catalog?.test_cost) || 0,
-          status: randomStatus // Random status for demonstration
+          status: billStatus as 'paid' | 'pending' | 'partial'
         }],
         total_amount: Number(order.scan_test_catalog?.test_cost) || 0
       };
