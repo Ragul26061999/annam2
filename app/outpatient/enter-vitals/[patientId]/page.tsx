@@ -165,48 +165,121 @@ export default function EnterVitalsPage() {
 
       // Update patient's appointment status to move them to Today's OP Queue
       try {
-        const { data: appointments, error: appointmentError } = await supabase
-          .from('appointments')
-          .select('*')
-          .eq('patient_id', patientId)
-          .eq('appointment_date', new Date().toISOString().split('T')[0])
-          .in('status', ['scheduled', 'confirmed'])
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStart = `${todayStr}T00:00:00`;
+        const todayEnd = `${todayStr}T23:59:59`;
+
+        // First check the new 'appointment' table (via encounter)
+        const { data: newAppointments, error: newAptError } = await supabase
+          .from('appointment')
+          .select(`
+            id,
+            encounter_id,
+            scheduled_at,
+            encounter:encounter(id, patient_id)
+          `)
+          .gte('scheduled_at', todayStart)
+          .lte('scheduled_at', todayEnd)
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(50);
 
-        if (!appointmentError && appointments && appointments.length > 0) {
-          const appointment = appointments[0];
-          const { error: updateError } = await supabase
-            .from('appointments')
-            .update({ 
-              status: 'scheduled',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', appointment.id);
+        // Filter for this patient's appointments
+        const patientNewApts = (newAppointments || []).filter(
+          (apt: any) => apt.encounter?.patient_id === patientId
+        );
 
-          if (updateError) {
-            console.warn('Failed to update appointment status:', updateError);
-          } else {
-            console.log('Updated appointment status to scheduled:', appointment.id);
-          }
+        if (!newAptError && patientNewApts.length > 0) {
+          console.log('Found existing appointment in new table for patient:', patientNewApts[0].id);
+          // Appointment already exists - patient will show in Today's OP Queue
         } else {
-          // No appointment found - add patient to outpatient queue so they appear in Today's Queue
-          console.log('No appointment found for patient, adding to outpatient queue');
-          console.log('Patient ID for queue:', patientId);
-          
-          // Validate patientId before calling addToQueue
-          if (!patientId || patientId.trim() === '') {
-            console.warn('Patient ID is empty, cannot add to queue');
+          // Also check legacy 'appointments' table
+          const { data: legacyAppointments, error: legacyAptError } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('patient_id', patientId)
+            .eq('appointment_date', todayStr)
+            .in('status', ['scheduled', 'confirmed'])
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (!legacyAptError && legacyAppointments && legacyAppointments.length > 0) {
+            console.log('Found existing appointment in legacy table:', legacyAppointments[0].id);
+            // Appointment already exists in legacy table
           } else {
-            try {
-              const queueResult = await addToQueue(patientId, new Date().toISOString().split('T')[0], 0, 'Vitals completed - ready for consultation', vitalsData.staffId);
-              if (queueResult.success) {
-                console.log('Successfully added patient to outpatient queue:', queueResult.queueEntry);
-              } else {
-                console.warn('Failed to add patient to outpatient queue:', queueResult.error);
+            // No appointment found in either table - create encounter + appointment
+            console.log('No appointment found for patient after vitals, creating encounter + appointment');
+
+            if (patientId && patientId.trim() !== '') {
+              try {
+                const now = new Date();
+                const scheduledAt = now.toISOString();
+
+                // Get patient's consulting doctor if available
+                let clinicianId = null;
+                try {
+                  const { data: patientData } = await supabase
+                    .from('patients')
+                    .select('consulting_doctor_id')
+                    .eq('id', patientId)
+                    .single();
+                  if (patientData?.consulting_doctor_id) {
+                    clinicianId = patientData.consulting_doctor_id;
+                  }
+                } catch (e) {
+                  console.warn('Could not fetch consulting doctor:', e);
+                }
+
+                // Create encounter
+                const encounterRecord: any = {
+                  patient_id: patientId,
+                  start_at: scheduledAt
+                };
+                if (clinicianId) {
+                  encounterRecord.clinician_id = clinicianId;
+                }
+
+                const { data: encounter, error: encounterError } = await supabase
+                  .from('encounter')
+                  .insert([encounterRecord])
+                  .select()
+                  .single();
+
+                if (encounterError) {
+                  console.error('Error creating encounter:', encounterError);
+                  // Fallback: just add to outpatient queue
+                  await addToQueue(patientId, todayStr, 0, 'Vitals completed - ready for consultation', vitalsData.staffId);
+                } else {
+                  // Create appointment linked to encounter
+                  const appointmentRecord = {
+                    encounter_id: encounter.id,
+                    scheduled_at: scheduledAt,
+                    duration_minutes: 30,
+                    booking_method: 'walk_in'
+                  };
+
+                  const { data: newAppointment, error: aptError } = await supabase
+                    .from('appointment')
+                    .insert([appointmentRecord])
+                    .select()
+                    .single();
+
+                  if (aptError) {
+                    console.error('Error creating appointment:', aptError);
+                    // Fallback: just add to outpatient queue
+                    await addToQueue(patientId, todayStr, 0, 'Vitals completed - ready for consultation', vitalsData.staffId);
+                  } else {
+                    console.log('Successfully created encounter + appointment:', encounter.id, newAppointment.id);
+                  }
+                }
+              } catch (createError) {
+                console.warn('Error creating appointment for patient:', createError);
+                // Fallback: add to outpatient queue
+                try {
+                  await addToQueue(patientId, todayStr, 0, 'Vitals completed - ready for consultation', vitalsData.staffId);
+                } catch (queueError) {
+                  console.warn('Error adding to outpatient queue:', queueError);
+                }
               }
-            } catch (queueError) {
-              console.warn('Error adding patient to outpatient queue:', queueError);
             }
           }
         }
