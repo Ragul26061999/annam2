@@ -18,6 +18,7 @@ import { supabase } from '../../../../src/lib/supabase';
 import { addToQueue, updateQueueStatus } from '../../../../src/lib/outpatientQueueService';
 import { generateBarcodeForPatient, generatePrintableBarcodeData } from '../../../../src/lib/barcodeUtils';
 import StaffSelect from '../../../../src/components/StaffSelect';
+import BarcodeModal from '../../../../src/components/BarcodeModal';
 
 export default function EnterVitalsPage() {
   const router = useRouter();
@@ -31,6 +32,7 @@ export default function EnterVitalsPage() {
   const [patient, setPatient] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   const [vitalsData, setVitalsData] = useState({
     height: '',
@@ -247,51 +249,6 @@ export default function EnterVitalsPage() {
   }
 
 
-  const handlePrintBarcode = async () => {
-    if (!patient) return;
-
-    try {
-      const uhid = patient.patient_id || 'UNKNOWN';
-      const patientName = patient.name || 'Unknown Patient';
-      
-      const barcodeId = await generateBarcodeForPatient(patientId);
-      
-      const printData = generatePrintableBarcodeData(uhid, barcodeId, patientName);
-      
-      const printWindow = window.open('', '_blank', 'width=600,height=400');
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Patient Barcode - ${patientName}</title>
-              <style>
-                body { margin: 0; padding: 20px; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
-                @media print {
-                  body { margin: 0; padding: 0; display: block; }
-                  .print-container { page-break-inside: avoid; }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="print-container">
-                ${printData}
-              </div>
-              <script>
-                window.onload = function() {
-                  window.print();
-                }
-              </script>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-      }
-    } catch (err) {
-      console.error('Error printing barcode:', err);
-      alert('Failed to generate barcode for printing');
-    }
-  };
-
   if (success) {
     return (
       <div className="min-h-screen bg-orange-50/30 py-8 px-6 flex items-center justify-center">
@@ -303,7 +260,7 @@ export default function EnterVitalsPage() {
           <p className="text-gray-600 mb-6">Patient vitals have been recorded.</p>
 
           <button
-            onClick={handlePrintBarcode}
+            onClick={() => setShowBarcodeModal(true)}
             className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg mb-4"
           >
             <ScanBarcode className="h-5 w-5" />
@@ -317,6 +274,13 @@ export default function EnterVitalsPage() {
              Go to Dashboard
           </button>
         </div>
+
+        {showBarcodeModal && patient && (
+          <BarcodeModal
+            patient={patient}
+            onClose={() => setShowBarcodeModal(false)}
+          />
+        )}
       </div>
     );
   }

@@ -80,7 +80,7 @@ export async function addToQueue(
         status: 'waiting',
         priority,
         notes,
-        staff_id: staffId
+        staff_id: staffId && staffId.trim() !== '' ? staffId : null
       })
       .select()
       .single();

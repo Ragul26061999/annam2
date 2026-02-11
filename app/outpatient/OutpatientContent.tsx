@@ -351,20 +351,6 @@ export default function OutpatientContent() {
           </div>
         </div>
 
-        {/* In Consultation */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">In Consult</p>
-              <p className="text-2xl font-bold text-purple-600 mt-1">{stats.inConsultation}</p>
-              <p className="text-xs text-gray-500 mt-1">With doctor</p>
-            </div>
-            <div className="p-3 bg-purple-100 rounded-xl">
-              <Stethoscope className="h-5 w-5 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
         {/* Completed */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between">
