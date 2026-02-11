@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer, Eye, X, Pill, Syringe } from 'lucide-react'
+import { Search, FileText, User, Calendar, Clock, CheckCircle, AlertCircle, Trash2, Receipt, Package, Activity, TrendingUp, Users, RotateCcw, Printer, Eye, X, Pill, Syringe, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../../src/lib/supabase'
 import { PharmacyBillPrint } from '../../../src/components/pharmacy/PharmacyBillPrint'
 
@@ -488,9 +488,17 @@ export default function PrescribedListPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Prescribed List</h1>
-          <p className="text-gray-600 mt-1">Manage patient prescriptions and medicine dispensing</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Prescribed List</h1>
+            <p className="text-gray-600 mt-1">Manage patient prescriptions and medicine dispensing</p>
+          </div>
         </div>
       </div>
 

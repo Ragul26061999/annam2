@@ -514,9 +514,17 @@ function SalesReturnContent() {
       {step === 'search' && (
         <>
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Sales Return</h1>
-              <p className="text-gray-600">Process customer drug returns with bill lookup</p>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => window.history.back()}
+                className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Sales Return</h1>
+                <p className="text-gray-600">Process customer drug returns with bill lookup</p>
+              </div>
             </div>
             <button
               onClick={() => setStep('search')}

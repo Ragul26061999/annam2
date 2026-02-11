@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { 
-  Plus, Search, Eye, Building2, XCircle, CheckCircle, Clock, Package
+  Plus, Search, Eye, Building2, XCircle, CheckCircle, Clock, Package, ArrowLeft
 } from 'lucide-react'
 import {
   getDepartments,
@@ -170,9 +170,17 @@ export default function DepartmentDrugIssuePage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Department Drug Issue</h1>
-          <p className="text-gray-600">Issue drugs to hospital departments</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Department Drug Issue</h1>
+            <p className="text-gray-600">Issue drugs to hospital departments</p>
+          </div>
         </div>
         <button
           onClick={() => setShowForm(true)}

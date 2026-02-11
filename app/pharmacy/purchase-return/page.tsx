@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  Plus, Search, Eye, Trash2, XCircle, RotateCcw, Save, Package, Receipt, Calculator
+  Plus, Search, Eye, Trash2, XCircle, RotateCcw, Save, Package, Receipt, Calculator, ArrowLeft
 } from 'lucide-react'
 import {
   getSuppliers,
@@ -330,9 +330,17 @@ export default function PurchaseReturnPage() {
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="bg-white border-b shadow-sm sticky top-0 z-20">
         <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Purchase Return</h1>
-            <p className="text-xs text-gray-500">Return drugs to suppliers &amp; update inventory</p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => window.history.back()}
+              className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Purchase Return</h1>
+              <p className="text-xs text-gray-500">Return drugs to suppliers &amp; update inventory</p>
+            </div>
           </div>
           <button onClick={() => { resetForm(); setShowForm(true); addItem() }}
             className="px-4 py-2 bg-orange-600 text-white rounded-lg flex items-center gap-2 hover:bg-orange-700 text-sm font-medium shadow-sm">

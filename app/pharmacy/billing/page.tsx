@@ -1457,8 +1457,10 @@ export default function PharmacyBillingPage() {
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Link href="/pharmacy">
-              <button className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-                <ArrowLeft className="w-4 h-4" />
+              <button
+                className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
               </button>
             </Link>
             <div>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity, RotateCcw, Building2, Wallet, Target } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, ShoppingCart, DollarSign, IndianRupee, Filter, Eye, Edit, Trash2, FileText, Users, Receipt, BarChart3, History, RefreshCw, X, TrendingUp, TrendingDown, Calendar, PieChart, Activity, RotateCcw, Building2, Wallet, Target, ArrowLeft } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -578,9 +578,17 @@ export default function PharmacyPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Pharmacy Management</h1>
-          <p className="text-gray-600 mt-1">Manage medicines, inventory, and billing</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Pharmacy Management</h1>
+            <p className="text-gray-600 mt-1">Manage medicines, inventory, and billing</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Link href="/pharmacy/newbilling" className="btn-primary flex items-center">

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
-  Plus, Search, Eye, Printer, XCircle, FileText, Download
+  Plus, Search, Eye, Printer, XCircle, FileText, Download, ArrowLeft
 } from 'lucide-react'
 import {
   getDrugPurchases,
@@ -106,9 +106,17 @@ export default function DrugPurchasePage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Drug Purchase</h1>
-          <p className="text-gray-600">Manage drug purchases and GRN entries</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Drug Purchase</h1>
+            <p className="text-gray-600">Manage drug purchases and GRN entries</p>
+          </div>
         </div>
         <button
           onClick={() => router.push('/pharmacy/purchase/new')}

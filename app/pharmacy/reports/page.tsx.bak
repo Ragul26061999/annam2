@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { 
   FileText, BarChart3, Package, Download, Calendar, 
   TrendingUp, TrendingDown, AlertTriangle, Filter, Pill,
-  Activity, PieChart, ArrowUpDown, Search, Eye, IndianRupee, Target, ArrowLeft
+  Activity, PieChart, ArrowUpDown, Search, Eye, IndianRupee
 } from 'lucide-react'
 import {
   BarChart,
@@ -95,7 +95,7 @@ const CATEGORIES = [
 
 function PharmacyReportsContent() {
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'medical' | 'gst' | 'stock' | 'drug_wise_stock' | 'closing_drug_stock' | 'purchase_value' | 'purchase_report' | 'intent_report'>('medical')
+  const [activeTab, setActiveTab] = useState<'medical' | 'gst' | 'stock' | 'drug_wise_stock' | 'closing_drug_stock' | 'purchase_value' | 'purchase_report'>('medical')
   const [loading, setLoading] = useState(true)
   const [selectedRange, setSelectedRange] = useState('this_month')
   const [customDateRange, setCustomDateRange] = useState({
@@ -135,20 +135,28 @@ function PharmacyReportsContent() {
     searchTerm: ''
   })
 
-  // Purchase Value and Purchase Report states
+  // Purchase Value Report states
   const [purchaseValueData, setPurchaseValueData] = useState<any[]>([])
   const [purchaseValueSummary, setPurchaseValueSummary] = useState<any>({})
+  const [purchaseValueFilter, setPurchaseValueFilter] = useState({
+    dateRange: 'this_month',
+    category: 'All Categories',
+    searchTerm: ''
+  })
+
+  // Purchase Report states
   const [purchaseReportData, setPurchaseReportData] = useState<any[]>([])
   const [purchaseReportSummary, setPurchaseReportSummary] = useState<any>({})
-
-  // Intent Report states
-  const [intentReportData, setIntentReportData] = useState<any[]>([])
-  const [intentReportSummary, setIntentReportSummary] = useState<any>({})
+  const [purchaseReportFilter, setPurchaseReportFilter] = useState({
+    dateRange: 'this_month',
+    category: 'All Categories',
+    searchTerm: ''
+  })
 
   useEffect(() => {
     if (searchParams) {
       const tab = searchParams.get('tab')
-      if (tab === 'gst' || tab === 'stock' || tab === 'drug_wise_stock' || tab === 'closing_drug_stock' || tab === 'purchase_value' || tab === 'purchase_report' || tab === 'intent_report') {
+      if (tab === 'gst' || tab === 'stock' || tab === 'drug_wise_stock' || tab === 'closing_drug_stock' || tab === 'purchase_value' || tab === 'purchase_report') {
         setActiveTab(tab)
       } else {
         setActiveTab('medical')
@@ -174,8 +182,6 @@ function PharmacyReportsContent() {
       loadPurchaseValueData()
     } else if (activeTab === 'purchase_report') {
       loadPurchaseReportData()
-    } else if (activeTab === 'intent_report') {
-      loadIntentReportData()
     }
   }, [activeTab, selectedRange, customDateRange])
 
@@ -821,98 +827,143 @@ function PharmacyReportsContent() {
   const loadPurchaseValueData = async () => {
     try {
       setLoading(true)
-
-      // Get purchase transactions from stock_transactions table
-      const { data: purchaseTransactions, error: purchaseError } = await supabase
-        .from('stock_transactions')
+      
+      // Get all medications with detailed stock information
+      const { data: medications, error } = await supabase
+        .from('medications')
         .select(`
           id,
-          transaction_type,
-          quantity,
-          unit_price,
-          total_amount,
-          reference_id,
-          reference_type,
-          batch_number,
-          expiry_date,
-          supplier_id,
-          transaction_date,
+          name,
+          generic_name,
+          category,
+          manufacturer,
+          available_stock,
+          minimum_stock_level,
+          maximum_stock_level,
+          selling_price,
+          mrp,
+          purchase_price,
+          total_stock,
+          medication_code,
+          status,
+          dosage_form,
+          strength,
+          combination,
+          hsn_code,
+          gst_percent,
           created_at,
-          medications (
-            id,
-            name,
-            category,
-            manufacturer,
-            gst_percent
-          )
+          updated_at
         `)
-        .in('transaction_type', ['purchase', 'stock_in'])
-        .order('transaction_date', { ascending: false })
+        .order('name')
 
-      if (purchaseError) {
-        console.error('Error loading purchase transactions:', purchaseError)
+      if (error) {
+        console.error('Error loading purchase value data:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        })
         return
       }
 
-      // Group transactions by date and supplier for bill-like aggregation
-      const groupedPurchases = (purchaseTransactions || []).reduce((acc: any, transaction: any) => {
-        const dateKey = new Date(transaction.transaction_date).toISOString().split('T')[0]
-        const supplierKey = transaction.supplier_id || 'Unknown Supplier'
-        
-        if (!acc[supplierKey]) {
-          acc[supplierKey] = {}
-        }
-        
-        if (!acc[supplierKey][dateKey]) {
-          acc[supplierKey][dateKey] = {
-            transactions: [],
-            total_amount: 0,
-            total_quantity: 0,
-            total_items: 0
-          }
-        }
-        
-        acc[supplierKey][dateKey].transactions.push(transaction)
-        acc[supplierKey][dateKey].total_amount += Math.abs(transaction.total_amount || 0)
-        acc[supplierKey][dateKey].total_quantity += Math.abs(transaction.quantity || 0)
-        acc[supplierKey][dateKey].total_items += 1
-        
-        return acc
-      }, {})
+      if (!medications) {
+        console.warn('No medications data returned')
+        setPurchaseValueData([])
+        setPurchaseValueSummary({})
+        return
+      }
 
-      // Convert grouped data to purchase value format
-      const purchaseValueItems = Object.entries(groupedPurchases).flatMap(([supplier, dateGroups]: [string, any]) =>
-        Object.entries(dateGroups).map(([date, data]: [string, any], index: number) => ({
+      console.log(`Loaded ${medications.length} medications for purchase value report`)
+
+      // Get stock transactions to calculate purchase quantities and values
+      const { data: stockTransactions, error: transactionError } = await supabase
+        .from('stock_transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (transactionError) {
+        console.error('Error loading stock transactions:', transactionError)
+      }
+
+      // Process each medication for purchase value analysis
+      const purchaseValueData = medications.map((med: any, index: number) => {
+        // Calculate purchase quantities from stock transactions
+        const medTransactions = (stockTransactions || []).filter((trans: any) => 
+          trans.medication_id === med.id
+        )
+        
+        const purchaseQty = medTransactions
+          .filter((trans: any) => trans.transaction_type === 'purchase' || trans.transaction_type === 'stock_in')
+          .reduce((sum: number, trans: any) => sum + Math.abs(trans.quantity || 0), 0)
+        
+        const purchaseValue = medTransactions
+          .filter((trans: any) => trans.transaction_type === 'purchase' || trans.transaction_type === 'stock_in')
+          .reduce((sum: number, trans: any) => sum + (parseFloat(trans.total_amount) || 0), 0)
+        
+        // Get most recent batch and expiry info from transactions
+        const latestTransaction = medTransactions.length > 0 ? medTransactions[0] : null
+        const batchInfo = latestTransaction?.batch_number || med.medication_code || `B${String(index + 1).padStart(4, '0')}`
+        
+        // Calculate expiry date
+        let expiryDate = 'N/A'
+        if (latestTransaction?.expiry_date) {
+          expiryDate = new Date(latestTransaction.expiry_date).toISOString().split('T')[0]
+        } else if (med.updated_at) {
+          const estimatedExpiry = new Date(med.updated_at)
+          estimatedExpiry.setFullYear(estimatedExpiry.getFullYear() + 3)
+          expiryDate = estimatedExpiry.toISOString().split('T')[0]
+        }
+
+        return {
           sl_no: index + 1,
-          bill_number: `PUR-${date}-${supplier.slice(0, 8)}`,
-          supplier_name: supplier,
-          purchase_date: date,
-          total_items: data.total_items,
-          total_quantity: data.total_quantity,
-          total_amount: data.total_amount,
-          tax_amount: data.total_amount * 0.12, // Assuming 12% GST
-          discount_amount: 0, // Not available in stock_transactions
-          net_amount: data.total_amount + (data.total_amount * 0.12),
-          status: 'completed',
-          items_value: data.total_amount,
-          gst_value: data.total_amount * 0.12,
-          average_item_value: data.total_amount / data.total_items || 0
-        }))
-      ).sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
+          drug_name: med.name,
+          generic_name: med.generic_name || '',
+          batch: batchInfo,
+          expiry_date: expiryDate,
+          pur_qty: purchaseQty,
+          pur_value: purchaseValue,
+          avg_purchase_price: purchaseQty > 0 ? purchaseValue / purchaseQty : 0,
+          stock_qty: med.available_stock || 0,
+          rate: parseFloat(med.selling_price) || parseFloat(med.purchase_price) || 0,
+          mrp: parseFloat(med.mrp) || 0,
+          packing: med.dosage_form || 'N/A',
+          vat: parseFloat(med.gst_percent) || 0,
+          category: med.category,
+          manufacturer: med.manufacturer,
+          medication_code: med.medication_code,
+          status: med.status,
+          minimum_stock_level: med.minimum_stock_level || 0,
+          stock_status: (med.available_stock || 0) <= (med.minimum_stock_level || 0) * 0.5 ? 'critical' : 
+                        (med.available_stock || 0) <= (med.minimum_stock_level || 0) ? 'low' : 'normal'
+        }
+      })
 
-      // Calculate purchase value summary
-      const summary = purchaseValueItems.reduce((acc: any, item: any) => {
-        acc.totalBills = (acc.totalBills || 0) + 1
-        acc.totalPurchaseValue = (acc.totalPurchaseValue || 0) + item.net_amount
-        acc.totalTaxValue = (acc.totalTaxValue || 0) + item.tax_amount
-        acc.totalDiscountValue = (acc.totalDiscountValue || 0) + item.discount_amount
-        acc.totalItems = (acc.totalItems || 0) + item.total_items
-        acc.totalQuantity = (acc.totalQuantity || 0) + item.total_quantity
-        acc.averageBillValue = acc.totalPurchaseValue / acc.totalBills
+      // Apply filters
+      const filteredData = purchaseValueData.filter((item: any) => {
+        const matchesSearch = !purchaseValueFilter.searchTerm || 
+          item.drug_name.toLowerCase().includes(purchaseValueFilter.searchTerm.toLowerCase()) ||
+          item.generic_name.toLowerCase().includes(purchaseValueFilter.searchTerm.toLowerCase()) ||
+          item.batch.toLowerCase().includes(purchaseValueFilter.searchTerm.toLowerCase())
+        
+        const matchesCategory = purchaseValueFilter.category === 'All Categories' || item.category === purchaseValueFilter.category
+        
+        return matchesSearch && matchesCategory
+      })
+
+      setPurchaseValueData(filteredData)
+
+      // Calculate summary
+      const summary = filteredData.reduce((acc: any, item: any) => {
+        acc.totalMedications = (acc.totalMedications || 0) + 1
+        acc.totalPurchaseQty = (acc.totalPurchaseQty || 0) + item.pur_qty
+        acc.totalPurchaseValue = (acc.totalPurchaseValue || 0) + item.pur_value
+        acc.avgPurchasePrice = (acc.avgPurchasePrice || 0) + item.avg_purchase_price
+        acc.criticalStock = (acc.criticalStock || 0) + (item.stock_status === 'critical' ? 1 : 0)
+        acc.lowStock = (acc.lowStock || 0) + (item.stock_status === 'low' ? 1 : 0)
         return acc
       }, {})
 
-      setPurchaseValueData(purchaseValueItems)
       setPurchaseValueSummary(summary)
 
     } catch (error) {
@@ -925,194 +976,113 @@ function PharmacyReportsContent() {
   const loadPurchaseReportData = async () => {
     try {
       setLoading(true)
-
-      // Get detailed purchase report data from stock_transactions
-      const { data: purchaseItems, error: itemsError } = await supabase
+      
+      // Get all stock transactions for purchase report
+      const { data: stockTransactions, error } = await supabase
         .from('stock_transactions')
         .select(`
           id,
+          medication_id,
           transaction_type,
           quantity,
           unit_price,
           total_amount,
-          reference_id,
-          reference_type,
           batch_number,
           expiry_date,
-          supplier_id,
+          reference_id,
+          reference_type,
+          notes,
           transaction_date,
-          created_at,
-          medications (
-            id,
-            name,
-            category,
-            manufacturer,
-            dosage_form,
-            strength
-          )
+          created_at
         `)
         .in('transaction_type', ['purchase', 'stock_in'])
         .order('transaction_date', { ascending: false })
 
-      if (itemsError) {
-        console.error('Error loading purchase report items:', itemsError)
+      if (error) {
+        console.error('Error loading purchase report data:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        })
         return
       }
 
-      // Process purchase report data
-      const purchaseReportItems = (purchaseItems || []).map((item: any, index: number) => {
-        const medication = item.medications || {}
-        const gstAmount = (item.total_amount || 0) * (medication.gst_percent || 12) / 100
+      if (!stockTransactions) {
+        console.warn('No purchase transactions data returned')
+        setPurchaseReportData([])
+        setPurchaseReportSummary({})
+        return
+      }
+
+      console.log(`Loaded ${stockTransactions.length} purchase transactions for purchase report`)
+
+      // Get medication details for each transaction
+      const medicationIds = [...new Set(stockTransactions.map((trans: any) => trans.medication_id))]
+      const { data: medications, error: medError } = await supabase
+        .from('medications')
+        .select('id, name, generic_name, category, manufacturer, dosage_form, gst_percent')
+        .in('id', medicationIds)
+
+      if (medError) {
+        console.error('Error loading medications for purchase report:', medError)
+      }
+
+      // Process purchase transactions with medication details
+      const purchaseReportData = stockTransactions.map((trans: any, index: number) => {
+        const medication = medications?.find((med: any) => med.id === trans.medication_id)
         
         return {
           sl_no: index + 1,
-          bill_number: `PUR-${new Date(item.transaction_date).toISOString().split('T')[0]}-${(item.supplier_id || 'Unknown').slice(0, 8)}`,
-          supplier_name: item.supplier_id || 'Unknown Supplier',
-          purchase_date: new Date(item.transaction_date).toISOString().split('T')[0],
-          medication_code: medication.id || item.reference_id || 'N/A',
-          medication_name: medication.name || 'Unknown Medication',
-          category: medication.category || 'N/A',
-          manufacturer: medication.manufacturer || 'N/A',
-          batch_number: item.batch_number || 'N/A',
-          expiry_date: item.expiry_date ? new Date(item.expiry_date).toISOString().split('T')[0] : 'N/A',
-          quantity: Math.abs(item.quantity || 0),
-          unit_price: item.unit_price || 0,
-          total_amount: item.total_amount || 0,
-          discount_percent: 0, // Not available in stock_transactions
-          discount_amount: 0,
-          gst_percent: medication.gst_percent || 12,
-          gst_amount: gstAmount,
-          net_amount: (item.total_amount || 0) + gstAmount,
-          status: 'completed'
+          transaction_id: trans.id,
+          drug_name: medication?.name || 'Unknown',
+          generic_name: medication?.generic_name || '',
+          category: medication?.category || '',
+          manufacturer: medication?.manufacturer || '',
+          batch: trans.batch_number || 'N/A',
+          expiry_date: trans.expiry_date ? new Date(trans.expiry_date).toISOString().split('T')[0] : 'N/A',
+          quantity: Math.abs(trans.quantity || 0),
+          unit_price: parseFloat(trans.unit_price) || 0,
+          total_amount: parseFloat(trans.total_amount) || 0,
+          transaction_type: trans.transaction_type,
+          reference_id: trans.reference_id,
+          reference_type: trans.reference_type,
+          notes: trans.notes || '',
+          transaction_date: trans.transaction_date ? new Date(trans.transaction_date).toISOString().split('T')[0] : 'N/A',
+          created_at: trans.created_at ? new Date(trans.created_at).toISOString().split('T')[0] : 'N/A',
+          packing: medication?.dosage_form || 'N/A',
+          vat: medication?.gst_percent || 0
         }
       })
 
-      // Calculate purchase report summary
-      const summary = purchaseReportItems.reduce((acc: any, item: any) => {
-        acc.totalItems = (acc.totalItems || 0) + 1
+      // Apply filters
+      const filteredData = purchaseReportData.filter((item: any) => {
+        const matchesSearch = !purchaseReportFilter.searchTerm || 
+          item.drug_name.toLowerCase().includes(purchaseReportFilter.searchTerm.toLowerCase()) ||
+          item.generic_name.toLowerCase().includes(purchaseReportFilter.searchTerm.toLowerCase()) ||
+          item.batch.toLowerCase().includes(purchaseReportFilter.searchTerm.toLowerCase())
+        
+        const matchesCategory = purchaseReportFilter.category === 'All Categories' || item.category === purchaseReportFilter.category
+        
+        return matchesSearch && matchesCategory
+      })
+
+      setPurchaseReportData(filteredData)
+
+      // Calculate summary
+      const summary = filteredData.reduce((acc: any, item: any) => {
+        acc.totalTransactions = (acc.totalTransactions || 0) + 1
         acc.totalQuantity = (acc.totalQuantity || 0) + item.quantity
-        acc.totalPurchaseValue = (acc.totalPurchaseValue || 0) + item.net_amount
-        acc.totalGSTValue = (acc.totalGSTValue || 0) + item.gst_amount
-        acc.totalDiscountValue = (acc.totalDiscountValue || 0) + item.discount_amount
-        acc.averageItemValue = acc.totalPurchaseValue / acc.totalItems
-        acc.averageQuantity = acc.totalQuantity / acc.totalItems
+        acc.totalAmount = (acc.totalAmount || 0) + item.total_amount
+        acc.avgUnitPrice = (acc.avgUnitPrice || 0) + item.unit_price
         return acc
       }, {})
 
-      setPurchaseReportData(purchaseReportItems)
       setPurchaseReportSummary(summary)
 
     } catch (error) {
       console.error('Error in loadPurchaseReportData:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadIntentReportData = async () => {
-    try {
-      setLoading(true)
-
-      // Get intent medicines data
-      const { data: intentMedicines, error: intentError } = await supabase
-        .from('intent_medicines')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (intentError) {
-        console.error('Error loading intent medicines:', intentError)
-        return
-      }
-
-      // Get medication details for additional context
-      const { data: medications, error: medError } = await supabase
-        .from('medications')
-        .select(`
-          id,
-          name,
-          category,
-          manufacturer,
-          dosage_form,
-          strength,
-          gst_percent
-        `)
-
-      if (medError) {
-        console.error('Error loading medications for intent report:', medError)
-      }
-
-      // Create medication lookup
-      const medicationLookup = (medications || []).reduce((acc: any, med: any) => {
-        acc[med.id] = med
-        return acc
-      }, {})
-
-      // Process intent medicines data
-      const intentReportItems = (intentMedicines || []).map((item: any, index: number) => {
-        const medication = medicationLookup[item.medication_id] || {}
-        const mrp = parseFloat(item.mrp) || 0
-        const quantity = item.quantity || 0
-        const totalValue = mrp * quantity
-
-        return {
-          sl_no: index + 1,
-          intent_type: item.intent_type || 'N/A',
-          medication_code: item.medicine_code || medication.id || 'N/A',
-          medication_name: item.medication_name || medication.name || 'Unknown',
-          category: item.intent_type || 'N/A', // Use intent type as category
-          manufacturer: item.manufacturer || medication.manufacturer || 'N/A',
-          dosage_type: item.dosage_type || medication.dosage_form || 'N/A',
-          batch_number: item.batch_number || 'N/A',
-          expiry_date: item.expiry_date ? new Date(item.expiry_date).toISOString().split('T')[0] : 'N/A',
-          quantity: quantity,
-          mrp: mrp,
-          total_value: totalValue,
-          medicine_status: item.medicine_status || 'active',
-          combination: item.combination || 'N/A',
-          created_date: new Date(item.created_at).toISOString().split('T')[0],
-          created_time: new Date(item.created_at).toLocaleTimeString('en-IN'),
-          department: item.intent_type,
-          status: item.medicine_status || 'active'
-        }
-      })
-
-      // Calculate intent report summary
-      const summary = intentReportItems.reduce((acc: any, item: any) => {
-        acc.totalItems = (acc.totalItems || 0) + 1
-        acc.totalQuantity = (acc.totalQuantity || 0) + item.quantity
-        acc.totalValue = (acc.totalValue || 0) + item.total_value
-
-        // Count by intent type
-        if (!acc.intentTypes[item.intent_type]) {
-          acc.intentTypes[item.intent_type] = 0
-        }
-        acc.intentTypes[item.intent_type] += 1
-
-        // Count by status
-        if (!acc.statusCount[item.status]) {
-          acc.statusCount[item.status] = 0
-        }
-        acc.statusCount[item.status] += 1
-
-        acc.averageItemValue = acc.totalValue / acc.totalItems
-        acc.averageQuantity = acc.totalQuantity / acc.totalItems
-
-        return acc
-      }, { intentTypes: {}, statusCount: {} })
-
-      // Find most common intent type
-      const mostCommonIntentType = Object.entries(summary.intentTypes).reduce((a, b) =>
-        summary.intentTypes[a[0]] > summary.intentTypes[b[0]] ? a : b
-      )?.[0] || 'N/A'
-
-      summary.mostCommonIntentType = mostCommonIntentType
-      summary.intentTypeCount = Object.keys(summary.intentTypes).length
-
-      setIntentReportData(intentReportItems)
-      setIntentReportSummary(summary)
-
-    } catch (error) {
-      console.error('Error in loadIntentReportData:', error)
     } finally {
       setLoading(false)
     }
@@ -1165,17 +1135,9 @@ function PharmacyReportsContent() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => window.history.back()}
-            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Pharmacy Reports</h1>
-            <p className="text-gray-600 mt-1">Medicine performance and inventory analytics</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Pharmacy Reports</h1>
+          <p className="text-gray-600 mt-1">Medicine performance and inventory analytics</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1267,17 +1229,6 @@ function PharmacyReportsContent() {
           >
             <FileText className="w-4 h-4 inline mr-2" />
             Purchase Report
-          </button>
-          <button
-            onClick={() => setActiveTab('intent_report')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'intent_report'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Target className="w-4 h-4 inline mr-2" />
-            Intent Report
           </button>
         </nav>
       </div>
@@ -1471,35 +1422,6 @@ function PharmacyReportsContent() {
                 Medicine Performance Analytics
               </h3>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const csv = [
-                      ['Medicine Name', 'Category', 'Manufacturer', 'Total Sold', 'Total Revenue', 'Average Price', 'Stock Level', 'Profit Margin'],
-                      ...medicineAnalytics.map((med) => [
-                        med.name,
-                        med.category,
-                        med.manufacturer,
-                        med.total_sold?.toString() || '0',
-                        med.total_revenue?.toFixed(2) || '0',
-                        med.average_price?.toFixed(2) || '0',
-                        med.stock_level?.toString() || '0',
-                        med.profit_margin?.toFixed(2) || '0'
-                      ])
-                    ].map(row => row.join(',')).join('\n')
-
-                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-                    const url = window.URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `medical-report-${selectedRange}-${new Date().toISOString().split('T')[0]}.csv`
-                    a.click()
-                    window.URL.revokeObjectURL(url)
-                  }}
-                  className="btn-secondary flex items-center text-xs px-2 py-1"
-                >
-                  <Download className="w-3 h-3 mr-1" />
-                  Export
-                </button>
                 <span className="text-sm text-gray-500">Sort by:</span>
                 <select
                   value={sortBy}
@@ -2469,6 +2391,7 @@ function PharmacyReportsContent() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
                         {item.vat}%
                       </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                       <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-green-600">
                         {formatIndianCurrency(item.sold_value || 0)}
                       </td>
@@ -2490,32 +2413,37 @@ function PharmacyReportsContent() {
           </div>
         </>
       )}
-
       {activeTab === 'purchase_value' && (
         <>
           {/* Purchase Value Report Header */}
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Purchase Value Report</h1>
-              <p className="text-gray-600 mt-1">Analysis of purchase bills and values</p>
+              <p className="text-gray-600 mt-1">Medication purchase analysis with value insights</p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => {
                   const csv = [
-                    ['Sl.No.', 'Bill Number', 'Supplier Name', 'Purchase Date', 'Total Items', 'Total Quantity', 'Total Amount', 'Tax Amount', 'Discount Amount', 'Net Amount', 'Status'],
+                    ['Sl.No.', 'Drug Name', 'Batch', 'Exp. Date', 'Pur Qty', 'Pur Value', 'Avg Price', 'Stock_Qty', 'Rate', 'MRP', 'Packing', 'VAT', 'Status'],
                     ...purchaseValueData.map((item) => [
                       item.sl_no || '',
-                      item.bill_number || '',
-                      item.supplier_name || '',
-                      item.purchase_date || '',
-                      item.total_items || 0,
-                      item.total_quantity || 0,
-                      item.total_amount || 0,
-                      item.tax_amount || 0,
-                      item.discount_amount || 0,
-                      item.net_amount || 0,
-                      item.status || ''
+                      item.drug_name || '',
+                      item.batch || '',
+                      item.expiry_date === 'N/A' ? 'N/A' : new Date(item.expiry_date).toLocaleDateString('en-IN', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: '2-digit' 
+                      }),
+                      item.pur_qty || 0,
+                      item.pur_value || 0,
+                      item.avg_purchase_price || 0,
+                      item.stock_qty || 0,
+                      item.rate || 0,
+                      item.mrp || 0,
+                      item.packing || '',
+                      item.vat || 0,
+                      item.stock_status || 'normal'
                     ])
                   ].map(row => row.join(',')).join('\n')
 
@@ -2530,58 +2458,29 @@ function PharmacyReportsContent() {
                 className="btn-secondary flex items-center"
               >
                 <Download className="w-4 h-4 mr-2" />
-                Export Purchase Values
+                Export Purchase Value
               </button>
             </div>
           </div>
 
-          {/* Purchase Value Filters */}
+          {/* Filters */}
           <div className="card">
             <div className="flex flex-wrap gap-4 items-end">
               <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-                <select
-                  value={selectedRange}
-                  onChange={(e) => {
-                    setSelectedRange(e.target.value)
-                    setShowCustomDate(e.target.value === 'custom')
-                  }}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                <input
+                  type="text"
+                  value={purchaseValueFilter.searchTerm}
+                  onChange={(e) => setPurchaseValueFilter(prev => ({ ...prev, searchTerm: e.target.value }))}
+                  placeholder="Search by drug name, batch, or generic name..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {DATE_RANGES.map(range => (
-                    <option key={range.value} value={range.value}>{range.label}</option>
-                  ))}
-                </select>
+                />
               </div>
-
-              {showCustomDate && (
-                <>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.start}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.end}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </>
-              )}
-
               <div className="flex-1 min-w-48">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
                 <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  value={purchaseValueFilter.category}
+                  onChange={(e) => setPurchaseValueFilter(prev => ({ ...prev, category: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {CATEGORIES.map(cat => (
@@ -2589,35 +2488,44 @@ function PharmacyReportsContent() {
                   ))}
                 </select>
               </div>
-
               <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by supplier or bill number..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <select
+                  value={purchaseValueFilter.dateRange}
+                  onChange={(e) => setPurchaseValueFilter(prev => ({ ...prev, dateRange: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {DATE_RANGES.map(range => (
+                    <option key={range.value} value={range.value}>{range.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
+
+          {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="card">
               <div className="flex items-center">
-                <FileText className="w-8 h-8 text-blue-500" />
+                <Package className="w-8 h-8 text-blue-500" />
                 <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Bills</p>
-                  <p className="text-2xl font-bold text-gray-900">{purchaseValueSummary.totalBills || 0}</p>
+                  <p className="text-sm text-gray-600">Total Medications</p>
+                  <p className="text-2xl font-bold text-gray-900">{purchaseValueSummary.totalMedications || 0}</p>
                 </div>
               </div>
             </div>
             <div className="card">
               <div className="flex items-center">
                 <IndianRupee className="w-8 h-8 text-green-500" />
+                <div className="ml-4">
+                  <p className="text-sm text-gray-600">Total Purchase Qty</p>
+                  <p className="text-2xl font-bold text-gray-900">{(purchaseValueSummary.totalPurchaseQty || 0).toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="card">
+              <div className="flex items-center">
+                <IndianRupee className="w-8 h-8 text-purple-500" />
                 <div className="ml-4">
                   <p className="text-sm text-gray-600">Total Purchase Value</p>
                   <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(purchaseValueSummary.totalPurchaseValue || 0)}</p>
@@ -2626,19 +2534,10 @@ function PharmacyReportsContent() {
             </div>
             <div className="card">
               <div className="flex items-center">
-                <TrendingUp className="w-8 h-8 text-purple-500" />
+                <TrendingUp className="w-8 h-8 text-orange-500" />
                 <div className="ml-4">
-                  <p className="text-sm text-gray-600">Average Bill Value</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(purchaseValueSummary.averageBillValue || 0)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center">
-                <Package className="w-8 h-8 text-orange-500" />
-                <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Items Purchased</p>
-                  <p className="text-2xl font-bold text-gray-900">{(purchaseValueSummary.totalItems || 0).toLocaleString()}</p>
+                  <p className="text-sm text-gray-600">Avg Purchase Price</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency((purchaseValueSummary.avgPurchasePrice || 0) / (purchaseValueSummary.totalMedications || 1))}</p>
                 </div>
               </div>
             </div>
@@ -2651,15 +2550,17 @@ function PharmacyReportsContent() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sl.No.</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Drug Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Exp. Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pur Qty</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pur Value</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Price</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock_Qty</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">MRP</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Packing</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">VAT</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   </tr>
                 </thead>
@@ -2670,39 +2571,58 @@ function PharmacyReportsContent() {
                         {item.sl_no}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.bill_number}
+                        <div className="flex items-center">
+                          <Pill className="w-4 h-4 mr-2 text-gray-400" />
+                          {item.drug_name}
+                        </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.supplier_name}
+                        {item.batch}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(item.purchase_date).toLocaleDateString('en-IN')}
+                        {item.expiry_date === 'N/A' ? 'N/A' : new Date(item.expiry_date).toLocaleDateString('en-IN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: '2-digit' 
+                        })}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
-                        {item.total_items}
+                        {item.pur_qty || 0}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-green-600">
+                        {formatIndianCurrency(item.pur_value || 0)}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {formatIndianCurrency(item.avg_purchase_price || 0)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
-                        {item.total_quantity}
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          item.stock_status === 'critical' ? 'bg-red-100 text-red-800' : 
+                          item.stock_status === 'low' ? 'bg-yellow-100 text-yellow-800' : 
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {item.stock_qty || 0}
+                        </span>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {formatIndianCurrency(item.total_amount)}
+                        {formatIndianCurrency(item.rate || 0)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {formatIndianCurrency(item.tax_amount)}
+                        {formatIndianCurrency(item.mrp || 0)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {formatIndianCurrency(item.discount_amount)}
+                        {item.packing}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {formatIndianCurrency(item.net_amount)}
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
+                        {item.vat}%
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          item.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                          item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'
+                          item.stock_status === 'critical' ? 'bg-red-100 text-red-800' : 
+                          item.stock_status === 'low' ? 'bg-yellow-100 text-yellow-800' : 
+                          'bg-green-100 text-green-800'
                         }`}>
-                          {item.status}
+                          {item.stock_status}
                         </span>
                       </td>
                     </tr>
@@ -2727,29 +2647,29 @@ function PharmacyReportsContent() {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Purchase Report</h1>
-              <p className="text-gray-600 mt-1">Detailed purchase transaction items</p>
+              <p className="text-gray-600 mt-1">Detailed purchase transactions with comprehensive information</p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => {
                   const csv = [
-                    ['Sl.No.', 'Bill Number', 'Supplier', 'Purchase Date', 'Medication Code', 'Medication Name', 'Batch', 'Expiry Date', 'Quantity', 'Unit Price', 'Total Amount', 'Discount %', 'GST %', 'Net Amount', 'Status'],
+                    ['Sl.No.', 'Transaction Date', 'Drug Name', 'Batch', 'Exp. Date', 'Quantity', 'Unit Price', 'Total Amount', 'Transaction Type', 'Reference', 'Notes'],
                     ...purchaseReportData.map((item) => [
                       item.sl_no || '',
-                      item.bill_number || '',
-                      item.supplier_name || '',
-                      item.purchase_date || '',
-                      item.medication_code || '',
-                      item.medication_name || '',
-                      item.batch_number || '',
-                      item.expiry_date || '',
+                      item.transaction_date || '',
+                      item.drug_name || '',
+                      item.batch || '',
+                      item.expiry_date === 'N/A' ? 'N/A' : new Date(item.expiry_date).toLocaleDateString('en-IN', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: '2-digit' 
+                      }),
                       item.quantity || 0,
                       item.unit_price || 0,
                       item.total_amount || 0,
-                      item.discount_percent || 0,
-                      item.gst_percent || 0,
-                      item.net_amount || 0,
-                      item.status || ''
+                      item.transaction_type || '',
+                      item.reference_type || '',
+                      item.notes || ''
                     ])
                   ].map(row => row.join(',')).join('\n')
 
@@ -2769,53 +2689,24 @@ function PharmacyReportsContent() {
             </div>
           </div>
 
-          {/* Purchase Report Filters */}
+          {/* Filters */}
           <div className="card">
             <div className="flex flex-wrap gap-4 items-end">
               <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-                <select
-                  value={selectedRange}
-                  onChange={(e) => {
-                    setSelectedRange(e.target.value)
-                    setShowCustomDate(e.target.value === 'custom')
-                  }}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                <input
+                  type="text"
+                  value={purchaseReportFilter.searchTerm}
+                  onChange={(e) => setPurchaseReportFilter(prev => ({ ...prev, searchTerm: e.target.value }))}
+                  placeholder="Search by drug name, batch, or transaction details..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {DATE_RANGES.map(range => (
-                    <option key={range.value} value={range.value}>{range.label}</option>
-                  ))}
-                </select>
+                />
               </div>
-
-              {showCustomDate && (
-                <>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.start}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.end}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </>
-              )}
-
               <div className="flex-1 min-w-48">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
                 <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  value={purchaseReportFilter.category}
+                  onChange={(e) => setPurchaseReportFilter(prev => ({ ...prev, category: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {CATEGORIES.map(cat => (
@@ -2823,35 +2714,35 @@ function PharmacyReportsContent() {
                   ))}
                 </select>
               </div>
-
               <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by medication, supplier, or batch..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <select
+                  value={purchaseReportFilter.dateRange}
+                  onChange={(e) => setPurchaseReportFilter(prev => ({ ...prev, dateRange: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {DATE_RANGES.map(range => (
+                    <option key={range.value} value={range.value}>{range.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
+
+          {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="card">
               <div className="flex items-center">
-                <Package className="w-8 h-8 text-blue-500" />
+                <FileText className="w-8 h-8 text-blue-500" />
                 <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Items</p>
-                  <p className="text-2xl font-bold text-gray-900">{purchaseReportSummary.totalItems || 0}</p>
+                  <p className="text-sm text-gray-600">Total Transactions</p>
+                  <p className="text-2xl font-bold text-gray-900">{purchaseReportSummary.totalTransactions || 0}</p>
                 </div>
               </div>
             </div>
             <div className="card">
               <div className="flex items-center">
-                <TrendingUp className="w-8 h-8 text-green-500" />
+                <Package className="w-8 h-8 text-green-500" />
                 <div className="ml-4">
                   <p className="text-sm text-gray-600">Total Quantity</p>
                   <p className="text-2xl font-bold text-gray-900">{(purchaseReportSummary.totalQuantity || 0).toLocaleString()}</p>
@@ -2862,17 +2753,17 @@ function PharmacyReportsContent() {
               <div className="flex items-center">
                 <IndianRupee className="w-8 h-8 text-purple-500" />
                 <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Purchase Value</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(purchaseReportSummary.totalPurchaseValue || 0)}</p>
+                  <p className="text-sm text-gray-600">Total Amount</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(purchaseReportSummary.totalAmount || 0)}</p>
                 </div>
               </div>
             </div>
             <div className="card">
               <div className="flex items-center">
-                <BarChart3 className="w-8 h-8 text-orange-500" />
+                <TrendingUp className="w-8 h-8 text-orange-500" />
                 <div className="ml-4">
-                  <p className="text-sm text-gray-600">Average Item Value</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(purchaseReportSummary.averageItemValue || 0)}</p>
+                  <p className="text-sm text-gray-600">Avg Unit Price</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency((purchaseReportSummary.avgUnitPrice || 0) / (purchaseReportSummary.totalTransactions || 1))}</p>
                 </div>
               </div>
             </div>
@@ -2885,46 +2776,42 @@ function PharmacyReportsContent() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sl.No.</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Medication</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Drug Name</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Exp. Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Amount</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {purchaseReportData.slice(0, 100).map((item) => (
+                  {purchaseReportData.map((item) => (
                     <tr key={item.sl_no} className="hover:bg-gray-50">
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         {item.sl_no}
                       </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {item.transaction_date}
+                      </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.bill_number}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.supplier_name}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.purchase_date !== 'N/A' ? new Date(item.purchase_date).toLocaleDateString('en-IN') : 'N/A'}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <div>
-                          <div className="font-medium">{item.medication_name}</div>
-                          <div className="text-xs text-gray-500">{item.medication_code}</div>
+                        <div className="flex items-center">
+                          <Pill className="w-4 h-4 mr-2 text-gray-400" />
+                          {item.drug_name}
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.batch_number}
+                        {item.batch}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.expiry_date !== 'N/A' ? new Date(item.expiry_date).toLocaleDateString('en-IN') : 'N/A'}
+                        {item.expiry_date === 'N/A' ? 'N/A' : new Date(item.expiry_date).toLocaleDateString('en-IN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: '2-digit' 
+                        })}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
                         {item.quantity}
@@ -2932,23 +2819,21 @@ function PharmacyReportsContent() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         {formatIndianCurrency(item.unit_price)}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-green-600">
                         {formatIndianCurrency(item.total_amount)}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
-                        {item.gst_percent}%
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {formatIndianCurrency(item.net_amount)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          item.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                          item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'
+                          item.transaction_type === 'purchase' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
                         }`}>
-                          {item.status}
+                          {item.transaction_type}
                         </span>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {item.reference_type || '-'}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {item.notes || '-'}
                       </td>
                     </tr>
                   ))}
@@ -2960,252 +2845,6 @@ function PharmacyReportsContent() {
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-500">No purchase report data found</p>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {activeTab === 'intent_report' && (
-        <>
-          {/* Intent Report Header */}
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Intent Report</h1>
-              <p className="text-gray-600 mt-1">Department-wise medicine intent analysis</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const csv = [
-                    ['Sl.No.', 'Intent Type', 'Medication Name', 'Batch', 'Expiry Date', 'Quantity', 'MRP', 'Total Value', 'Department', 'Status', 'Created Date'],
-                    ...intentReportData.map((item) => [
-                      item.sl_no || '',
-                      item.intent_type || '',
-                      item.medication_name || '',
-                      item.batch_number || '',
-                      item.expiry_date || '',
-                      item.quantity || 0,
-                      item.mrp || 0,
-                      item.total_value || 0,
-                      item.department || '',
-                      item.status || '',
-                      item.created_date || ''
-                    ])
-                  ].map(row => row.join(',')).join('\n')
-
-                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-                  const url = window.URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `intent-report-${new Date().toISOString().split('T')[0]}.csv`
-                  a.click()
-                  window.URL.revokeObjectURL(url)
-                }}
-                className="btn-secondary flex items-center"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export Intent Report
-              </button>
-            </div>
-          </div>
-
-          {/* Intent Report Filters */}
-          <div className="card">
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-                <select
-                  value={selectedRange}
-                  onChange={(e) => {
-                    setSelectedRange(e.target.value)
-                    setShowCustomDate(e.target.value === 'custom')
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {DATE_RANGES.map(range => (
-                    <option key={range.value} value={range.value}>{range.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {showCustomDate && (
-                <>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.start}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-48">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-                    <input
-                      type="date"
-                      value={customDateRange.end}
-                      onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Intent Type</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="All Categories">All Intent Types</option>
-                  <option value="icu">ICU</option>
-                  <option value="nicu">NICU</option>
-                  <option value="injection room">Injection Room</option>
-                  <option value="general ward">General Ward</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </div>
-
-              <div className="flex-1 min-w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by medication, batch, or department..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="card">
-              <div className="flex items-center">
-                <Target className="w-8 h-8 text-blue-500" />
-                <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Intent Items</p>
-                  <p className="text-2xl font-bold text-gray-900">{intentReportSummary.totalItems || 0}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center">
-                <Package className="w-8 h-8 text-green-500" />
-                <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Quantity</p>
-                  <p className="text-2xl font-bold text-gray-900">{(intentReportSummary.totalQuantity || 0).toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center">
-                <IndianRupee className="w-8 h-8 text-purple-500" />
-                <div className="ml-4">
-                  <p className="text-sm text-gray-600">Total Value</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatIndianCurrency(intentReportSummary.totalValue || 0)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center">
-                <TrendingUp className="w-8 h-8 text-orange-500" />
-                <div className="ml-4">
-                  <p className="text-sm text-gray-600">Departments</p>
-                  <p className="text-2xl font-bold text-gray-900">{intentReportSummary.intentTypeCount || 0}</p>
-                  <p className="text-xs text-gray-500 mt-1">{intentReportSummary.mostCommonIntentType}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Intent Report Table */}
-          <div className="card">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sl.No.</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Intent Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Medication</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">MRP</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Value</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dosage Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {intentReportData.slice(0, 100).map((item) => (
-                    <tr key={item.sl_no} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.sl_no}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          item.intent_type === 'icu' ? 'bg-red-100 text-red-800' :
-                          item.intent_type === 'nicu' ? 'bg-blue-100 text-blue-800' :
-                          item.intent_type === 'injection room' ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {item.intent_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <div>
-                          <div className="font-medium">{item.medication_name}</div>
-                          <div className="text-xs text-gray-500">{item.medication_code}</div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.batch_number}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.expiry_date !== 'N/A' ? new Date(item.expiry_date).toLocaleDateString('en-IN') : 'N/A'}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
-                        {item.quantity}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {formatIndianCurrency(item.mrp)}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {formatIndianCurrency(item.total_value)}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {item.dosage_type}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          item.status === 'active' ? 'bg-green-100 text-green-800' : 
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {item.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <div>
-                          <div>{item.created_date}</div>
-                          <div className="text-xs text-gray-500">{item.created_time}</div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {intentReportData.length === 0 && (
-              <div className="text-center py-8">
-                <Target className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No intent report data found</p>
               </div>
             )}
           </div>

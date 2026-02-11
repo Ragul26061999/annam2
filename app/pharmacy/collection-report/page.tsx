@@ -5,7 +5,7 @@ import {
   Calendar, Filter, Download, TrendingUp, TrendingDown, DollarSign, 
   CreditCard, Smartphone, Building, AlertTriangle, CheckCircle, Clock,
   BarChart3, PieChart, Activity, RefreshCw, IndianRupee, Wallet,
-  FileText, Eye, ArrowUpDown
+  FileText, Eye, ArrowUpDown, ArrowLeft
 } from 'lucide-react'
 import {
   BarChart,
@@ -476,9 +476,17 @@ export default function CollectionReportPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Collection Report</h1>
-          <p className="text-gray-600 mt-1">Comprehensive payment collection analysis and reporting</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Collection Report</h1>
+            <p className="text-gray-600 mt-1">Comprehensive payment collection analysis and reporting</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button

@@ -21,7 +21,8 @@ import {
   Eye,
   X,
   Pill,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 import StaffSelect from '@/src/components/StaffSelect';
 
@@ -1995,6 +1996,12 @@ function NewBillingPageInner() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
                 <h1 className="text-2xl font-semibold text-slate-900">New Pharmacy Bill</h1>
                 <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-100">
                   Entry Type:

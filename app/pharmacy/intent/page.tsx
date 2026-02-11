@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Suspense, useState, useEffect } from 'react';
-import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar, BarChart3, CheckCircle, Bell, ArrowRightLeft } from 'lucide-react';
+import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar, BarChart3, CheckCircle, Bell, ArrowRightLeft, ArrowLeft } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -726,10 +726,18 @@ function IntentPageInner() {
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm shadow-lg">
                   <Target className="w-9 h-9 text-white" />
                 </div>
+                <div className="flex items-center gap-4">
+                <button
+                  onClick={() => window.history.back()}
+                  className="flex items-center gap-2 px-3 py-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
                 <div>
                   <h1 className="text-4xl font-bold text-white tracking-tight leading-tight">Intent Medicine Management</h1>
                   <p className="text-purple-100 text-base mt-2">Streamlined medicine distribution across hospital departments</p>
                 </div>
+              </div>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-4"> 
