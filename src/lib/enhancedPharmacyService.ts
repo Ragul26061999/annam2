@@ -1502,7 +1502,9 @@ export async function getDrugBrokenRecords(filters?: {
   to_date?: string;
 }): Promise<DrugBrokenRecord[]> {
   try {
-    let query = supabase.from('drug_broken_records').select('*');
+    let query = supabase
+      .from('drug_broken_records')
+      .select(`*, medication:medications(id, name, medication_code, generic_name, purchase_price, selling_price)`);
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -1513,43 +1515,58 @@ export async function getDrugBrokenRecords(filters?: {
     }
 
     if (filters?.from_date) {
-      query = query.gte('record_date', filters.from_date);
+      query = query.gte('discovered_date', filters.from_date);
     }
 
     if (filters?.to_date) {
-      query = query.lte('record_date', filters.to_date);
+      query = query.lte('discovered_date', filters.to_date);
     }
 
-    const { data, error } = await query.order('record_date', { ascending: false });
+    const { data, error } = await query.order('discovered_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching drug broken records:', {
-        error: error,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        raw: error
-      });
-
-      // Check if the table doesn't exist
-      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
-        console.warn('drug_broken_records table does not exist. This feature may not be fully implemented yet.');
-      }
-
+      console.error('Error fetching drug broken records:', error);
       return [];
     }
 
-    return data || [];
+    return (data || []).map((r: any) => ({
+      ...r,
+      record_number: r.broken_number,
+      record_date: r.discovered_date,
+      medication_name: r.medication?.name || '',
+      unit_price: r.medication?.purchase_price || 0,
+      total_loss: Number(r.estimated_value || 0),
+    }));
   } catch (error) {
-    console.error('Error in getDrugBrokenRecords:', {
-      error: error,
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined,
-      raw: error
-    });
+    console.error('Error in getDrugBrokenRecords:', error);
     return [];
+  }
+}
+
+export async function getDrugBrokenRecordById(id: string): Promise<DrugBrokenRecord | null> {
+  try {
+    const { data, error } = await supabase
+      .from('drug_broken_records')
+      .select(`*, medication:medications(id, name, medication_code, generic_name, purchase_price, selling_price)`)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching broken record:', error);
+      return null;
+    }
+
+    return {
+      ...data,
+      record_number: data.broken_number,
+      record_date: data.discovered_date,
+      medication_name: data.medication?.name || '',
+      unit_price: data.medication?.purchase_price || 0,
+      total_loss: Number(data.estimated_value || 0),
+    };
+  } catch (error) {
+    console.error('Error in getDrugBrokenRecordById:', error);
+    return null;
   }
 }
 
@@ -1559,59 +1576,96 @@ export async function createDrugBrokenRecord(
   try {
     const { data: recordNumber } = await supabase.rpc('generate_drug_broken_number');
 
-    // Get medication name if not provided
-    let medicationName = record.medication_name;
-    if (!medicationName && record.medication_id) {
-      const { data: med } = await supabase
-        .from('medications')
-        .select('name')
-        .eq('id', record.medication_id)
-        .single();
-      medicationName = med?.name;
-    }
-
-    // Get unit price if not provided
-    let unitPrice = record.unit_price;
+    // Get medication details for estimated value calculation
+    let unitPrice = record.unit_price || 0;
     if (!unitPrice && record.medication_id) {
       const { data: med } = await supabase
         .from('medications')
-        .select('selling_price')
+        .select('purchase_price, selling_price')
         .eq('id', record.medication_id)
         .single();
-      unitPrice = med?.selling_price || 0;
+      unitPrice = med?.purchase_price || med?.selling_price || 0;
     }
 
-    const totalLoss = (record.quantity || 0) * (unitPrice || 0);
+    const estimatedValue = (record.quantity || 0) * unitPrice;
 
+    console.log('=== CREATE DRUG BROKEN RECORD ===');
+    console.log('Input record:', record);
+    console.log('RecordNumber:', recordNumber);
+    console.log('UnitPrice:', unitPrice);
+    console.log('EstimatedValue:', estimatedValue);
+    
+    const insertData = {
+      broken_number: recordNumber || `DB-${Date.now()}`,
+      medication_id: record.medication_id,
+      batch_number: record.batch_number,
+      expiry_date: record.expiry_date || null,
+      quantity: record.quantity,
+      damage_type: record.damage_type,
+      damage_description: record.damage_description || null,
+      location: record.location || null,
+      discovered_date: record.record_date || new Date().toISOString().split('T')[0],
+      discoverer_name: record.discoverer_name || null,
+      status: record.status || 'reported',
+      estimated_value: estimatedValue,
+      remarks: record.remarks || null,
+    };
+    
+    console.log('Insert data:', insertData);
+
+    // Insert into drug_broken_records (matching actual DB schema)
     const { data, error } = await supabase
       .from('drug_broken_records')
       .insert({
-        record_number: recordNumber || `DB-${Date.now()}`,
-        record_date: record.record_date || new Date().toISOString().split('T')[0],
+        broken_number: recordNumber || `DB-${Date.now()}`,
         medication_id: record.medication_id,
-        medication_name: medicationName,
         batch_number: record.batch_number,
-        expiry_date: record.expiry_date,
+        expiry_date: record.expiry_date || null,
         quantity: record.quantity,
-        unit_price: unitPrice,
-        total_loss: totalLoss,
         damage_type: record.damage_type,
-        damage_description: record.damage_description,
-        location: record.location,
-        discovered_by: record.discovered_by,
-        discoverer_name: record.discoverer_name,
-        disposal_method: record.disposal_method || 'pending',
+        damage_description: record.damage_description || null,
+        location: record.location || null,
+        discovered_date: record.record_date || new Date().toISOString().split('T')[0],
+        discoverer_name: record.discoverer_name || null,
         status: record.status || 'reported',
-        remarks: record.remarks
+        estimated_value: estimatedValue,
+        remarks: record.remarks || null,
       })
       .select()
       .single();
 
-    if (error) throw error;
+    console.log('Insert result - data:', data);
+    console.log('Insert result - error:', error);
 
-    return data;
+    if (error) {
+      console.error('Supabase insert error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        raw: error
+      });
+      throw error;
+    }
+
+    // Stock deduction & stock_transaction are handled by DB trigger
+    // trg_update_stock_on_drug_broken() on INSERT
+
+    return {
+      ...data,
+      record_number: data.broken_number,
+      record_date: data.discovered_date,
+      total_loss: estimatedValue,
+    };
   } catch (error) {
     console.error('Error in createDrugBrokenRecord:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
+      raw: error
+    });
     throw error;
   }
 }

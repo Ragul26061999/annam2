@@ -2137,19 +2137,19 @@ export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
     // Get batch information for expiry analysis
     const { data: batches, error: batchError } = await supabase
       .from('medicine_batches')
-      .select('medicine_id, expiry_date, current_quantity, selling_price');
+      .select('medicine_id, expiry_date, current_quantity, purchase_price, selling_price');
 
     if (batchError) throw batchError;
 
-    // Calculate total stock values
-    const totalCostValue = (medications || []).reduce((sum: number, med: any) =>
-      sum + ((med.available_stock || 0) * (med.purchase_price || 0)), 0);
-    const totalRetailValue = (medications || []).reduce((sum: number, med: any) =>
-      sum + ((med.available_stock || 0) * (med.selling_price || 0)), 0);
+    // Calculate total stock values from medicine_batches (real prices are here)
+    const totalCostValue = (batches || []).reduce((sum: number, batch: any) =>
+      sum + ((batch.current_quantity || 0) * (batch.purchase_price || 0)), 0);
+    const totalRetailValue = (batches || []).reduce((sum: number, batch: any) =>
+      sum + ((batch.current_quantity || 0) * (batch.selling_price || 0)), 0);
     const profitMargin = totalCostValue > 0 ? ((totalRetailValue - totalCostValue) / totalCostValue) * 100 : 0;
 
-    // Stock summary
-    const totalUnits = (medications || []).reduce((sum: number, med: any) => sum + (med.available_stock || 0), 0);
+    // Stock summary from medicine_batches
+    const totalUnits = (batches || []).reduce((sum: number, batch: any) => sum + (batch.current_quantity || 0), 0);
     const lowStockItems = (medications || []).filter((med: any) =>
       med.available_stock <= 10 && med.available_stock > 0).length;
 

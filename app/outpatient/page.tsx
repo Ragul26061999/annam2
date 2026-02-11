@@ -418,8 +418,8 @@ function OutpatientPageContent() {
         const { data: simpleData, error: simpleError } = await supabase
           .from('prescriptions')
           .select('id, prescription_id, patient_id, issue_date, created_at, status')
-          .not('status', 'expired')
-          .not('status', 'dispensed')
+          .not('status', 'eq', 'expired')
+          .not('status', 'eq', 'dispensed')
           .gte('created_at', `${today}T00:00:00`)
           .lt('created_at', `${today}T23:59:59`)
           .limit(50); // Limit to prevent large responses
@@ -472,8 +472,8 @@ function OutpatientPageContent() {
               medication:medications(id, name, dosage_form)
             )
           `)
-          .not('status', 'expired')
-          .not('status', 'dispensed')
+          .not('status', 'eq', 'expired')
+          .not('status', 'eq', 'dispensed')
           .gte('created_at', `${today}T00:00:00`)
           .lt('created_at', `${today}T23:59:59`);
         

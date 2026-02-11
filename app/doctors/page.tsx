@@ -840,168 +840,186 @@ export default function DoctorsPage() {
       ) : null}
 
       {!showDeleted && viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredDoctors.map((doctor) => {
-          const buttonColors = getCardButtonColors(doctor.id);
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+        {filteredDoctors.map((doctor, idx) => {
           const cardGradient = getCardGradient(doctor.id);
+          const availStatus = getAvailabilityStatus(doctor);
+          const sessionTimings = getSessionTimings(doctor);
+          const accentColors = [
+            'from-blue-500 to-indigo-600',
+            'from-emerald-500 to-teal-600',
+            'from-violet-500 to-purple-600',
+            'from-rose-500 to-pink-600',
+            'from-amber-500 to-orange-600',
+            'from-cyan-500 to-blue-600'
+          ];
+          const accent = accentColors[(doctor.id?.length || idx) % accentColors.length];
 
           return (
             <motion.div
               key={doctor.id}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200"
+              transition={{ delay: idx * 0.04 }}
+              className="group relative bg-white rounded-2xl shadow-sm border border-gray-100/80 hover:shadow-lg hover:shadow-gray-200/50 hover:border-gray-200 transition-all duration-300 overflow-hidden"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center">
-                  <div className={`w-12 h-12 ${cardGradient} rounded-xl flex items-center justify-center text-white font-bold text-sm`}>
+              {/* Accent top bar */}
+              <div className={`h-1 bg-gradient-to-r ${accent}`} />
+
+              {/* Card body */}
+              <div className="p-5">
+                {/* Header: Avatar + Name + Fee badge */}
+                <div className="flex items-start gap-3.5 mb-4">
+                  <div className={`relative w-12 h-12 bg-gradient-to-br ${accent} rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm`}>
                     {getInitials(doctor.user?.name || 'Unknown')}
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${availStatus.type === 'on_call' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                   </div>
-                  <div className="ml-3">
-                    <h3 className="font-semibold text-gray-900">{doctor.user?.name}</h3>
-                    <p className="text-sm text-gray-500">{doctor.license_number}</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 text-[15px] truncate leading-tight">{doctor.user?.name}</h3>
+                    <p className="text-xs text-gray-400 mt-0.5 font-medium tracking-wide">{doctor.license_number}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-base font-bold text-gray-900">₹{doctor.consultation_fee}</p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">per visit</p>
                   </div>
                 </div>
-                              </div>
 
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center text-sm text-gray-600">
-                  <Stethoscope size={14} className="mr-2" />
-                  {doctor.specialization}
-                </div>
-                {doctor.department && (
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Award size={14} className="mr-2" />
-                    Department: {doctor.department}
-                  </div>
-                )}
-                <div className="flex items-center text-sm text-gray-600">
-                  <Award size={14} className="mr-2" />
-                  {doctor.qualification}
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <MapPin size={14} className="mr-2" />
-                  Room {doctor.room_number}
-                </div>
-              </div>
-
-              <div className={`${cardGradient.replace('bg-gradient-to-r', 'bg-gradient-to-r').replace('400', '50').replace('500', '100')} rounded-xl p-3 mb-4`}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-gray-700">Availability</p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${getAvailabilityStatus(doctor).color}`}>
-                    {getAvailabilityStatus(doctor).status}
+                {/* Info chips */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium">
+                    <Stethoscope size={11} />
+                    {doctor.specialization}
                   </span>
+                  {doctor.department && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 text-xs font-medium">
+                      <Award size={11} />
+                      {doctor.department}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 text-xs font-medium">
+                    <Award size={11} />
+                    {doctor.qualification}
+                  </span>
+                  {doctor.room_number && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 text-xs font-medium">
+                      <MapPin size={11} />
+                      Room {doctor.room_number}
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-600">Next slot: {getNextAvailableSlot(doctor)}</p>
-                  {getSessionTimings(doctor).length > 0 && (
-                    <div className="text-xs text-gray-600">
-                      <p className="font-medium mb-1">Sessions:</p>
-                      {getSessionTimings(doctor).map((session: { name: string; time: string }, index: number) => (
-                        <div key={index} className="flex justify-between items-center">
-                          <span>{session.name}: {session.time}</span>
+
+                {/* Availability section */}
+                <div className="bg-gray-50/80 rounded-xl p-3.5 mb-4 border border-gray-100/60">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${availStatus.color}`}>
+                        {availStatus.type === 'on_call' ? <Phone size={10} /> : <CheckCircle size={10} />}
+                        {availStatus.status}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-gray-500 font-medium">
+                      Next: <span className="text-gray-700">{getNextAvailableSlot(doctor)}</span>
+                    </span>
+                  </div>
+                  {sessionTimings.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-1.5 mt-2">
+                      {sessionTimings.map((session: { name: string; time: string }, index: number) => (
+                        <div key={index} className="bg-white rounded-lg px-2 py-1.5 text-center border border-gray-100/80">
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{session.name}</p>
+                          <p className="text-[11px] font-medium text-gray-700 mt-0.5">{session.time}</p>
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-1">No sessions configured</p>
                   )}
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <Clock className="h-4 w-4 text-blue-500 mr-1" />
-                  <span className="text-sm font-medium text-gray-900">
-                    {doctor.availability_hours?.availableSessions?.length || 0} sessions
-                  </span>
-                  <span className="text-xs text-gray-500 ml-1">
-                    ({doctor.availability_hours?.availableSessions?.join(', ') || 'None'})
-                  </span>
+                {/* Availability toggle */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => handleAvailabilityToggle(doctor, 'session_based')}
+                    className={`flex-1 flex items-center justify-center py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+                      availStatus.type === 'session_based'
+                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600'
+                    }`}
+                  >
+                    <CheckCircle size={11} className="mr-1" />
+                    Session Based
+                  </button>
+                  <button
+                    onClick={() => handleAvailabilityToggle(doctor, 'on_call')}
+                    className={`flex-1 flex items-center justify-center py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+                      availStatus.type === 'on_call'
+                        ? 'bg-amber-500 text-white shadow-sm shadow-amber-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-amber-50 hover:text-amber-600'
+                    }`}
+                  >
+                    <Phone size={11} className="mr-1" />
+                    On Call
+                  </button>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">₹{doctor.consultation_fee}</p>
-                  <p className="text-xs text-gray-500">Consultation</p>
+
+                {/* Divider */}
+                <div className="border-t border-gray-100 -mx-5 mb-3" />
+
+                {/* Actions row */}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    defaultValue={doctor.sort_order || 0}
+                    onBlur={async (e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!Number.isFinite(v)) return;
+                      try {
+                        await reorderDoctorSortOrder(doctor.id, v);
+                        await loadDoctors();
+                      } catch (err) {
+                        console.error('Failed to update sort order:', err);
+                      }
+                    }}
+                    className="w-12 px-1.5 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-gray-50 text-center focus:outline-none focus:ring-1 focus:ring-orange-400 focus:border-orange-400"
+                    title="Sort order"
+                  />
+                  <button
+                    onClick={() => openViewModal(doctor)}
+                    className="flex items-center justify-center h-8 px-3 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-medium transition-colors"
+                    title="View"
+                  >
+                    View
+                  </button>
+                  <button
+                    onClick={() => openDocumentsModal(doctor)}
+                    className="flex items-center justify-center h-8 px-3 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 text-xs font-medium transition-colors"
+                    title="Documents"
+                  >
+                    Docs
+                  </button>
+                  <button
+                    onClick={() => openScheduleModal(doctor)}
+                    className="flex items-center justify-center h-8 px-3 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-medium transition-colors"
+                    title="Schedule"
+                  >
+                    <Calendar size={12} className="mr-1" />
+                    Schedule
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => openEditModal(doctor)}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                    title="Edit"
+                  >
+                    <Edit size={13} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDoctor(doctor.id, doctor.user?.name || 'Unknown')}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                    title="Delete Doctor"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex gap-2 mb-3">
-                <button
-                  onClick={() => handleAvailabilityToggle(doctor, 'session_based')}
-                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
-                    getAvailabilityStatus(doctor).type === 'session_based' 
-                      ? 'bg-green-100 text-green-700 border border-green-200' 
-                      : 'bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 border border-gray-200'
-                  }`}
-                >
-                  <CheckCircle size={12} className="mr-1" />
-                  Session Based
-                </button>
-                <button
-                  onClick={() => handleAvailabilityToggle(doctor, 'on_call')}
-                  className={`flex-1 flex items-center justify-center py-2 px-3 rounded-xl text-xs font-medium transition-colors ${
-                    getAvailabilityStatus(doctor).type === 'on_call' 
-                      ? 'bg-orange-100 text-orange-700 border border-orange-200' 
-                      : 'bg-gray-50 text-gray-600 hover:bg-orange-50 hover:text-orange-600 border border-gray-200'
-                  }`}
-                >
-                  <Phone size={12} className="mr-1" />
-                  On Call
-                </button>
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  defaultValue={doctor.sort_order || 0}
-                  onBlur={async (e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!Number.isFinite(v)) return;
-                    try {
-                      await reorderDoctorSortOrder(doctor.id, v);
-                      await loadDoctors();
-                    } catch (err) {
-                      console.error('Failed to update sort order:', err);
-                    }
-                  }}
-                  className="w-20 px-2 py-2 rounded-xl text-sm font-medium border border-gray-200 bg-white"
-                  title="Sort order"
-                />
-                <button
-                  onClick={() => openViewModal(doctor)}
-                  className="flex-1 flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
-                >
-                  View
-                </button>
-                <button
-                  onClick={() => openDocumentsModal(doctor)}
-                  className="flex-1 flex items-center justify-center bg-orange-50 text-orange-700 hover:bg-orange-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
-                >
-                  Documents
-                </button>
-                <button 
-                  onClick={() => openScheduleModal(doctor)}
-                  className={`flex-1 flex items-center justify-center ${buttonColors.schedule} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}
-                >
-                  <Calendar size={14} className="mr-1" />
-                  Schedule
-                </button>
-                <button
-                  onClick={() => openEditModal(doctor)}
-                  className={`flex-1 flex items-center justify-center ${buttonColors.edit} py-2 px-3 rounded-xl text-sm font-medium transition-colors`}
-                >
-                  <Edit size={14} className="mr-1" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDeleteDoctor(doctor.id, doctor.user?.name || 'Unknown')}
-                  className="flex-1 flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 rounded-xl text-sm font-medium transition-colors"
-                  title="Delete Doctor"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6h18"></path>
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                  </svg>
-                </button>
               </div>
             </motion.div>
           );
