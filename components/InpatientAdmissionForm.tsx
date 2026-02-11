@@ -18,9 +18,10 @@ import DocumentList from '../src/components/DocumentList';
 interface InpatientAdmissionFormProps {
     onComplete: (result: { uhid: string; patientName: string; qrCode?: string }) => void;
     onCancel: () => void;
+    initialPatientId?: string;
 }
 
-export default function InpatientAdmissionForm({ onComplete, onCancel }: InpatientAdmissionFormProps) {
+export default function InpatientAdmissionForm({ onComplete, onCancel, initialPatientId }: InpatientAdmissionFormProps) {
     const [loading, setLoading] = useState(false);
     const [searching, setSearching] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -55,7 +56,25 @@ export default function InpatientAdmissionForm({ onComplete, onCancel }: Inpatie
 
     useEffect(() => {
         loadInitialData();
+        if (initialPatientId) {
+            fetchAndSelectPatient(initialPatientId);
+        }
     }, []);
+
+    const fetchAndSelectPatient = async (patientId: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('patients')
+                .select('*')
+                .eq('id', patientId)
+                .single();
+            if (!error && data) {
+                selectPatient(data);
+            }
+        } catch (err) {
+            console.error('Error fetching patient for IP admission:', err);
+        }
+    };
 
     const loadInitialData = async () => {
         try {

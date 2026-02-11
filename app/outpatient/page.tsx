@@ -2970,7 +2970,7 @@ function OutpatientPageContent() {
                         </button>
                       </Link>
                       {appointment.status === 'scheduled' && (
-                        <Link href="/inpatient">
+                        <Link href={`/inpatient/create-inpatient?patientId=${appointment.patient_id}`}>
                           <button className="text-xs px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors">
                             Admit to IP
                           </button>

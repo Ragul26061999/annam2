@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle, Bed } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Bed, Loader2 } from 'lucide-react';
 import InpatientAdmissionForm from '../../../components/InpatientAdmissionForm';
 
-export default function InpatientRegisterPage() {
+function InpatientRegisterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialPatientId = searchParams?.get('patientId') || undefined;
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [registrationResult, setRegistrationResult] = useState<{
     uhid: string;
@@ -109,8 +111,21 @@ export default function InpatientRegisterPage() {
         <InpatientAdmissionForm
           onComplete={handleRegistrationComplete}
           onCancel={handleCancel}
+          initialPatientId={initialPatientId}
         />
       </div>
     </div>
+  );
+}
+
+export default function InpatientRegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    }>
+      <InpatientRegisterPageContent />
+    </Suspense>
   );
 }
