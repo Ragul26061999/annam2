@@ -338,27 +338,70 @@ export default function QuickRegisterPage() {
 
   // Handle keyboard navigation for place suggestions
   const handlePlaceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showPlaceSuggestions || placeSuggestions.length === 0) return;
-
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => 
-          prev < placeSuggestions.length - 1 ? prev + 1 : prev
-        );
+        if (showPlaceSuggestions && placeSuggestions.length > 0) {
+          setSelectedSuggestionIndex(prev => 
+            prev < placeSuggestions.length - 1 ? prev + 1 : prev
+          );
+        }
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => prev > -1 ? prev - 1 : -1);
+        if (showPlaceSuggestions && placeSuggestions.length > 0) {
+          setSelectedSuggestionIndex(prev => prev > -1 ? prev - 1 : -1);
+        }
         break;
       case 'Enter':
         e.preventDefault();
+        const currentValue = formData.place;
+        
+        // If we have suggestions and one is selected, use it
         if (selectedSuggestionIndex >= 0 && placeSuggestions[selectedSuggestionIndex]) {
           selectPlace(placeSuggestions[selectedSuggestionIndex]);
+        } 
+        // If we have suggestions but none selected, use the first one
+        else if (placeSuggestions.length > 0) {
+          selectPlace(placeSuggestions[0]);
+        }
+        // If no suggestions exist yet, try to generate them and select the first one
+        else if (currentValue.length >= 2) {
+          // Generate suggestions on the fly
+          const allPlaces = [...COMMON_PLACES, ...existingPlaces];
+          const uniquePlaces = [...new Set(allPlaces)];
+          
+          const filteredPlaces = uniquePlaces.filter(place =>
+            place.toLowerCase().includes(currentValue.toLowerCase())
+          );
+          
+          const sortedPlaces = filteredPlaces.sort((a, b) => {
+            const aLower = a.toLowerCase();
+            const bLower = b.toLowerCase();
+            const searchLower = currentValue.toLowerCase();
+            
+            if (aLower === searchLower) return -1;
+            if (bLower === searchLower) return 1;
+            
+            if (aLower.startsWith(searchLower) && !bLower.startsWith(searchLower)) return -1;
+            if (bLower.startsWith(searchLower) && !aLower.startsWith(searchLower)) return 1;
+            
+            return a.localeCompare(b);
+          });
+          
+          if (sortedPlaces.length > 0) {
+            selectPlace(sortedPlaces[0]);
+          } else {
+            // No suggestions found, just trigger duplicate check if applicable
+            const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+            if (fullName && formData.gender && formData.dob && currentValue) {
+              checkDuplicatePatient(fullName, formData.gender, formData.dob);
+            }
+          }
         } else {
-          // Trigger duplicate check when Enter is pressed without selecting a suggestion
+          // Trigger duplicate check if applicable
           const fullName = `${formData.firstName} ${formData.lastName}`.trim();
-          if (fullName && formData.gender && formData.dob && formData.place) {
+          if (fullName && formData.gender && formData.dob && currentValue) {
             checkDuplicatePatient(fullName, formData.gender, formData.dob);
           }
         }

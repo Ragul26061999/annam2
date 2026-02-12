@@ -34,7 +34,6 @@ export default function InpatientAdmissionForm({ onComplete, onCancel, initialPa
     const [formData, setFormData] = useState({
         department: '',
         attendingDoctorId: '',
-        admittingDoctorId: '',
         advanceAmount: '',
         advancePaymentMethod: 'cash',
         advanceReferenceNumber: '',
@@ -472,26 +471,7 @@ export default function InpatientAdmissionForm({ onComplete, onCancel, initialPa
                         </select>
                     </div>
 
-                    {/* Admitting Doctor */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                            <Stethoscope className="h-4 w-4 text-gray-400" /> Admitting Doctor
-                        </label>
-                        <select
-                            value={formData.admittingDoctorId}
-                            onChange={(e) => setFormData(prev => ({ ...prev, admittingDoctorId: e.target.value }))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-                            <option value="">Select Admitting Doctor</option>
-                            {doctors.map(doctor => (
-                                <option key={doctor.id} value={doctor.id}>
-                                    Dr. {doctor.user?.name} - {doctor.specialization}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
+                    
                     {/* Admission Category */}
                     <div className="md:col-span-2">
                         <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">

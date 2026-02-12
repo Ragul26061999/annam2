@@ -57,6 +57,20 @@ const INDIAN_STATES = [
     'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
 ];
 
+// Common places/areas for typeahead suggestions
+const COMMON_PLACES = [
+    'T. Nagar', 'Anna Nagar', 'Adyar', 'Mylapore', 'Velachery', 'Tambaram',
+    'Chromepet', 'Pallavaram', 'Guindy', 'Nungambakkam', 'Kodambakkam',
+    'Teynampet', 'Alwarpet', 'Royapettah', 'Triplicane', 'Chepauk',
+    'Egmore', 'Park Town', 'George Town', 'Parrys', 'Saidapet',
+    'Mambalam', 'Ashok Nagar', 'K.K. Nagar', 'Vadapalani', 'Saligramam',
+    'Porur', 'Poonamallee', 'Avadi', 'Ambattur', 'Madhavaram',
+    'Red Hills', 'Thiruvanmiyur', 'Besant Nagar', 'Thiruvanmiyur', 'Sholinganallur',
+    'Medavakkam', 'Keelkattalai', 'Kovilambakkam', 'Pallikaranai', 'Velachery',
+    'Thoraipakkam', 'Karapakkam', 'Navalur', 'Kelambakkam', 'Siruseri',
+    'OMR', 'ECR', 'GST Road', 'Arcot Road', 'Poonamallee High Road'
+];
+
 export default function OutpatientRegistrationForm({ onComplete, onCancel }: OutpatientRegistrationFormProps) {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -75,6 +89,11 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
     const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
     const [contactDuplicateAlert, setContactDuplicateAlert] = useState(false);
     const [contactValidationError, setContactValidationError] = useState('');
+    const [placeSuggestions, setPlaceSuggestions] = useState<string[]>([]);
+    const [showPlaceSuggestions, setShowPlaceSuggestions] = useState(false);
+    const [placeSearchTerm, setPlaceSearchTerm] = useState('');
+    const [existingPlaces, setExistingPlaces] = useState<string[]>([]);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
     const [formData, setFormData] = useState({
         // Step 1: Patient Info
@@ -229,12 +248,51 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         }
     }, [formData.doctorId, doctors]);
 
+    // Load existing places from database
+    useEffect(() => {
+        const loadExistingPlaces = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('patients')
+                    .select('place')
+                    .not('place', 'is', null)
+                    .not('place', 'eq', '')
+                    .limit(100);
+                
+                if (error) {
+                    console.error('Error loading existing places:', error);
+                    return;
+                }
+                
+                const places = data?.map((p: any) => p.place).filter(Boolean) || [];
+                setExistingPlaces(places);
+            } catch (error) {
+                console.error('Error loading existing places:', error);
+            }
+        };
+        loadExistingPlaces();
+    }, []);
+
     // Calculate total amount
     useEffect(() => {
         const fee = parseFloat(formData.consultationFee) || 0;
         const opAmount = parseFloat(formData.opCardAmount) || 0;
         setFormData(prev => ({ ...prev, totalAmount: (fee + opAmount).toString() }));
     }, [formData.consultationFee, formData.opCardAmount]);
+
+    // Close place suggestions when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element;
+            if (!target.closest('.place-input-container')) {
+                setShowPlaceSuggestions(false);
+                setSelectedSuggestionIndex(-1);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -275,23 +333,63 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
         // General handling for other fields
         setFormData(prev => ({ ...prev, [name]: value }));
         
-        // Check for duplicate patient when place field is filled
-        if (name === 'place' && value.trim() !== '') {
-            setCheckingDuplicate(true);
-            // Small delay to ensure state is updated
-            setTimeout(async () => {
-                const existingPatient = await checkExistingPatientByNameGenderDOB();
-                if (existingPatient) {
-                    setDuplicatePatient(existingPatient);
-                    setIsDuplicateDetected(true);
-                    setShowDuplicateAlert(true);
-                } else {
-                    setIsDuplicateDetected(false);
-                    setDuplicatePatient(null);
-                    setShowDuplicateAlert(false);
-                }
-                setCheckingDuplicate(false);
-            }, 100);
+        // Handle place suggestions
+        if (name === 'place') {
+            setPlaceSearchTerm(value);
+            if (value.length >= 2) {
+                // Combine common places with existing places from database
+                const allPlaces = [...COMMON_PLACES, ...existingPlaces];
+                const uniquePlaces = [...new Set(allPlaces)]; // Remove duplicates
+                
+                const filteredPlaces = uniquePlaces.filter(place =>
+                    place.toLowerCase().includes(value.toLowerCase())
+                );
+                
+                // Sort: exact matches first, then alphabetical
+                const sortedPlaces = filteredPlaces.sort((a, b) => {
+                    const aLower = a.toLowerCase();
+                    const bLower = b.toLowerCase();
+                    const searchLower = value.toLowerCase();
+                    
+                    // Exact match first
+                    if (aLower === searchLower) return -1;
+                    if (bLower === searchLower) return 1;
+                    
+                    // Starts with search term next
+                    if (aLower.startsWith(searchLower) && !bLower.startsWith(searchLower)) return -1;
+                    if (bLower.startsWith(searchLower) && !aLower.startsWith(searchLower)) return 1;
+                    
+                    // Then alphabetical
+                    return a.localeCompare(b);
+                });
+                
+                setPlaceSuggestions(sortedPlaces.slice(0, 8)); // Limit to 8 suggestions
+                setShowPlaceSuggestions(true);
+                setSelectedSuggestionIndex(-1); // Reset selection
+            } else {
+                setShowPlaceSuggestions(false);
+                setPlaceSuggestions([]);
+                setSelectedSuggestionIndex(-1);
+            }
+            
+            // Check for duplicate patient when place field is filled
+            if (value.trim() !== '') {
+                setCheckingDuplicate(true);
+                // Small delay to ensure state is updated
+                setTimeout(async () => {
+                    const existingPatient = await checkExistingPatientByNameGenderDOB();
+                    if (existingPatient) {
+                        setDuplicatePatient(existingPatient);
+                        setIsDuplicateDetected(true);
+                        setShowDuplicateAlert(true);
+                    } else {
+                        setIsDuplicateDetected(false);
+                        setDuplicatePatient(null);
+                        setShowDuplicateAlert(false);
+                    }
+                    setCheckingDuplicate(false);
+                }, 100);
+            }
         }
     };
 
@@ -384,6 +482,107 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
             console.error('Error checking existing patient:', error);
             return null;
         }
+    };
+
+    // Function to select a place from suggestions
+    const selectPlace = (place: string) => {
+        setFormData(prev => ({ ...prev, place }));
+        setPlaceSearchTerm(place);
+        setShowPlaceSuggestions(false);
+        setPlaceSuggestions([]);
+        setSelectedSuggestionIndex(-1);
+        
+        // Trigger duplicate patient check when place is selected
+        const { firstName, lastName, gender, dob } = formData;
+        const fullName = `${firstName} ${lastName}`.trim();
+        if (fullName && gender && dob) {
+            setCheckingDuplicate(true);
+            setTimeout(async () => {
+                const existingPatient = await checkExistingPatientByNameGenderDOB();
+                if (existingPatient) {
+                    setDuplicatePatient(existingPatient);
+                    setIsDuplicateDetected(true);
+                    setShowDuplicateAlert(true);
+                } else {
+                    setIsDuplicateDetected(false);
+                    setDuplicatePatient(null);
+                    setShowDuplicateAlert(false);
+                }
+                setCheckingDuplicate(false);
+            }, 100);
+        }
+    };
+
+    // Handle keyboard navigation for place suggestions
+    const handlePlaceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                if (showPlaceSuggestions && placeSuggestions.length > 0) {
+                    setSelectedSuggestionIndex(prev => 
+                        prev < placeSuggestions.length - 1 ? prev + 1 : prev
+                    );
+                }
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                if (showPlaceSuggestions && placeSuggestions.length > 0) {
+                    setSelectedSuggestionIndex(prev => prev > -1 ? prev - 1 : -1);
+                }
+                break;
+            case 'Enter':
+                e.preventDefault();
+                const currentValue = formData.place;
+                
+                // If we have suggestions and one is selected, use it
+                if (selectedSuggestionIndex >= 0 && placeSuggestions[selectedSuggestionIndex]) {
+                    selectPlace(placeSuggestions[selectedSuggestionIndex]);
+                } 
+                // If we have suggestions but none selected, use the first one
+                else if (placeSuggestions.length > 0) {
+                    selectPlace(placeSuggestions[0]);
+                }
+                // If no suggestions exist yet, try to generate them and select the first one
+                else if (currentValue.length >= 2) {
+                    // Generate suggestions on the fly
+                    const allPlaces = [...COMMON_PLACES, ...existingPlaces];
+                    const uniquePlaces = [...new Set(allPlaces)];
+                    
+                    const filteredPlaces = uniquePlaces.filter(place =>
+                        place.toLowerCase().includes(currentValue.toLowerCase())
+                    );
+                    
+                    const sortedPlaces = filteredPlaces.sort((a, b) => {
+                        const aLower = a.toLowerCase();
+                        const bLower = b.toLowerCase();
+                        const searchLower = currentValue.toLowerCase();
+                        
+                        if (aLower === searchLower) return -1;
+                        if (bLower === searchLower) return 1;
+                        
+                        if (aLower.startsWith(searchLower) && !bLower.startsWith(searchLower)) return -1;
+                        if (bLower.startsWith(searchLower) && !aLower.startsWith(searchLower)) return 1;
+                        
+                        return a.localeCompare(b);
+                    });
+                    
+                    if (sortedPlaces.length > 0) {
+                        selectPlace(sortedPlaces[0]);
+                    }
+                }
+                break;
+            case 'Escape':
+                e.preventDefault();
+                setShowPlaceSuggestions(false);
+                setSelectedSuggestionIndex(-1);
+                break;
+        }
+    };
+
+    // Handle blur event for place field
+    const handlePlaceBlur = () => {
+        setShowPlaceSuggestions(false);
+        setSelectedSuggestionIndex(-1);
     };
 
     // Function to proceed with registration after duplicate confirmation
@@ -1054,7 +1253,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Place</label>
-                                <div className="relative">
+                                <div className="relative place-input-container">
                                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                     <input
                                         type="text"
@@ -1062,6 +1261,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         placeholder="Enter Place/Locality"
                                         value={formData.place}
                                         onChange={handleInputChange}
+                                        onKeyDown={handlePlaceKeyDown}
+                                        onBlur={handlePlaceBlur}
                                         className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
                                             checkingDuplicate ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
                                         }`}
@@ -1069,6 +1270,42 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                     {checkingDuplicate && (
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                             <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                        </div>
+                                    )}
+                                    {showPlaceSuggestions && placeSuggestions.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50">
+                                            {placeSuggestions.map((place, index) => {
+                                                const isExistingPlace = existingPlaces.includes(place);
+                                                const isCommonPlace = COMMON_PLACES.includes(place);
+                                                
+                                                return (
+                                                    <button
+                                                        key={index}
+                                                        type="button"
+                                                        onClick={() => selectPlace(place)}
+                                                        className={`w-full px-4 py-2 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between group ${
+                                                            index === selectedSuggestionIndex ? 'bg-orange-50' : ''
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <MapPin size={14} className="text-gray-400" />
+                                                            <span className="text-sm text-gray-700">{place}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {isExistingPlace && (
+                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                                                    Used
+                                                                </span>
+                                                            )}
+                                                            {isCommonPlace && !isExistingPlace && (
+                                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                                                    Common
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -1493,6 +1730,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         <option value="UPI / QR">UPI / QR</option>
                                         <option value="Card">Card</option>
                                         <option value="Insurance">Insurance</option>
+                                        <option value="Free">Free</option>
+                                        <option value="Camp">Camp</option>
                                     </select>
                                 </div>
                             </div>
@@ -1860,7 +2099,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Place</label>
-                                <div className="relative">
+                                <div className="relative place-input-container">
                                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                     <input
                                         type="text"
@@ -1868,6 +2107,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         placeholder="Enter Place/Locality"
                                         value={formData.place}
                                         onChange={handleInputChange}
+                                        onKeyDown={handlePlaceKeyDown}
+                                        onBlur={handlePlaceBlur}
                                         className={`w-full pl-10 pr-10 py-2.5 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
                                             checkingDuplicate ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
                                         }`}
@@ -1875,6 +2116,42 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                     {checkingDuplicate && (
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                             <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
+                                        </div>
+                                    )}
+                                    {showPlaceSuggestions && placeSuggestions.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50">
+                                            {placeSuggestions.map((place, index) => {
+                                                const isExistingPlace = existingPlaces.includes(place);
+                                                const isCommonPlace = COMMON_PLACES.includes(place);
+                                                
+                                                return (
+                                                    <button
+                                                        key={index}
+                                                        type="button"
+                                                        onClick={() => selectPlace(place)}
+                                                        className={`w-full px-4 py-2 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between group ${
+                                                            index === selectedSuggestionIndex ? 'bg-orange-50' : ''
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <MapPin size={14} className="text-gray-400" />
+                                                            <span className="text-sm text-gray-700">{place}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {isExistingPlace && (
+                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                                                    Used
+                                                                </span>
+                                                            )}
+                                                            {isCommonPlace && !isExistingPlace && (
+                                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                                                    Common
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -2299,6 +2576,8 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                         <option value="UPI / QR">UPI / QR</option>
                                         <option value="Card">Card</option>
                                         <option value="Insurance">Insurance</option>
+                                        <option value="Free">Free</option>
+                                        <option value="Camp">Camp</option>
                                     </select>
                                 </div>
                             </div>
