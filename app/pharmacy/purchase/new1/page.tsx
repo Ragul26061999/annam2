@@ -201,12 +201,13 @@ export default function EnhancedPurchaseEntryPage() {
   // Close drug dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      // Check if click is outside any drug input
+      // Check if click is outside any drug input AND outside the dropdown
       const clickedOutsideAllInputs = Object.values(drugInputRefs.current).every(
         ref => !ref || !ref.contains(e.target as Node)
       )
+      const clickedOutsideDropdown = dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
       
-      if (clickedOutsideAllInputs) {
+      if (clickedOutsideAllInputs && clickedOutsideDropdown) {
         setShowDrugDropdown(false)
         setActiveDrugSearchIndex(null)
       }
@@ -1040,7 +1041,16 @@ export default function EnhancedPurchaseEntryPage() {
               <button
                 key={med.id}
                 data-index={medIdx}
-                onClick={() => selectDrugForLine(activeDrugSearchIndex, med)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  selectDrugForLine(activeDrugSearchIndex, med)
+                  setShowDrugDropdown(false)
+                  setActiveDrugSearchIndex(null)
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                }}
                 className={`w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 flex justify-between items-center transition-colors ${
                   medIdx === selectedDrugIndex ? 'bg-blue-100 border-blue-200' : 'border-gray-100'
                 }`}
