@@ -57,7 +57,7 @@ interface DrugLineItem {
   drug_rate_id: string
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────--
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(n)
@@ -144,6 +144,7 @@ export default function EnhancedPurchaseEntryPage() {
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const drugSearchRef = useRef<HTMLDivElement>(null)
   const drugInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const [header, setHeader] = useState<BillHeader>({
     purchase_no: '(Auto)',
@@ -163,6 +164,20 @@ export default function EnhancedPurchaseEntryPage() {
   })
 
   const [items, setItems] = useState<DrugLineItem[]>([emptyLine()])
+
+  // Scroll selected item into view
+  const scrollSelectedIntoView = (selectedIndex: number) => {
+    if (dropdownRef.current) {
+      const selectedItem = dropdownRef.current.querySelector(`[data-index="${selectedIndex}"]`) as HTMLElement
+      if (selectedItem) {
+        selectedItem.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest'
+        })
+      }
+    }
+  }
 
   // ─── Load data ─────────────────────────────────────────────────────────────
 
@@ -743,10 +758,14 @@ export default function EnhancedPurchaseEntryPage() {
                               const drugs = filteredDrugs
                               if (e.key === 'ArrowDown') {
                                 e.preventDefault()
-                                setSelectedDrugIndex(prev => (prev + 1) % drugs.length)
+                                const newIndex = (selectedDrugIndex + 1) % drugs.length
+                                setSelectedDrugIndex(newIndex)
+                                setTimeout(() => scrollSelectedIntoView(newIndex), 0)
                               } else if (e.key === 'ArrowUp') {
                                 e.preventDefault()
-                                setSelectedDrugIndex(prev => (prev - 1 + drugs.length) % drugs.length)
+                                const newIndex = (selectedDrugIndex - 1 + drugs.length) % drugs.length
+                                setSelectedDrugIndex(newIndex)
+                                setTimeout(() => scrollSelectedIntoView(newIndex), 0)
                               } else if (e.key === 'Enter') {
                                 e.preventDefault()
                                 if (drugs[selectedDrugIndex]) {
@@ -1006,6 +1025,7 @@ export default function EnhancedPurchaseEntryPage() {
       {/* Portal-based dropdown for drug search */}
       {showDrugDropdown && activeDrugSearchIndex !== null && createPortal(
         <div
+          ref={dropdownRef}
           className="fixed bg-white border border-gray-200 rounded-lg shadow-2xl z-[9999] max-h-80 overflow-y-auto"
           style={{
             top: `${dropdownPosition.top}px`,
@@ -1019,6 +1039,7 @@ export default function EnhancedPurchaseEntryPage() {
             filteredDrugs.map((med, medIdx) => (
               <button
                 key={med.id}
+                data-index={medIdx}
                 onClick={() => selectDrugForLine(activeDrugSearchIndex, med)}
                 className={`w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 flex justify-between items-center transition-colors ${
                   medIdx === selectedDrugIndex ? 'bg-blue-100 border-blue-200' : 'border-gray-100'
