@@ -6,6 +6,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, Search, Package,
   Receipt, FileText, Calculator, RotateCcw
 } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { getSuppliers, Supplier } from '@/src/lib/enhancedPharmacyService'
 import { getMedications } from '@/src/lib/pharmacyService'
 
@@ -140,7 +141,9 @@ export default function EnhancedPurchaseEntryPage() {
   const [activeDrugSearchIndex, setActiveDrugSearchIndex] = useState<number | null>(null)
   const [showDrugDropdown, setShowDrugDropdown] = useState(false)
   const [selectedDrugIndex, setSelectedDrugIndex] = useState(0)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const drugSearchRef = useRef<HTMLDivElement>(null)
+  const drugInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
 
   const [header, setHeader] = useState<BillHeader>({
     purchase_no: '(Auto)',
@@ -183,7 +186,12 @@ export default function EnhancedPurchaseEntryPage() {
   // Close drug dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (drugSearchRef.current && !drugSearchRef.current.contains(e.target as Node)) {
+      // Check if click is outside any drug input
+      const clickedOutsideAllInputs = Object.values(drugInputRefs.current).every(
+        ref => !ref || !ref.contains(e.target as Node)
+      )
+      
+      if (clickedOutsideAllInputs) {
         setShowDrugDropdown(false)
         setActiveDrugSearchIndex(null)
       }
@@ -651,47 +659,51 @@ export default function EnhancedPurchaseEntryPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+          {/* Add a portal container for dropdowns */}
+          <div id="dropdown-portal" className="relative" />
+
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <table className="w-full text-xs bg-white">
               <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="px-2 py-2 text-left font-semibold text-gray-600 w-8">Sl</th>
-                  <th className="px-2 py-2 text-left font-semibold text-gray-600 min-w-[200px]">Drug Name</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-16">Pack</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-20">Rate</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-20">M.R.P</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-28">Exp.Date</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-24">Batch</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-16">Qty</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-14">Free</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-16">GST%</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-16">Disc%</th>
-                  <th className="px-2 py-2 text-right font-semibold text-gray-600 w-20">Total</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-20">Unit Rate</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-16">Profit%</th>
-                  <th className="px-2 py-2 text-center font-semibold text-gray-600 w-8"></th>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300">
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700 w-8 border-r border-gray-200">Sl</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[280px] border-r border-gray-200">Drug Name</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Pack</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">M.R.P</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-28 border-r border-gray-200">Exp.Date</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-24 border-r border-gray-200">Batch</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Qty</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-14 border-r border-gray-200">Free</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">GST%</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Disc%</th>
+                  <th className="px-3 py-3 text-right font-semibold text-gray-700 w-20 border-r border-gray-200">Total</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">Unit Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Profit%</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-8"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-200">
                 {items.map((item, idx) => (
-                  <tr key={item.key} className={`hover:bg-blue-50/30 ${item.drug_return ? 'bg-red-50/40' : ''}`}>
+                  <tr key={item.key} className={`hover:bg-blue-50/50 transition-colors ${item.drug_return ? 'bg-red-50/50' : ''}`}>
                     {/* Sl No */}
-                    <td className="px-2 py-1.5 text-center text-gray-500 font-medium">{idx + 1}</td>
+                    <td className="px-3 py-2 text-center text-gray-600 font-medium border-r border-gray-100">{idx + 1}</td>
 
                     {/* Drug Name with search */}
-                    <td className="px-2 py-1.5 relative">
+                    <td className="px-3 py-2 relative border-r border-gray-100">
                       <div ref={activeDrugSearchIndex === idx ? drugSearchRef : undefined}>
                       {item.medication_id ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-900 truncate flex-1">{item.medication_name}</span>
                           <button onClick={() => updateItem(item.key, 'medication_id', '')}
-                            className="text-gray-400 hover:text-red-500 shrink-0">
+                            className="text-gray-400 hover:text-red-500 shrink-0 p-1 hover:bg-red-50 rounded transition-colors">
                             <RotateCcw className="w-3 h-3" />
                           </button>
                         </div>
                       ) : (
                         <div className="relative">
                           <input
+                            ref={(el) => { drugInputRefs.current[item.key] = el }}
                             type="text"
                             value={activeDrugSearchIndex === idx ? drugSearchTerm : ''}
                             onChange={e => {
@@ -699,11 +711,33 @@ export default function EnhancedPurchaseEntryPage() {
                               setActiveDrugSearchIndex(idx)
                               setShowDrugDropdown(true)
                               setSelectedDrugIndex(0)
+                              
+                              // Calculate dropdown position
+                              const input = drugInputRefs.current[item.key]
+                              if (input) {
+                                const rect = input.getBoundingClientRect()
+                                setDropdownPosition({
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width
+                                })
+                              }
                             }}
                             onFocus={() => {
                               setActiveDrugSearchIndex(idx)
                               setShowDrugDropdown(true)
                               setSelectedDrugIndex(0)
+                              
+                              // Calculate dropdown position on focus
+                              const input = drugInputRefs.current[item.key]
+                              if (input) {
+                                const rect = input.getBoundingClientRect()
+                                setDropdownPosition({
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width
+                                })
+                              }
                             }}
                             onKeyDown={e => {
                               const drugs = filteredDrugs
@@ -724,26 +758,8 @@ export default function EnhancedPurchaseEntryPage() {
                               }
                             }}
                             placeholder="Type to search drug..."
-                            className="w-full border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
-                          {showDrugDropdown && activeDrugSearchIndex === idx && (
-                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                              {filteredDrugs.length === 0 ? (
-                                <div className="px-3 py-2 text-gray-400 text-xs">No drugs found</div>
-                              ) : (
-                                filteredDrugs.map((med, medIdx) => (
-                                  <button key={med.id}
-                                    onClick={() => selectDrugForLine(idx, med)}
-                                    className={`w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b last:border-0 flex justify-between items-center ${
-                                      medIdx === selectedDrugIndex ? 'bg-blue-100' : ''
-                                    }`}>
-                                    <span className="font-medium text-gray-900">{med.name}</span>
-                                    <span className="text-[10px] text-gray-400">{med.medication_code}</span>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          )}
                         </div>
                       )}
                       </div>
@@ -751,29 +767,29 @@ export default function EnhancedPurchaseEntryPage() {
 
                     
                     {/* Pack */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.pack_size || ''}
                         onChange={e => updateItem(item.key, 'pack_size', parseInt(e.target.value) || 1)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         min="1" />
                     </td>
 
                     {/* Rate */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.rate || ''}
                         onChange={e => updateItem(item.key, 'rate', parseFloat(e.target.value) || 0)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-right focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         step="0.01" min="0" />
                     </td>
 
                     {/* MRP */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <div className="space-y-1">
                         <div>
                           <label className="text-[10px] text-gray-500 block">MRP</label>
                           <input type="number" value={item.mrp || ''}
                             onChange={e => updateItem(item.key, 'mrp', parseFloat(e.target.value) || 0)}
-                            className="w-full border rounded px-1.5 py-1 text-sm text-right focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             step="0.01" min="0" />
                         </div>
                         {item.free_quantity > 0 && (
@@ -781,7 +797,7 @@ export default function EnhancedPurchaseEntryPage() {
                             <label className="text-[10px] text-orange-600 block">Free MRP</label>
                             <input type="number" value={item.free_mrp || ''}
                               onChange={e => updateItem(item.key, 'free_mrp', parseFloat(e.target.value) || 0)}
-                              className="w-full border rounded px-1.5 py-1 text-sm text-right focus:ring-2 focus:ring-orange-500 bg-orange-50 border-orange-200"
+                              className="w-full border border-orange-200 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-orange-50 transition-colors"
                               step="0.01" min="0" />
                           </div>
                         )}
@@ -789,7 +805,7 @@ export default function EnhancedPurchaseEntryPage() {
                     </td>
 
                     {/* Exp Date */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <div className="space-y-1">
                         <div>
                           <label className="text-[10px] text-gray-500 block">Expiry</label>
@@ -803,7 +819,7 @@ export default function EnhancedPurchaseEntryPage() {
                                 updateItem(item.key, 'expiry_date', '')
                               }
                             }}
-                            className="w-full border rounded px-1 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded px-1 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             min="2000-01-01" max="2100-12-31" />
                         </div>
                         {item.free_quantity > 0 && (
@@ -819,7 +835,7 @@ export default function EnhancedPurchaseEntryPage() {
                                   updateItem(item.key, 'free_expiry_date', '')
                                 }
                               }}
-                              className="w-full border rounded px-1 py-1 text-sm focus:ring-2 focus:ring-orange-500 bg-orange-50 border-orange-200"
+                              className="w-full border border-orange-200 rounded px-1 py-1 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-orange-50 transition-colors"
                               min="2000-01-01" max="2100-12-31" />
                           </div>
                         )}
@@ -827,66 +843,66 @@ export default function EnhancedPurchaseEntryPage() {
                     </td>
 
                     {/* Batch */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="text" value={item.batch_number}
                         onChange={e => updateItem(item.key, 'batch_number', e.target.value)}
-                        className="w-full border rounded px-1.5 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         placeholder="Batch" />
                     </td>
 
                     {/* Qty */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.quantity || ''}
                         onChange={e => updateItem(item.key, 'quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         min="0" />
                     </td>
 
                     {/* Free */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.free_quantity || ''}
                         onChange={e => updateItem(item.key, 'free_quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 bg-orange-50"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-orange-50 transition-colors"
                         min="0" />
                     </td>
 
                     {/* GST % */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.gst_percent || ''}
                         onChange={e => updateItem(item.key, 'gst_percent', parseFloat(e.target.value) || 0)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         min="0" max="28" step="0.01" />
                     </td>
 
                     {/* Disc % */}
-                    <td className="px-1 py-1.5">
+                    <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.discount_percent || ''}
                         onChange={e => updateItem(item.key, 'discount_percent', parseFloat(e.target.value) || 0)}
-                        className="w-full border rounded px-1.5 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         min="0" max="100" step="0.01" />
                     </td>
 
                     {/* Total */}
-                    <td className="px-2 py-1.5 text-right font-semibold text-gray-900 text-sm">
+                    <td className="px-3 py-2 text-right font-semibold text-gray-900 text-sm border-r border-gray-100">
                       {fmtNum(item.total_amount)}
                     </td>
 
                     {/* Single Unit Rate */}
-                    <td className="px-2 py-1.5 text-center text-gray-600 text-sm">
+                    <td className="px-3 py-2 text-center text-gray-600 text-sm border-r border-gray-100">
                       {fmtNum(item.single_unit_rate)}
                     </td>
 
                     {/* Profit % */}
-                    <td className="px-2 py-1.5 text-center">
+                    <td className="px-3 py-2 text-center border-r border-gray-100">
                       <span className={`text-sm font-medium ${item.profit_percent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {fmtNum(item.profit_percent, 1)}%
                       </span>
                     </td>
 
                     {/* Delete */}
-                    <td className="px-1 py-1.5 text-center">
+                    <td className="px-2 py-2 text-center">
                       <button onClick={() => removeItem(item.key)}
-                        className="text-red-400 hover:text-red-600 p-0.5 hover:bg-red-50 rounded"
+                        className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors"
                         title="Remove">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -986,6 +1002,47 @@ export default function EnhancedPurchaseEntryPage() {
         </div>
 
       </div>
+
+      {/* Portal-based dropdown for drug search */}
+      {showDrugDropdown && activeDrugSearchIndex !== null && createPortal(
+        <div
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-2xl z-[9999] max-h-80 overflow-y-auto"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`
+          }}
+        >
+          {filteredDrugs.length === 0 ? (
+            <div className="px-4 py-3 text-gray-400 text-sm">No drugs found</div>
+          ) : (
+            filteredDrugs.map((med, medIdx) => (
+              <button
+                key={med.id}
+                onClick={() => selectDrugForLine(activeDrugSearchIndex, med)}
+                className={`w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 flex justify-between items-center transition-colors ${
+                  medIdx === selectedDrugIndex ? 'bg-blue-100 border-blue-200' : 'border-gray-100'
+                }`}
+              >
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{med.name}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {med.generic_name && <span>{med.generic_name}</span>}
+                    {med.strength && <span className="ml-2">• {med.strength}</span>}
+                  </div>
+                </div>
+                <div className="text-right ml-3">
+                  <div className="text-xs font-medium text-blue-600">{med.medication_code}</div>
+                  {med.available_stock !== undefined && (
+                    <div className="text-xs text-gray-400">Stock: {med.available_stock}</div>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
