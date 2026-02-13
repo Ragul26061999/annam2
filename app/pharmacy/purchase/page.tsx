@@ -119,7 +119,7 @@ export default function DrugPurchasePage() {
           </div>
         </div>
         <button
-          onClick={() => router.push('/pharmacy/purchase/new')}
+          onClick={() => router.push('/pharmacy/purchase/new1')}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />

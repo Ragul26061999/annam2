@@ -1,11 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Edit3, Package, ArrowLeft, CheckSquare } from 'lucide-react';
+import { Upload, Edit3, Package, ArrowLeft, CheckSquare, Trash2, Loader2, FileSpreadsheet } from 'lucide-react';
 
 const PharmacySettingsPage = () => {
   const router = useRouter();
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const pharmacyOptions = [
     {
@@ -31,6 +32,14 @@ const PharmacySettingsPage = () => {
       icon: Edit3,
       color: 'from-purple-500 to-pink-500',
       href: '/settings/pharmacy/edit-medication'
+    },
+    {
+      id: 'bulk-upload-excel',
+      title: 'Bulk Upload (Excel)',
+      description: 'Upload Drug Stock Excel file to import medications and batches in one go',
+      icon: FileSpreadsheet,
+      color: 'from-indigo-500 to-violet-500',
+      href: '/settings/pharmacy/bulk-upload-excel'
     },
     {
       id: 'batch-validation',
@@ -105,6 +114,59 @@ const PharmacySettingsPage = () => {
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-10 bg-white rounded-2xl shadow-lg border border-red-100 overflow-hidden">
+          <div className="p-6 border-b border-red-100">
+            <h2 className="text-xl font-bold text-gray-900">Danger Zone</h2>
+            <p className="text-gray-600 mt-1">These actions are destructive and cannot be undone.</p>
+          </div>
+
+          <div className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="font-semibold text-gray-900">Delete all medications & batches</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Permanently deletes all records from <span className="font-mono">medications</span> and <span className="font-mono">medicine_batches</span>.
+                </div>
+              </div>
+
+              <button
+                disabled={deletingAll}
+                onClick={async () => {
+                  const confirmed = window.prompt("Type DELETE to remove all medications and batches") === 'DELETE';
+                  if (!confirmed) return;
+
+                  try {
+                    setDeletingAll(true);
+                    const res = await fetch('/api/pharmacy/delete-all-medications', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ hard: true })
+                    });
+
+                    const json = await res.json().catch(() => ({}));
+
+                    if (!res.ok) {
+                      alert(json?.error || 'Failed to delete all medications and batches');
+                      return;
+                    }
+
+                    alert(`Deleted ${json?.deletedBatches ?? 0} batches and ${json?.deletedMedications ?? 0} medications.`);
+                  } catch (e) {
+                    console.error(e);
+                    alert('Failed to delete all medications and batches');
+                  } finally {
+                    setDeletingAll(false);
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {deletingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>{deletingAll ? 'Deleting…' : 'Delete all'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
