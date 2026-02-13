@@ -963,7 +963,7 @@ export default function PharmacyBillingPage() {
           <table class="bill-info" style="margin-bottom:8px;font-size:14px">
             <tr>
               <td><strong>Bill No:</strong> ${selectedBill.bill_number}</td>
-              <td><strong>To:</strong> ${selectedBill.customer_name}</td>
+              <td><strong>To:</strong> ${selectedBill.customer_name || 'WALK-IN CUSTOMER'}</td>
             </tr>
             <tr>
               <td><strong>Date:</strong> ${new Date(selectedBill.created_at).toLocaleString()}</td>
@@ -1095,7 +1095,7 @@ export default function PharmacyBillingPage() {
               </tr>
               <tr>
                 <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${selectedBill.customer_name}</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.customer_name || 'WALK-IN CUSTOMER'}</td>
               </tr>
               <tr>
                 <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
@@ -1250,7 +1250,7 @@ export default function PharmacyBillingPage() {
               </tr>
               <tr>
                 <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${selectedBill.customer_name}</td>
+                <td class="bill-info-10cm bill-info-bold">${selectedBill.customer_name || 'WALK-IN CUSTOMER'}</td>
               </tr>
               <tr>
                 <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
