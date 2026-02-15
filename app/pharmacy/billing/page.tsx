@@ -1479,7 +1479,7 @@ export default function PharmacyBillingPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Today's Collection</p>
-                <p className="text-2xl font-bold text-green-600">₹{dashboardStats.todaysSales.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-600">₹{Math.round(dashboardStats.todaysSales).toLocaleString()}</p>
               </div>
               <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
                 <TrendingUp className="h-6 w-6 text-green-600" />
@@ -1491,7 +1491,7 @@ export default function PharmacyBillingPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Monthly Collection</p>
-                <p className="text-2xl font-bold text-blue-600">₹{dashboardStats.monthlyCollection.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-blue-600">₹{Math.round(dashboardStats.monthlyCollection).toLocaleString()}</p>
               </div>
               <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
                 <Calendar className="h-6 w-6 text-blue-600" />
@@ -1515,7 +1515,7 @@ export default function PharmacyBillingPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Payments</p>
-                <p className="text-2xl font-bold text-purple-600">₹{dashboardStats.totalPayments.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-purple-600">₹{Math.round(dashboardStats.totalPayments).toLocaleString()}</p>
               </div>
               <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
                 <Receipt className="h-6 w-6 text-purple-600" />
@@ -1710,7 +1710,7 @@ export default function PharmacyBillingPage() {
                     {bill.patient_uhid || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                    ₹{bill.total_amount.toLocaleString()}
+                    ₹{Math.round(bill.total_amount).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-2">
@@ -1930,7 +1930,7 @@ export default function PharmacyBillingPage() {
             </div>
             <div className="mt-4 flex justify-between items-center">
               <div className="text-gray-600 text-sm">Total</div>
-              <div className="font-semibold text-lg">₹{selectedBill.total_amount.toLocaleString()}</div>
+              <div className="font-semibold text-lg">₹{Math.round(selectedBill.total_amount).toLocaleString()}</div>
             </div>
             <div className="mt-4 flex gap-3">
               <button onClick={showThermalPreviewWithLogo} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Thermal Print</button>
@@ -2163,7 +2163,7 @@ export default function PharmacyBillingPage() {
                   Total Pending: {pendingBills.length} bills
                 </div>
                 <div className="text-sm font-semibold text-orange-600">
-                  Total Amount: ₹{pendingBills.reduce((sum, bill) => sum + (bill.total_amount || 0), 0).toFixed(2)}
+                  Total Amount: ₹{Math.round(pendingBills.reduce((sum, bill) => sum + (bill.total_amount || 0), 0)).toLocaleString()}
                 </div>
               </div>
             </div>
