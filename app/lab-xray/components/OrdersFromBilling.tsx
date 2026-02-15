@@ -347,6 +347,121 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
     }
   };
 
+  const handlePrintBill = (bill: any) => {
+    const billNo = bill.bill_no || bill.bill_number || String(bill.id).slice(0, 8).toUpperCase();
+    const billDate = bill.created_at ? new Date(bill.created_at).toLocaleDateString('en-IN', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    }) : new Date().toLocaleDateString('en-IN', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    });
+    const total = Number(bill.total ?? bill.subtotal ?? 0);
+    const paymentStatus = bill.payment_status || 'PAID';
+    const paymentMethod = bill.payment_method || 'cash';
+
+    // Create print content
+    const printContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Bill Details</h1>
+        </div>
+        
+        <div style="margin-bottom: 25px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Bill Number</span>
+            <span>${billNo}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Bill Type</span>
+            <span>🧪 ${String(bill.bill_type || 'LAB').toUpperCase()}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Patient Name</span>
+            <span>${bill.patient?.name || 'N/A'}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">UHID</span>
+            <span>${bill.patient?.patient_id || 'N/A'}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Bill Date</span>
+            <span>${billDate}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Payment Status</span>
+            <span>${paymentStatus.toUpperCase()}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Payment Method</span>
+            <span>${paymentMethod}</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 25px;">
+          <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Services & Tests</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid #ddd;">
+                <th style="text-align: left; padding: 8px; font-size: 12px;">S.No</th>
+                <th style="text-align: left; padding: 8px; font-size: 12px;">Service/Test Name</th>
+                <th style="text-align: center; padding: 8px; font-size: 12px;">Quantity</th>
+                <th style="text-align: right; padding: 8px; font-size: 12px;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(bill.items || []).map((item: any, index: number) => `
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-size: 12px;">${index + 1}</td>
+                  <td style="padding: 8px; font-size: 12px;">${item.item_name || item.service_name || item.test_name || 'Service'}</td>
+                  <td style="text-align: center; padding: 8px; font-size: 12px;">${item.quantity || 1}</td>
+                  <td style="text-align: right; padding: 8px; font-size: 12px;">₹${Number(item.amount || item.rate || item.price || 0).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr style="border-top: 2px solid #333; font-weight: bold;">
+                <td colspan="3" style="padding: 8px; text-align: right; font-size: 14px;">Total Amount:</td>
+                <td style="text-align: right; padding: 8px; font-size: 14px;">₹${total.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+          <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Print Bill</button>
+          <button onclick="window.close()" style="margin-left: 10px; padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        </div>
+      </div>
+    `;
+
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank', 'width=600,height=600');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Bill ${billNo}</title>
+          <style>
+            @media print {
+              button { display: none; }
+              body { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -454,10 +569,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                   </button>
 
                   <button
-                    onClick={() => {
-                      // Hook into your existing print flow if needed
-                      console.log('Print bill/order', bill.id);
-                    }}
+                    onClick={() => handlePrintBill(bill)}
                     className="px-3 py-2 rounded-xl bg-gray-100 text-gray-900 text-xs font-black hover:bg-gray-200 inline-flex items-center gap-2"
                     title="Print"
                   >
