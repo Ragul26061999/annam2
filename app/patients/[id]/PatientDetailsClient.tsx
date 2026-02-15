@@ -1784,72 +1784,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Medical Records & Documents</h3>
-                  <p className="text-sm text-gray-600 mb-6">View lab test results, X-ray reports, and uploaded medical documents</p>
-                </div>
-
-                {/* Lab & Xray Files */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                      <Microscope className="h-4 w-4 text-teal-600" />
-                      <div className="font-bold text-gray-900">Lab Tests</div>
-                      <div className="ml-auto text-xs text-gray-500">{labOrders.length}</div>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {labOrders.slice(0, 10).map((order) => (
-                        <div key={order.id} className="p-4 flex items-center justify-between">
-                          <div>
-                            <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
-                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at)}</div>
-                          </div>
-                          <Link href={`/lab-xray/order/${order.id}`} className="text-teal-600 hover:text-teal-900 font-bold text-sm">
-                            View
-                          </Link>
-                        </div>
-                      ))}
-                      {labOrders.length === 0 && (
-                        <div className="p-8 text-center text-gray-500 text-sm">No lab records.</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                      <Radiation className="h-4 w-4 text-cyan-600" />
-                      <div className="font-bold text-gray-900">X-ray</div>
-                      <div className="ml-auto text-xs text-gray-500">{xrayOrders.length}</div>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {xrayOrders.slice(0, 10).map((order) => (
-                        <div key={order.id} className="p-4">
-                          <div className="text-sm font-bold text-gray-900">{order.scan_name || order.body_part || 'X-ray'}</div>
-                          <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_at)}</div>
-                        </div>
-                      ))}
-                      {xrayOrders.length === 0 && (
-                        <div className="p-8 text-center text-gray-500 text-sm">No X-ray records.</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                      <FolderOpen className="h-4 w-4 text-purple-600" />
-                      <div className="font-bold text-gray-900">Scans</div>
-                      <div className="ml-auto text-xs text-gray-500">{scanOrders.length}</div>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {scanOrders.slice(0, 10).map((order) => (
-                        <div key={order.id} className="p-4">
-                          <div className="text-sm font-bold text-gray-900">{order.scan_name || order.scan_type || 'Scan'}</div>
-                          <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_date)}</div>
-                        </div>
-                      ))}
-                      {scanOrders.length === 0 && (
-                        <div className="p-8 text-center text-gray-500 text-sm">No scan records.</div>
-                      )}
-                    </div>
-                  </div>
+                  <p className="text-sm text-gray-600 mb-6">View lab/xray files and uploaded medical documents</p>
                 </div>
 
                 {/* Lab & Xray Attachment Files */}
