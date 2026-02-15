@@ -1194,6 +1194,8 @@ export default function QuickRegisterPage() {
                     <option value="Card">Card</option>
                     <option value="UPI">UPI</option>
                     <option value="Insurance">Insurance</option>
+                    <option value="Fee">Fee</option>
+                    <option value="Camp">Camp</option>
                   </select>
                 </div>
               </div>

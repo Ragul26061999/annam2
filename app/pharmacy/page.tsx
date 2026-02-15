@@ -633,11 +633,7 @@ export default function PharmacyPage() {
         </Link>
         <Link href="/pharmacy/reports" className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg p-3 text-center transition-colors">
           <FileText className="w-6 h-6 mx-auto text-indigo-600 mb-1" />
-          <div className="text-xs font-medium text-indigo-800">Medical Report</div>
-        </Link>
-        <Link href="/pharmacy/reports?tab=gst" className="bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg p-3 text-center transition-colors">
-          <IndianRupee className="w-6 h-6 mx-auto text-teal-600 mb-1" />
-          <div className="text-xs font-medium text-teal-800">GST Report</div>
+          <div className="text-xs font-medium text-indigo-800">Reports</div>
         </Link>
         <Link href="/pharmacy/intent" className="bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg p-3 text-center transition-colors">
           <Target className="w-6 h-6 mx-auto text-purple-600 mb-1" />

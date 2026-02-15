@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { 
   FileText, BarChart3, Package, Download, Calendar, 
   TrendingUp, TrendingDown, AlertTriangle, Filter, Pill,
-  Activity, PieChart, ArrowUpDown, Search, Eye, IndianRupee, Target, ArrowLeft
+  Activity, PieChart, ArrowUpDown, Search, Eye, IndianRupee, Target, ArrowLeft, ChevronDown
 } from 'lucide-react'
 import {
   BarChart,
@@ -88,6 +88,17 @@ const DATE_RANGES = [
   { value: 'custom', label: 'Custom Range' }
 ]
 
+const REPORT_OPTIONS = [
+  { value: 'medical', label: 'Medical Report', icon: FileText },
+  { value: 'gst', label: 'GST Report', icon: Activity },
+  { value: 'stock', label: 'Stock Report', icon: Package },
+  { value: 'drug_wise_stock', label: 'Drug Wise Stock Report', icon: Pill },
+  { value: 'closing_drug_stock', label: 'Closing Drug Stock', icon: Package },
+  { value: 'purchase_value', label: 'Purchase Value', icon: IndianRupee },
+  { value: 'purchase_report', label: 'Purchase Report', icon: FileText },
+  { value: 'intent_report', label: 'Intent Report', icon: Target }
+]
+
 const CATEGORIES = [
   'All Categories', 'Antibiotics', 'Pain Killers', 'Vitamins', 'Cardiac', 
   'Diabetes', 'Respiratory', 'Gastrointestinal', 'Dermatology', 'Neurology'
@@ -96,6 +107,7 @@ const CATEGORIES = [
 function PharmacyReportsContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'medical' | 'gst' | 'stock' | 'drug_wise_stock' | 'closing_drug_stock' | 'purchase_value' | 'purchase_report' | 'intent_report'>('medical')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedRange, setSelectedRange] = useState('this_month')
   const [customDateRange, setCustomDateRange] = useState({
@@ -144,6 +156,18 @@ function PharmacyReportsContent() {
   // Intent Report states
   const [intentReportData, setIntentReportData] = useState<any[]>([])
   const [intentReportSummary, setIntentReportSummary] = useState<any>({})
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const dropdown = document.getElementById('report-dropdown');
+      if (dropdown && !dropdown.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (searchParams) {
@@ -1190,96 +1214,48 @@ function PharmacyReportsContent() {
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+        {/* Report Selection Dropdown */}
+        <div id="report-dropdown" className="relative">
           <button
-            onClick={() => setActiveTab('medical')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'medical'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            <FileText className="w-4 h-4 inline mr-2" />
-            Medical Report
+            {(() => {
+              const selectedReport = REPORT_OPTIONS.find(option => option.value === activeTab);
+              const IconComponent = selectedReport?.icon || FileText;
+              return (
+                <>
+                  <IconComponent className="w-4 h-4" />
+                  <span>{selectedReport?.label || 'Select Report'}</span>
+                </>
+              );
+            })()}
+            <ChevronDown className={`w-4 h-4 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-          <button
-            onClick={() => setActiveTab('gst')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'gst'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Activity className="w-4 h-4 inline mr-2" />
-            GST Report
-          </button>
-          <button
-            onClick={() => setActiveTab('stock')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'stock'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Package className="w-4 h-4 inline mr-2" />
-            Stock Report
-          </button>
-          <button
-            onClick={() => setActiveTab('drug_wise_stock')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'drug_wise_stock'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Pill className="w-4 h-4 inline mr-2" />
-            Drug Wise Stock Report
-          </button>
-          <button
-            onClick={() => setActiveTab('closing_drug_stock')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'closing_drug_stock'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Package className="w-4 h-4 inline mr-2" />
-            Closing Drug Stock
-          </button>
-          <button
-            onClick={() => setActiveTab('purchase_value')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'purchase_value'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IndianRupee className="w-4 h-4 inline mr-2" />
-            Purchase Value
-          </button>
-          <button
-            onClick={() => setActiveTab('purchase_report')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'purchase_report'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <FileText className="w-4 h-4 inline mr-2" />
-            Purchase Report
-          </button>
-          <button
-            onClick={() => setActiveTab('intent_report')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'intent_report'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Target className="w-4 h-4 inline mr-2" />
-            Intent Report
-          </button>
-        </nav>
+
+          {dropdownOpen && (
+            <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+              {REPORT_OPTIONS.map((option) => {
+                const IconComponent = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setActiveTab(option.value as any);
+                      setDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                      activeTab === option.value ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                    }`}
+                  >
+                    <IconComponent className="w-4 h-4" />
+                    <span className="text-sm font-medium">{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       {/* Tab Content */}
       {activeTab === 'medical' && (
