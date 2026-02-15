@@ -62,6 +62,7 @@ import { getPatientCompleteHistory, PatientTimelineEvent, PatientTimelineEventTy
 import { getPharmacyBills } from '../../../src/lib/pharmacyService';
 import LabXrayAttachments from '../../../src/components/LabXrayAttachments';
 import { getTotalAvailableAdvance } from '../../../src/lib/ipFlexibleBillingService';
+import { getPatientLabXrayAttachments, type LabXrayAttachment } from '../../../src/lib/labXrayAttachmentService';
 
 interface Patient {
   id: string;
@@ -216,6 +217,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
   const [ipBillingPayments, setIpBillingPayments] = useState<BillingPaymentRow[]>([]);
   const [comprehensiveBilling, setComprehensiveBilling] = useState<IPComprehensiveBilling | null>(null);
   const [ipAdvances, setIpAdvances] = useState<any[]>([]);
+  const [labXrayAttachments, setLabXrayAttachments] = useState<LabXrayAttachment[]>([]);
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [xrayOrders, setXrayOrders] = useState<any[]>([]);
@@ -407,6 +409,15 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
         console.error('Error fetching medical reports:', reportsError);
         setXrayOrders([]);
         setScanOrders([]);
+      }
+
+      // Fetch Lab & Xray Attachments
+      try {
+        const attachments = await getPatientLabXrayAttachments(patientData.id);
+        setLabXrayAttachments(attachments);
+      } catch (attachmentsError) {
+        console.error('Error fetching lab/xray attachments:', attachmentsError);
+        setLabXrayAttachments([]);
       }
 
       // Fetch pharmacy bills (OP/Pharmacy) for this patient
@@ -1771,116 +1782,137 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
             {/* Medical Records Tab */}
             {activeTab === 'reports-docs' && (
               <div className="space-y-6">
-                <div className="border-b border-gray-200 flex gap-6 mb-6">
-                  <button 
-                    onClick={() => setActiveReportTab('generated')} 
-                    className={`pb-3 text-sm font-bold ${activeReportTab === 'generated' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}
-                  >
-                    LAB & RADIOLOGY
-                  </button>
-                  <button 
-                    onClick={() => setActiveReportTab('uploaded')} 
-                    className={`pb-3 text-sm font-bold ${activeReportTab === 'uploaded' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400'}`}
-                  >
-                    UPLOADED DOCUMENTS
-                  </button>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Medical Records & Documents</h3>
+                  <p className="text-sm text-gray-600 mb-6">View lab test results, X-ray reports, and uploaded medical documents</p>
                 </div>
 
-                {activeReportTab === 'generated' ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                        <Microscope className="h-4 w-4 text-teal-600" />
-                        <div className="font-bold text-gray-900">Lab</div>
-                        <div className="ml-auto text-xs text-gray-500">{labOrders.length}</div>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {labOrders.slice(0, 10).map((order) => (
-                          <div key={order.id} className="p-4 flex items-center justify-between">
-                            <div>
-                              <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
-                              <div className="text-xs text-gray-500">{formatDateTime(order.created_at)}</div>
+                {/* Lab & Xray Files */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                      <Microscope className="h-4 w-4 text-teal-600" />
+                      <div className="font-bold text-gray-900">Lab Tests</div>
+                      <div className="ml-auto text-xs text-gray-500">{labOrders.length}</div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {labOrders.slice(0, 10).map((order) => (
+                        <div key={order.id} className="p-4 flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-bold text-gray-900">{order.test_catalog?.test_name || 'Unknown Test'}</div>
+                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at)}</div>
+                          </div>
+                          <Link href={`/lab-xray/order/${order.id}`} className="text-teal-600 hover:text-teal-900 font-bold text-sm">
+                            View
+                          </Link>
+                        </div>
+                      ))}
+                      {labOrders.length === 0 && (
+                        <div className="p-8 text-center text-gray-500 text-sm">No lab records.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                      <Radiation className="h-4 w-4 text-cyan-600" />
+                      <div className="font-bold text-gray-900">X-ray</div>
+                      <div className="ml-auto text-xs text-gray-500">{xrayOrders.length}</div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {xrayOrders.slice(0, 10).map((order) => (
+                        <div key={order.id} className="p-4">
+                          <div className="text-sm font-bold text-gray-900">{order.scan_name || order.body_part || 'X-ray'}</div>
+                          <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_at)}</div>
+                        </div>
+                      ))}
+                      {xrayOrders.length === 0 && (
+                        <div className="p-8 text-center text-gray-500 text-sm">No X-ray records.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4 text-purple-600" />
+                      <div className="font-bold text-gray-900">Scans</div>
+                      <div className="ml-auto text-xs text-gray-500">{scanOrders.length}</div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {scanOrders.slice(0, 10).map((order) => (
+                        <div key={order.id} className="p-4">
+                          <div className="text-sm font-bold text-gray-900">{order.scan_name || order.scan_type || 'Scan'}</div>
+                          <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_date)}</div>
+                        </div>
+                      ))}
+                      {scanOrders.length === 0 && (
+                        <div className="p-8 text-center text-gray-500 text-sm">No scan records.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lab & Xray Attachment Files */}
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                  <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                    <Paperclip className="h-4 w-4 text-blue-600" />
+                    <div className="font-bold text-gray-900">Lab & Xray Files</div>
+                    <div className="ml-auto text-xs text-gray-500">{labXrayAttachments.length} files</div>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {labXrayAttachments.length === 0 ? (
+                      <div className="p-8 text-center text-gray-500 text-sm">No lab or X-ray files uploaded yet.</div>
+                    ) : (
+                      labXrayAttachments.map((attachment) => (
+                        <div key={attachment.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{attachment.file_name}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                              <span>{attachment.test_type?.toUpperCase() || 'LAB'}</span>
+                              <span>•</span>
+                              <span>{(attachment.file_size / 1024).toFixed(1)} KB</span>
+                              <span>•</span>
+                              <span>{new Date(attachment.uploaded_at).toLocaleDateString()}</span>
                             </div>
-                            <Link href={`/lab-xray/order/${order.id}`} className="text-teal-600 hover:text-teal-900 font-bold text-sm">
-                              View
-                            </Link>
                           </div>
-                        ))}
-                        {labOrders.length === 0 && (
-                          <div className="p-8 text-center text-gray-500 text-sm">No lab records.</div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                        <Radiation className="h-4 w-4 text-cyan-600" />
-                        <div className="font-bold text-gray-900">X-ray</div>
-                        <div className="ml-auto text-xs text-gray-500">{xrayOrders.length}</div>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {xrayOrders.slice(0, 10).map((order) => (
-                          <div key={order.id} className="p-4">
-                            <div className="text-sm font-bold text-gray-900">{order.scan_name || order.body_part || 'X-ray'}</div>
-                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_at)}</div>
+                          <div className="flex items-center gap-2">
+                            {attachment.file_url && (
+                              <a
+                                href={attachment.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                              >
+                                View
+                              </a>
+                            )}
+                            {attachment.file_url && (
+                              <a
+                                href={attachment.file_url}
+                                download={attachment.file_name}
+                                className="text-gray-600 hover:text-gray-800 text-sm font-medium"
+                              >
+                                Download
+                              </a>
+                            )}
                           </div>
-                        ))}
-                        {xrayOrders.length === 0 && (
-                          <div className="p-8 text-center text-gray-500 text-sm">No X-ray records.</div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                        <FolderOpen className="h-4 w-4 text-purple-600" />
-                        <div className="font-bold text-gray-900">Scans</div>
-                        <div className="ml-auto text-xs text-gray-500">{scanOrders.length}</div>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {scanOrders.slice(0, 10).map((order) => (
-                          <div key={order.id} className="p-4">
-                            <div className="text-sm font-bold text-gray-900">{order.scan_name || order.scan_type || 'Scan'}</div>
-                            <div className="text-xs text-gray-500">{formatDateTime(order.created_at || order.ordered_date)}</div>
-                          </div>
-                        ))}
-                        {scanOrders.length === 0 && (
-                          <div className="p-8 text-center text-gray-500 text-sm">No scan records.</div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      ))
+                    )}
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
-                      <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Upload className="text-blue-600" size={20} /> Upload Documents
-                      </h4>
-                      <DocumentUpload
-                        patientId={patient.id}
-                        uhid={patient.patient_id}
-                        category="medical-report"
-                        onUploadComplete={(doc) => {
-                          setDocumentRefreshTrigger(prev => prev + 1);
-                          // Add to temporary documents if it's a temp file
-                          if (doc.id && doc.id.startsWith('temp-')) {
-                            setTemporaryDocuments(prev => [...prev, doc]);
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-gray-900 mb-4 px-2">Recent Files</h4>
-                      <EnhancedDocumentList 
-                        patientId={patient.id} 
-                        uhid={patient.patient_id}
-                        showDelete={true} 
-                        refreshTrigger={documentRefreshTrigger} 
-                        temporaryFiles={temporaryDocuments}
-                      />
-                    </div>
-                  </div>
-                )}
+                </div>
+
+                {/* Uploaded Documents */}
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-4 px-2">Uploaded Documents</h4>
+                  <EnhancedDocumentList 
+                    patientId={patient.id} 
+                    uhid={patient.patient_id}
+                    showDelete={true} 
+                    refreshTrigger={documentRefreshTrigger} 
+                    temporaryFiles={temporaryDocuments}
+                  />
+                </div>
               </div>
             )}
 
