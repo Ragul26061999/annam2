@@ -374,8 +374,18 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
       }
 
       console.log('OrdersFromBilling: All files uploaded, refreshing attachments...');
+      
+      // Add a small delay to ensure database processing is complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // First refresh attachments for all bills
       const billIds = (items || []).map((b: any) => b.id).filter(Boolean);
       await fetchAttachments(billIds);
+      
+      // Then do a second refresh specifically for this bill to ensure it's updated
+      console.log('OrdersFromBilling: Doing second refresh for specific bill:', bill.id);
+      await fetchAttachments([bill.id]);
+      
       if (onRefresh) onRefresh();
       
       console.log('OrdersFromBilling: Upload complete!');
@@ -762,6 +772,13 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                 </div>
               ) : (
                 <>
+                  {/* Debug: Log current attachments for this bill */}
+                  {(() => {
+                    const currentAttachments = attachmentsByBillId[selectedBill.id] || [];
+                    console.log('OrdersFromBilling: Modal opened, current attachments for bill', selectedBill.id, ':', currentAttachments);
+                    console.log('OrdersFromBilling: Attachment count:', currentAttachments.length);
+                    return null;
+                  })()}
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-gray-900 mb-4">Services</h4>
                     <div className="space-y-3">
