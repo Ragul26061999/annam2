@@ -1631,6 +1631,10 @@ function NewBillingPageInner() {
       // Stock transactions and inventory adjustments are handled automatically by database triggers
 
       // Show success modal with receipt (snapshot payments for printing)
+      console.log('Customer state at bill generation:', customer);
+      console.log('Customer patient_uhid:', customer.patient_uhid);
+      console.log('Customer patient_uuid:', customer.patient_uuid);
+      
       setGeneratedBill({
         ...billData,
         items: billItems,
