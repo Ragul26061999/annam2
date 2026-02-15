@@ -464,23 +464,6 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                     <Printer size={16} />
                     Print
                   </button>
-
-                  <label className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 inline-flex items-center gap-2 cursor-pointer">
-                    <Upload size={16} />
-                    {uploadingBillId === bill.id ? 'Uploading...' : 'Upload'}
-                    <input
-                      type="file"
-                      multiple
-                      accept="application/pdf,.pdf"
-                      className="hidden"
-                      disabled={uploadingBillId === bill.id}
-                      onChange={(e) => {
-                        const f = e.target.files;
-                        if (f) void handleUpload(bill, f);
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
             );
