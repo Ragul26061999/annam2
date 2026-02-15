@@ -347,119 +347,199 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
     }
   };
 
-  const handlePrintBill = (bill: any) => {
-    const billNo = bill.bill_no || bill.bill_number || String(bill.id).slice(0, 8).toUpperCase();
-    const billDate = bill.created_at ? new Date(bill.created_at).toLocaleDateString('en-IN', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    }) : new Date().toLocaleDateString('en-IN', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    });
-    const total = Number(bill.total ?? bill.subtotal ?? 0);
-    const paymentStatus = bill.payment_status || 'PAID';
-    const paymentMethod = bill.payment_method || 'cash';
+  const escapeHtml = (value: any) => {
+    const str = String(value ?? '');
+    return str
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  };
 
-    // Create print content
-    const printContent = `
-      <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Bill Details</h1>
-        </div>
-        
-        <div style="margin-bottom: 25px;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Bill Number</span>
-            <span>${billNo}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Bill Type</span>
-            <span>🧪 ${String(bill.bill_type || 'LAB').toUpperCase()}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Patient Name</span>
-            <span>${bill.patient?.name || 'N/A'}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">UHID</span>
-            <span>${bill.patient?.patient_id || 'N/A'}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Bill Date</span>
-            <span>${billDate}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Payment Status</span>
-            <span>${paymentStatus.toUpperCase()}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: bold;">Payment Method</span>
-            <span>${paymentMethod}</span>
-          </div>
-        </div>
+  const formatPrintedDateTime = (date: Date) => {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mi = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${dd}-${mm}-${yyyy} ${hh}:${mi}:${ss}`;
+  };
 
-        <div style="margin-bottom: 25px;">
-          <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Services & Tests</h3>
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr style="border-bottom: 1px solid #ddd;">
-                <th style="text-align: left; padding: 8px; font-size: 12px;">S.No</th>
-                <th style="text-align: left; padding: 8px; font-size: 12px;">Service/Test Name</th>
-                <th style="text-align: center; padding: 8px; font-size: 12px;">Quantity</th>
-                <th style="text-align: right; padding: 8px; font-size: 12px;">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(bill.items || []).map((item: any, index: number) => `
-                <tr style="border-bottom: 1px solid #eee;">
-                  <td style="padding: 8px; font-size: 12px;">${index + 1}</td>
-                  <td style="padding: 8px; font-size: 12px;">${item.item_name || item.service_name || item.test_name || 'Service'}</td>
-                  <td style="text-align: center; padding: 8px; font-size: 12px;">${item.quantity || 1}</td>
-                  <td style="text-align: right; padding: 8px; font-size: 12px;">₹${Number(item.amount || item.rate || item.price || 0).toFixed(2)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-            <tfoot>
-              <tr style="border-top: 2px solid #333; font-weight: bold;">
-                <td colspan="3" style="padding: 8px; text-align: right; font-size: 14px;">Total Amount:</td>
-                <td style="text-align: right; padding: 8px; font-size: 14px;">₹${total.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+  const formatBillDateTime = (date: Date) => {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mon = months[date.getMonth()];
+    const yyyy = date.getFullYear();
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mi = String(date.getMinutes()).padStart(2, '0');
+    return `${dd}-${mon}-${yyyy} ${hh}:${mi}`;
+  };
 
-        <div style="text-align: center; margin-top: 30px;">
-          <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Print Bill</button>
-          <button onclick="window.close()" style="margin-left: 10px; padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-        </div>
-      </div>
-    `;
+  const handleThermalPrint = (bill: any) => {
+    const now = new Date();
+    const billDate = bill.created_at ? new Date(bill.created_at) : now;
 
-    // Create a new window for printing
-    const printWindow = window.open('', '_blank', 'width=600,height=600');
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
+    const billNumber = bill.bill_no || bill.bill_number || String(bill.id || '').slice(0, 8).toUpperCase();
+    const patientUhid = bill.patient?.patient_id || bill.patient?.uhid || bill.patient_id || '';
+    const patientName = bill.patient?.name || '';
+    const currentStatus = getBillingStatus(bill);
+    const displayPaymentMethod = bill.payment_method;
+    const salesType = currentStatus === 'paid' ? String(displayPaymentMethod || 'cash').toUpperCase() : 'CREDIT';
+
+    const amount = Number(bill.total ?? bill.subtotal ?? 0);
+    const cgstAmount = 0;
+    const sgstAmount = 0;
+    const discountAmount = Number(bill.discount ?? 0);
+    const taxableAmount = amount - discountAmount;
+    const totalAmount = amount;
+
+    // Use bill.items for line items
+    const lineItems = Array.isArray(bill.items) ? bill.items : [];
+    const itemsHtml = lineItems
+      .map((it: any, idx: number) => {
+        const qty = Number(it.qty) || 1;
+        const total = Number(it.total_amount) || Number(it.amount) || Number(it.rate) || 0;
+        return `
+          <tr>
+            <td class="items-8cm">${idx + 1}.</td>
+            <td class="items-8cm">${escapeHtml(it.description || it.test_name || it.service_name || it.item_name || 'Service')}</td>
+            <td class="items-8cm text-center">${qty}</td>
+            <td class="items-8cm text-right">${total.toFixed(2)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const thermalContent = `
+      <html>
         <head>
-          <title>Bill ${billNo}</title>
+          <title>Thermal Receipt - ${escapeHtml(billNumber)}</title>
           <style>
-            @media print {
-              button { display: none; }
-              body { margin: 0; }
+            @page { margin: 1mm; size: 77mm 297mm; }
+            body { 
+              font-family: 'Verdana', sans-serif; 
+              font-weight: bold;
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              margin: 0; 
+              padding: 2px;
+              font-size: 14px;
+              line-height: 1.2;
+              width: 77mm;
             }
+            html, body { background: #fff; }
+            .header-14cm { font-size: 16pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-9cm { font-size: 11pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-10cm { font-size: 12pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .header-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .items-8cm { font-size: 10pt; font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .bill-info-10cm { font-size: 12pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .bill-info-bold { font-weight: bold; font-family: 'Verdana', sans-serif; }
+            .footer-7cm { font-size: 9pt; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .center { text-align: center; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .right { text-align: right; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table { width: 100%; border-collapse: collapse; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .table td { padding: 1px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .totals-line { display: flex; justify-content: space-between; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .footer { margin-top: 15px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .signature-area { margin-top: 25px; font-family: 'Verdana', sans-serif; font-weight: bold; }
+            .logo { width: 350px; height: auto; margin-bottom: 5px; }
           </style>
         </head>
         <body>
-          ${printContent}
+          <div class="center">
+            <img src="/logo/annamHospital-bk.png" alt="ANNAM LOGO" class="logo" />
+            <div>2/301, Raj Kanna Nagar, Veerapandian Patanam, Tiruchendur – 628216</div>
+            <div class="header-9cm">Phone- 04639 252592</div>
+            <div style="margin-top: 5px; font-weight: bold;">LAB & RADIOLOGY BILL</div>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr>
+                <td class="bill-info-10cm">Bill No&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${escapeHtml(billNumber)}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">UHID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${escapeHtml(patientUhid)}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${escapeHtml(patientName)}</td>
+              </tr>
+              <tr>
+                <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
+                <td class="bill-info-10cm bill-info-bold">${escapeHtml(formatBillDateTime(billDate))}</td>
+              </tr>
+              <tr>
+                <td class="header-10cm">Payment Type&nbsp;:&nbsp;&nbsp;</td>
+                <td class="header-10cm bill-info-bold">${escapeHtml(salesType)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <table class="table">
+              <tr style="border-bottom: 1px dashed #000;">
+                <td width="30%" class="items-8cm">S.No</td>
+                <td width="40%" class="items-8cm">Service</td>
+                <td width="15%" class="items-8cm text-center">Qty</td>
+                <td width="15%" class="items-8cm text-right">Amt</td>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
+              <span>Total Amount</span>
+              <span>${totalAmount.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div class="totals-line footer-7cm">
+              <span>Printed on ${escapeHtml(formatPrintedDateTime(now))}</span>
+              <span>Authorized Sign</span>
+            </div>
+          </div>
+
+          <script>
+            (function() {
+              function triggerPrint() {
+                try {
+                  window.focus();
+                } catch (e) {}
+                setTimeout(function() {
+                  window.print();
+                }, 250);
+              }
+
+              window.onafterprint = function() {
+                try {
+                  window.close();
+                } catch (e) {}
+              };
+
+              if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                triggerPrint();
+              } else {
+                document.addEventListener('DOMContentLoaded', triggerPrint);
+              }
+            })();
+          </script>
         </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-    }
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (!printWindow) return;
+    printWindow.document.write(thermalContent);
+    printWindow.document.close();
   };
 
   return (
@@ -569,7 +649,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                   </button>
 
                   <button
-                    onClick={() => handlePrintBill(bill)}
+                    onClick={() => handleThermalPrint(bill)}
                     className="px-3 py-2 rounded-xl bg-gray-100 text-gray-900 text-xs font-black hover:bg-gray-200 inline-flex items-center gap-2"
                     title="Print"
                   >
