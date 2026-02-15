@@ -1473,37 +1473,50 @@ function NewBillingPageInner() {
           const sgstAmount = gstAmount / 2;
 
           // Add to GST ledger
+          const gstLedgerData = {
+            transaction_date: new Date().toISOString().split('T')[0],
+            transaction_type: 'sale',
+            reference_type: 'billing',
+            reference_id: billData!.id,
+            reference_number: billNumber,
+            party_name: customer.name || 'Unknown Customer',
+            party_gstin: null, // Customer GSTIN not collected in current system
+            hsn_code: null, // HSN code not available in current system
+            taxable_amount: Math.round(taxableAmount * 100) / 100,
+            cgst_rate: billTotals.taxPercent / 2,
+            cgst_amount: Math.round(cgstAmount * 100) / 100,
+            sgst_rate: billTotals.taxPercent / 2,
+            sgst_amount: Math.round(sgstAmount * 100) / 100,
+            igst_rate: 0,
+            igst_amount: 0,
+            total_gst: Math.round(gstAmount * 100) / 100,
+            total_amount: Math.round(item.total * 100) / 100,
+            gst_return_period: null,
+            filed_status: 'pending'
+          };
+
+          console.log('GST Ledger Data:', gstLedgerData); // Debug log
+
           const { error: gstError } = await supabase
             .from('pharmacy_gst_ledger')
-            .insert({
-              transaction_date: new Date().toISOString().split('T')[0],
-              transaction_type: 'sale',
-              reference_type: 'billing',
-              reference_id: billData!.id,
-              reference_number: billNumber,
-              party_name: customer.name,
-              party_gstin: null, // Customer GSTIN not collected in current system
-              taxable_amount: Math.round(taxableAmount * 100) / 100,
-              cgst_rate: billTotals.taxPercent / 2,
-              cgst_amount: Math.round(cgstAmount * 100) / 100,
-              sgst_rate: billTotals.taxPercent / 2,
-              sgst_amount: Math.round(sgstAmount * 100) / 100,
-              igst_rate: 0,
-              igst_amount: 0,
-              total_gst: Math.round(gstAmount * 100) / 100,
-              total_amount: item.total
-            });
+            .insert(gstLedgerData);
 
           if (gstError) {
-            console.error('Error inserting GST ledger entry:', {
+            console.error('GST Ledger Insertion Error:', {
+              error: gstError,
               message: gstError.message,
               details: gstError.details,
               hint: gstError.hint,
               code: gstError.code,
               item: item.medicine.name,
-              billNumber: billNumber
+              billNumber: billNumber,
+              gstData: gstLedgerData,
+              billId: billData?.id,
+              customerName: customer.name
             });
             // Don't throw here - GST failure shouldn't block billing
+          } else {
+            console.log('GST Ledger entry inserted successfully for:', billNumber);
           }
         }
       } catch (gstLedgerError) {

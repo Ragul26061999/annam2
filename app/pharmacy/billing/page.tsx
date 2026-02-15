@@ -247,6 +247,7 @@ export default function PharmacyBillingPage() {
 
         if (!patientsError && patientsData) {
           console.log('Patients data fetched:', patientsData.slice(0, 3)) // Debug first 3 patients
+          console.log('Sample patient data structure:', patientsData[0]) // Show structure
           patientsMap = patientsData.reduce((acc: any, p: any) => {
             acc[p.id] = { patient_id: p.patient_id }
             return acc
@@ -323,7 +324,7 @@ export default function PharmacyBillingPage() {
           bill_number: bill.bill_number || `#${bill.id.slice(-8)}`,
           customer_name: bill.customer_name || 'Unknown',
           patient_uhid: bill.customer_type === 'patient'
-            ? (patientsMap[bill.patient_id]?.patient_id || bill.patient_id?.slice(-8) || 'Unknown')
+            ? (patientsMap[bill.patient_id]?.patient_id || 'No UHID')
             : '',
           customer_type: bill.customer_type || 'patient',
           subtotal: bill.subtotal || 0,
