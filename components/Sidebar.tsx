@@ -89,7 +89,7 @@ const Sidebar: React.FC = () => {
       // badge: '42'
     },
     {
-      href: '/inpatient',
+      href: '/under-construction',
       label: 'Inpatient (IP)',
       icon: <BedDouble size={18} />,
       color: 'text-purple-600'
@@ -119,7 +119,7 @@ const Sidebar: React.FC = () => {
       color: 'text-yellow-600'
     },
     {
-      href: '/finance',
+      href: '/under-construction',
       label: 'Finance',
       icon: <IndianRupee size={18} />,
       color: 'text-emerald-600'
