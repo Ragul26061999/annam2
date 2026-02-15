@@ -146,6 +146,21 @@ export default function EnhancedPurchaseEntryPage() {
   const drugInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  // Auto-hide sidebar on mount
+  useEffect(() => {
+    const sidebar = document.querySelector('[class*="sidebar"]') || document.querySelector('aside') || document.querySelector('nav[class*="side"]')
+    if (sidebar && sidebar instanceof HTMLElement) {
+      sidebar.style.display = 'none'
+    }
+    
+    // Restore sidebar on unmount
+    return () => {
+      if (sidebar && sidebar instanceof HTMLElement) {
+        sidebar.style.display = ''
+      }
+    }
+  }, [])
+
   const [header, setHeader] = useState<BillHeader>({
     purchase_no: '(Auto)',
     search_bill_no: '',
@@ -684,18 +699,18 @@ export default function EnhancedPurchaseEntryPage() {
                 <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300">
                   <th className="px-3 py-3 text-left font-semibold text-gray-700 w-8 border-r border-gray-200">Sl</th>
                   <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[280px] border-r border-gray-200">Drug Name</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Pack</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">Rate</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">M.R.P</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-28 border-r border-gray-200">Exp.Date</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-24 border-r border-gray-200">Batch</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Qty</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-14 border-r border-gray-200">Free</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">GST%</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Disc%</th>
-                  <th className="px-3 py-3 text-right font-semibold text-gray-700 w-20 border-r border-gray-200">Total</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20 border-r border-gray-200">Unit Rate</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-16 border-r border-gray-200">Profit%</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">M.R.P</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[140px] border-r border-gray-200">Exp.Date</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[120px] border-r border-gray-200">Batch</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Qty</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Free</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">GST%</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Disc%</th>
+                  <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Total</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Profit%</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 w-8"></th>
                 </tr>
               </thead>

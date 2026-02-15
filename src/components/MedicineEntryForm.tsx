@@ -526,75 +526,97 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   const hasError = (field: string) => !!getErrorMessage(field);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[92vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Package className="w-6 h-6" />
+        <div className="sticky top-0 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-700 text-white px-8 py-6 flex justify-between items-center shadow-lg z-10">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/10 backdrop-blur-sm rounded-2xl">
+              <Package className="w-7 h-7" />
+            </div>
             <div>
-              <h2 className="text-2xl font-bold">Medicine & Batch Entry</h2>
-              <p className="text-blue-100 text-sm">Add medicines with automatic barcode generation</p>
+              <h2 className="text-2xl font-bold tracking-tight">Medicine & Batch Entry</h2>
+              <p className="text-blue-100 text-sm mt-0.5 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                Smart barcode generation • Auto-validation
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-blue-500 rounded-lg transition-colors">
-            <X className="w-5 h-5" />
+          <button 
+            onClick={onClose} 
+            className="p-2.5 hover:bg-white/20 rounded-xl transition-all duration-200 hover:rotate-90 group"
+            aria-label="Close"
+          >
+            <X className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b bg-gray-50">
+        <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white px-2 pt-2">
           <button
             onClick={() => setActiveTab('medicine')}
-            className={`flex-1 py-4 px-6 font-semibold flex items-center justify-center gap-2 transition-all ${
+            className={`relative flex-1 py-3.5 px-6 font-semibold flex items-center justify-center gap-2.5 transition-all duration-300 rounded-t-xl ${
               activeTab === 'medicine'
-                ? 'bg-white text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
+                ? 'bg-white text-blue-600 shadow-sm -mb-px'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
             }`}
           >
-            <Plus className="w-5 h-5" />
-            New Medicine
+            <Plus className={`w-5 h-5 transition-transform ${activeTab === 'medicine' ? 'scale-110' : ''}`} />
+            <span>New Medicine</span>
+            {activeTab === 'medicine' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('batch')}
-            className={`flex-1 py-4 px-6 font-semibold flex items-center justify-center gap-2 transition-all ${
+            className={`relative flex-1 py-3.5 px-6 font-semibold flex items-center justify-center gap-2.5 transition-all duration-300 rounded-t-xl ${
               activeTab === 'batch'
-                ? 'bg-white text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
+                ? 'bg-white text-blue-600 shadow-sm -mb-px'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
             }`}
           >
-            <Barcode className="w-5 h-5" />
-            New Batch
+            <Barcode className={`w-5 h-5 transition-transform ${activeTab === 'batch' ? 'scale-110' : ''}`} />
+            <span>New Batch</span>
+            {activeTab === 'batch' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('supplier')}
-            className={`flex-1 py-4 px-6 font-semibold flex items-center justify-center gap-2 transition-all ${
+            className={`relative flex-1 py-3.5 px-6 font-semibold flex items-center justify-center gap-2.5 transition-all duration-300 rounded-t-xl ${
               activeTab === 'supplier'
-                ? 'bg-white text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
+                ? 'bg-white text-blue-600 shadow-sm -mb-px'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
             }`}
           >
-            <Truck className="w-5 h-5" />
-            Supplier
+            <Truck className={`w-5 h-5 transition-transform ${activeTab === 'supplier' ? 'scale-110' : ''}`} />
+            <span>Supplier</span>
+            {activeTab === 'supplier' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+            )}
           </button>
         </div>
 
         {/* Messages */}
         {successMessage && (
-          <div className="m-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-green-700 font-medium">{successMessage}</span>
+          <div className="mx-6 mt-6 mb-2 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-300 rounded-xl shadow-sm flex items-center gap-3 animate-in slide-in-from-top-2 duration-300">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <span className="text-green-800 font-medium flex-1">{successMessage}</span>
           </div>
         )}
 
         {errors.length > 0 && (
-          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mx-6 mt-6 mb-2 p-4 bg-gradient-to-r from-red-50 to-rose-50 border border-red-300 rounded-xl shadow-sm animate-in slide-in-from-top-2 duration-300">
             {errors.map((error, idx) => (
-              <div key={idx} className="flex items-start gap-3 mb-2 last:mb-0">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-red-700 font-medium capitalize">{error.field}</p>
-                  <p className="text-red-600 text-sm">{error.message}</p>
+              <div key={idx} className="flex items-start gap-3 mb-3 last:mb-0">
+                <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-800 font-semibold capitalize text-sm">{error.field}</p>
+                  <p className="text-red-700 text-sm mt-0.5">{error.message}</p>
                 </div>
               </div>
             ))}
@@ -602,7 +624,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
         )}
 
         {/* Form Content */}
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto px-8 py-6 bg-gradient-to-b from-white to-gray-50">
           {activeTab === 'medicine' ? (
             <form onSubmit={handleAddMedicine} className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -724,28 +746,28 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
+              <div className="flex gap-4 pt-6 border-t border-gray-200 mt-8">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-6 py-3.5 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-6 py-3.5 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:via-blue-800 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {loading ? (
                     <>
                       <Loader className="w-5 h-5 animate-spin" />
-                      Adding Medicine...
+                      <span>Adding Medicine...</span>
                     </>
                   ) : (
                     <>
                       <Plus className="w-5 h-5" />
-                      Add Medicine with Barcode
+                      <span>Add Medicine with Barcode</span>
                     </>
                   )}
                 </button>
@@ -894,28 +916,28 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
               />
 
               {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
+              <div className="flex gap-4 pt-6 border-t border-gray-200 mt-8">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-6 py-3.5 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-6 py-3.5 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:via-blue-800 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {loading ? (
                     <>
                       <Loader className="w-5 h-5 animate-spin" />
-                      Adding Batch...
+                      <span>{editMode ? 'Updating Batch...' : 'Adding Batch...'}</span>
                     </>
                   ) : (
                     <>
                       <Plus className="w-5 h-5" />
-                      Add Batch with Barcode
+                      <span>{editMode ? 'Update Batch with Barcode' : 'Add Batch with Barcode'}</span>
                     </>
                   )}
                 </button>
@@ -988,20 +1010,30 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                 />
               </FormSection>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-4 pt-6 border-t border-gray-200 mt-8">
                 <button
                   type="button"
                   onClick={() => setActiveTab('medicine')}
-                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-6 py-3.5 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50"
+                  className="flex-1 px-6 py-3.5 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:via-blue-800 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  {loading ? 'Saving...' : 'Save Supplier'}
+                  {loading ? (
+                    <>
+                      <Loader className="w-5 h-5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Truck className="w-5 h-5" />
+                      <span>Save Supplier</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
