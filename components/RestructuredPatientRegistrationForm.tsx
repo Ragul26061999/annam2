@@ -755,7 +755,7 @@ export default function RestructuredPatientRegistrationForm({
         {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
           <div className="mt-3 p-3 bg-green-100 rounded-lg border border-green-300">
             <p className="text-sm text-green-800">
-              <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
+              <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(0)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
               {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
             </p>
           </div>
@@ -1191,7 +1191,7 @@ export default function RestructuredPatientRegistrationForm({
               <div className="md:col-span-2">
                 <div className="bg-blue-50 p-3 rounded-lg">
                   <p className="text-sm text-blue-900">
-                    <strong>BMI:</strong> {(parseFloat(formData.weight) / Math.pow(parseFloat(formData.height) / 100, 2)).toFixed(2)}
+                    <strong>BMI:</strong> {(parseFloat(formData.weight) / Math.pow(parseFloat(formData.height) / 100, 2)).toFixed(0)}
                   </p>
                 </div>
               </div>

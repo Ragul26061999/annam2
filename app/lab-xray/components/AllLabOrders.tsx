@@ -90,7 +90,7 @@ const AllLabOrders: React.FC = () => {
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('scan_orders')
+          .from('scan_test_orders')
           .select(`
             id, order_number, patient_id, clinical_indication, urgency, status, created_at,
             scan_test_catalog_id, doctor_id,
@@ -100,7 +100,7 @@ const AllLabOrders: React.FC = () => {
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('xray_orders')
+          .from('radiology_test_orders')
           .select(`
             id, order_number, patient_id, clinical_indication, urgency, status, created_at,
             radiology_test_catalog_id, doctor_id,

@@ -1144,10 +1144,10 @@ function IntentPageInner() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-bold text-slate-900">
-                        ₹{medicine.mrp.toFixed(2)}
+                        ₹{medicine.mrp.toFixed(0)}
                       </div>
                       <div className="text-xs text-slate-500">
-                        Total: ₹{(medicine.quantity * medicine.mrp).toFixed(2)}
+                        Total: ₹{(medicine.quantity * medicine.mrp).toFixed(0)}
                       </div>
                     </td>
                   </tr>

@@ -14,7 +14,7 @@ export const IPBillingPrintTemplate = React.forwardRef<HTMLDivElement, IPBilling
     };
 
     const formatCurrency = (amount: number) => {
-      return amount.toFixed(2);
+      return amount.toFixed(0);
     };
 
     const numberToWords = (num: number): string => {

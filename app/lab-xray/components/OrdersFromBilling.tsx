@@ -457,7 +457,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
             <td class="items-8cm">${idx + 1}.</td>
             <td class="items-8cm">${escapeHtml(it.description || it.test_name || it.service_name || it.item_name || 'Service')}</td>
             <td class="items-8cm text-center">${qty}</td>
-            <td class="items-8cm text-right">${total.toFixed(2)}</td>
+            <td class="items-8cm text-right">${total.toFixed(0)}</td>
           </tr>
         `;
       })
@@ -548,7 +548,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
           <div style="margin-top: 10px;">
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${totalAmount.toFixed(2)}</span>
+              <span>${totalAmount.toFixed(0)}</span>
             </div>
           </div>
 
@@ -679,7 +679,7 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                     {bill.patient?.name} • {bill.patient?.patient_id}
                   </div>
                   <div className="text-xs text-gray-500 truncate">
-                    Services: {(bill.items || []).length} • Total: ₹{total.toFixed(2)}
+                    Services: {(bill.items || []).length} • Total: ₹{total.toFixed(0)}
                   </div>
                   {attCount > 0 && (
                     <div className="text-xs text-gray-500 truncate inline-flex items-center gap-1">
@@ -761,10 +761,10 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                         >
                           <div>
                             <p className="font-medium text-gray-900">{it.description}</p>
-                            <p className="text-sm text-gray-600">Qty: {it.qty} • Unit: ₹{Number(it.unit_amount || 0).toFixed(2)}</p>
+                            <p className="text-sm text-gray-600">Qty: {it.qty} • Unit: ₹{Number(it.unit_amount || 0).toFixed(0)}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium text-gray-900">₹{Number(it.total_amount || 0).toFixed(2)}</p>
+                            <p className="font-medium text-gray-900">₹{Number(it.total_amount || 0).toFixed(0)}</p>
                           </div>
                         </div>
                       ))}

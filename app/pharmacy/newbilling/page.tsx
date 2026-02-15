@@ -180,7 +180,7 @@ function NewBillingPageInner() {
     if (showPaymentModal) {
       setPaymentAmountInputs(payments.map(p => {
         const n = Number(p.amount);
-        return Number.isFinite(n) ? n.toFixed(2) : '';
+        return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : '';
       }));
     }
   }, [showPaymentModal]);
@@ -230,7 +230,7 @@ function NewBillingPageInner() {
       const next = payments.map((p, i) => {
         if (prev[i] !== undefined) return prev[i];
         const n = Number(p.amount);
-        return Number.isFinite(n) ? n.toFixed(2) : '';
+        return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : '';
       });
       return next;
     });
@@ -1220,17 +1220,11 @@ function NewBillingPageInner() {
     const taxAmount = Math.round((afterDiscount * billTotals.taxPercent) / 100);
     const totalAmount = afterDiscount + taxAmount;
 
-    // Custom rounding: .5 and below stays same, .51 and above goes to next
-    const customRound = (num: number) => {
-      const decimal = num - Math.floor(num);
-      return decimal <= 0.5 ? Math.floor(num) : Math.ceil(num);
-    };
-
     return {
-      subtotal: customRound(subtotal),
-      discountAmount: customRound(discountAmount),
-      taxAmount: customRound(taxAmount),
-      totalAmount: customRound(totalAmount)
+      subtotal: Math.round(subtotal),
+      discountAmount: Math.round(discountAmount),
+      taxAmount: Math.round(taxAmount),
+      totalAmount: Math.round(totalAmount)
     };
   };
 
@@ -1672,11 +1666,14 @@ function NewBillingPageInner() {
     const now = new Date();
     const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     
-    // Get patient UHID
-    const patientUhid = customer.type === 'patient' ? customer.patient_id : customer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    // Use generatedBill.customer as fallback since customer state may be reset after bill generation
+    const billCustomer1 = generatedBill.customer || customer;
+    const patientUhid = billCustomer1.type === 'patient' ? (billCustomer1.patient_id || customer.patient_id) : billCustomer1.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    const patientName1 = billCustomer1.name || customer.name || generatedBill.customer_name || '';
     
     // Get sales type
-    let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
+    const billPayments1 = Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0 ? generatedBill.payments : payments;
+    let salesType = billPayments1.length > 1 ? 'SPLIT' : (billPayments1[0]?.method?.toUpperCase() || 'CASH');
     if (salesType === 'CREDIT') {
       salesType = 'CREDIT';
     }
@@ -1687,14 +1684,14 @@ function NewBillingPageInner() {
         <td class="items-8cm">${index + 1}.</td>
         <td class="items-8cm">${item.medicine?.name || item.name}</td>
         <td class="items-8cm text-center">${item.quantity}</td>
-        <td class="items-8cm text-right">${Number(item.total || item.total_amount || item.amount || 0).toFixed(2)}</td>
+        <td class="items-8cm text-right">${Math.round(Number(item.total || item.total_amount || item.amount || 0))}</td>
       </tr>
     `).join('');
 
-    const subtotal = Number(generatedBill.totals?.subtotal || generatedBill.items?.reduce((s: number, i: any) => s + Number(i.total || i.total_amount || i.amount || 0), 0) || 0);
-    const discount = Number(generatedBill.totals?.discountAmount || generatedBill.totals?.discount || 0);
-    const tax = Number(generatedBill.totals?.taxAmount || generatedBill.totals?.tax || 0);
-    const totalAmount = Number(generatedBill.totals?.totalAmount || generatedBill.totals?.total || generatedBill.total || 0);
+    const subtotal = Math.round(Number(generatedBill.totals?.subtotal || generatedBill.items?.reduce((s: number, i: any) => s + Number(i.total || i.total_amount || i.amount || 0), 0) || 0));
+    const discount = Math.round(Number(generatedBill.totals?.discountAmount || generatedBill.totals?.discount || 0));
+    const tax = Math.round(Number(generatedBill.totals?.taxAmount || generatedBill.totals?.tax || 0));
+    const totalAmount = Math.round(Number(generatedBill.totals?.totalAmount || generatedBill.totals?.total || generatedBill.total || 0));
 
     const thermalContent = `
       <html>
@@ -1748,7 +1745,7 @@ function NewBillingPageInner() {
               </tr>
               <tr>
                 <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${customer.name}</td>
+                <td class="bill-info-10cm bill-info-bold">${patientName1}</td>
               </tr>
               <tr>
                 <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
@@ -1776,23 +1773,23 @@ function NewBillingPageInner() {
           <div style="margin-top: 10px;">
             <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
-              <span>${(subtotal - discount).toFixed(2)}</span>
+              <span>${subtotal - discount}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-              <span>${discount.toFixed(2)}</span>
+              <span>${discount}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-              <span>${(tax / 2).toFixed(2)}</span>
+              <span>${Math.round(tax / 2)}</span>
             </div>
             <div class="totals-line header-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-              <span>${(tax / 2).toFixed(2)}</span>
+              <span>${Math.round(tax / 2)}</span>
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${totalAmount.toFixed(2)}</span>
+              <span>${totalAmount}</span>
             </div>
           </div>
 
@@ -1825,9 +1822,13 @@ function NewBillingPageInner() {
     const now = new Date();
     const printedDateTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-    const patientUhid = customer.type === 'patient' ? customer.patient_id : customer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    // Use generatedBill.customer as fallback since customer state may be reset after bill generation
+    const billCustomer = generatedBill.customer || customer;
+    const patientUhid = billCustomer.type === 'patient' ? (billCustomer.patient_id || customer.patient_id) : billCustomer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    const patientName = billCustomer.name || customer.name || generatedBill.customer_name || '';
 
-    let salesType = payments.length > 1 ? 'SPLIT' : payments[0].method?.toUpperCase() || 'CASH';
+    const billPayments = Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0 ? generatedBill.payments : payments;
+    let salesType = billPayments.length > 1 ? 'SPLIT' : (billPayments[0]?.method?.toUpperCase() || 'CASH');
     if (salesType === 'CREDIT') {
       salesType = 'CREDIT';
     }
@@ -1837,14 +1838,14 @@ function NewBillingPageInner() {
         <td class="items-8cm">${index + 1}.</td>
         <td class="items-8cm">${item.medicine?.name || item.name}</td>
         <td class="items-8cm text-center">${item.quantity}</td>
-        <td class="items-8cm text-right">${Number(item.total || item.total_amount || item.amount || 0).toFixed(2)}</td>
+        <td class="items-8cm text-right">${Math.round(Number(item.total || item.total_amount || item.amount || 0))}</td>
       </tr>
     `).join('');
 
-    const subtotal = Number(generatedBill.totals?.subtotal || 0);
-    const discount = Number(generatedBill.totals?.discountAmount || 0);
-    const tax = Number(generatedBill.totals?.taxAmount || 0);
-    const totalAmount = Number(generatedBill.totals?.totalAmount || 0);
+    const subtotal = Math.round(Number(generatedBill.totals?.subtotal || 0));
+    const discount = Math.round(Number(generatedBill.totals?.discountAmount || 0));
+    const tax = Math.round(Number(generatedBill.totals?.taxAmount || 0));
+    const totalAmount = Math.round(Number(generatedBill.totals?.totalAmount || 0));
 
     const thermalContent = `
       <html>
@@ -1900,7 +1901,7 @@ function NewBillingPageInner() {
               </tr>
               <tr>
                 <td class="bill-info-10cm">Patient Name&nbsp;:&nbsp;&nbsp;</td>
-                <td class="bill-info-10cm bill-info-bold">${customer.name}</td>
+                <td class="bill-info-10cm bill-info-bold">${patientName}</td>
               </tr>
               <tr>
                 <td class="bill-info-10cm">Date&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;</td>
@@ -1928,23 +1929,23 @@ function NewBillingPageInner() {
           <div style="margin-top: 10px;">
             <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
-              <span>${(subtotal - discount).toFixed(2)}</span>
+              <span>${subtotal - discount}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-              <span>${discount.toFixed(2)}</span>
+              <span>${discount}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-              <span>${(tax / 2).toFixed(2)}</span>
+              <span>${Math.round(tax / 2)}</span>
             </div>
             <div class="totals-line header-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-              <span>${(tax / 2).toFixed(2)}</span>
+              <span>${Math.round(tax / 2)}</span>
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${totalAmount.toFixed(2)}</span>
+              <span>${totalAmount}</span>
             </div>
           </div>
 
@@ -2678,7 +2679,7 @@ function NewBillingPageInner() {
                             />
                           </div>
                         ) : (
-                          <span className="text-right font-medium">₹{item.unit_price.toFixed(2)}</span>
+                          <span className="text-right font-medium">₹{Math.round(item.unit_price)}</span>
                         )}
                         <div className="flex items-center justify-center">
                           <input
@@ -2724,7 +2725,7 @@ function NewBillingPageInner() {
                             className="w-14 rounded border border-slate-200 bg-white text-center text-[11px] py-1"
                           />
                         </div>
-                        <span className="text-right font-semibold text-emerald-600">₹{item.total.toFixed(2)}</span>
+                        <span className="text-right font-semibold text-emerald-600">₹{Math.round(item.total)}</span>
                         <div className="flex items-center justify-center">
                           <button
                             type="button"
@@ -2909,9 +2910,9 @@ function NewBillingPageInner() {
                               <span className="font-medium truncate">{item.medicine.name}</span>
                               <span className="text-[10px] text-slate-500 truncate">Batch: {item.medicine.is_external ? 'EXT' : item.batch.batch_number.slice(-4)}</span>
                             </div>
-                            <span className="text-right">₹{item.unit_price.toFixed(2)}</span>
+                            <span className="text-right">₹{Math.round(item.unit_price)}</span>
                             <span className="text-center">{item.quantity}</span>
-                            <span className="text-right font-medium">₹{(item.quantity * item.unit_price).toFixed(2)}</span>
+                            <span className="text-right font-medium">₹{Math.round(item.quantity * item.unit_price)}</span>
                             <button
                               onClick={() => removeBillItem(index)}
                               className="text-red-500 hover:text-red-700 mx-auto"
@@ -2968,7 +2969,7 @@ function NewBillingPageInner() {
 
         {/* Enhanced Payment Modal with Split Support */}
         {showPaymentModal && (() => {
-          const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+          const r2 = (n: number) => Math.round(n);
           const totalDue = r2(billTotals.totalAmount);
           const typedPaidRaw = paymentAmountInputs.length
             ? paymentAmountInputs.reduce((s, v) => {
@@ -3074,13 +3075,13 @@ function NewBillingPageInner() {
                                 <div className="relative">
                                   <input
                                     type="text"
-                                    inputMode="decimal"
-                                    pattern="[0-9]*[.,]?[0-9]{0,2}"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
                                     enterKeyHint="done"
                                     value={paymentAmountInputs[idx] ?? ''}
                                     onChange={(e) => {
-                                      const v = e.target.value.replace(/,/g, '.');
-                                      if (/^\d*(?:\.\d{0,2})?$/.test(v) || v === '') {
+                                      const v = e.target.value.replace(/[^0-9]/g, '');
+                                      if (/^\d*$/.test(v) || v === '') {
                                         setPaymentAmountInputs(prev => {
                                           const next = [...prev];
                                           next[idx] = v;
@@ -3093,11 +3094,11 @@ function NewBillingPageInner() {
                                       if (e.key === 'Enter') {
                                         const raw = paymentAmountInputs[idx] ?? '';
                                         const n = parseFloat(raw);
-                                        const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+                                        const safe = Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
                                         setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
                                         setPaymentAmountInputs(prev => {
                                           const next = [...prev];
-                                          next[idx] = safe.toFixed(2);
+                                          next[idx] = safe > 0 ? String(safe) : '';
                                           return next;
                                         });
                                       }
@@ -3105,35 +3106,35 @@ function NewBillingPageInner() {
                                     onBlur={() => {
                                       const raw = paymentAmountInputs[idx] ?? '';
                                       const n = parseFloat(raw);
-                                      const safe = Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+                                      const safe = Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
                                       setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: safe } : pp));
                                       setPaymentAmountInputs(prev => {
                                         const next = [...prev];
-                                        next[idx] = safe.toFixed(2);
+                                        next[idx] = safe > 0 ? String(safe) : '';
                                         return next;
                                       });
                                     }}
                                     className="w-full pr-16 pl-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    placeholder="0.00"
+                                    placeholder="0"
                                     aria-label="Payment amount"
                                   />
                                   {remainingAmount > 0 && (
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const amt = parseFloat(Math.max(0, remainingAmount).toFixed(2));
+                                        const amt = Math.round(Math.max(0, remainingAmount));
                                         setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: amt } : pp));
                                         setPaymentAmountInputs(prev => {
                                           const next = [...prev];
-                                          next[idx] = amt.toFixed(2);
+                                          next[idx] = amt > 0 ? String(amt) : '';
                                           return next;
                                         });
                                       }}
                                       className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm"
-                                      title={`Fill remaining: ₹${remainingAmount.toFixed(2)}`}
-                                      aria-label={`Fill remaining amount ₹${remainingAmount.toFixed(2)}`}
+                                      title={`Fill remaining: ₹${Math.round(remainingAmount)}`}
+                                      aria-label={`Fill remaining amount ₹${Math.round(remainingAmount)}`}
                                     >
-                                      Fill ₹{remainingAmount.toFixed(2)}
+                                      Fill ₹{Math.round(remainingAmount)}
                                     </button>
                                   )}
                                 </div>
@@ -3333,7 +3334,7 @@ function NewBillingPageInner() {
                         : payments;
                       if (Array.isArray(pays) && pays.length > 0) {
                         return pays
-                          .map((p: any) => `${(p.method || '').toUpperCase()} ₹${Number(p.amount || 0).toFixed(2)}`)
+                          .map((p: any) => `${(p.method || '').toUpperCase()} ₹${Math.round(Number(p.amount || 0))}`)
                           .join(' + ');
                       }
                       return (generatedBill.paymentMethod === 'credit'
@@ -3408,13 +3409,13 @@ function NewBillingPageInner() {
                       {pays.map((payment: any, idx: number) => (
                         <div key={idx} className="flex justify-between text-sm">
                           <span className="capitalize">{payment.method}</span>
-                          <span className="font-medium">₹{Number(payment.amount || 0).toFixed(2)}</span>
+                          <span className="font-medium">₹{Math.round(Number(payment.amount || 0))}</span>
                         </div>
                       ))}
                       <div className="border-t pt-1 mt-2 flex justify-between font-semibold">
                         <span>Total Paid</span>
                         <span>
-                          ₹{(pays.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0)).toFixed(2)}
+                          ₹{Math.round(pays.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0))}
                         </span>
                       </div>
                     </div>
@@ -3426,25 +3427,25 @@ function NewBillingPageInner() {
               <div className="border-t-2 border-gray-300 pt-3 space-y-1 text-sm totals-section">
                 <div className="flex justify-between">
                   <span className="label">Taxable Amt</span>
-                  <span className="value">₹{generatedBill.totals.subtotal.toFixed(2)}</span>
+                  <span className="value">₹{Math.round(generatedBill.totals.subtotal)}</span>
                 </div>
                 {generatedBill.totals.discountAmount > 0 && (
                   <div className="flex justify-between">
                     <span className="label">Disc Amt</span>
-                    <span className="value">-₹{generatedBill.totals.discountAmount.toFixed(2)}</span>
+                    <span className="value">-₹{Math.round(generatedBill.totals.discountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="label">CGST Amt</span>
-                  <span className="value">₹{(generatedBill.totals.taxAmount / 2).toFixed(2)}</span>
+                  <span className="value">₹{Math.round(generatedBill.totals.taxAmount / 2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="label">SGST Amt</span>
-                  <span className="value">₹{(generatedBill.totals.taxAmount / 2).toFixed(2)}</span>
+                  <span className="value">₹{Math.round(generatedBill.totals.taxAmount / 2)}</span>
                 </div>
                 <div className="flex justify-between font-semibold text-base border-t pt-2">
                   <span>Total Net Amt</span>
-                  <span>₹{generatedBill.totals.totalAmount.toFixed(2)}</span>
+                  <span>₹{Math.round(generatedBill.totals.totalAmount)}</span>
                 </div>
               </div>
 

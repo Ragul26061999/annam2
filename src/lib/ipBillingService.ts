@@ -52,6 +52,7 @@ export interface IPBedCharges {
 }
 
 export interface IPPharmacyBilling {
+  id: string;
   bill_number: string;
   bill_date: string;
   items: Array<{
@@ -61,6 +62,9 @@ export interface IPPharmacyBilling {
     total: number;
   }>;
   total_amount: number;
+  payment_status?: string;
+  paid_amount?: number;
+  balance_amount?: number;
 }
 
 export interface IPLabBilling {
@@ -97,6 +101,20 @@ export interface IPScanBilling {
     status: 'paid' | 'pending' | 'partial';
   }>;
   total_amount: number;
+}
+
+export interface IPDiagnosticBillingItem {
+  id: string;
+  order_type: 'lab' | 'radiology' | 'scan';
+  lab_order_id?: string;
+  radiology_order_id?: string;
+  scan_order_id?: string;
+  test_name: string;
+  amount: number;
+  billing_status: 'pending' | 'paid' | 'partial';
+  billed_at?: string;
+  paid_at?: string;
+  created_at: string;
 }
 
 export interface IPPaymentReceipt {
@@ -140,6 +158,7 @@ export interface IPComprehensiveBilling {
   lab_billing: IPLabBilling[];
   radiology_billing: IPRadiologyBilling[];
   scan_billing: IPScanBilling[];
+  diagnostic_billing_items: IPDiagnosticBillingItem[];
   other_charges: IPBillingItem[];
   other_bills: any[];
 
@@ -289,22 +308,51 @@ export async function getIPComprehensiveBilling(
     const bedDailyRate = Number(dischargeSummary?.bed_daily_rate ?? defaultBedDailyRate);
     const bedChargesTotal = Number(dischargeSummary?.bed_total ?? (bedDailyRate * bedDays));
 
-    // 4. Get pharmacy billing
+    // 4. Get pharmacy billing with items
     // NOTE: Some DBs define bill_date as DATE (not timestamptz). Using date-only strings avoids 400.
     // Also, embedding items requires FK relationships; if not present PostgREST returns 400.
     const { data: pharmacyBills, error: pharmacyError } = await supabase
       .from('pharmacy_bills')
-      .select('bill_number, bill_date, total_amount')
+      .select(`
+        id,
+        bill_number, 
+        bill_date, 
+        total_amount,
+        payment_status,
+        patient_type,
+        items:pharmacy_bill_items(
+          medicine_name,
+          quantity,
+          unit_price,
+          total_amount
+        )
+      `)
       .eq('patient_id', patient.id)
       .gte('bill_date', admissionDateOnly)
       .lte('bill_date', dischargeDateOnly);
 
-    const pharmacyBilling: IPPharmacyBilling[] = (pharmacyError ? [] : (pharmacyBills || [])).map((bill: any) => ({
-      bill_number: bill.bill_number,
-      bill_date: bill.bill_date,
-      items: [],
-      total_amount: Number(bill.total_amount || 0)
-    }));
+    const pharmacyBilling: IPPharmacyBilling[] = (pharmacyError ? [] : (pharmacyBills || [])).map((bill: any) => {
+      const totalAmount = Number(bill.total_amount || 0);
+      const paymentStatus = bill.payment_status || 'pending';
+      const paidAmount = paymentStatus === 'paid' ? totalAmount : 0;
+      const balanceAmount = paymentStatus === 'paid' ? 0 : totalAmount;
+
+      return {
+        id: bill.id,
+        bill_number: bill.bill_number,
+        bill_date: bill.bill_date,
+        items: (bill.items || []).map((item: any) => ({
+          medicine_name: item.medicine_name,
+          quantity: item.quantity,
+          unit_price: Number(item.unit_price),
+          total: Number(item.total_amount)
+        })),
+        total_amount: totalAmount,
+        payment_status: paymentStatus,
+        paid_amount: paidAmount,
+        balance_amount: balanceAmount
+      };
+    });
 
     const pharmacyTotal = pharmacyBilling.reduce((sum, bill) => sum + bill.total_amount, 0);
 
@@ -739,7 +787,15 @@ export async function getIPComprehensiveBilling(
       0
     );
 
-    // 8. Get other charges (from billing_items if exists)
+    // 8. Get diagnostic billing items (missing lab and radiology bills)
+    const { data: diagnosticBillingItems } = await supabase
+      .from('diagnostic_billing_items')
+      .select('*')
+      .eq('patient_id', patient.id)
+      .eq('billing_status', 'pending')
+      .order('created_at', { ascending: true });
+
+    // 9. Get other charges (from billing_items if exists)
     let otherItems: any[] = [];
     try {
       // In this DB, billing_item uses ref_id to link to IP stay / other references.
@@ -752,7 +808,7 @@ export async function getIPComprehensiveBilling(
       otherItems = [];
     }
 
-    // 9. Get Other Bills for this patient during IP stay
+    // 10. Get Other Bills for this patient during IP stay
     const { data: otherBills } = await supabase
       .from('other_bills')
       .select('*')
@@ -860,6 +916,7 @@ export async function getIPComprehensiveBilling(
       lab_billing: labBilling,
       radiology_billing: radiologyBilling,
       scan_billing: scanBilling,
+      diagnostic_billing_items: diagnosticBillingItems || [],
       other_charges: otherCharges,
       other_bills: otherBillsWithStatus,
       payment_receipts,

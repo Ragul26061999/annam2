@@ -325,7 +325,7 @@ export default function PharmacyBillingForm({
       };
 
       const { data: billingRecord, error: billingError } = await supabase
-        .from('pharmacy_billing')
+        .from('pharmacy_bills')
         .insert(billingData)
         .select()
         .single();
@@ -335,7 +335,7 @@ export default function PharmacyBillingForm({
       // Create billing items
       for (const item of billingItems) {
         const { error: itemError } = await supabase
-          .from('pharmacy_billing_items')
+          .from('pharmacy_bill_items')
           .insert({
             billing_id: billingRecord.id,
             medication_id: item.medication_id,
@@ -455,7 +455,7 @@ export default function PharmacyBillingForm({
                     <div className="text-right">
                       <p className="font-semibold text-green-600 flex items-center text-sm">
                         <IndianRupee className="h-3 w-3" />
-                        {medication.unit_price.toFixed(2)}
+                        {medication.unit_price.toFixed(0)}
                       </p>
                       <p className="text-xs text-gray-500">Stock: {medication.stock_quantity}</p>
                     </div>
@@ -562,7 +562,7 @@ export default function PharmacyBillingForm({
                             <h4 className="font-medium text-gray-900">{item.medication_name}</h4>
                             <p className="text-sm text-gray-600 flex items-center">
                               <IndianRupee className="h-3 w-3" />
-                              {item.unit_price.toFixed(2)} per unit
+                              {item.unit_price.toFixed(0)} per unit
                             </p>
                           </div>
                           <button
@@ -626,7 +626,7 @@ export default function PharmacyBillingForm({
                             </label>
                             <p className="font-semibold text-green-600 flex items-center text-sm py-1">
                               <IndianRupee className="h-3 w-3" />
-                              {item.total_price.toFixed(2)}
+                              {item.total_price.toFixed(0)}
                             </p>
                           </div>
                         </div>
@@ -696,7 +696,7 @@ export default function PharmacyBillingForm({
                         <span>Subtotal:</span>
                         <span className="flex items-center">
                           <IndianRupee className="h-3 w-3" />
-                          {calculateSubtotal().toFixed(2)}
+                          {calculateSubtotal().toFixed(0)}
                         </span>
                       </div>
                       {overallDiscount > 0 && (
@@ -704,7 +704,7 @@ export default function PharmacyBillingForm({
                           <span>Overall Discount ({overallDiscount}%):</span>
                           <span className="flex items-center">
                             -<IndianRupee className="h-3 w-3" />
-                            {calculateOverallDiscountAmount().toFixed(2)}
+                            {calculateOverallDiscountAmount().toFixed(0)}
                           </span>
                         </div>
                       )}
@@ -712,7 +712,7 @@ export default function PharmacyBillingForm({
                         <span>Total:</span>
                         <span className="flex items-center text-green-600">
                           <IndianRupee className="h-4 w-4" />
-                          {calculateTotal().toFixed(2)}
+                          {calculateTotal().toFixed(0)}
                         </span>
                       </div>
                     </div>

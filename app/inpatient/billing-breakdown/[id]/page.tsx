@@ -54,8 +54,9 @@ export default function BreakdownBillPage() {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(Math.round(amount));
   };
 
   const getDepartmentBreakdown = (): DepartmentSummary[] => {

@@ -3036,7 +3036,7 @@ export default function InventoryPage() {
                               <td className="py-3 px-2">{purchase.batch_number || '—'}</td>
                               <td className="py-3 px-2">{purchase.quantity}</td>
                               <td className="py-3 px-2">₹{purchase.unit_price}</td>
-                              <td className="py-3 px-2">₹{(purchase.quantity * purchase.unit_price).toFixed(2)}</td>
+                              <td className="py-3 px-2">₹{(purchase.quantity * purchase.unit_price).toFixed(0)}</td>
                               <td className="py-3 px-2">{purchase.supplier_name || '—'}</td>
                               <td className="py-3 px-2">
                                 <button

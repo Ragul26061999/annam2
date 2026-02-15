@@ -205,7 +205,7 @@ export default function RegistrationReceipt({
                   <td className="py-3 px-4 text-gray-700">{index + 1}</td>
                   <td className="py-3 px-4 text-gray-900 font-medium">{charge.label}</td>
                   <td className="py-3 px-4 text-right text-gray-900 font-semibold">
-                    {charge.amount.toFixed(2)}
+                    {charge.amount.toFixed(0)}
                   </td>
                 </tr>
               ))}
@@ -214,7 +214,7 @@ export default function RegistrationReceipt({
                   Total Amount
                 </td>
                 <td className="py-4 px-4 text-right text-xl font-bold text-orange-600">
-                  ₹ {totalAmount.toFixed(2)}
+                  ₹ {totalAmount.toFixed(0)}
                 </td>
               </tr>
             </tbody>

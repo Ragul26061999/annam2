@@ -789,7 +789,7 @@ export default function PrescribedListPage() {
                           </div>
                         </div>
                         <div className="text-sm">
-                          <div><strong>Total:</strong> ₹{billTotal.toFixed(2)}</div>
+                          <div><strong>Total:</strong> ₹{billTotal.toFixed(0)}</div>
                           <div><strong>Status:</strong> {b.payment_status || ''}</div>
                         </div>
                       </div>
@@ -806,7 +806,7 @@ export default function PrescribedListPage() {
                                 </div>
                                 <div className="text-right">
                                   <div>{Number(it.qty || 0)}/{''}</div>
-                                  <div>₹{Number(it.total_amount || 0).toFixed(2)}</div>
+                                  <div>₹{Number(it.total_amount || 0).toFixed(0)}</div>
                                 </div>
                               </div>
                             ))}
@@ -826,7 +826,7 @@ export default function PrescribedListPage() {
                                   <div className="font-medium">{String(p.method || '').toUpperCase()}</div>
                                   <div className="text-gray-600">{p.paid_at ? new Date(p.paid_at).toLocaleString() : ''}{p.reference ? ` · Ref: ${p.reference}` : ''}</div>
                                 </div>
-                                <div className="font-medium">₹{Number(p.amount || 0).toFixed(2)}</div>
+                                <div className="font-medium">₹{Number(p.amount || 0).toFixed(0)}</div>
                               </div>
                             ))}
                           </div>

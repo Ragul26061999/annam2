@@ -1007,7 +1007,7 @@ export default function RestructuredPatientRegistrationForm({
               <div className="md:col-span-2">
                 <div className="bg-blue-50 p-3 rounded-lg">
                   <p className="text-sm text-blue-900">
-                    <strong>BMI:</strong> {(parseFloat(formData.weight) / Math.pow(parseFloat(formData.height) / 100, 2)).toFixed(2)}
+                    <strong>BMI:</strong> {(parseFloat(formData.weight) / Math.pow(parseFloat(formData.height) / 100, 2)).toFixed(0)}
                   </p>
                 </div>
               </div>

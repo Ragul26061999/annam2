@@ -564,7 +564,7 @@ export async function deleteDiagnosticGroupItem(itemId: string): Promise<boolean
 export async function getPatientXrayOrders(patientId: string): Promise<any[]> {
   try {
     const { data: orders, error } = await supabase
-      .from('xray_orders')
+      .from('radiology_test_orders')
       .select('*')
       .eq('patient_id', patientId)
       .order('created_at', { ascending: false });
@@ -654,7 +654,7 @@ export async function createScanOrder(orderData: ScanOrder): Promise<any> {
     };
 
     const { data: order, error } = await supabase
-      .from('scan_orders')
+      .from('scan_test_orders')
       .insert([payload])
       .select('*')
       .single();
@@ -696,7 +696,7 @@ export async function createScanOrder(orderData: ScanOrder): Promise<any> {
 export async function getPatientLegacyScanOrders(patientId: string): Promise<any[]> {
   try {
     const { data: orders, error } = await supabase
-      .from('scan_orders')
+      .from('scan_test_orders')
       .select('*')
       .eq('patient_id', patientId)
       .order('created_at', { ascending: false });

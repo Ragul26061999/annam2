@@ -428,22 +428,19 @@ export async function getPatientMedicationHistory(patientId: string): Promise<Me
 
     // Get dispensed medications
     const { data: dispensed, error: dispError } = await supabase
-      .from('prescription_dispensed')
+      .from('prescription_dispensing')
       .select(`
         id,
-        dispensed_date,
-        total_amount,
-        payment_status,
-        pharmacist_id,
-        prescription_dispensed_items(
-          medication_id,
-          dispensed_quantity,
-          unit_price,
-          total_price
-        )
+        dispensed_at,
+        quantity_dispensed,
+        medication_id,
+        dispensed_by,
+        prescription_id,
+        batch_id,
+        notes
       `)
-      .eq('patient_id', patientId)
-      .order('dispensed_date', { ascending: false });
+      .eq('prescription_id', patientId)
+      .order('dispensed_at', { ascending: false });
 
     if (dispError) {
       console.error('Error fetching dispensed medications:', dispError);
@@ -567,22 +564,19 @@ export async function getPatientPrescriptionGroups(patientId: string): Promise<P
 
     // Get dispensed medications (grouped by dispense record)
     const { data: dispensed, error: dispError } = await supabase
-      .from('prescription_dispensed')
+      .from('prescription_dispensing')
       .select(`
         id,
-        dispensed_date,
-        total_amount,
-        payment_status,
-        pharmacist_id,
-        prescription_dispensed_items(
-          medication_id,
-          dispensed_quantity,
-          unit_price,
-          total_price
-        )
+        dispensed_at,
+        quantity_dispensed,
+        medication_id,
+        dispensed_by,
+        prescription_id,
+        batch_id,
+        notes
       `)
-      .eq('patient_id', patientId)
-      .order('dispensed_date', { ascending: false });
+      .eq('prescription_id', patientId)
+      .order('dispensed_at', { ascending: false });
 
     if (dispError) {
       console.error('Error fetching dispensed medications:', dispError);
@@ -2048,7 +2042,7 @@ export async function dispensePrescription(
       // Create stock transaction
       const transactionId = `DISP-${Date.now()}-${prescriptionId}`;
       await supabase
-        .from('pharmacy_stock_transactions')
+        .from('stock_transactions')
         .insert({
           medication_id: medicationId,
           transaction_id: transactionId,

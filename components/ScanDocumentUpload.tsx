@@ -138,7 +138,7 @@ export default function ScanDocumentUpload({
 
       // Update scan order status to completed
       await supabase
-        .from('scan_orders')
+        .from('scan_test_orders')
         .update({ 
           status: 'completed',
           completed_date: new Date().toISOString(),

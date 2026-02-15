@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Printer, DollarSign, Edit2, Save, X, Wallet } from 'lucide-react';
+import { Loader2, Printer, DollarSign, Edit2, Save, X, Wallet, FileText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { 
   getIPComprehensiveBilling, 
   saveIPBilling,
@@ -9,7 +10,8 @@ import {
 } from '../../lib/ipBillingService';
 import {
   getBillingSummary,
-  getTotalAvailableAdvance
+  getTotalAvailableAdvance,
+  getAvailableAdvances
 } from '../../lib/ipFlexibleBillingService';
 import IPBillingMedicinesEditor from './IPBillingMedicinesEditor';
 import IPBillingLabEditor from './IPBillingLabEditor';
@@ -17,6 +19,7 @@ import IPPaymentReceiptModal from './IPPaymentReceiptModal';
 import IPAdvanceReceiptModal from './IPAdvanceReceiptModal';
 import IPBillWisePaymentModal from './IPBillWisePaymentModal';
 import OtherBillsPaymentModal from '../OtherBillsPaymentModal';
+import IPBillPaymentModal from './IPBillPaymentModal';
 import { IPBillingMultiPagePrint } from './IPBillingMultiPagePrint';
 import IPSurgeryChargesEditor from './IPSurgeryChargesEditor';
 import IPDoctorConsultationsEditor from './IPDoctorConsultationsEditor';
@@ -31,6 +34,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<IPComprehensiveBilling | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [showBillWisePaymentModal, setShowBillWisePaymentModal] = useState(false);
@@ -38,6 +42,8 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
   const [selectedOtherBill, setSelectedOtherBill] = useState<any | null>(null);
   const [availableAdvance, setAvailableAdvance] = useState(0);
   const [flexibleBillingSummary, setFlexibleBillingSummary] = useState<any>(null);
+  const [showBillPaymentModal, setShowBillPaymentModal] = useState(false);
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState<any | null>(null);
 
   const [editingBedCharges, setEditingBedCharges] = useState(false);
   const [editingDoctorConsultation, setEditingDoctorConsultation] = useState(false);
@@ -147,8 +153,9 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(Math.round(amount));
   };
 
   const recalculateBillingTotals = (b: IPComprehensiveBilling): IPComprehensiveBilling => {
@@ -319,18 +326,11 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowBillWisePaymentModal(true)}
-                className="flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md"
+                onClick={() => router.push(`/inpatient/billing-breakdown/${bedAllocationId}`)}
+                className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold shadow-md"
               >
-                <DollarSign className="h-5 w-5" />
-                Pay Bills
-              </button>
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md"
-              >
-                <DollarSign className="h-5 w-5" />
-                Quick Payment
+                <FileText className="h-5 w-5" />
+                Breakdown Bill
               </button>
               <button
                 onClick={() => window.print()}
@@ -604,19 +604,28 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                         </span>
                       </td>
                       <td className="px-4 py-2 text-right">
-                        {b.payment_status !== 'paid' && b.payment_status !== 'cancelled' && Number(b.balance_amount ?? (Number(b.total_amount || 0) - Number(b.paid_amount || 0))) > 0 ? (
+                        {b.payment_status !== 'paid' && b.payment_status !== 'cancelled' && Math.round(Number(b.balance_amount ?? (Number(b.total_amount || 0) - Number(b.paid_amount || 0)))) > 0 ? (
                           <button
                             onClick={() => {
-                              setSelectedOtherBill(b);
-                              setShowOtherBillPaymentModal(true);
+                              const pendingAmt = Math.round(Number(b.balance_amount ?? (Number(b.total_amount || 0) - Number(b.paid_amount || 0))));
+                              setSelectedBillForPayment({
+                                id: b.id,
+                                bill_type: 'other_bill',
+                                bill_number: b.bill_number,
+                                description: `${b.charge_category}: ${b.charge_description}`,
+                                total_amount: Math.round(Number(b.total_amount || 0)),
+                                paid_amount: Math.round(Number(b.paid_amount || 0)),
+                                pending_amount: pendingAmt
+                              });
+                              setShowBillPaymentModal(true);
                             }}
                             className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                           >
                             <DollarSign className="h-4 w-4" />
-                            Receive
+                            Pay
                           </button>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-green-600 font-semibold">Paid</span>
                         )}
                       </td>
                     </tr>
@@ -708,12 +717,42 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                       </div>
                     </div>
 
-                    {/* Bill Total */}
+                    {/* Bill Total & Payment */}
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <p className="text-xs text-gray-500 uppercase">Total</p>
                         <p className="text-xl font-bold text-blue-600">{formatCurrency(pb.total_amount)}</p>
                       </div>
+                      <div className="text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          pb.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
+                          pb.payment_status === 'partial' ? 'bg-orange-100 text-orange-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {(pb.payment_status || 'pending').toUpperCase()}
+                        </span>
+                      </div>
+                      {pb.payment_status !== 'paid' && Math.round((pb.balance_amount || pb.total_amount) - (pb.paid_amount || 0)) > 0 && (
+                        <button
+                          onClick={() => {
+                            const pendingAmt = Math.round((pb.balance_amount || pb.total_amount) - (pb.paid_amount || 0));
+                            setSelectedBillForPayment({
+                              id: pb.id,
+                              bill_type: 'pharmacy',
+                              bill_number: pb.bill_number,
+                              description: `Pharmacy Bill #${pb.bill_number}`,
+                              total_amount: Math.round(pb.total_amount),
+                              paid_amount: Math.round(pb.paid_amount || 0),
+                              pending_amount: pendingAmt
+                            });
+                            setShowBillPaymentModal(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          Pay
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -748,7 +787,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                         </div>
                         <div>
                           <p className="text-xs text-gray-500 uppercase">Bill</p>
-                          <p className="font-semibold text-gray-900">{rb.bill_number}</p>
+                          <p className="font-semibold text-gray-900">{rb.bill_number || `RAD-${idx + 1}`}</p>
                         </div>
                       </div>
 
@@ -833,7 +872,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                         </div>
                         <div>
                           <p className="text-xs text-gray-500 uppercase">Bill</p>
-                          <p className="font-semibold text-gray-900">{sb.bill_number}</p>
+                          <p className="font-semibold text-gray-900">{sb.bill_number || `SCAN-${idx + 1}`}</p>
                         </div>
                       </div>
 
@@ -963,6 +1002,89 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
                         <p className="text-xs text-gray-500 uppercase">Amount</p>
                         <p className="text-xl font-bold text-blue-600">{formatCurrency(charge.amount)}</p>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Diagnostic Billing Items (Missing Lab/Radiology Bills) */}
+        {billing.diagnostic_billing_items && billing.diagnostic_billing_items.length > 0 && (
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Pending Diagnostic Bills</h2>
+              <span className="text-2xl font-bold text-blue-600">
+                {formatCurrency(billing.diagnostic_billing_items.reduce((sum, item) => sum + item.amount, 0))}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {billing.diagnostic_billing_items.map((item, idx) => (
+                <div key={item.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-center p-4 bg-white">
+                    <div className="flex items-center gap-6 flex-1">
+                      {/* Bill Number */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-red-700">#</span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">Bill</p>
+                          <p className="font-semibold text-gray-900">
+                            {item.order_type.toUpperCase()}-{idx + 1}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Test Name */}
+                      <div className="flex-1 max-w-md">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Test/Scan</p>
+                        <p className="font-medium text-gray-700 text-sm">{item.test_name}</p>
+                      </div>
+
+                      {/* Type */}
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 uppercase">Type</p>
+                        <div className={`px-3 py-1 rounded-full inline-block mt-1 text-xs font-bold ${
+                          item.order_type === 'lab' ? 'bg-blue-100 text-blue-800' :
+                          item.order_type === 'radiology' ? 'bg-indigo-100 text-indigo-800' :
+                          'bg-purple-100 text-purple-800'
+                        }`}>
+                          {item.order_type.toUpperCase()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Amount & Payment */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 uppercase">Amount</p>
+                        <p className="text-xl font-bold text-blue-600">{formatCurrency(item.amount)}</p>
+                      </div>
+                      <div className="text-center">
+                        <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                          PENDING
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedBillForPayment({
+                            id: item.id,
+                            bill_type: item.order_type === 'lab' ? 'lab' : 'radiology',
+                            bill_number: `${item.order_type.toUpperCase()}-${idx + 1}`,
+                            description: `${item.order_type}: ${item.test_name}`,
+                            total_amount: Math.round(item.amount),
+                            paid_amount: 0,
+                            pending_amount: Math.round(item.amount)
+                          });
+                          setShowBillPaymentModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                        Pay
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1217,14 +1339,35 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
           bill={{
             id: selectedOtherBill.id,
             bill_number: selectedOtherBill.bill_number,
-            total_amount: Number(selectedOtherBill.total_amount || 0),
-            balance_amount: Number(selectedOtherBill.balance_amount ?? (Number(selectedOtherBill.total_amount || 0) - Number(selectedOtherBill.paid_amount || 0))),
+            total_amount: Math.round(Number(selectedOtherBill.total_amount || 0)),
+            balance_amount: Math.round(Number(selectedOtherBill.balance_amount ?? (Number(selectedOtherBill.total_amount || 0) - Number(selectedOtherBill.paid_amount || 0)))),
             payment_status: selectedOtherBill.payment_status,
           }}
           onSuccess={() => {
             setShowOtherBillPaymentModal(false);
             setSelectedOtherBill(null);
             loadBillingData();
+          }}
+        />
+      )}
+
+      {/* Individual Bill Payment Modal */}
+      {showBillPaymentModal && selectedBillForPayment && (
+        <IPBillPaymentModal
+          isOpen={showBillPaymentModal}
+          onClose={() => {
+            setShowBillPaymentModal(false);
+            setSelectedBillForPayment(null);
+          }}
+          bedAllocationId={bedAllocationId}
+          patientId={billing.patient.id}
+          patientName={billing.patient.name}
+          bill={selectedBillForPayment}
+          onPaymentSuccess={() => {
+            setShowBillPaymentModal(false);
+            setSelectedBillForPayment(null);
+            loadBillingData();
+            loadFlexibleBillingData();
           }}
         />
       )}

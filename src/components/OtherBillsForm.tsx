@@ -486,23 +486,23 @@ export default function OtherBillsForm({ isOpen, onClose, onSuccess, initialData
             <h3 className="font-semibold text-gray-900 mb-3">Bill Summary</h3>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">₹{calculatedAmounts.subtotal.toFixed(2)}</span>
+              <span className="font-medium">₹{calculatedAmounts.subtotal.toFixed(0)}</span>
             </div>
             {calculatedAmounts.discountAmount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Discount:</span>
-                <span className="font-medium text-red-600">-₹{calculatedAmounts.discountAmount.toFixed(2)}</span>
+                <span className="font-medium text-red-600">-₹{calculatedAmounts.discountAmount.toFixed(0)}</span>
               </div>
             )}
             {calculatedAmounts.taxAmount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Tax:</span>
-                <span className="font-medium">₹{calculatedAmounts.taxAmount.toFixed(2)}</span>
+                <span className="font-medium">₹{calculatedAmounts.taxAmount.toFixed(0)}</span>
               </div>
             )}
             <div className="border-t border-gray-200 pt-2 flex justify-between">
               <span className="font-semibold text-gray-900">Total Amount:</span>
-              <span className="font-bold text-xl text-blue-600">₹{calculatedAmounts.totalAmount.toFixed(2)}</span>
+              <span className="font-bold text-xl text-blue-600">₹{calculatedAmounts.totalAmount.toFixed(0)}</span>
             </div>
           </div>
 

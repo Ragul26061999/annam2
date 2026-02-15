@@ -242,7 +242,7 @@ export default function ClinicalEntryFormNew({
         }));
 
         const { error: scansError } = await supabase
-          .from('xray_orders')
+          .from('radiology_test_orders')
           .insert(scanRecords);
 
         if (scansError) throw scansError;

@@ -78,7 +78,7 @@ export default function WorkstationPage() {
 
       // Fetch lab tests
       const { data: testsData, error: testsError } = await supabase
-        .from('lab_tests')
+        .from('lab_test_catalog')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -86,7 +86,7 @@ export default function WorkstationPage() {
 
       // Fetch lab reports
       const { data: reportsData, error: reportsError } = await supabase
-        .from('lab_reports')
+        .from('lab_test_results')
         .select('*')
         .order('created_at', { ascending: false });
 

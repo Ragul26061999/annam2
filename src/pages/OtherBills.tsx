@@ -221,7 +221,7 @@ export default function OtherBills() {
                 <td class="items-8cm">1.</td>
                 <td class="items-8cm">${selectedBill.charge_category || 'Service Charge'}</td>
                 <td class="items-8cm text-center">1</td>
-                <td class="items-8cm text-right">${Number(selectedBill.total_amount || 0).toFixed(2)}</td>
+                <td class="items-8cm text-right">${Number(selectedBill.total_amount || 0).toFixed(0)}</td>
               </tr>
             </table>
           </div>
@@ -229,7 +229,7 @@ export default function OtherBills() {
           <div style="margin-top: 10px;">
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${Number(selectedBill.total_amount || 0).toFixed(2)}</span>
+              <span>${Number(selectedBill.total_amount || 0).toFixed(0)}</span>
             </div>
           </div>
 
@@ -419,7 +419,7 @@ export default function OtherBills() {
                                       <td class="items-8cm">${idx + 1}.</td>
                                       <td class="items-8cm">${it.charge_description || ''}</td>
                                       <td class="items-8cm text-center">${qty || 0}</td>
-                                      <td class="items-8cm text-right">${Number(amt || 0).toFixed(2)}</td>
+                                      <td class="items-8cm text-right">${Number(amt || 0).toFixed(0)}</td>
                                     </tr>
                                   `;
                                 })
@@ -508,23 +508,23 @@ export default function OtherBills() {
                                   <div style="margin-top: 10px;">
                                     <div class="totals-line items-8cm">
                                       <span>Taxable Amount</span>
-                                      <span>${selectedBill.subtotal.toFixed(2)}</span>
+                                      <span>${selectedBill.subtotal.toFixed(0)}</span>
                                     </div>
                                     <div class="totals-line items-8cm">
                                       <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-                                      <span>${selectedBill.discount_amount.toFixed(2)}</span>
+                                      <span>${selectedBill.discount_amount.toFixed(0)}</span>
                                     </div>
                                     <div class="totals-line items-8cm">
                                       <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-                                      <span>${(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                                      <span>${(selectedBill.tax_amount / 2).toFixed(0)}</span>
                                     </div>
                                     <div class="totals-line header-8cm">
                                       <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-                                      <span>${(selectedBill.tax_amount / 2).toFixed(2)}</span>
+                                      <span>${(selectedBill.tax_amount / 2).toFixed(0)}</span>
                                     </div>
                                     <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
                                       <span>Total Amount</span>
-                                      <span>${selectedBill.total_amount.toFixed(2)}</span>
+                                      <span>${selectedBill.total_amount.toFixed(0)}</span>
                                     </div>
                                   </div>
 

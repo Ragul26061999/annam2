@@ -1121,7 +1121,7 @@ function OutpatientPageContent() {
                 <td class="items-8cm">1.</td>
                 <td class="items-8cm">Consultation Fee</td>
                 <td class="items-8cm text-center">1</td>
-                <td class="items-8cm text-right">${Number(selectedBill.total_amount || 0).toFixed(2)}</td>
+                <td class="items-8cm text-right">${Number(selectedBill.total_amount || 0).toFixed(0)}</td>
               </tr>
             </table>
           </div>
@@ -1129,7 +1129,7 @@ function OutpatientPageContent() {
           <div style="margin-top: 10px;">
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</span>
+              <span>${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(0)}</span>
             </div>
           </div>
 
@@ -2742,7 +2742,7 @@ function OutpatientPageContent() {
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="flex items-center">
                             <IndianRupee size={14} className="text-gray-500" />
-                            <span className="font-medium">{record.total_amount.toFixed(2)}</span>
+                            <span className="font-medium">{record.total_amount.toFixed(0)}</span>
                           </div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
@@ -3134,7 +3134,7 @@ function OutpatientPageContent() {
                       <td className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>1.</td>
                       <td className="items-8cm" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>Consultation Fee</td>
                       <td className="items-8cm text-center" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'center' }}>1</td>
-                      <td className="items-8cm text-right" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(2)}</td>
+                      <td className="items-8cm text-right" style={{ fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', textAlign: 'right' }}>{selectedBill.total_amount.toFixed(0)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3144,12 +3144,12 @@ function OutpatientPageContent() {
               <div style={{ marginTop: '10px' }}>
                 <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
                   <span>Subtotal</span>
-                  <span>{selectedBill.total_amount.toFixed(2)}</span>
+                  <span>{selectedBill.total_amount.toFixed(0)}</span>
                 </div>
                 {selectedBill.discount_amount > 0 && (
                   <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
                     <span>Discount</span>
-                    <span>-{selectedBill.discount_amount.toFixed(2)}</span>
+                    <span>-{selectedBill.discount_amount.toFixed(0)}</span>
                   </div>
                 )}
                 <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif' }}>
@@ -3158,7 +3158,7 @@ function OutpatientPageContent() {
                 </div>
                 <div className="totals-line" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14pt', fontWeight: 'bold', fontFamily: 'Times New Roman, Times, serif', borderTop: '1px solid #000', padding: '4px 0 0 0' }}>
                   <span>Total Amount</span>
-                  <span>{(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</span>
+                  <span>{(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(0)}</span>
                 </div>
               </div>
 
@@ -3229,13 +3229,13 @@ function OutpatientPageContent() {
                     '\x1B\x45\x00', // Bold off
                     
                     // Item row
-                    '1.     Consultation Fee     1    ' + selectedBill.total_amount.toFixed(2) + '\n',
+                    '1.     Consultation Fee     1    ' + selectedBill.total_amount.toFixed(0) + '\n',
                     
                     // Totals
                     '\x1B\x45\x01', // Bold on
-                    'Subtotal: ' + selectedBill.total_amount.toFixed(2) + '\n',
+                    'Subtotal: ' + selectedBill.total_amount.toFixed(0) + '\n',
                     '------------------------\n',
-                    'Total Amount: ' + (selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2) + '\n',
+                    'Total Amount: ' + (selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(0) + '\n',
                     '\x1B\x45\x00', // Bold off
                     
                     // Footer
@@ -3289,12 +3289,12 @@ function OutpatientPageContent() {
                           <div style="margin-top: 5px;">
                             <div>S.No   Service              Qty   Amount</div>
                             <div>--------------------------------</div>
-                            <div>1.     Consultation Fee     1    ${selectedBill.total_amount.toFixed(2)}</div>
+                            <div>1.     Consultation Fee     1    ${selectedBill.total_amount.toFixed(0)}</div>
                           </div>
                           <div style="margin-top: 5px;">
-                            <div>Subtotal: ${selectedBill.total_amount.toFixed(2)}</div>
+                            <div>Subtotal: ${selectedBill.total_amount.toFixed(0)}</div>
                             <div>------------------------</div>
-                            <div>Total Amount: ${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(2)}</div>
+                            <div>Total Amount: ${(selectedBill.total_amount - (selectedBill.discount_amount || 0)).toFixed(0)}</div>
                           </div>
                           <div class="center" style="margin-top: 10px;">
                             <div>Printed on ${printedDateTime}</div>
@@ -3349,7 +3349,7 @@ function OutpatientPageContent() {
                   </div>
                   <div className="flex justify-between">
                     <span>Total Amount:</span>
-                    <span className="font-medium">₹{selectedBill.total_amount.toFixed(2)}</span>
+                    <span className="font-medium">₹{selectedBill.total_amount.toFixed(0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Status:</span>

@@ -83,7 +83,7 @@ export default function OrderList({ onRefresh }: OrderListProps) {
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('scan_orders')
+          .from('scan_test_orders')
           .select(`
             id, order_number, patient_id, clinical_indication, urgency, status, created_at,
             scan_test_catalog_id, doctor_id,
@@ -93,7 +93,7 @@ export default function OrderList({ onRefresh }: OrderListProps) {
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('xray_orders')
+          .from('radiology_test_orders')
           .select(`
             id, order_number, patient_id, clinical_indication, urgency, status, created_at,
             radiology_test_catalog_id, doctor_id,
@@ -466,10 +466,10 @@ export default function OrderList({ onRefresh }: OrderListProps) {
                 </div>
                 <div className="text-xs text-gray-500 truncate">
                   {order.service_type === 'group' ? 
-                    `Group: ${order.items.length} services${order.total_amount ? ` • Total: ₹${order.total_amount.toFixed(2)}` : ''}` 
+                    `Group: ${order.items.length} services${order.total_amount ? ` • Total: ₹${order.total_amount.toFixed(0)}` : ''}` 
                     : order.test_name
                   }
-                  {order.total_amount && order.service_type !== 'group' && ` • Total: ₹${order.total_amount.toFixed(2)}`}
+                  {order.total_amount && order.service_type !== 'group' && ` • Total: ₹${order.total_amount.toFixed(0)}`}
                 </div>
                 {order.doctor_name && (
                   <div className="text-xs text-gray-500 truncate">

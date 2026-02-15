@@ -990,7 +990,7 @@ export default function PharmacyBillingPage() {
             ${discount > 0 ? `<div style="display:flex;justify-content:space-between"><span class="label">Disc Amt</span><span class="value">-₹${discount.toFixed(2)}</span></div>` : ''}
             <div style="display:flex;justify-content:space-between"><span class="label">CGST Amt</span><span class="value">₹${(tax / 2).toFixed(2)}</span></div>
             <div style="display:flex;justify-content:space-between"><span class="label">SGST Amt</span><span class="value">₹${(tax / 2).toFixed(2)}</span></div>
-            <div style="display:flex;justify-content:space-between;font-weight:600;border-top:1px solid #e5e7eb;padding-top:6px"><span>Total Net Amt</span><span>₹${selectedBill.total_amount.toFixed(2)}</span></div>
+            <div style="display:flex;justify-content:space-between;font-weight:600;border-top:1px solid #e5e7eb;padding-top:6px"><span>Total Net Amt</span><span>₹${Math.round(selectedBill.total_amount)}</span></div>
           </div>
 
           <div class="invoice-footer">
@@ -1139,7 +1139,7 @@ export default function PharmacyBillingPage() {
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${selectedBill.total_amount.toFixed(2)}</span>
+              <span>${Math.round(selectedBill.total_amount)}</span>
             </div>
           </div>
 
@@ -1294,7 +1294,7 @@ export default function PharmacyBillingPage() {
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${selectedBill.total_amount.toFixed(2)}</span>
+              <span>${Math.round(selectedBill.total_amount)}</span>
             </div>
           </div>
 
@@ -1807,7 +1807,7 @@ export default function PharmacyBillingPage() {
               <div><span className="font-medium">Payment Status:</span> <span className={getStatusBadge(selectedBill.payment_status)}>{selectedBill.payment_status}</span></div>
                             {(selectedBill.amount_paid !== undefined && selectedBill.amount_paid !== selectedBill.total_amount) && (
                 <div className="col-span-2">
-                  <span className="font-medium">Payment:</span> ₹{selectedBill.amount_paid?.toFixed(2) || '0.00'} / ₹{selectedBill.total_amount?.toFixed(2) || '0.00'}
+                  <span className="font-medium">Payment:</span> ₹{selectedBill.amount_paid?.toFixed(2) || '0.00'} / ₹{Math.round(selectedBill.total_amount || 0)}
                   {selectedBill.payment_status === 'partial' && (
                     <span className="ml-2 text-orange-600 text-xs">(Roundoff applied)</span>
                   )}
@@ -1980,7 +1980,7 @@ export default function PharmacyBillingPage() {
               <div className="bg-gray-50 p-3 rounded-lg mb-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Total Amount:</span>
-                  <span className="font-bold text-blue-600">₹{selectedBill.total_amount?.toFixed(2) || '0.00'}</span>
+                  <span className="font-bold text-blue-600">₹{Math.round(selectedBill.total_amount || 0)}</span>
                 </div>
                 {selectedBill.amount_paid && selectedBill.amount_paid > 0 && (
                   <div className="flex justify-between items-center mt-2">
@@ -2099,7 +2099,7 @@ export default function PharmacyBillingPage() {
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(bill.payment_status)}`}>
                             {bill.payment_status}
                           </span>
-                          <p className="text-lg font-bold text-gray-900 mt-1">₹{bill.total_amount?.toFixed(2) || '0.00'}</p>
+                          <p className="text-lg font-bold text-gray-900 mt-1">₹{Math.round(bill.total_amount || 0)}</p>
                           {bill.amount_paid !== undefined && bill.amount_paid !== bill.total_amount && (
                             <p className="text-sm text-gray-500">Paid: ₹{bill.amount_paid?.toFixed(2) || '0.00'}</p>
                           )}
@@ -2198,7 +2198,7 @@ export default function PharmacyBillingPage() {
                 <div className="bg-gray-50 p-3 rounded-lg mb-4">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Total Amount:</span>
-                    <span className="font-bold text-lg text-blue-600">₹{selectedBillForPayment.total_amount?.toFixed(2) || '0.00'}</span>
+                    <span className="font-bold text-lg text-blue-600">₹{Math.round(selectedBillForPayment.total_amount || 0)}</span>
                   </div>
                   {selectedBillForPayment.amount_paid && selectedBillForPayment.amount_paid > 0 && (
                     <div className="flex justify-between items-center mb-2">

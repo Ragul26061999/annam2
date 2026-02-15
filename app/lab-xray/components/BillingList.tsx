@@ -174,7 +174,7 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
             <td class="items-8cm">${idx + 1}.</td>
             <td class="items-8cm">${escapeHtml(it.description || it.test_name || it.service_name || 'Service')}</td>
             <td class="items-8cm text-center">${qty}</td>
-            <td class="items-8cm text-right">${total.toFixed(2)}</td>
+            <td class="items-8cm text-right">${total.toFixed(0)}</td>
           </tr>
         `;
       })
@@ -265,7 +265,7 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
           <div style="margin-top: 10px;">
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${totalAmount.toFixed(2)}</span>
+              <span>${totalAmount.toFixed(0)}</span>
             </div>
           </div>
 
@@ -396,7 +396,7 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 truncate">{bill.patient?.name} • {bill.patient?.patient_id}</div>
-                  <div className="text-xs text-gray-500 truncate">Items: {(bill.items || []).length} • Total: ₹{total.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 truncate">Items: {(bill.items || []).length} • Total: ₹{total.toFixed(0)}</div>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -555,7 +555,7 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
                                   </td>
                                   <td className="py-3 px-4 text-center text-gray-900">{item.qty || 1}</td>
                                   <td className="py-3 px-4 text-right text-gray-900">
-                                    ₹{Number(item.total_amount || 0).toFixed(2)}
+                                    ₹{Number(item.total_amount || 0).toFixed(0)}
                                   </td>
                                 </tr>
                               ))}
@@ -566,7 +566,7 @@ export default function BillingList({ items, onRefresh }: BillingListProps) {
                                   Total Amount:
                                 </td>
                                 <td className="py-3 px-4 text-right font-bold text-lg text-gray-900">
-                                  ₹{Number(selectedBill.total || selectedBill.subtotal || 0).toFixed(2)}
+                                  ₹{Number(selectedBill.total || selectedBill.subtotal || 0).toFixed(0)}
                                 </td>
                               </tr>
                             </tfoot>

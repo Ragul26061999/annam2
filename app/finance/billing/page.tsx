@@ -133,10 +133,10 @@ export default function BillingTransactionsPage() {
           record.patient?.patient_id || 'N/A',
           record.patient?.phone || 'N/A',
           new Date(record.bill_date).toLocaleDateString(),
-          record.total_amount.toFixed(2),
-          record.subtotal.toFixed(2),
-          record.tax_amount.toFixed(2),
-          record.discount_amount.toFixed(2),
+          record.total_amount.toFixed(0),
+          record.subtotal.toFixed(0),
+          record.tax_amount.toFixed(0),
+          record.discount_amount.toFixed(0),
           record.payment_status,
           record.payment_method || 'N/A',
           record.source
@@ -285,7 +285,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Medicines & Pharmacy Items</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'lab':
@@ -294,7 +294,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Laboratory Tests & Diagnostics</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'radiology':
@@ -303,7 +303,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Radiology Services & X-Ray</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'diagnostic':
@@ -312,7 +312,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Diagnostic Procedures</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'outpatient':
@@ -321,7 +321,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Outpatient Consultation</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'billing':
@@ -330,7 +330,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Medical Consultation & Services</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         case 'other_bills':
@@ -339,7 +339,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Other Medical Services</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
         default:
@@ -348,7 +348,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">1.</td>
               <td class="items-8cm">Medical Services</td>
               <td class="items-8cm text-center">1</td>
-              <td class="items-8cm text-right">${record.total_amount.toFixed(2)}</td>
+              <td class="items-8cm text-right">${record.total_amount.toFixed(0)}</td>
             </tr>
           `;
       }
@@ -399,7 +399,7 @@ export default function BillingTransactionsPage() {
               <td class="items-8cm">${index + 1}.</td>
               <td class="items-8cm">${item.medication_name || item.description || 'Unknown Item'}</td>
               <td class="items-8cm text-center">${item.quantity || item.qty || 1}</td>
-              <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(2)}</td>
+              <td class="items-8cm text-right">${Number(item.total_amount || 0).toFixed(0)}</td>
             </tr>
           `).join('');
         }
@@ -488,23 +488,23 @@ export default function BillingTransactionsPage() {
           <div style="margin-top: 10px;">
             <div class="totals-line items-8cm">
               <span>Taxable Amount</span>
-              <span>${record.subtotal.toFixed(2)}</span>
+              <span>${record.subtotal.toFixed(0)}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;Dist Amt</span>
-              <span>${record.discount_amount.toFixed(2)}</span>
+              <span>${record.discount_amount.toFixed(0)}</span>
             </div>
             <div class="totals-line items-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;CGST Amt</span>
-              <span>${(record.tax_amount / 2).toFixed(2)}</span>
+              <span>${(record.tax_amount / 2).toFixed(0)}</span>
             </div>
             <div class="totals-line header-8cm">
               <span>&nbsp;&nbsp;&nbsp;&nbsp;SGST Amt</span>
-              <span>${(record.tax_amount / 2).toFixed(2)}</span>
+              <span>${(record.tax_amount / 2).toFixed(0)}</span>
             </div>
             <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
               <span>Total Amount</span>
-              <span>${record.total_amount.toFixed(2)}</span>
+              <span>${record.total_amount.toFixed(0)}</span>
             </div>
           </div>
 
@@ -612,19 +612,19 @@ export default function BillingTransactionsPage() {
             <table class="amount-table">
               <tr>
                 <td class="label">Subtotal:</td>
-                <td>₹${record.subtotal.toFixed(2)}</td>
+                <td>₹${record.subtotal.toFixed(0)}</td>
               </tr>
               <tr>
                 <td class="label">Discount:</td>
-                <td>₹${record.discount_amount.toFixed(2)}</td>
+                <td>₹${record.discount_amount.toFixed(0)}</td>
               </tr>
               <tr>
                 <td class="label">Tax:</td>
-                <td>₹${record.tax_amount.toFixed(2)}</td>
+                <td>₹${record.tax_amount.toFixed(0)}</td>
               </tr>
               <tr class="total-row">
                 <td class="label">Total Amount:</td>
-                <td>₹${record.total_amount.toFixed(2)}</td>
+                <td>₹${record.total_amount.toFixed(0)}</td>
               </tr>
             </table>
           </div>

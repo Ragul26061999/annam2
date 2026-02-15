@@ -1126,7 +1126,7 @@ function PharmacyReportsContent() {
         med.category,
         med.manufacturer,
         med.total_sold.toString(),
-        med.total_revenue.toFixed(2),
+        med.total_revenue.toFixed(0),
         med.stock_level.toString()
       ])
     ].map(row => row.join(',')).join('\n')
@@ -1480,10 +1480,10 @@ function PharmacyReportsContent() {
                         med.category,
                         med.manufacturer,
                         med.total_sold?.toString() || '0',
-                        med.total_revenue?.toFixed(2) || '0',
-                        med.average_price?.toFixed(2) || '0',
+                        med.total_revenue?.toFixed(0) || '0',
+                        med.average_price?.toFixed(0) || '0',
                         med.stock_level?.toString() || '0',
-                        med.profit_margin?.toFixed(2) || '0'
+                        med.profit_margin?.toFixed(0) || '0'
                       ])
                     ].map(row => row.join(',')).join('\n')
 
@@ -1595,12 +1595,12 @@ function PharmacyReportsContent() {
                       item.reference_number || '',
                       item.party_name || '',
                       item.party_gstin || '',
-                      item.taxable_amount?.toFixed(2) || '0',
-                      item.cgst_amount?.toFixed(2) || '0',
-                      item.sgst_amount?.toFixed(2) || '0',
-                      item.igst_amount?.toFixed(2) || '0',
-                      item.total_gst?.toFixed(2) || '0',
-                      item.total_amount?.toFixed(2) || '0'
+                      item.taxable_amount?.toFixed(0) || '0',
+                      item.cgst_amount?.toFixed(0) || '0',
+                      item.sgst_amount?.toFixed(0) || '0',
+                      item.igst_amount?.toFixed(0) || '0',
+                      item.total_gst?.toFixed(0) || '0',
+                      item.total_amount?.toFixed(0) || '0'
                     ])
                   ].map(row => row.join(',')).join('\n')
 
@@ -1839,8 +1839,8 @@ function PharmacyReportsContent() {
                       item.manufacturer,
                       item.available_stock?.toString() || '0',
                       item.minimum_stock_level?.toString() || '0',
-                      item.selling_price?.toFixed(2) || '0',
-                      item.stock_value?.toFixed(2) || '0',
+                      item.selling_price?.toFixed(0) || '0',
+                      item.stock_value?.toFixed(0) || '0',
                       item.stock_status === 'low' ? 'Low Stock' : 'Normal'
                     ])
                   ].map(row => row.join(',')).join('\n')

@@ -353,7 +353,7 @@ export async function convertRecommendationsToPrescription(
   try {
     // Get recommendations
     const { data: recommendations, error: fetchError } = await supabase
-      .from('medication_recommendations')
+      .from('ip_pharmacy_recommendations')
       .select('*')
       .eq('patient_id', patientId)
       .in('id', recommendationIds)

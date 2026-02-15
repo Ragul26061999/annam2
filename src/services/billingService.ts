@@ -338,10 +338,10 @@ export class BillingService {
     const totalAmount = subtotal + taxAmount - discountAmount;
 
     return {
-      subtotal: Math.round(subtotal * 100) / 100,
-      taxAmount: Math.round(taxAmount * 100) / 100,
-      discountAmount: Math.round(discountAmount * 100) / 100,
-      totalAmount: Math.round(totalAmount * 100) / 100
+      subtotal: Math.round(subtotal),
+      taxAmount: Math.round(taxAmount),
+      discountAmount: Math.round(discountAmount),
+      totalAmount: Math.round(totalAmount)
     };
   }
 

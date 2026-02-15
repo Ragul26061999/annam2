@@ -775,14 +775,14 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                                 <td class="items-8cm">1.</td>
                                 <td class="items-8cm">Consultation Fee</td>
                                 <td class="items-8cm text-center">1</td>
-                                <td class="items-8cm text-right">${Number(formData.consultationFee || 0).toFixed(2)}</td>
+                                <td class="items-8cm text-right">${Number(formData.consultationFee || 0).toFixed(0)}</td>
                             </tr>
                             ${formData.opCardAmount && parseFloat(formData.opCardAmount) > 0 ? `
                             <tr>
                                 <td class="items-8cm">2.</td>
                                 <td class="items-8cm">OP Card</td>
                                 <td class="items-8cm text-center">1</td>
-                                <td class="items-8cm text-right">${Number(formData.opCardAmount).toFixed(2)}</td>
+                                <td class="items-8cm text-right">${Number(formData.opCardAmount).toFixed(0)}</td>
                             </tr>
                             ` : ''}
                         </table>
@@ -791,7 +791,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                     <div style="margin-top: 10px;">
                         <div class="totals-line header-10cm" style="border-top: 1px solid #000; padding-top: 2px;">
                             <span>Total Amount</span>
-                            <span>${(parseFloat(formData.totalAmount || '0')).toFixed(2)}</span>
+                            <span>${(parseFloat(formData.totalAmount || '0')).toFixed(0)}</span>
                         </div>
                     </div>
 
@@ -1810,7 +1810,7 @@ export default function OutpatientRegistrationForm({ onComplete, onCancel }: Out
                             {formData.advanceAmount && parseFloat(formData.advanceAmount) > 0 && (
                                 <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
                                     <p className="text-sm text-green-800">
-                                        <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(2)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
+                                        <strong>Advance Payment:</strong> ₹{parseFloat(formData.advanceAmount || '0').toFixed(0)} via {formData.advancePaymentMethod?.charAt(0).toUpperCase() + formData.advancePaymentMethod?.slice(1) || 'Cash'}
                                         {formData.advanceReferenceNumber && ` (Ref: ${formData.advanceReferenceNumber})`}
                                     </p>
                                 </div>

@@ -650,7 +650,7 @@ export async function getPaymentReceipts(
 ): Promise<{ receipts: PaymentReceipt[]; total: number }> {
   try {
     const { data, error, count } = await supabase
-      .from('payment_receipts')
+      .from('ip_payment_receipts')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

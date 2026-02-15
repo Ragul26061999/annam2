@@ -183,7 +183,7 @@ export default function BillEditModal({ bill, isOpen, onClose, onSave }: BillEdi
                           <div className="text-right">
                             <div className="text-xs text-gray-500">Total</div>
                             <div className="font-semibold text-sm">
-                              ₹{item.total_amount.toFixed(2)}
+                              ₹{item.total_amount.toFixed(0)}
                             </div>
                           </div>
                         </div>
@@ -206,15 +206,15 @@ export default function BillEditModal({ bill, isOpen, onClose, onSave }: BillEdi
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>₹{calculateTotal().toFixed(2)}</span>
+                    <span>₹{calculateTotal().toFixed(0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>GST (12%):</span>
-                    <span>₹{calculateGST().toFixed(2)}</span>
+                    <span>₹{calculateGST().toFixed(0)}</span>
                   </div>
                   <div className="flex justify-between font-semibold text-lg pt-2 border-t border-blue-200">
                     <span>Total:</span>
-                    <span>₹{(calculateTotal() + calculateGST()).toFixed(2)}</span>
+                    <span>₹{(calculateTotal() + calculateGST()).toFixed(0)}</span>
                   </div>
                 </div>
               </div>

@@ -895,7 +895,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                     <div className="flex justify-between items-center text-sm mb-2">
                       <span className="text-gray-600 font-medium">Registration Advance</span>
-                      <span className="font-bold text-green-600">₹{parseFloat(patient.advance_amount).toFixed(2)}</span>
+                      <span className="font-bold text-green-600">₹{parseFloat(patient.advance_amount).toFixed(0)}</span>
                     </div>
                     {patient.advance_payment_method && (
                       <div className="flex justify-between items-center text-sm">
@@ -918,12 +918,12 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                     <div className="flex justify-between items-center text-sm mb-2">
                       <span className="text-gray-600 font-medium">IP Admission Advance</span>
                       <span className="font-bold text-blue-600">
-                        ₹{ipAdvances.reduce((sum, adv) => sum + (adv.available_amount || adv.amount || 0), 0).toFixed(2)}
+                        ₹{ipAdvances.reduce((sum, adv) => sum + (adv.available_amount || adv.amount || 0), 0).toFixed(0)}
                       </span>
                     </div>
                     {ipAdvances.map((advance, idx) => (
                       <div key={idx} className="text-xs text-gray-500 mt-1">
-                        ₹{advance.amount?.toFixed(2)} paid on {formatDate(advance.advance_date)} via {advance.payment_type}
+                        ₹{advance.amount?.toFixed(0)} paid on {formatDate(advance.advance_date)} via {advance.payment_type}
                         {advance.reference_number && ` (Ref: ${advance.reference_number})`}
                         {advance.notes && ` - ${advance.notes}`}
                       </div>
@@ -936,7 +936,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                   <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                     <div className="flex justify-between items-center text-sm mb-2">
                       <span className="text-gray-600 font-medium">IP Billing Advance</span>
-                      <span className="font-bold text-indigo-600">₹{(comprehensiveBilling.summary.advance_paid || 0).toFixed(2)}</span>
+                      <span className="font-bold text-indigo-600">₹{(comprehensiveBilling.summary.advance_paid || 0).toFixed(0)}</span>
                     </div>
                     {comprehensiveBilling?.payment_receipts?.filter(r => r.payment_type === 'advance').map((receipt, idx) => (
                       <div key={idx} className="text-xs text-gray-500 mt-1">
@@ -955,7 +955,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                       (patient.advance_amount ? parseFloat(patient.advance_amount) : 0) + 
                       (ipAdvances.reduce((sum, adv) => sum + (adv.available_amount || adv.amount || 0), 0)) +
                       (comprehensiveBilling?.summary?.advance_paid || 0)
-                    ).toFixed(2)}
+                    ).toFixed(0)}
                   </span>
                 </div>
               </div>
@@ -1453,10 +1453,10 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                                                 <div key={it.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                                   <div>
                                                     <p className="font-medium text-gray-900">{it.description}</p>
-                                                    <p className="text-sm text-gray-600">Qty: {it.qty} • Unit: ₹{Number(it.unit_amount || 0).toFixed(2)}</p>
+                                                    <p className="text-sm text-gray-600">Qty: {it.qty} • Unit: ₹{Number(it.unit_amount || 0).toFixed(0)}</p>
                                                   </div>
                                                   <div className="text-right">
-                                                    <p className="font-medium text-gray-900">₹{Number(it.total_amount || 0).toFixed(2)}</p>
+                                                    <p className="font-medium text-gray-900">₹{Number(it.total_amount || 0).toFixed(0)}</p>
                                                   </div>
                                                 </div>
                                               ))}
@@ -2163,7 +2163,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             </div>
                             <div>
                               <p className="text-gray-400 text-xs uppercase font-bold">Amount</p>
-                              <p className="font-bold text-purple-600">₹{Number(bill.total_amount).toFixed(2)}</p>
+                              <p className="font-bold text-purple-600">₹{Number(bill.total_amount).toFixed(0)}</p>
                             </div>
                           </div>
                           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2173,7 +2173,7 @@ export default function PatientDetailsClient({ params }: PatientDetailsClientPro
                             </div>
                             <div>
                               <p className="text-gray-400 text-xs uppercase font-bold">Paid Amount</p>
-                              <p className="font-bold text-green-600">₹{Number(bill.paid_amount || 0).toFixed(2)}</p>
+                              <p className="font-bold text-green-600">₹{Number(bill.paid_amount || 0).toFixed(0)}</p>
                             </div>
                             <div>
                               <p className="text-gray-400 text-xs uppercase font-bold">Bill Date</p>

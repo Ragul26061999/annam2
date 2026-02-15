@@ -444,7 +444,7 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
                       <label className="block text-xs font-medium text-gray-700 mb-1">Total (₹)</label>
                       <input
                         type="text"
-                        value={(service.quantity * service.unit_rate).toFixed(2)}
+                        value={(service.quantity * service.unit_rate).toFixed(0)}
                         readOnly
                         className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg bg-gray-100"
                       />
@@ -496,20 +496,20 @@ const DischargeModal: React.FC<DischargeModalProps> = ({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">₹{billTotals.subtotal.toFixed(2)}</span>
+                <span className="font-medium">₹{billTotals.subtotal.toFixed(0)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Tax ({taxPercentage}%):</span>
-                <span className="font-medium">₹{billTotals.taxAmount.toFixed(2)}</span>
+                <span className="font-medium">₹{billTotals.taxAmount.toFixed(0)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Discount ({discountPercentage}%):</span>
-                <span className="font-medium text-green-600">-₹{billTotals.discountAmount.toFixed(2)}</span>
+                <span className="font-medium text-green-600">-₹{billTotals.discountAmount.toFixed(0)}</span>
               </div>
               <div className="border-t border-gray-300 pt-2">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total Amount:</span>
-                  <span className="text-orange-600">₹{billTotals.totalAmount.toFixed(2)}</span>
+                  <span className="text-orange-600">₹{billTotals.totalAmount.toFixed(0)}</span>
                 </div>
               </div>
             </div>

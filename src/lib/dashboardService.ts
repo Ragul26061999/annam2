@@ -528,7 +528,7 @@ export async function getQuickStats(): Promise<QuickStats> {
 
     // Pending lab results
     const { count: pendingLabResults } = await supabase
-      .from('lab_reports')
+      .from('lab_test_results')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 

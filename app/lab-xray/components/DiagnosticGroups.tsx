@@ -496,7 +496,7 @@ export default function DiagnosticGroups() {
                         {' • '}
                         Default: {it.default_selected ? 'Yes' : 'No'}
                         {catalogNameAndCost(it.service_type, it.catalog_id).cost != null
-                          ? ` • ₹${Number(catalogNameAndCost(it.service_type, it.catalog_id).cost).toFixed(2)}`
+                          ? ` • ₹${Number(catalogNameAndCost(it.service_type, it.catalog_id).cost).toFixed(0)}`
                           : ''}
                       </div>
                     </div>
