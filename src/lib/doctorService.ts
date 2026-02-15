@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 // Types for doctor management
@@ -331,6 +332,18 @@ export async function generateEmployeeId(): Promise<string> {
  */
 export async function createDoctor(doctorData: DoctorRegistrationData): Promise<Doctor> {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const authSupabase = supabaseUrl && supabaseAnonKey
+      ? createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+          }
+        })
+      : null;
+
     const normalizeEmailBase = (name: string) => {
       const first = (name || '').trim().split(/\s+/)[0] || 'doctor';
       const base = first.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -367,6 +380,23 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       ? doctorData.email.trim()
       : await generateUniqueEmail(doctorData.name);
 
+    const getNextDoctorSortOrder = async (): Promise<number> => {
+      const { data: maxRow, error: maxError } = await supabase
+        .from('doctors')
+        .select('sort_order')
+        .is('deleted_at', null)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (maxError) {
+        throw new Error(`Failed to determine next doctor sort order: ${maxError.message}`);
+      }
+
+      const max = typeof maxRow?.sort_order === 'number' ? maxRow.sort_order : 0;
+      return max + 1;
+    };
+
     // Generate unique IDs
     const uniqueDoctorId = await generateDoctorId();
     const uniqueEmployeeId = await generateEmployeeId();
@@ -383,15 +413,15 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       throw new Error(`Failed to check existing user: ${checkError.message}`);
     }
 
-    let authUserId = null;
-    let user = null;
+    let authUserId: string | null = null;
+    let user: any = null;
 
     if (existingUser) {
       // User already exists - check if they're already a doctor
       const { data: existingDoctor, error: doctorCheckError } = await supabase
         .from('doctors')
         .select('id')
-        .eq('user_id', existingUser.id)
+        .eq('user_id', existingUser.auth_id)
         .maybeSingle();
 
       if (existingDoctor) {
@@ -404,7 +434,11 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       user = existingUser;
     } else {
       // Try to create new auth user
-      const { data: authUser, error: authError } = await supabase.auth.signUp({
+      if (!authSupabase) {
+        throw new Error('Supabase auth client not configured');
+      }
+
+      const { data: authUser, error: authError } = await authSupabase.auth.signUp({
         email: emailToUse,
         password: 'Doctor@123', // Default password, should be changed on first login
         options: {
@@ -419,29 +453,13 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
       if (authError) {
         if (authError.message.includes('User already registered') || authError.message.includes('user_already_exists')) {
-          // User exists in auth but not in our users table - try to get the existing auth user
-          console.log('Auth user already exists, attempting to link to existing user record');
-
-          // Try to sign in to get the existing auth user ID
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: emailToUse,
-            password: 'Doctor@123'
-          });
-
-          if (!signInError && signInData.user) {
-            authUserId = signInData.user.id;
-            console.log('Successfully linked to existing auth user');
-          } else {
-            // If we can't sign in, we need to handle this differently
-            // For now, we'll throw an error with a more helpful message
-            throw new Error(`Doctor with email ${emailToUse} already exists in the system. Please use a different email or contact the administrator to reset the password.`);
-          }
+          throw new Error(`User with email ${emailToUse} already exists in authentication. Please use a different email or contact the administrator to reset the password.`);
         } else {
           console.error('Error creating doctor auth user:', authError);
           throw new Error(`Failed to create doctor authentication: ${authError.message}`);
         }
       } else {
-        authUserId = authUser.user?.id;
+        authUserId = authUser.user?.id ?? null;
       }
 
       if (authUserId) {
@@ -500,12 +518,13 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
 
     // Create doctor record with unique doctor ID
     const doctorRecord = {
-      user_id: user.id,
+      user_id: authUserId,
       license_number: doctorData.licenseNumber, // Use user's entered license number
       specialization: doctorData.specialization,
       qualification: doctorData.qualification,
       consultation_fee: doctorData.consultationFee,
       room_number: doctorData.roomNumber,
+      sort_order: await getNextDoctorSortOrder(),
       availability_hours: {
         sessions: doctorData.sessions,
         availableSessions: doctorData.availableSessions,
@@ -519,17 +538,39 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       status: 'active'
     };
 
-    const { data: doctor, error: doctorError } = await supabase
-      .from('doctors')
-      .insert([doctorRecord])
-      .select(`
-        *,
-        user:users(id, name, email, phone, address)
-      `)
-      .single();
+    let doctor: any = null;
+    let doctorError: any = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data, error } = await supabase
+        .from('doctors')
+        .insert([doctorRecord])
+        .select('*')
+        .single();
+
+      if (!error) {
+        doctor = data;
+        doctorError = null;
+        break;
+      }
+
+      doctorError = error;
+
+      // If we hit a race condition on sort_order unique constraint, bump and retry.
+      if (error.code === '23505' && String(error.details || '').includes('(sort_order)=(')) {
+        doctorRecord.sort_order = doctorRecord.sort_order + 1;
+        continue;
+      }
+
+      break;
+    }
 
     if (doctorError) {
-      console.error('Error creating doctor record:', doctorError);
+      console.error('Error creating doctor record:', doctorError, JSON.stringify(doctorError));
+
+      if (doctorError.code === '23505' && String(doctorError.details || '').includes('(sort_order)=(')) {
+        throw new Error('Doctor sort order conflict. Please try again.');
+      }
 
       // Check for duplicate license number constraint violation
       if (doctorError.message.includes('duplicate') && doctorError.message.includes('license')) {
@@ -537,14 +578,30 @@ export async function createDoctor(doctorData: DoctorRegistrationData): Promise<
       }
 
       // Check for foreign key constraint violation
-      if (doctorError.message.includes('foreign key') || doctorError.message.includes('violates')) {
+      if (doctorError.code === '23503' || doctorError.message.includes('foreign key')) {
         throw new Error(`Invalid user reference. Please try again or contact support.`);
       }
 
       throw new Error(`Failed to create doctor record: ${doctorError.message}`);
     }
 
-    return doctor;
+    let userProfile: any = null;
+    if (authUserId) {
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('id, name, email, phone, address')
+        .eq('auth_id', authUserId)
+        .maybeSingle();
+
+      if (!profileError) {
+        userProfile = profile;
+      }
+    }
+
+    return {
+      ...(doctor as any),
+      user: userProfile || undefined
+    } as Doctor;
   } catch (error) {
     console.error('Error creating doctor:', error);
     throw error;

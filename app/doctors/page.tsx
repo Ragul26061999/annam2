@@ -18,7 +18,8 @@ import {
   X
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getAllDoctorsSimple, getDeletedDoctorsSimple, restoreDoctor, reorderDoctorSortOrder, createDoctor, updateDoctor, getAllSpecializations, addSpecialization, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, listDoctorDocuments, uploadDoctorDocument, type Doctor, type DoctorRegistrationData, type DoctorDocument } from '../../src/lib/doctorService';
+import { getAllDoctorsSimple, getDeletedDoctorsSimple, restoreDoctor, reorderDoctorSortOrder, updateDoctor, getAllSpecializations, addSpecialization, getAllDepartments, addDepartment, deleteDoctor, updateDoctorAvailability, listDoctorDocuments, uploadDoctorDocument, type Doctor, type DoctorRegistrationData, type DoctorDocument } from '../../src/lib/doctorService';
+import { createDoctorAction } from '../actions/doctors';
 import { supabase } from '../../src/lib/supabase';
 import DoctorForm, { DoctorFormData } from '@/components/DoctorForm';
 import CreateAccountModal from '@/src/components/CreateAccountModal';
@@ -376,20 +377,36 @@ export default function DoctorsPage() {
 
   const handleAddDoctor = async () => {
     try {
-      const doctorData: DoctorRegistrationData = {
-        doctorId: '', // This will be generated automatically
-        ...formData,
+      const result = await createDoctorAction({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        licenseNumber: formData.licenseNumber,
+        specialization: formData.specialization,
+        department: formData.department,
+        qualification: formData.qualification,
+        consultationFee: formData.consultationFee,
+        workingHoursStart: formData.workingHoursStart,
+        workingHoursEnd: formData.workingHoursEnd,
+        workingDays: formData.workingDays,
+        roomNumber: formData.roomNumber,
+        floorNumber: formData.floorNumber,
+        emergencyAvailable: formData.emergencyAvailable,
         sessions: formData.sessions,
         availableSessions: formData.availableSessions
-      };
+      });
 
-      await createDoctor(doctorData);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create doctor');
+      }
+
       setShowAddModal(false);
       resetForm();
       loadDoctors();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding doctor:', error);
-      alert('Error adding doctor. Please try again.');
+      alert(error.message || 'Error adding doctor. Please try again.');
     }
   };
 
