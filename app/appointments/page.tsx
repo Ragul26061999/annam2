@@ -494,27 +494,12 @@ export default function AppointmentsPage() {
                       {appointment.status === 'scheduled' && (
                         <>
                           <button
-                            onClick={() => handleOpenClinicalForm2(appointment)}
-                            className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-lg hover:bg-indigo-200 transition-colors"
-                            title="Open clinical entry form 2.0"
+                            onClick={() => window.open(`/md/clinical-v2?appointmentId=${appointment.id}&patientId=${appointment.patient_id}`, '_blank')}
+                            className="flex items-center space-x-1 px-3 py-1.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-200 transition-colors"
+                            title="Open Clinical 2.0"
                           >
                             <Stethoscope size={14} />
                             <span>Clinical 2.0</span>
-                          </button>
-                          <button
-                            onClick={() => handleCompleteAppointment(appointment)}
-                            disabled={completingAppointment === appointment.id}
-                            className="flex items-center space-x-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
-                            title="Complete appointment"
-                          >
-                            {completingAppointment === appointment.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <>
-                                <CheckCircle size={14} />
-                                <span>Complete</span>
-                              </>
-                            )}
                           </button>
                           <button
                             onClick={() => handleStatusUpdate(appointment.id, 'cancelled')}
