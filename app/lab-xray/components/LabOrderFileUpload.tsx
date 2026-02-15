@@ -69,8 +69,30 @@ export default function LabOrderFileUpload({
   };
 
   const getCurrentUserId = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id || null;
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user?.id) {
+        console.warn('LabOrderFileUpload: Could not get user ID:', error);
+        return null;
+      }
+      
+      // Verify user exists in users table
+      const { data: existingUser, error: checkError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+      
+      if (checkError || !existingUser) {
+        console.warn('LabOrderFileUpload: User ID not found in users table:', user.id);
+        return null;
+      }
+      
+      return user.id;
+    } catch (err) {
+      console.error('LabOrderFileUpload: Error getting user ID:', err);
+      return null;
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
