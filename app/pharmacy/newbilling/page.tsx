@@ -1560,24 +1560,44 @@ function NewBillingPageInner() {
           }
         }
 
-        // Update prescriptions header status if all items are fully dispensed.
+        // Update prescriptions header status only when payment is completed
         // The prescriptions list page categorizes based on prescriptions.status = 'active' | 'dispensed' | 'expired'.
         try {
-          const allDone = updatedItems.length > 0 && updatedItems.every(x => (Number(x.dispensed_quantity) || 0) >= (Number(x.quantity) || 0));
-          if (allDone) {
-            const { error: presUpdErr } = await supabase
-              .from('prescriptions')
-              .update({ status: 'dispensed' })
-              .eq('id', linkedPrescriptionId);
+          const { data: latestBillRow, error: latestBillErr } = await supabase
+            .from('billing')
+            .select('id, total_amount, total, amount_paid, payment_method, payment_status')
+            .eq('id', billData!.id)
+            .single();
 
-            if (presUpdErr) {
-              console.warn('Failed updating prescriptions.status after billing:', {
-                prescription_id: linkedPrescriptionId,
-                message: (presUpdErr as any)?.message,
-                details: (presUpdErr as any)?.details,
-                hint: (presUpdErr as any)?.hint,
-                code: (presUpdErr as any)?.code
-              });
+          if (!latestBillErr && latestBillRow) {
+            const total = Number((latestBillRow as any).total_amount ?? (latestBillRow as any).total ?? 0) || 0;
+            const paid = Number((latestBillRow as any).amount_paid ?? 0) || 0;
+            const method = String((latestBillRow as any).payment_method ?? '').toLowerCase();
+            const currentStatus = String((latestBillRow as any).payment_status ?? '').toLowerCase();
+
+            const roundedPayable = Math.round(total);
+            const matchesRoundedPayable = Math.abs(roundedPayable - paid) <= 0.01;
+            const tinyDiff = Math.abs(total - paid) <= 0.05;
+            const isPaid = method !== 'credit' && currentStatus === 'paid';
+
+            const allDone = updatedItems.length > 0 && updatedItems.every(x => (Number(x.dispensed_quantity) || 0) >= (Number(x.quantity) || 0));
+            
+            // Only update prescription status to 'dispensed' when payment is completed
+            if (allDone && (isPaid || matchesRoundedPayable || tinyDiff)) {
+              const { error: presUpdErr } = await supabase
+                .from('prescriptions')
+                .update({ status: 'dispensed' })
+                .eq('id', linkedPrescriptionId);
+
+              if (presUpdErr) {
+                console.warn('Failed updating prescriptions.status after billing:', {
+                  prescription_id: linkedPrescriptionId,
+                  message: (presUpdErr as any)?.message,
+                  details: (presUpdErr as any)?.details,
+                  hint: (presUpdErr as any)?.hint,
+                  code: (presUpdErr as any)?.code
+                });
+              }
             }
           }
         } catch (e) {
@@ -1597,43 +1617,6 @@ function NewBillingPageInner() {
           p_received_by: null
         });
         if (payErr) throw payErr;
-      }
-
-      // Roundoff payment-status correction:
-      // If payable total is e.g. 144.36 and collected is 144.00, treat as paid.
-      try {
-        const { data: latestBillRow, error: latestBillErr } = await supabase
-          .from('billing')
-          .select('id, total_amount, total, amount_paid, payment_method, payment_status')
-          .eq('id', billData!.id)
-          .single();
-
-        if (latestBillErr) {
-          console.warn('Failed to re-check billing totals for roundoff status:', latestBillErr);
-        } else if (latestBillRow) {
-          const total = Number((latestBillRow as any).total_amount ?? (latestBillRow as any).total ?? 0) || 0;
-          const paid = Number((latestBillRow as any).amount_paid ?? 0) || 0;
-          const method = String((latestBillRow as any).payment_method ?? '').toLowerCase();
-          const currentStatus = String((latestBillRow as any).payment_status ?? '').toLowerCase();
-
-          const roundedPayable = Math.round(total);
-          const matchesRoundedPayable = Math.abs(roundedPayable - paid) <= 0.01;
-          const tinyDiff = Math.abs(total - paid) <= 0.05;
-          const shouldMarkPaid = method !== 'credit' && currentStatus !== 'paid' && paid > 0 && (matchesRoundedPayable || tinyDiff);
-
-          if (shouldMarkPaid) {
-            const { error: updErr } = await supabase
-              .from('billing')
-              .update({ payment_status: 'paid' })
-              .eq('id', billData!.id);
-
-            if (updErr) {
-              console.warn('Failed to update payment_status to paid after roundoff check:', updErr);
-            }
-          }
-        }
-      } catch (roundoffErr) {
-        console.warn('Roundoff payment-status correction error:', roundoffErr);
       }
 
       // Stock transactions and inventory adjustments are handled automatically by database triggers

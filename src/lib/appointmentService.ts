@@ -504,8 +504,8 @@ export async function createAppointment(
     const { data: encounterType } = await supabase
       .from('ref_code')
       .select('id')
-      .eq('code_type', 'encounter_type')
-      .eq('code_value', appointmentData.type || 'consultation')
+      .eq('domain', 'encounter_type')
+      .eq('code', appointmentData.type || 'consultation')
       .single();
 
     if (encounterType) {
@@ -542,8 +542,8 @@ export async function createAppointment(
     const { data: appointmentStatus } = await supabase
       .from('ref_code')
       .select('id')
-      .eq('code_type', 'appointment_status')
-      .eq('code_value', 'scheduled')
+      .eq('domain', 'appointment_status')
+      .eq('code', 'scheduled')
       .single();
 
     if (appointmentStatus) {
@@ -1009,7 +1009,7 @@ export async function getAppointmentDetails(appointmentId: string): Promise<{
   }
 }
 
-/** 
+/**
  * Update appointment status
  */
 export async function updateAppointmentStatus(
@@ -1018,10 +1018,24 @@ export async function updateAppointmentStatus(
 ): Promise<Appointment> {
 
   try {
+    // Get status_id from ref_code table
+    const { data: statusRecord, error: statusError } = await supabase
+      .from('ref_code')
+      .select('id')
+      .eq('domain', 'appointment_status')
+      .eq('code', status)
+      .single();
+
+    if (statusError || !statusRecord) {
+      throw new Error(`Invalid appointment status: ${status}`);
+    }
+
+    const statusId = statusRecord.id;
+
     try {
       const { data: appointment, error } = await supabase
         .from('appointment')
-        .update({ status })
+        .update({ status_id: statusId })
         .eq('id', appointmentId)
         .select('*')
         .single();
@@ -1033,6 +1047,7 @@ export async function updateAppointmentStatus(
       console.warn('Error updating status in appointment table:', appointmentTableError);
     }
 
+    // Fallback to legacy appointments table if needed
     const { data: appointment, error } = await supabase
       .from('appointments')
       .update({ status })

@@ -448,12 +448,14 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
           </div>
         </div>
 
-        {/* Doctor Consultation */}
+        {/* Doctor Consultation & Services */}
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Doctor Consultation</h2>
+            <h2 className="text-xl font-bold text-gray-900">Doctor Consultation & Services</h2>
             <div className="flex items-center gap-3">
-              <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_consultation_total)}</span>
+              <span className="text-2xl font-bold text-blue-600">
+                {formatCurrency(billing.summary.doctor_consultation_total + billing.summary.doctor_services_total)}
+              </span>
               {!editingDoctorConsultation ? (
                 <button
                   onClick={handleStartEditDoctorConsultation}
@@ -482,7 +484,10 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               )}
             </div>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg">
+
+          {/* Primary Doctor Consultation */}
+          <div className="bg-green-50 p-4 rounded-lg mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Primary Doctor Consultation</h3>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-gray-600">Doctor Name</p>
@@ -520,19 +525,12 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
               </div>
             </div>
             <div className="mt-3 flex justify-end text-sm">
-              <span className="text-gray-600 mr-2">Total:</span>
+              <span className="text-gray-600 mr-2">Subtotal:</span>
               <span className="font-bold text-green-700">{formatCurrency(billing.doctor_consultation.total_amount)}</span>
             </div>
           </div>
-        </div>
 
-        {/* Doctor Services & Additional Consultations */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Doctor Services & Consultations</h2>
-            <span className="text-2xl font-bold text-blue-600">{formatCurrency(billing.summary.doctor_services_total)}</span>
-          </div>
-          
+          {/* Professional Services */}
           {billing.doctor_services.length > 0 && (
             <div className="space-y-2 mb-4">
               <h3 className="text-sm font-semibold text-gray-700 uppercase">Professional Services</h3>
@@ -551,6 +549,7 @@ export default function IPBillingView({ bedAllocationId, patient, bedAllocation 
             </div>
           )}
 
+          {/* Additional Doctor Consultations */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 uppercase mb-2">Additional Doctor Consultations</h3>
             <IPDoctorConsultationsEditor
