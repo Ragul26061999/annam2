@@ -358,6 +358,8 @@ export default function ClinicalDiary({ bedAllocationId, patientId, patientName,
                 <LabResultsTab 
                   bedAllocationId={bedAllocationId}
                   patientId={patientId}
+                  admissionDate={admissionDate}
+                  dischargeDate={dischargeDate}
                 />
               </div>
             )}

@@ -22,9 +22,11 @@ interface LabResult {
 interface LabResultsTabProps {
   bedAllocationId: string;
   patientId: string;
+  admissionDate?: string;
+  dischargeDate?: string | null;
 }
 
-export default function LabResultsTab({ bedAllocationId, patientId }: LabResultsTabProps) {
+export default function LabResultsTab({ bedAllocationId, patientId, admissionDate, dischargeDate }: LabResultsTabProps) {
   const [loading, setLoading] = useState(true);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [labAttachments, setLabAttachments] = useState<LabXrayAttachment[]>([]);
@@ -39,9 +41,10 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
     setLoading(true);
     try {
       console.log('LabResultsTab: Loading for patientId:', patientId, 'bedAllocationId:', bedAllocationId);
+      console.log('LabResultsTab: Admission date:', admissionDate, 'Discharge date:', dischargeDate);
 
       // Fetch lab test orders
-      const { data, error } = await supabase
+      let query = supabase
         .from('lab_test_orders')
         .select(
           `
@@ -57,8 +60,20 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
           test:lab_test_catalog(test_name, test_cost)
         `
         )
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false });
+        .eq('patient_id', patientId);
+
+      // Filter by admission date range if provided
+      if (admissionDate) {
+        query = query.gte('created_at', admissionDate);
+        console.log('LabResultsTab: Filtering orders >= admission date:', admissionDate);
+      }
+      
+      if (dischargeDate) {
+        query = query.lte('created_at', dischargeDate);
+        console.log('LabResultsTab: Filtering orders <= discharge date:', dischargeDate);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -68,6 +83,7 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
         test_cost: item.test?.test_cost || 0
       }));
 
+      console.log('LabResultsTab: Filtered lab orders:', formattedData.length, 'orders');
       setLabResults(formattedData);
 
       // Fetch lab xray attachments
@@ -75,9 +91,25 @@ export default function LabResultsTab({ bedAllocationId, patientId }: LabResults
         console.log('LabResultsTab: Fetching attachments for patientId:', patientId);
         const attachments = await getPatientLabXrayAttachments(patientId);
         console.log('LabResultsTab: Raw attachments fetched:', attachments);
+        
         // Filter only lab-type attachments
-        const labOnlyAttachments = attachments.filter(att => att.test_type === 'lab');
-        console.log('LabResultsTab: Filtered lab attachments:', labOnlyAttachments);
+        let labOnlyAttachments = attachments.filter(att => att.test_type === 'lab');
+        
+        // Filter by admission date range if provided
+        if (admissionDate || dischargeDate) {
+          labOnlyAttachments = labOnlyAttachments.filter(att => {
+            const uploadDate = new Date(att.uploaded_at);
+            const admission = admissionDate ? new Date(admissionDate) : null;
+            const discharge = dischargeDate ? new Date(dischargeDate) : null;
+            
+            if (admission && uploadDate < admission) return false;
+            if (discharge && uploadDate > discharge) return false;
+            return true;
+          });
+          console.log('LabResultsTab: Filtered attachments by date range:', labOnlyAttachments.length, 'attachments');
+        }
+        
+        console.log('LabResultsTab: Final lab attachments:', labOnlyAttachments);
         setLabAttachments(labOnlyAttachments);
       } catch (attachmentError) {
         console.error('LabResultsTab: Error loading lab attachments:', attachmentError);
