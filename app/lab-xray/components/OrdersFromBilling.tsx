@@ -287,22 +287,40 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
       const testName = (bill.items || []).map((it: any) => it.description).filter(Boolean).join(', ') || `Bill ${billNo}`;
       const testType = String(bill.bill_type || 'lab');
 
-      // Try to find associated lab orders for this billing
-      let labOrderId: string | null = null;
-      try {
-        const { data: labOrders } = await supabase
-          .from('lab_test_orders')
-          .select('id')
-          .eq('patient_id', patientId)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (labOrders && labOrders.length > 0) {
-          labOrderId = labOrders[0].id;
+      // Extract lab order IDs from billing items (ref_id field)
+      const labOrderIds: string[] = [];
+      if (bill.items && Array.isArray(bill.items)) {
+        for (const item of bill.items) {
+          if (item.ref_id) {
+            labOrderIds.push(item.ref_id);
+          }
         }
-      } catch (err) {
-        console.warn('Could not fetch lab order ID:', err);
       }
+
+      console.log('OrdersFromBilling: Found lab order IDs from billing items:', labOrderIds);
+
+      // Use the first lab order ID if available, or try to find one
+      let primaryLabOrderId: string | null = labOrderIds.length > 0 ? labOrderIds[0] : null;
+
+      if (!primaryLabOrderId) {
+        // Fallback: try to find associated lab orders for this billing
+        try {
+          const { data: labOrders } = await supabase
+            .from('lab_test_orders')
+            .select('id')
+            .eq('patient_id', patientId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (labOrders && labOrders.length > 0) {
+            primaryLabOrderId = labOrders[0].id;
+          }
+        } catch (err) {
+          console.warn('Could not fetch lab order ID:', err);
+        }
+      }
+
+      console.log('OrdersFromBilling: Using primary lab order ID:', primaryLabOrderId);
 
       for (const file of Array.from(files)) {
         const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
@@ -310,37 +328,59 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
         const rand = Math.random().toString(36).slice(2);
         const filePath = `billing/${bill.id}/${ts}-${rand}.${ext}`;
 
+        console.log('OrdersFromBilling: Uploading file to storage:', filePath);
+
         const { error: uploadError } = await supabase.storage
           .from('lab-xray-attachments')
           .upload(filePath, file, { cacheControl: '3600', upsert: false });
-        if (uploadError) throw uploadError;
+        
+        if (uploadError) {
+          console.error('OrdersFromBilling: Storage upload error:', uploadError);
+          throw uploadError;
+        }
 
         const { data: urlData } = supabase.storage
           .from('lab-xray-attachments')
           .getPublicUrl(filePath);
 
+        console.log('OrdersFromBilling: File uploaded, public URL:', urlData?.publicUrl);
+
+        const attachmentData = {
+          patient_id: patientId,
+          billing_id: bill.id,
+          lab_order_id: primaryLabOrderId,
+          test_name: testName,
+          test_type: testType as 'lab' | 'radiology',
+          file_name: file.name,
+          file_path: filePath,
+          file_type: file.type || 'application/pdf',
+          file_size: file.size,
+          file_url: urlData?.publicUrl || null,
+          uploaded_by: uploadedBy,
+        };
+
+        console.log('OrdersFromBilling: Inserting attachment record:', attachmentData);
+
         const { error: insertError } = await supabase
           .from('lab_xray_attachments')
-          .insert({
-            patient_id: patientId,
-            billing_id: bill.id,
-            lab_order_id: labOrderId, // Link to lab order if found
-            test_name: testName,
-            test_type: testType as 'lab' | 'radiology',
-            file_name: file.name,
-            file_path: filePath,
-            file_type: file.type || 'application/pdf',
-            file_size: file.size,
-            file_url: urlData?.publicUrl || null,
-            uploaded_by: uploadedBy,
-          });
-        if (insertError) throw insertError;
+          .insert(attachmentData);
+        
+        if (insertError) {
+          console.error('OrdersFromBilling: Database insert error:', insertError);
+          throw insertError;
+        }
+
+        console.log('OrdersFromBilling: Attachment record inserted successfully');
       }
 
+      console.log('OrdersFromBilling: All files uploaded, refreshing attachments...');
       const billIds = (items || []).map((b: any) => b.id).filter(Boolean);
       await fetchAttachments(billIds);
       if (onRefresh) onRefresh();
+      
+      console.log('OrdersFromBilling: Upload complete!');
     } catch (e: any) {
+      console.error('OrdersFromBilling: Upload failed:', e);
       setError(e?.message || 'Upload failed');
     } finally {
       setUploadingBillId(null);
