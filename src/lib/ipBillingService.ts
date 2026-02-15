@@ -311,6 +311,11 @@ export async function getIPComprehensiveBilling(
     // 4. Get pharmacy billing with items
     // NOTE: Some DBs define bill_date as DATE (not timestamptz). Using date-only strings avoids 400.
     // Also, embedding items requires FK relationships; if not present PostgREST returns 400.
+    console.log('IP Billing Debug - Patient ID:', patient.id);
+    console.log('IP Billing Debug - Patient Name:', patient.name);
+    console.log('IP Billing Debug - Admission Date:', admissionDateOnly);
+    console.log('IP Billing Debug - Discharge Date:', dischargeDateOnly);
+    
     const { data: pharmacyBills, error: pharmacyError } = await supabase
       .from('pharmacy_bills')
       .select(`
@@ -320,6 +325,7 @@ export async function getIPComprehensiveBilling(
         total_amount,
         payment_status,
         patient_type,
+        customer_name,
         items:pharmacy_bill_items(
           medicine_name,
           quantity,
@@ -329,7 +335,11 @@ export async function getIPComprehensiveBilling(
       `)
       .eq('patient_id', patient.id)
       .gte('bill_date', admissionDateOnly)
-      .lte('bill_date', dischargeDateOnly);
+      .lte('bill_date', dischargeDateOnly)
+      .order('bill_date', { ascending: false });
+
+    console.log('IP Billing Debug - Pharmacy Bills Found:', pharmacyBills?.length || 0);
+    console.log('IP Billing Debug - Pharmacy Bills:', pharmacyBills);
 
     const pharmacyBilling: IPPharmacyBilling[] = (pharmacyError ? [] : (pharmacyBills || [])).map((bill: any) => {
       const totalAmount = Number(bill.total_amount || 0);
@@ -394,6 +404,7 @@ export async function getIPComprehensiveBilling(
     const prescribedMedicinesTotal = prescribedMedicines.reduce((sum, med) => sum + med.total_price, 0);
 
     // 5. Get lab billing with bill numbers
+    console.log('IP Billing Debug - Getting lab orders for patient:', patient.id);
     const { data: labOrders } = await supabase
       .from('lab_test_orders')
       .select(`
@@ -403,6 +414,8 @@ export async function getIPComprehensiveBilling(
       .eq('patient_id', patient.id)
       .gte('created_at', admissionDate)
       .lte('created_at', dischargeDate);
+
+    console.log('IP Billing Debug - Lab Orders Found:', labOrders?.length || 0);
 
     // Get all lab bills for this patient (not constrained by admission dates)
     const { data: labBills } = await supabase
