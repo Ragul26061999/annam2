@@ -1935,9 +1935,7 @@ export default function PharmacyBillingPage() {
               <div className="font-semibold text-lg">₹{selectedBill.total_amount.toLocaleString()}</div>
             </div>
             <div className="mt-4 flex gap-3">
-              <button onClick={printBill} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download / Print</button>
-              <button onClick={showThermalPreview} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Thermal Preview</button>
-              <button onClick={showThermalPreviewWithLogo} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Thermal 2</button>
+              <button onClick={showThermalPreviewWithLogo} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Thermal Print</button>
               {isAdmin && (
                 <button 
                   onClick={() => handleDeleteBill(selectedBill.id, selectedBill.bill_number)} 
