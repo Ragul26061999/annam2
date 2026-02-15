@@ -1805,10 +1805,7 @@ export default function PharmacyBillingPage() {
               )}
               <div><span className="font-medium">Date:</span> {new Date(selectedBill.created_at).toLocaleString()}</div>
               <div><span className="font-medium">Payment Status:</span> <span className={getStatusBadge(selectedBill.payment_status)}>{selectedBill.payment_status}</span></div>
-              {selectedBill.staff_name && (
-                <div><span className="font-medium">Billed By:</span> {selectedBill.staff_name}</div>
-              )}
-              {(selectedBill.amount_paid !== undefined && selectedBill.amount_paid !== selectedBill.total_amount) && (
+                            {(selectedBill.amount_paid !== undefined && selectedBill.amount_paid !== selectedBill.total_amount) && (
                 <div className="col-span-2">
                   <span className="font-medium">Payment:</span> ₹{selectedBill.amount_paid?.toFixed(2) || '0.00'} / ₹{selectedBill.total_amount?.toFixed(2) || '0.00'}
                   {selectedBill.payment_status === 'partial' && (
