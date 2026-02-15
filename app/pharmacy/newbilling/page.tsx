@@ -67,7 +67,8 @@ interface Customer {
   type: 'patient' | 'walk_in' | 'intent';
   name: string;
   phone?: string;
-  patient_id?: string;
+  patient_uuid?: string;
+  patient_uhid?: string;
   intent_type?: string;
 }
 
@@ -240,7 +241,7 @@ function NewBillingPageInner() {
   // Enable payment only when patient details are valid and there is at least one item
   const canReceivePayment = (
     billItems.length > 0 && (
-      (customer.type === 'patient' && !!customer.patient_id && !!(customer.name || '').trim()) ||
+      (customer.type === 'patient' && !!customer.patient_uuid && !!(customer.name || '').trim()) ||
       (customer.type === 'walk_in' && !!(customer.name || '').trim()) ||
       (customer.type === 'intent' && !!(customer.name || '').trim() && !!intentType)
     )
@@ -493,7 +494,7 @@ function NewBillingPageInner() {
         e.preventDefault();
         if (patientResults[selectedPatientIndex]) {
           const p = patientResults[selectedPatientIndex];
-          setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+          setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_uuid: p.id, patient_uhid: p.patient_id });
           setPatientSearch(`${p.name} · ${p.patient_id}`);
           setShowPatientDropdown(false);
           setSelectedPatientIndex(0);
@@ -896,7 +897,8 @@ function NewBillingPageInner() {
           type: 'patient',
           name: patientName,
           phone: patientPhone,
-          patient_id: data.patient_id
+          patient_uuid: data.patient_id,
+          patient_uhid: patientUhid
         });
         setPatientSearch(patientUhid && patientName ? `${patientName} · ${patientUhid}` : patientName);
 
@@ -1317,7 +1319,7 @@ function NewBillingPageInner() {
     }
     // Validate depending on type
     if (customer.type === 'patient') {
-      if (!customer.patient_id) {
+      if (!customer.patient_uuid) {
         alert('Please select a registered patient');
         return;
       }
@@ -1394,7 +1396,7 @@ function NewBillingPageInner() {
       {
         const base = {
           bill_number: billNumber, // Use our generated bill number
-          patient_id: customer.type === 'patient' ? customer.patient_id : null, // Set to null for walk-in customers
+          patient_id: customer.type === 'patient' ? customer.patient_uuid : null, // Set to null for walk-in customers
           encounter_id: linkedPrescriptionEncounterId,
           currency: 'INR',
           subtotal: billTotals.subtotal,
@@ -1681,7 +1683,7 @@ function NewBillingPageInner() {
     
     // Use generatedBill.customer as fallback since customer state may be reset after bill generation
     const billCustomer1 = generatedBill.customer || customer;
-    const patientUhid = billCustomer1.type === 'patient' ? (billCustomer1.patient_id || customer.patient_id) : billCustomer1.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    const patientUhid = billCustomer1.type === 'patient' ? (billCustomer1.patient_uhid || customer.patient_uhid || 'No UHID') : billCustomer1.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
     const patientName1 = billCustomer1.name || customer.name || generatedBill.customer_name || '';
     
     // Get sales type
@@ -1837,7 +1839,15 @@ function NewBillingPageInner() {
 
     // Use generatedBill.customer as fallback since customer state may be reset after bill generation
     const billCustomer = generatedBill.customer || customer;
-    const patientUhid = billCustomer.type === 'patient' ? (billCustomer.patient_id || customer.patient_id) : billCustomer.type === 'intent' ? `INTENT-${intentType}` : 'WALK-IN';
+    // For thermal print, try to get proper UHID from various sources
+    let patientUhid = '';
+    if (billCustomer.type === 'patient') {
+      patientUhid = billCustomer.patient_uhid || customer.patient_uhid || 'No UHID';
+    } else if (billCustomer.type === 'intent') {
+      patientUhid = `INTENT-${intentType}`;
+    } else {
+      patientUhid = 'WALK-IN';
+    }
     const patientName = billCustomer.name || customer.name || generatedBill.customer_name || '';
 
     const billPayments = Array.isArray(generatedBill.payments) && generatedBill.payments.length > 0 ? generatedBill.payments : payments;
@@ -2128,23 +2138,7 @@ function NewBillingPageInner() {
                     </select>
                   </div>
 
-                  {/* Show Customer Name for patient and walk_in only */}
-                  {customer.type !== 'intent' && (
-                    <div className="col-span-3">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
-                      <input
-                        type="text"
-                        value={customer.name}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          setCustomer({ ...customer, name: e.target.value })
-                        }
-                        placeholder="Enter customer name"
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  )}
-
-                  {/* Conditional second field based on type */}
+                  {/* Show Search Patient first for patient type */}
                   {customer.type === 'patient' ? (
                     <>
                       <div className="col-span-4">
@@ -2170,7 +2164,7 @@ function NewBillingPageInner() {
                                   key={p.id}
                                   type="button"
                                   onClick={() => {
-                                    setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_id: p.id });
+                                    setCustomer({ type: 'patient', name: p.name, phone: p.phone || '', patient_uuid: p.id, patient_uhid: p.patient_id });
                                     setPatientSearch(`${p.name} · ${p.patient_id}`);
                                     setShowPatientDropdown(false);
                                     setSelectedPatientIndex(0);
@@ -2196,6 +2190,18 @@ function NewBillingPageInner() {
                         </div>
                       </div>
                       <div className="col-span-3">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
+                        <input
+                          type="text"
+                          value={customer.name}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, name: e.target.value })
+                          }
+                          placeholder="Enter customer name"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="col-span-3">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
                         <input
                           type="text"
@@ -2205,6 +2211,33 @@ function NewBillingPageInner() {
                           }
                           className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-slate-50 text-slate-700"
                           readOnly
+                        />
+                      </div>
+                    </>
+                  ) : customer.type === 'walk_in' ? (
+                    <>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Customer Name *</label>
+                        <input
+                          type="text"
+                          value={customer.name}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, name: e.target.value })
+                          }
+                          placeholder="Enter customer name"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+                        <input
+                          type="text"
+                          value={customer.phone || ''}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setCustomer({ ...customer, phone: e.target.value })
+                          }
+                          placeholder="Enter phone number"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
                     </>
@@ -3309,7 +3342,11 @@ function NewBillingPageInner() {
                   Thermal 2
                 </button>
                 <button
-                  onClick={() => setShowBillSuccess(false)}
+                  onClick={() => {
+                    setShowBillSuccess(false);
+                    // Refresh page after successful bill
+                    window.location.reload();
+                  }}
                   className="flex-1 bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition-colors"
                 >
                   Close
