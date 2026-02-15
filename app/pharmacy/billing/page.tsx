@@ -246,6 +246,7 @@ export default function PharmacyBillingPage() {
           .in('id', patientIds as string[])
 
         if (!patientsError && patientsData) {
+          console.log('Patients data fetched:', patientsData.slice(0, 3)) // Debug first 3 patients
           patientsMap = patientsData.reduce((acc: any, p: any) => {
             acc[p.id] = { patient_id: p.patient_id }
             return acc
@@ -322,7 +323,7 @@ export default function PharmacyBillingPage() {
           bill_number: bill.bill_number || `#${bill.id.slice(-8)}`,
           customer_name: bill.customer_name || 'Unknown',
           patient_uhid: bill.customer_type === 'patient'
-            ? (patientsMap[bill.patient_id]?.patient_id || 'Unknown')
+            ? (patientsMap[bill.patient_id]?.patient_id || bill.patient_id?.slice(-8) || 'Unknown')
             : '',
           customer_type: bill.customer_type || 'patient',
           subtotal: bill.subtotal || 0,
