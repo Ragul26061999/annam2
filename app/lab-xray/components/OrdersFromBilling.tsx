@@ -4,6 +4,7 @@ import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye, FileText, Paperclip, Printer, RefreshCw, Search, Trash2, Upload, X, Loader2 } from 'lucide-react';
 import { supabase } from '../../../src/lib/supabase';
+import LabOrderFileUpload from './LabOrderFileUpload';
 
 interface OrdersFromBillingProps {
   items: any[];
@@ -737,35 +738,6 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                 </button>
               </div>
 
-              {/* Drag & Drop Upload Area */}
-              <div
-                className={`relative border-2 border-dashed rounded-xl p-6 mb-6 transition-colors ${
-                  dragActive
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-                }`}
-              >
-                <input
-                  type="file"
-                  multiple
-                  accept="application/pdf,.pdf"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  disabled={uploadingBillId === selectedBill.id}
-                  onChange={(e) => {
-                    const f = e.target.files;
-                    if (f) void handleUpload(selectedBill, f);
-                    e.currentTarget.value = '';
-                  }}
-                />
-                <div className="text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                  <p className="text-sm font-medium text-gray-900 mb-1">
-                    {uploadingBillId === selectedBill.id ? 'Uploading...' : 'Drop PDFs here or click to select'}
-                  </p>
-                  <p className="text-xs text-gray-500">Multiple PDF files accepted</p>
-                </div>
-              </div>
-
               {viewLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
@@ -797,6 +769,22 @@ export default function OrdersFromBilling({ items, onRefresh }: OrdersFromBillin
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* New Dedicated File Upload Component */}
+                  <div className="mb-6">
+                    <LabOrderFileUpload
+                      billId={selectedBill.id}
+                      patientId={selectedBill.patient?.id}
+                      labOrderIds={(selectedBill.items || []).map((it: any) => it.ref_id).filter(Boolean)}
+                      billNumber={selectedBill.bill_no || selectedBill.bill_number || String(selectedBill.id).slice(0, 8).toUpperCase()}
+                      onUploadComplete={() => {
+                        // Refresh attachments after upload
+                        const billIds = (items || []).map((b: any) => b.id).filter(Boolean);
+                        fetchAttachments(billIds);
+                        if (onRefresh) onRefresh();
+                      }}
+                    />
                   </div>
 
                   <div>
