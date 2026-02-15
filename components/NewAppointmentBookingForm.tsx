@@ -225,15 +225,6 @@ export default function NewAppointmentBookingForm({
               />
             </div>
           </div>
-          <div className="flex items-end">
-            <button
-              onClick={() => router.push('/patients/enhanced-register')}
-              className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200"
-            >
-              <UserPlus className="w-4 h-4" />
-              New Patient
-            </button>
-          </div>
         </div>
 
         <div className="grid gap-3 max-h-96 overflow-y-auto">
@@ -249,7 +240,7 @@ export default function NewAppointmentBookingForm({
                 {searchTerm ? 'No patients found matching your search.' : 'No active patients found.'}
               </p>
               <p className="text-sm text-gray-500 mt-2">
-                Click "New Patient" to register a new patient.
+                Please contact administration to register new patients.
               </p>
             </div>
           ) : (
