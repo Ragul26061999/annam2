@@ -21,6 +21,7 @@ interface MedicineBatch {
   status: 'active' | 'expired' | 'low_stock'
   received_date: string
   notes?: string
+  total_medicine_count?: number
 }
 
 interface Medicine {
@@ -32,6 +33,8 @@ interface Medicine {
   manufacturer: string
   unit: string
   total_stock: number
+  total_medicine_count?: number
+  final_total_stock?: number
   min_stock_level: number
   batches: MedicineBatch[]
   medication_code?: string
@@ -482,7 +485,7 @@ export default function InventoryPage() {
       // If test passes, proceed with full query
       const { data: meds, error: medsError } = await supabase
         .from('medications')
-        .select('id, name, category, manufacturer, dosage_form, minimum_stock_level, combination')
+        .select('id, name, nickname, category, manufacturer, dosage_form, minimum_stock_level, combination')
         .eq('is_active', true)
         .order('name')
 
@@ -530,31 +533,75 @@ export default function InventoryPage() {
 
 
 
+      // Fetch purchase data for pack size calculations
+      const batchNumbers = (batches || []).map((b: any) => b.batch_number).filter(Boolean)
+      let purchaseDataMap: Record<string, { quantity: number; pack_size: number }> = {}
+      
+      if (batchNumbers.length > 0) {
+        const chunk = <T,>(arr: T[], size: number) => {
+          const out: T[][] = []
+          for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+          return out
+        }
+        const numberChunks = chunk(batchNumbers, 200)
+        
+        for (const numbers of numberChunks) {
+          const { data: purchaseItems } = await supabase
+            .from('drug_purchase_items')
+            .select('batch_number, quantity, pack_size')
+            .in('batch_number', numbers)
+          
+          if (purchaseItems) {
+            purchaseItems.forEach((item: any) => {
+              if (item.batch_number) {
+                purchaseDataMap[item.batch_number] = {
+                  quantity: item.quantity || 0,
+                  pack_size: item.pack_size || 1
+                }
+              }
+            })
+          }
+        }
+      }
+
       const mapped: Medicine[] = (meds || []).map((m: any) => {
         const mBatches = (batches || []).filter((b: any) => b.medicine_id === m.id)
-        const batchesMapped: MedicineBatch[] = mBatches.map((b: any) => ({
-          id: b.id,
-          medicine_id: b.medicine_id,
-          batch_number: b.batch_number,
-          manufacturing_date: b.manufacturing_date,
-          expiry_date: b.expiry_date,
-          quantity: b.current_quantity ?? 0,
-          unit_cost: Number(b.purchase_price ?? 0),
-          selling_price: Number(b.selling_price ?? 0),
-          supplier: suppliersMap[b.supplier_id] || '-',
-          status: (b.status as any) || 'active',
-          received_date: b.received_date || b.manufacturing_date || ''
-        }))
-        // Calculate total stock from batches to ensure consistency with modal
+        const batchesMapped: MedicineBatch[] = mBatches.map((b: any) => {
+          const purchaseInfo = purchaseDataMap[b.batch_number] || { quantity: 0, pack_size: 1 }
+          const totalMedicineCount = purchaseInfo.quantity * purchaseInfo.pack_size
+          
+          return {
+            id: b.id,
+            medicine_id: b.medicine_id,
+            batch_number: b.batch_number,
+            manufacturing_date: b.manufacturing_date,
+            expiry_date: b.expiry_date,
+            quantity: b.current_quantity ?? 0,
+            unit_cost: Number(b.purchase_price ?? 0),
+            selling_price: Number(b.selling_price ?? 0),
+            supplier: suppliersMap[b.supplier_id] || '-',
+            status: (b.status as any) || 'active',
+            received_date: b.received_date || b.manufacturing_date || '',
+            total_medicine_count: totalMedicineCount
+          }
+        })
+        
+        // Calculate total stock from batches (current stock) and total medicine count
         const calculatedTotalStock = batchesMapped.reduce((sum, batch) => sum + batch.quantity, 0)
+        const totalMedicineCount = batchesMapped.reduce((sum, batch) => sum + (batch.total_medicine_count || 0), 0)
+        const finalTotalStock = calculatedTotalStock + totalMedicineCount
+        
         return {
           id: m.id,
           name: m.name,
+          nickname: m.nickname || null,
           category: m.category || 'Uncategorized',
           description: '',
           manufacturer: m.manufacturer || 'Unknown',
           unit: m.dosage_form || 'units',
           total_stock: calculatedTotalStock,
+          total_medicine_count: totalMedicineCount,
+          final_total_stock: finalTotalStock,
           min_stock_level: Number(m.minimum_stock_level ?? 0),
           batches: batchesMapped
         }
@@ -649,7 +696,8 @@ export default function InventoryPage() {
       (medicine.nickname || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (medicine.combination || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (medicine.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase())
+      (medicine.unit || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (medicine.final_total_stock?.toString() || '').includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === '' ||
       (statusFilter === 'low_stock' && medicine.total_stock <= medicine.min_stock_level && medicine.total_stock > 0) ||
@@ -2469,8 +2517,8 @@ export default function InventoryPage() {
                         <td className="py-4 px-6 text-gray-700">{medicine.manufacturer}</td>
                         <td className="py-4 px-4 text-center">
                           <div className="inline-flex flex-col items-center">
-                            <div className={`text-lg font-bold ${medicine.total_stock <= medicine.min_stock_level ? 'text-red-600' : medicine.total_stock <= medicine.min_stock_level * 2 ? 'text-yellow-600' : 'text-green-600'}`}>
-                              {medicine.total_stock}
+                            <div className={`text-lg font-bold ${(medicine.final_total_stock || medicine.total_stock) <= medicine.min_stock_level ? 'text-red-600' : (medicine.final_total_stock || medicine.total_stock) <= medicine.min_stock_level * 2 ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {medicine.final_total_stock || medicine.total_stock}
                             </div>
                             <div className="text-xs text-gray-500">Min: {medicine.min_stock_level}</div>
                           </div>

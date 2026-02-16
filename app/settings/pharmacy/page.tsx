@@ -2,13 +2,21 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Edit3, Package, ArrowLeft, CheckSquare, Trash2, Loader2, FileSpreadsheet } from 'lucide-react';
+import { Upload, Edit3, Package, ArrowLeft, CheckSquare, Trash2, Loader2, FileSpreadsheet, Users } from 'lucide-react';
 
 const PharmacySettingsPage = () => {
   const router = useRouter();
   const [deletingAll, setDeletingAll] = useState(false);
 
   const pharmacyOptions = [
+    {
+      id: 'suppliers',
+      title: 'Manage Suppliers',
+      description: 'Add, edit and manage pharmacy suppliers',
+      icon: Users,
+      color: 'from-teal-500 to-cyan-500',
+      href: '/settings/pharmacy/suppliers'
+    },
     {
       id: 'upload-medications',
       title: 'Upload Medications',

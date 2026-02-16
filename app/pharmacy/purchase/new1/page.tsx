@@ -304,7 +304,11 @@ export default function EnhancedPurchaseEntryPage() {
   const addItem = () => setItems(prev => [...prev, emptyLine()])
 
   const removeItem = (key: string) => {
-    if (items.length <= 1) return
+    if (items.length <= 1) {
+      // If only one item, clear its data instead of removing it
+      setItems([emptyLine()])
+      return
+    }
     setItems(prev => prev.filter(i => i.key !== key))
   }
 
@@ -410,6 +414,7 @@ export default function EnhancedPurchaseEntryPage() {
             received_date: header.received_date || null,
             bill_amount: header.bill_amount,
             grn_no: header.grn_no || null,
+            disc_amount: header.disc_amt,
             disc_amt: header.disc_amt,
             purchase_account: header.purchase_account,
             cash_discount: header.disc_amt,

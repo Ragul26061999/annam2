@@ -374,6 +374,25 @@ export async function updateSupplier(id: string, updates: Partial<Supplier>): Pr
   }
 }
 
+export async function deleteSupplier(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('suppliers')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting supplier:', error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteSupplier:', error);
+    throw error;
+  }
+}
+
 // =====================================================
 // DRUG PURCHASE MANAGEMENT
 // =====================================================
