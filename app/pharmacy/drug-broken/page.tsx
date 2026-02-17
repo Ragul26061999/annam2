@@ -228,8 +228,7 @@ export default function DrugBrokenPage() {
     return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${dt?.color || 'bg-gray-100 text-gray-700'}`}>{dt?.label || type}</span>
   }
 
-  const estimatedLoss = formData.quantity * formData.unit_price
-
+  
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -516,17 +515,6 @@ export default function DrugBrokenPage() {
                   </div>
                 </div>
               </div>
-
-              {/* ── Estimated Loss ─────────────────────────────────────────── */}
-              {formData.quantity > 0 && formData.unit_price > 0 && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-red-800 uppercase">Estimated Loss</p>
-                    <p className="text-xs text-red-600 mt-0.5">{formData.quantity} units x {fmt(formData.unit_price)}</p>
-                  </div>
-                  <p className="text-2xl font-bold text-red-700">{fmt(estimatedLoss)}</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -574,10 +562,6 @@ export default function DrugBrokenPage() {
                 </div>
               </div>
 
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
-                <p className="text-sm font-medium text-red-800">Estimated Loss</p>
-                <p className="text-xl font-bold text-red-700">{fmt(selectedRecord.total_loss || 0)}</p>
-              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
