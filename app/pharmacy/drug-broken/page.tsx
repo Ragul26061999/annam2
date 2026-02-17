@@ -203,14 +203,13 @@ export default function DrugBrokenPage() {
   // ─── Summary stats ─────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
-    const totalLoss = records.reduce((s, r) => s + (r.total_loss || 0), 0)
     const totalQty = records.reduce((s, r) => s + (r.quantity || 0), 0)
     const thisMonth = records.filter(r => {
       const d = new Date(r.record_date)
       const now = new Date()
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     }).length
-    return { totalLoss, totalQty, thisMonth }
+    return { totalQty, thisMonth }
   }, [records])
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -268,21 +267,16 @@ export default function DrugBrokenPage() {
 
       <div className="max-w-[1400px] mx-auto px-4 py-5 space-y-5">
         {/* ── Summary Cards ───────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-lg shadow-sm border p-4">
             <p className="text-xs text-gray-500 uppercase font-medium">Total Records</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{records.length}</p>
             <p className="text-xs text-gray-400 mt-1">{stats.totalQty} units damaged</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border p-4">
-            <p className="text-xs text-gray-500 uppercase font-medium">Total Loss</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{fmt(stats.totalLoss)}</p>
-            <p className="text-xs text-gray-400 mt-1">Estimated value</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border p-4">
             <p className="text-xs text-gray-500 uppercase font-medium">This Month</p>
             <p className="text-2xl font-bold text-blue-600 mt-1">{stats.thisMonth}</p>
-            <p className="text-xs text-gray-400 mt-1">New reports</p>
+            <p className="text-xs text-gray-400 mt-1">Records this month</p>
           </div>
         </div>
 
