@@ -130,14 +130,23 @@ export default function PurchaseReturnPage() {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  // Load recent purchases when form is opened
+  useEffect(() => {
+    if (showForm && purchases.length === 0) {
+      loadPurchasesForSupplier('')
+    }
+  }, [showForm])
+
   // ─── Load purchases for selected supplier ──────────────────────────────────
 
   const loadPurchasesForSupplier = async (supplierId: string) => {
-    if (!supplierId) { setPurchases([]); return }
     setLoadingPurchases(true)
     try {
-      const data = await getDrugPurchases({ supplier_id: supplierId })
-      setPurchases(data)
+      // If no supplier selected, show recent 50 purchases from all suppliers
+      const data = supplierId 
+        ? await getDrugPurchases({ supplier_id: supplierId })
+        : await getDrugPurchases({})
+      setPurchases(data.slice(0, 50)) // Limit to 50 most recent
     } catch (e) { console.error(e) }
     finally { setLoadingPurchases(false) }
   }
