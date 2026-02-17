@@ -611,10 +611,14 @@ export default function PharmacyPage() {
           <ShoppingCart className="w-6 h-6 mx-auto text-blue-600 mb-1" />
           <div className="text-xs font-medium text-blue-800">Drug Purchase</div>
         </Link>
-        <Link href="/pharmacy/purchase-return" className="bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg p-3 text-center transition-colors">
-          <RotateCcw className="w-6 h-6 mx-auto text-orange-600 mb-1" />
-          <div className="text-xs font-medium text-orange-800">Purchase Return</div>
-        </Link>
+        <div className="relative bg-gray-50 border border-gray-200 rounded-lg p-3 text-center opacity-50 cursor-not-allowed">
+          <div className="absolute inset-0 bg-white bg-opacity-60 rounded-lg backdrop-blur-sm"></div>
+          <div className="relative">
+            <RotateCcw className="w-6 h-6 mx-auto text-gray-400 mb-1" />
+            <div className="text-xs font-medium text-gray-500">Purchase Return</div>
+            <div className="text-xs text-gray-400 mt-1">Locked</div>
+          </div>
+        </div>
         <Link href="/pharmacy/newbilling" className="bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg p-3 text-center transition-colors">
           <Receipt className="w-6 h-6 mx-auto text-green-600 mb-1" />
           <div className="text-xs font-medium text-green-800">Drug Sales</div>
