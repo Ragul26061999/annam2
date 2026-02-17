@@ -1,8 +1,9 @@
 'use client';
 
 import React, { Suspense, useState, useEffect } from 'react';
-import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar, BarChart3, CheckCircle, Bell, ArrowRightLeft, ArrowLeft } from 'lucide-react';
+import { Target, Plus, Search, X, Pill, Package, ArrowRight, Filter, Calendar, BarChart3, CheckCircle, Bell, ArrowRightLeft, ArrowLeft, Eye, Info } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { getComprehensiveMedicineData, getBatchPurchaseHistory, getBatchStockStats } from '@/src/lib/pharmacyService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,6 +88,11 @@ function IntentPageInner() {
   const [moveQuantity, setMoveQuantity] = useState(1);
   const [showBellNotifications, setShowBellNotifications] = useState(false);
   const [zeroQuantityAlerts, setZeroQuantityAlerts] = useState<IntentMedicine[]>([]);
+  const [showMedicineDetail, setShowMedicineDetail] = useState(false);
+  const [selectedMedicineDetail, setSelectedMedicineDetail] = useState<IntentMedicine | null>(null);
+  const [comprehensiveMedicineData, setComprehensiveMedicineData] = useState<any | null>(null);
+  const [loadingMedicineDetail, setLoadingMedicineDetail] = useState(false);
+  const [batchStatsMap, setBatchStatsMap] = useState<Record<string, { remainingUnits: number; soldUnitsThisMonth: number; purchasedUnitsThisMonth: number }>>({});
 
   const loadAllMedicines = async () => {
     try {
@@ -312,7 +318,7 @@ function IntentPageInner() {
   const intentTypes = [
     { key: 'injection room', label: 'Injection Room', icon: '💉' },
     { key: 'icu', label: 'ICU', icon: '🏥' },
-    { key: 'causath', label: 'Causath', icon: '⚕️' },
+    { key: 'casual', label: 'Casual', icon: '⚕️' },
     { key: 'nicu', label: 'NICU', icon: '👶' },
     { key: 'labour word', label: 'Labour Word', icon: '🤰' },
     { key: 'miones', label: 'Miones', icon: '🔬' },
@@ -715,6 +721,48 @@ function IntentPageInner() {
     }));
   };
 
+  const isExpiringSoon = (expiryDate: string) => {
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const expiry = new Date(expiryDate);
+    return expiry >= new Date() && expiry <= thirtyDaysFromNow;
+  };
+
+  const openMedicineDetail = async (medicine: IntentMedicine) => {
+    try {
+      setLoadingMedicineDetail(true);
+      setSelectedMedicineDetail(medicine);
+      setShowMedicineDetail(true);
+
+      // Load comprehensive medicine data using service
+      const comprehensiveData = await getComprehensiveMedicineData(medicine.medication_id);
+      setComprehensiveMedicineData(comprehensiveData);
+
+      // Load batch statistics for all batches
+      if (comprehensiveData?.batches) {
+        const batchNumbers = comprehensiveData.batches.map((batch: any) => batch.batch_number).filter(Boolean);
+        const statsPromises = batchNumbers.map(async (batchNumber: string) => {
+          try {
+            const stats = await getBatchStockStats(batchNumber);
+            return { [batchNumber]: stats };
+          } catch (e) {
+            console.error('Failed to load batch stats for', batchNumber, e);
+            return { [batchNumber]: { remainingUnits: 0, soldUnitsThisMonth: 0, purchasedUnitsThisMonth: 0 } };
+          }
+        });
+
+        const statsResults = await Promise.all(statsPromises);
+        const statsMap = statsResults.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+        setBatchStatsMap(statsMap);
+      }
+    } catch (error) {
+      console.error('Error loading medicine details:', error);
+      alert('Failed to load medicine details. Please try again.');
+    } finally {
+      setLoadingMedicineDetail(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Enhanced Header */}
@@ -1066,7 +1114,11 @@ function IntentPageInner() {
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
                 {filteredMedicines.map((medicine, index) => (
-                  <tr key={medicine.id} className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                  <tr 
+                    key={medicine.id} 
+                    className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
+                    onClick={() => openMedicineDetail(medicine)}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
@@ -1124,19 +1176,28 @@ function IntentPageInner() {
                       <div className="flex items-center gap-2">
                         <button
                           className="text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 px-2 py-1 rounded-md transition-colors"
-                          onClick={() => openEditModal(medicine)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(medicine);
+                          }}
                         >
                           Edit
                         </button>
                         <button
                           className="text-green-600 hover:text-green-900 hover:bg-green-50 px-2 py-1 rounded-md transition-colors"
-                          onClick={() => openMoveModal(medicine)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openMoveModal(medicine);
+                          }}
                         >
                           Move
                         </button>
                         <button
                           className="text-red-600 hover:text-red-900 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
-                          onClick={() => deleteIntentMedicine(medicine)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteIntentMedicine(medicine);
+                          }}
                         >
                           Remove
                         </button>
@@ -1593,6 +1654,184 @@ function IntentPageInner() {
                 )}
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Medicine Detail Modal */}
+      {showMedicineDetail && selectedMedicineDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-7xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 shadow-lg">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-4">
+                    <h2 className="text-3xl font-bold text-white tracking-tight">{selectedMedicineDetail.medication_name}</h2>
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold shadow-sm bg-purple-600 text-white">
+                      {selectedMedicineDetail.intent_type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </span>
+                  </div>
+
+                  {/* Medicine Info Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm mb-4">
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Batch</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.batch_number}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Dosage Type</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.dosage_type || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Manufacturer</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.manufacturer || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Combination</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.combination || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">Dept. Stock</div>
+                      <div className="text-white font-semibold">{selectedMedicineDetail.quantity}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-300 text-xs font-medium mb-1">MRP</div>
+                      <div className="text-white font-semibold">₹{selectedMedicineDetail.mrp.toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  {/* Stock Summary Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                      <div className="text-slate-300 text-xs font-medium mb-2">Department Stock</div>
+                      <div className="text-2xl font-bold text-white">{selectedMedicineDetail.quantity}</div>
+                      <div className="text-slate-300 text-xs mt-1">units available</div>
+                    </div>
+                    <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                      <div className="text-slate-300 text-xs font-medium mb-2">Total Batches</div>
+                      <div className="text-2xl font-bold text-blue-300">{comprehensiveMedicineData?.batches?.length || 0}</div>
+                      <div className="text-slate-300 text-xs mt-1">in inventory</div>
+                    </div>
+                    <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
+                      <div className="text-slate-300 text-xs font-medium mb-2">Total Value</div>
+                      <div className="text-2xl font-bold text-green-300">₹{(selectedMedicineDetail.quantity * selectedMedicineDetail.mrp).toFixed(0)}</div>
+                      <div className="text-slate-300 text-xs mt-1">department value</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Close Button */}
+                <button
+                  onClick={() => {
+                    setShowMedicineDetail(false)
+                    setSelectedMedicineDetail(null)
+                    setComprehensiveMedicineData(null)
+                    setBatchStatsMap({})
+                  }}
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors ml-4"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(95vh-200px)]">
+              {loadingMedicineDetail ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading medicine details...</p>
+                </div>
+              ) : !comprehensiveMedicineData?.batches || comprehensiveMedicineData.batches.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg mb-2">No batch information available</p>
+                  <p className="text-sm">This medicine might not have detailed inventory records</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-blue-600" />
+                    Batch-wise Inventory Details
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {comprehensiveMedicineData.batches.map((batch: any) => {
+                      const isExpired = new Date(batch.expiry_date) < new Date()
+                      const expSoon = isExpiringSoon(batch.expiry_date)
+                      const batchStats = batchStatsMap[batch.batch_number]
+                      const remaining = batch.current_quantity || batch.quantity || 0
+
+                      return (
+                        <div key={batch.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                          {/* Batch Header */}
+                          <div className="p-4 border-b border-gray-100">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">{batch.batch_number}</h4>
+                                <p className="text-sm text-gray-500">Supplier: {batch.supplier_name || batch.supplier || 'N/A'}</p>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                isExpired ? 'bg-red-100 text-red-800' :
+                                expSoon ? 'bg-orange-100 text-orange-800' :
+                                remaining <= 10 ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {isExpired ? 'Expired' : expSoon ? 'Expiring Soon' : remaining <= 10 ? 'Low Stock' : 'Active'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Batch Details */}
+                          <div className="p-4 space-y-4">
+                            {/* Quantity */}
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
+                              <div className="text-xl font-bold text-gray-900">{remaining}</div>
+                              <div className="text-xs text-gray-500">
+                                Received: {batch.received_quantity || batch.original_quantity || 'N/A'}
+                              </div>
+                              {batchStats && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Sold this month: {batchStats.soldUnitsThisMonth || 0}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Dates */}
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">Manufacturing:</span>
+                                <span className="text-sm font-medium">{new Date(batch.manufacturing_date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">Expiry:</span>
+                                <span className={`text-sm font-medium ${isExpired ? 'text-red-600' : expSoon ? 'text-orange-600' : 'text-gray-900'}`}>
+                                  {new Date(batch.expiry_date).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Pricing */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                <div className="text-xs text-blue-600 uppercase tracking-wide font-medium">Purchase Price</div>
+                                <div className="text-sm font-semibold text-blue-700">₹{Number(batch.purchase_price || 0).toFixed(2)}</div>
+                              </div>
+                              <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                <div className="text-xs text-green-600 uppercase tracking-wide font-medium">Selling Price</div>
+                                <div className="text-sm font-semibold text-green-700">₹{Number(batch.selling_price || 0).toFixed(2)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

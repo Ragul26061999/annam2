@@ -15,10 +15,14 @@ import {
   Stethoscope,
   ExternalLink,
   Upload,
-  Image
+  Image,
+  Beaker,
+  Camera,
+  Activity
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import NewMedicineModal from './NewMedicineModal';
+import LabXrayScanModal from './LabXrayScanModal';
 
 interface Medication {
   id: string;
@@ -50,6 +54,14 @@ interface PrescriptionItem {
   unit_price: number;
   total_price: number;
   stock_quantity: number;
+}
+
+interface SelectedTest {
+  id: string;
+  name: string;
+  type: 'lab' | 'xray' | 'scan';
+  category: string;
+  price: number;
 }
 
 interface PrescriptionFormProps {
@@ -93,6 +105,8 @@ export default function PrescriptionForm({
   const [prescriptionImage, setPrescriptionImage] = useState<File | null>(null);
   const [prescriptionImageUrl, setPrescriptionImageUrl] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
+  const [showLabXrayScanModal, setShowLabXrayScanModal] = useState(false);
+  const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
 
   useEffect(() => {
     testSupabaseConnection();
@@ -540,6 +554,14 @@ export default function PrescriptionForm({
     setPrescriptionImageUrl(null);
   };
 
+  const handleTestsSelected = (tests: SelectedTest[]) => {
+    setSelectedTests(prev => [...prev, ...tests]);
+  };
+
+  const removeSelectedTest = (index: number) => {
+    setSelectedTests(prev => prev.filter((_, i) => i !== index));
+  };
+
   const calculateAutoQuantity = (frequencyTimes: string[], durationDays: number) => {
     const timesPerDay = frequencyTimes.length;
     return timesPerDay * durationDays;
@@ -680,17 +702,19 @@ export default function PrescriptionForm({
 
       // Create prescription record with correct schema
       const prescriptionPayload = {
-        prescription_id: prescriptionId,
         patient_id: patientUuid,
         doctor_id: doctorId,
-        encounter_id: encounterId,
+        prescription_id: prescriptionId,
         issue_date: new Date().toISOString().split('T')[0],
         instructions: `Prescription created by ${doctorName}`,
         status: 'active',
-        prescription_image_url: prescriptionImageUrl || null
+        prescription_image_url: prescriptionImageUrl || null,
+        has_lab_tests: selectedTests.length > 0
       };
       
       console.log('Creating prescription with payload:', prescriptionPayload);
+      console.log('Selected tests count:', selectedTests.length);
+      console.log('Selected tests:', selectedTests);
       
       const { data: prescriptionData, error: prescriptionError } = await supabase
         .from('prescriptions')
@@ -921,6 +945,14 @@ export default function PrescriptionForm({
                   >
                     <Plus className="h-4 w-4" />
                     Add Medication
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowLabXrayScanModal(true)}
+                    className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Lab/X-ray/Scan
                   </button>
                   <button
                     type="button"
@@ -1246,6 +1278,62 @@ export default function PrescriptionForm({
               )}
             </div>
 
+            {/* Selected Lab/X-ray/Scan Tests */}
+            {selectedTests.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Ordered Lab/X-ray/Scan Tests</h3>
+                  <span className="text-sm text-gray-600">{selectedTests.length} test{selectedTests.length !== 1 ? 's' : ''} selected</span>
+                </div>
+                <div className="space-y-3">
+                  {selectedTests.map((test, index) => (
+                    <div key={index} className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`p-2 rounded-lg ${
+                              test.type === 'lab' ? 'bg-green-100' : 
+                              test.type === 'xray' ? 'bg-blue-100' : 'bg-orange-100'
+                            }`}>
+                              {test.type === 'lab' ? (
+                                <Beaker className="h-4 w-4 text-green-600" />
+                              ) : test.type === 'xray' ? (
+                                <Camera className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <Activity className="h-4 w-4 text-orange-600" />
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-gray-900">{test.name}</h4>
+                              <p className="text-sm text-gray-600">{test.category}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              test.type === 'lab' ? 'bg-green-100 text-green-800' : 
+                              test.type === 'xray' ? 'bg-blue-100 text-blue-800' : 
+                              'bg-orange-100 text-orange-800'
+                            }`}>
+                              {test.type.toUpperCase()}
+                            </span>
+                            <span className="font-medium text-gray-900">₹{test.price || 0}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedTest(index)}
+                          className="text-red-500 hover:text-red-700 p-1 ml-4"
+                          title="Remove test"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Prescription Items */}
             {prescriptionItems.length > 0 && (
               <div className="space-y-4">
@@ -1506,6 +1594,19 @@ export default function PrescriptionForm({
         isOpen={showNewMedicineModal}
         onClose={() => setShowNewMedicineModal(false)}
         onMedicineAdded={handleNewMedicineAdded}
+      />
+      
+      {/* Lab/X-ray/Scan Modal */}
+      <LabXrayScanModal
+        isOpen={showLabXrayScanModal}
+        onClose={() => setShowLabXrayScanModal(false)}
+        patientId={patientId}
+        patientName={patientName}
+        onOrderCreated={() => {
+          // Optional: Refresh any data if needed
+          console.log('Lab/X-ray/Scan order created');
+        }}
+        onTestsSelected={handleTestsSelected}
       />
     </div>
   );

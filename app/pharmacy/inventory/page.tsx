@@ -851,10 +851,10 @@ export default function InventoryPage() {
   const isExpiringSoon = (expiryDate: string) => {
     const expiry = new Date(expiryDate)
     const today = new Date()
-    const threeMonthsFromNow = new Date()
-    threeMonthsFromNow.setMonth(today.getMonth() + 3)
+    const thirtyDaysFromNow = new Date()
+    thirtyDaysFromNow.setDate(today.getDate() + 30)
 
-    return expiry <= threeMonthsFromNow && expiry > today
+    return expiry <= thirtyDaysFromNow && expiry > today
   }
 
   // Derive per-batch status dynamically instead of relying on stored status
@@ -872,12 +872,14 @@ export default function InventoryPage() {
   const dashboardStats = () => {
     const totalMedicines = medicines.length
     const totalBatches = medicines.reduce((sum, m) => sum + m.batches.length, 0)
-    const lowStock = medicines.filter(m => m.total_stock <= m.min_stock_level).length
-    const expired = medicines.reduce((sum, m) => sum + m.batches.filter(b => new Date(b.expiry_date) < new Date()).length, 0)
-    const expiringSoon = medicines.reduce((sum, m) => sum + m.batches.filter(b => {
-      const isExpired = new Date(b.expiry_date) < new Date()
-      return !isExpired && isExpiringSoon(b.expiry_date)
-    }).length, 0)
+    const lowStock = medicines.filter(m => m.total_stock <= m.min_stock_level && m.total_stock > 0).length
+    const expired = medicines.filter(m => m.batches.some(b => new Date(b.expiry_date) < new Date())).length
+    const expiringSoon = medicines.filter(m => 
+      m.batches.some(b => {
+        const isExpired = new Date(b.expiry_date) < new Date()
+        return !isExpired && isExpiringSoon(b.expiry_date)
+      })
+    ).length
     return { totalMedicines, totalBatches, lowStock, expiringSoon, expired }
   }
 

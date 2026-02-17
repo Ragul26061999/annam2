@@ -108,13 +108,17 @@ function OutpatientPageContent() {
   // Dropdown menu state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Tab state for queue management
-  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'recent' | 'billing'>('outpatient');
+  const [activeTab, setActiveTab] = useState<'outpatient' | 'queue' | 'injection' | 'appointments' | 'patients' | 'recent' | 'billing' | 'lab_tests'>('outpatient');
   const [queueStats, setQueueStats] = useState({ totalWaiting: 0, totalInProgress: 0, totalCompleted: 0, averageWaitTime: 0 });
   
   // Injection queue state
   const [injectionQueue, setInjectionQueue] = useState<any[]>([]);
   const [updatedInjections, setUpdatedInjections] = useState<any[]>([]);
   const [injectionLoading, setInjectionLoading] = useState(false);
+  
+  // Lab test prescriptions state
+  const [labTestPrescriptions, setLabTestPrescriptions] = useState<any[]>([]);
+  const [labTestLoading, setLabTestLoading] = useState(false);
   
   // Outpatient queue state for Today's Queue tab
   const [outpatientQueueEntries, setOutpatientQueueEntries] = useState<QueueEntry[]>([]);
@@ -184,7 +188,7 @@ function OutpatientPageContent() {
 
     // Check for tab parameter
     const tab = searchParams?.get('tab');
-    if (tab === 'outpatient' || tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'recent' || tab === 'billing') {
+    if (tab === 'outpatient' || tab === 'queue' || tab === 'injection' || tab === 'appointments' || tab === 'patients' || tab === 'recent' || tab === 'billing' || tab === 'lab_tests') {
       setActiveTab(tab);
     }
 
@@ -213,6 +217,7 @@ function OutpatientPageContent() {
     loadUpdatedInjections();
     loadOutpatientQueueEntries();
     loadRecentPatients();
+    loadLabTestPrescriptions();
 
     // Auto-refresh every 30 seconds
     const intervalMs = 0;
@@ -820,6 +825,77 @@ function OutpatientPageContent() {
       setRecentPatients(response.patients);
     } catch (err) {
       console.error('Error loading recent patients:', err);
+    }
+  };
+
+  const loadLabTestPrescriptions = async () => {
+    try {
+      setLabTestLoading(true);
+      
+      // Fetch prescriptions with lab tests (removing date filter for debugging)
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .select(`
+          id,
+          prescription_id,
+          patient_id,
+          issue_date,
+          created_at,
+          status,
+          has_lab_tests,
+          patient:patients(id, patient_id, name, date_of_birth, gender, phone),
+          doctor:users(id, name),
+          prescription_items(
+            id,
+            medication_id,
+            dosage,
+            frequency,
+            duration,
+            quantity,
+            dispensed_quantity,
+            instructions,
+            unit_price,
+            total_price,
+            status,
+            medication:medications(id, name, generic_name, strength, dosage_form)
+          )
+        `)
+        .eq('has_lab_tests', true)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error fetching lab test prescriptions:', error);
+        setLabTestPrescriptions([]);
+        return;
+      }
+
+      console.log('Lab test prescriptions data:', data); // Debug log
+
+      // Format data for display
+      const formattedLabTestPrescriptions = (data || []).map((prescription: any) => {
+        const patient = prescription.patient;
+        const doctor = prescription.doctor;
+        const items = prescription.prescription_items || [];
+
+        return {
+          id: prescription.id,
+          prescription_id: prescription.prescription_id,
+          patient: patient,
+          doctor: doctor,
+          items: items,
+          created_at: prescription.created_at,
+          issue_date: prescription.issue_date,
+          status: prescription.status
+        };
+      });
+
+      setLabTestPrescriptions(formattedLabTestPrescriptions);
+    } catch (err) {
+      console.error('Error loading lab test prescriptions:', err);
+      setLabTestPrescriptions([]);
+    } finally {
+      setLabTestLoading(false);
     }
   };
 
@@ -1633,6 +1709,16 @@ function OutpatientPageContent() {
             >
               <Receipt className="h-4 w-4" />
               OP Billing
+            </button>
+            <button
+              onClick={() => setActiveTab('lab_tests')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${activeTab === 'lab_tests'
+                ? 'bg-orange-100 text-orange-700'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              <Activity className="h-4 w-4" />
+              Waiting for Lab/X-ray/Scan ({labTestPrescriptions.length})
             </button>
           </div>
         </div>
@@ -2638,6 +2724,99 @@ function OutpatientPageContent() {
             <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No Patients in Today's Queue</h3>
             <p className="text-gray-600">There are no scheduled appointments or patients ready for consultation today.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Lab Tests Tab */}
+      {activeTab === 'lab_tests' && (
+        <div className="space-y-4">
+          {/* Lab Tests Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Waiting for Lab/X-ray/Scan</h3>
+              <p className="text-sm text-gray-600">Prescriptions with ordered lab tests</p>
+            </div>
+            <button
+              onClick={() => loadLabTestPrescriptions()}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
+
+          {/* Lab Tests List */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+            {labTestLoading ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto" />
+                <p className="text-gray-600 mt-2">Loading lab test prescriptions...</p>
+              </div>
+            ) : labTestPrescriptions.length === 0 ? (
+              <div className="text-center py-12">
+                <Activity className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Prescriptions Waiting for Lab Tests</h3>
+                <p className="text-gray-600">No prescriptions with ordered lab tests found for today.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prescription ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {labTestPrescriptions.map((prescription) => (
+                      <tr key={prescription.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {prescription.prescription_id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm">
+                            <div className="font-medium text-gray-900">{prescription.patient?.name}</div>
+                            <div className="text-gray-500">{prescription.patient?.patient_id}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          Dr. {prescription.doctor?.name || 'Unknown'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(prescription.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            prescription.status === 'active' ? 'bg-yellow-100 text-yellow-800' :
+                            prescription.status === 'dispensed' ? 'bg-green-100 text-green-800' :
+                            prescription.status === 'expired' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {prescription.status === 'active' ? 'Active' :
+                               prescription.status === 'dispensed' ? 'Completed' :
+                               prescription.status === 'expired' ? 'Expired' :
+                               prescription.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => window.open(`/patients/${prescription.patient_id}`, '_blank')}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            View Patient
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
