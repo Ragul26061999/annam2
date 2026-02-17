@@ -502,7 +502,7 @@ export async function getDrugPurchaseById(id: string): Promise<DrugPurchase | nu
         return {
           ...item,
           medication_name: item.medication?.name || '',
-          unit_price: Number(item.purchase_rate || 0),
+          unit_price: Number(item.single_unit_rate || item.purchase_rate || 0),
           mrp: Number(item.mrp || 0),
           pack_counting: Number(item.pack_size || item.pack_counting || 1),
           total_amount: Number(item.total_amount || 0),
