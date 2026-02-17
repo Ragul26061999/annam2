@@ -2925,35 +2925,28 @@ export default function InventoryPage() {
 
                           {/* Batch Details */}
                           <div className="p-4 space-y-4">
-                            {/* Quantity & Pricing */}
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
-                                <div className="text-xl font-bold text-gray-900">{remaining}</div>
-                                {(() => {
-                                  const receivedFromLedger = receivedTotalsMap[batch.batch_number]
-                                  const totalSoldLedger = soldTotalsMap[batch.batch_number] || 0
-                                  const current = typeof batch.current_stock === 'number' ? batch.current_stock : (typeof batch.quantity === 'number' ? batch.quantity : 0)
-                                  const derivedFromLedger = current + totalSoldLedger
-                                  const receivedFallback = (typeof batch.received_quantity === 'number' ? batch.received_quantity :
-                                    typeof batch.original_quantity === 'number' ? batch.original_quantity : undefined)
-                                  const receivedTotal = (typeof receivedFromLedger === 'number' && receivedFromLedger > 0)
-                                    ? receivedFromLedger
-                                    : (typeof receivedFallback === 'number' && receivedFallback > 0)
-                                      ? receivedFallback
-                                      : derivedFromLedger
-                                  return (
-                                    <div className="text-xs text-gray-500">
-                                      Received: {Math.max(0, receivedTotal)}
-                                    </div>
-                                  )
-                                })()}
-                              </div>
-                              <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-xs text-gray-500 uppercase tracking-wide">Unit Selling Price</div>
-                                <div className="text-xl font-bold text-green-600">₹{Number(batch.selling_price).toFixed(2)}</div>
-                                <div className="text-xs text-gray-500">Unit Cost: ₹{Number(batch.unit_purchase_price || batch.purchase_price || batch.unit_cost).toFixed(2)}</div>
-                              </div>
+                            {/* Quantity */}
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <div className="text-xs text-gray-500 uppercase tracking-wide">Current Stock</div>
+                              <div className="text-xl font-bold text-gray-900">{remaining}</div>
+                              {(() => {
+                                const receivedFromLedger = receivedTotalsMap[batch.batch_number]
+                                const totalSoldLedger = soldTotalsMap[batch.batch_number] || 0
+                                const current = typeof batch.current_stock === 'number' ? batch.current_stock : (typeof batch.quantity === 'number' ? batch.quantity : 0)
+                                const derivedFromLedger = current + totalSoldLedger
+                                const receivedFallback = (typeof batch.received_quantity === 'number' ? batch.received_quantity :
+                                  typeof batch.original_quantity === 'number' ? batch.original_quantity : undefined)
+                                const receivedTotal = (typeof receivedFromLedger === 'number' && receivedFromLedger > 0)
+                                  ? receivedFromLedger
+                                  : (typeof receivedFallback === 'number' && receivedFallback > 0)
+                                    ? receivedFallback
+                                    : derivedFromLedger
+                                return (
+                                  <div className="text-xs text-gray-500">
+                                    Received: {Math.max(0, receivedTotal)}
+                                  </div>
+                                )
+                              })()}
                             </div>
 
                             {/* Pack Information */}
