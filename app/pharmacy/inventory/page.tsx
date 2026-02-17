@@ -2825,16 +2825,6 @@ export default function InventoryPage() {
                           <div className="text-slate-300 text-xs mt-1">{medicineStockSummary.total_batches} batches</div>
                         </div>
                         <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                          <div className="text-slate-300 text-xs font-medium mb-2">Cost Value</div>
-                          <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_cost_value || 0).toLocaleString()}</div>
-                          <div className="text-slate-300 text-xs mt-1">at purchase price</div>
-                        </div>
-                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                          <div className="text-slate-300 text-xs font-medium mb-2">Retail Value</div>
-                          <div className="text-2xl font-bold text-white">₹{(medicineStockSummary.total_retail_value || 0).toLocaleString()}</div>
-                          <div className="text-slate-300 text-xs mt-1">at selling price</div>
-                        </div>
-                        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
                           <div className="text-slate-300 text-xs font-medium mb-2">Critical Batches</div>
                           <div className="text-2xl font-bold text-red-300">{medicineStockSummary.critical_low_batches}</div>
                           <div className="text-slate-300 text-xs mt-1">low stock</div>
