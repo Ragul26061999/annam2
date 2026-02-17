@@ -704,17 +704,18 @@ export default function EnhancedPurchaseEntryPage() {
                 <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300">
                   <th className="px-3 py-3 text-left font-semibold text-gray-700 w-8 border-r border-gray-200">Sl</th>
                   <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[280px] border-r border-gray-200">Drug Name</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Rate</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">M.R.P</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack Size</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Pack Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit Rate</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Pack MRP</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit MRP</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[140px] border-r border-gray-200">Exp.Date</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[120px] border-r border-gray-200">Batch</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Qty</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack Qty</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Free</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">GST%</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Disc%</th>
                   <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Total</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit Rate</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Profit%</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 w-8"></th>
                 </tr>
@@ -806,7 +807,7 @@ export default function EnhancedPurchaseEntryPage() {
                     </td>
 
                     
-                    {/* Pack */}
+                    {/* Pack Size */}
                     <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.pack_size || ''}
                         onChange={e => updateItem(item.key, 'pack_size', parseInt(e.target.value) || 1)}
@@ -814,7 +815,7 @@ export default function EnhancedPurchaseEntryPage() {
                         min="1" />
                     </td>
 
-                    {/* Rate */}
+                    {/* Pack Rate */}
                     <td className="px-2 py-2 border-r border-gray-100">
                       <input type="number" value={item.rate || ''}
                         onChange={e => updateItem(item.key, 'rate', parseFloat(e.target.value) || 0)}
@@ -822,11 +823,17 @@ export default function EnhancedPurchaseEntryPage() {
                         step="0.01" min="0" />
                     </td>
 
-                    {/* MRP */}
+                    {/* Unit Rate (calculated) */}
+                    <td className="px-2 py-2 border-r border-gray-100 bg-blue-50">
+                      <div className="text-sm text-right font-medium text-blue-700">
+                        ₹{item.single_unit_rate.toFixed(2)}
+                      </div>
+                    </td>
+
+                    {/* Pack MRP */}
                     <td className="px-2 py-2 border-r border-gray-100">
                       <div className="space-y-1">
                         <div>
-                          <label className="text-[10px] text-gray-500 block">MRP</label>
                           <input type="number" value={item.mrp || ''}
                             onChange={e => updateItem(item.key, 'mrp', parseFloat(e.target.value) || 0)}
                             className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
@@ -841,6 +848,13 @@ export default function EnhancedPurchaseEntryPage() {
                               step="0.01" min="0" />
                           </div>
                         )}
+                      </div>
+                    </td>
+
+                    {/* Unit MRP (calculated) */}
+                    <td className="px-2 py-2 border-r border-gray-100 bg-green-50">
+                      <div className="text-sm text-right font-medium text-green-700">
+                        ₹{((item.mrp || 0) / (item.pack_size || 1)).toFixed(2)}
                       </div>
                     </td>
 
@@ -925,11 +939,6 @@ export default function EnhancedPurchaseEntryPage() {
                     {/* Total */}
                     <td className="px-3 py-2 text-right font-semibold text-gray-900 text-sm border-r border-gray-100">
                       {fmtNum(item.total_amount)}
-                    </td>
-
-                    {/* Single Unit Rate */}
-                    <td className="px-3 py-2 text-center text-gray-600 text-sm border-r border-gray-100">
-                      {fmtNum(item.single_unit_rate)}
                     </td>
 
                     {/* Profit % */}
