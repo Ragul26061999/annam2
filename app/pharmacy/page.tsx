@@ -615,10 +615,6 @@ export default function PharmacyPage() {
           <RotateCcw className="w-6 h-6 mx-auto text-orange-600 mb-1" />
           <div className="text-xs font-medium text-orange-800">Purchase Return</div>
         </Link>
-        <Link href="/pharmacy/department-issue" className="bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg p-3 text-center transition-colors">
-          <Building2 className="w-6 h-6 mx-auto text-purple-600 mb-1" />
-          <div className="text-xs font-medium text-purple-800">Dept Issue</div>
-        </Link>
         <Link href="/pharmacy/newbilling" className="bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg p-3 text-center transition-colors">
           <Receipt className="w-6 h-6 mx-auto text-green-600 mb-1" />
           <div className="text-xs font-medium text-green-800">Drug Sales</div>
