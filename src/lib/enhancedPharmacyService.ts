@@ -376,9 +376,11 @@ export async function updateSupplier(id: string, updates: Partial<Supplier>): Pr
 
 export async function deleteSupplier(id: string): Promise<boolean> {
   try {
+    // Soft delete: set status to inactive instead of hard delete
+    // This prevents foreign key constraint errors from related records
     const { error } = await supabase
       .from('suppliers')
-      .delete()
+      .update({ status: 'inactive' })
       .eq('id', id);
 
     if (error) {
