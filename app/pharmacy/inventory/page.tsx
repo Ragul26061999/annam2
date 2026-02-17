@@ -504,13 +504,14 @@ export default function InventoryPage() {
       if (idChunks.length === 0) {
         batches = []
       } else {
+        // Fetch batches with unit selling prices using RPC function
+        const { data: allBatches, error: rpcErr } = await supabase.rpc('get_batches_with_unit_price')
+        if (rpcErr) throw rpcErr
+        
+        // Filter batches by medicine IDs for each chunk
         for (const ids of idChunks) {
-          const { data: b, error: bErr } = await supabase
-            .from('medicine_batches')
-            .select('id, medicine_id, batch_number, manufacturing_date, expiry_date, current_quantity, purchase_price, selling_price, received_date, status, supplier_id')
-            .in('medicine_id', ids)
-          if (bErr) throw bErr
-          if (b && b.length) batches = batches.concat(b)
+          const chunkBatches = allBatches.filter((b: any) => ids.includes(b.medicine_id))
+          if (chunkBatches && chunkBatches.length) batches = batches.concat(chunkBatches)
         }
       }
 
@@ -2950,8 +2951,8 @@ export default function InventoryPage() {
                               </div>
                               <div className="bg-gray-50 rounded-lg p-3">
                                 <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
-                                <div className="text-xl font-bold text-green-600">₹{batch.selling_price}</div>
-                                <div className="text-xs text-gray-500">Cost: ₹{batch.purchase_price || batch.unit_cost}</div>
+                                <div className="text-xl font-bold text-green-600">₹{Number(batch.selling_price).toFixed(2)}</div>
+                                <div className="text-xs text-gray-500">Cost: ₹{Number(batch.purchase_price || batch.unit_cost).toFixed(2)}</div>
                               </div>
                             </div>
 
