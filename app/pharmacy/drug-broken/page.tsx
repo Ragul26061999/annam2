@@ -314,8 +314,7 @@ export default function DrugBrokenPage() {
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase">Est. Loss</th>
-                                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -328,8 +327,7 @@ export default function DrugBrokenPage() {
                   <td className="px-5 py-3 text-sm text-gray-500">{rec.batch_number}</td>
                   <td className="px-5 py-3">{damageBadge(rec.damage_type)}</td>
                   <td className="px-5 py-3 text-sm font-medium text-right">{rec.quantity}</td>
-                  <td className="px-5 py-3 text-sm font-medium text-red-600 text-right">{fmt(rec.total_loss || 0)}</td>
-                                    <td className="px-5 py-3">{statusBadge(rec.status)}</td>
+                  <td className="px-5 py-3">{statusBadge(rec.status)}</td>
                   <td className="px-5 py-3 text-center">
                     <button onClick={() => handleView(rec.id)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded">
                       <Eye className="w-4 h-4" />
@@ -338,7 +336,7 @@ export default function DrugBrokenPage() {
                 </tr>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-400">No drug breakage records found.</td></tr>
+                <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400">No drug breakage records found.</td></tr>
               )}
             </tbody>
           </table>
