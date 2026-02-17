@@ -2952,7 +2952,6 @@ export default function InventoryPage() {
                               <div className="bg-gray-50 rounded-lg p-3">
                                 <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
                                 <div className="text-xl font-bold text-green-600">₹{Number(batch.selling_price).toFixed(2)}</div>
-                                <div className="text-xs text-gray-500">Cost: ₹{Number(batch.purchase_price || batch.unit_cost).toFixed(2)}</div>
                               </div>
                             </div>
 
