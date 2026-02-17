@@ -2728,7 +2728,7 @@ function NewBillingPageInner() {
                             />
                           </div>
                         ) : (
-                          <span className="text-right font-medium">₹{Math.round(item.unit_price)}</span>
+                          <span className="text-right font-medium">₹{item.unit_price.toFixed(2)}</span>
                         )}
                         <div className="flex items-center justify-center">
                           <input
@@ -2774,7 +2774,7 @@ function NewBillingPageInner() {
                             className="w-14 rounded border border-slate-200 bg-white text-center text-[11px] py-1"
                           />
                         </div>
-                        <span className="text-right font-semibold text-emerald-600">₹{Math.round(item.total)}</span>
+                        <span className="text-right font-semibold text-emerald-600">₹{item.total.toFixed(2)}</span>
                         <div className="flex items-center justify-center">
                           <button
                             type="button"
@@ -2959,9 +2959,9 @@ function NewBillingPageInner() {
                               <span className="font-medium truncate">{item.medicine.name}</span>
                               <span className="text-[10px] text-slate-500 truncate">Batch: {item.medicine.is_external ? 'EXT' : item.batch.batch_number.slice(-4)}</span>
                             </div>
-                            <span className="text-right">₹{Math.round(item.unit_price)}</span>
+                            <span className="text-right">₹{item.unit_price.toFixed(2)}</span>
                             <span className="text-center">{item.quantity}</span>
-                            <span className="text-right font-medium">₹{Math.round(item.quantity * item.unit_price)}</span>
+                            <span className="text-right font-medium">₹{(item.quantity * item.unit_price).toFixed(2)}</span>
                             <button
                               onClick={() => removeBillItem(index)}
                               className="text-red-500 hover:text-red-700 mx-auto"
