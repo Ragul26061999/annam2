@@ -779,12 +779,8 @@ function NewBillingPageInner() {
 
       if (medicinesError) throw medicinesError;
 
-      const { data: batchesData, error: batchesError } = await supabase
-        .from('medicine_batches')
-        .select('*')
-        .gt('current_quantity', 0)
-        .eq('status', 'active')
-        .gte('expiry_date', new Date().toISOString().split('T')[0]);
+      // Fetch batches with calculated unit selling price
+      const { data: batchesData, error: batchesError } = await supabase.rpc('get_batches_with_unit_price');
 
       if (batchesError) throw batchesError;
 
