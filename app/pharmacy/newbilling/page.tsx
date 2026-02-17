@@ -780,9 +780,12 @@ function NewBillingPageInner() {
       if (medicinesError) throw medicinesError;
 
       // Fetch batches with calculated unit selling price
-      const { data: batchesData, error: batchesError } = await supabase.rpc('get_batches_with_unit_price');
+      const { data: batchesJsonData, error: batchesError } = await supabase.rpc('get_batches_with_unit_price');
 
       if (batchesError) throw batchesError;
+      
+      // Parse JSONB response to array
+      const batchesData = batchesJsonData || [];
 
       // Group batches by medicine_id
       const batchesByMedicine = batchesData.reduce((acc: any, batch: any) => {
