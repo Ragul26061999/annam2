@@ -639,6 +639,10 @@ export default function PharmacyPage() {
           <Wallet className="w-6 h-6 mx-auto text-emerald-600 mb-1" />
           <div className="text-xs font-medium text-emerald-800">Collection Report</div>
         </Link>
+        <Link href="/settings/pharmacy/suppliers" className="bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg p-3 text-center transition-colors">
+          <Users className="w-6 h-6 mx-auto text-cyan-600 mb-1" />
+          <div className="text-xs font-medium text-cyan-800">Suppliers</div>
+        </Link>
       </div>
 
       {/* Tab Navigation */}
