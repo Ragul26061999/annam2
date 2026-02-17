@@ -2950,11 +2950,33 @@ export default function InventoryPage() {
                                 })()}
                               </div>
                               <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-xs text-gray-500 uppercase tracking-wide">Selling Price</div>
+                                <div className="text-xs text-gray-500 uppercase tracking-wide">Unit Selling Price</div>
                                 <div className="text-xl font-bold text-green-600">₹{Number(batch.selling_price).toFixed(2)}</div>
-                                <div className="text-xs text-gray-500">Cost: ₹{Number(batch.purchase_price || batch.unit_cost).toFixed(2)}</div>
+                                <div className="text-xs text-gray-500">Unit Cost: ₹{Number(batch.unit_purchase_price || batch.purchase_price || batch.unit_cost).toFixed(2)}</div>
                               </div>
                             </div>
+
+                            {/* Pack Information */}
+                            {batch.pack_size && batch.pack_size > 1 && (
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                  <div className="text-xs text-blue-600 uppercase tracking-wide font-medium">Pack Size</div>
+                                  <div className="text-lg font-bold text-blue-700">{batch.pack_size} units</div>
+                                  <div className="text-xs text-blue-600 mt-1">
+                                    Pack Count: {Math.floor(remaining / batch.pack_size)}
+                                  </div>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                  <div className="text-xs text-purple-600 uppercase tracking-wide font-medium">Pack Prices</div>
+                                  <div className="text-sm font-semibold text-purple-700">
+                                    MRP: ₹{Number(batch.pack_mrp || batch.selling_price * batch.pack_size).toFixed(2)}
+                                  </div>
+                                  <div className="text-xs text-purple-600">
+                                    Cost: ₹{Number(batch.pack_purchase_price || batch.purchase_price * batch.pack_size).toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Dates */}
                             <div className="space-y-2">
