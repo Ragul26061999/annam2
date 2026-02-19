@@ -587,10 +587,9 @@ export default function InventoryPage() {
           }
         })
         
-        // Calculate total stock from batches (current stock) and total medicine count
+        // Calculate total stock from batches (current stock only)
         const calculatedTotalStock = batchesMapped.reduce((sum, batch) => sum + batch.quantity, 0)
         const totalMedicineCount = batchesMapped.reduce((sum, batch) => sum + (batch.total_medicine_count || 0), 0)
-        const finalTotalStock = calculatedTotalStock + totalMedicineCount
         
         return {
           id: m.id,
@@ -602,7 +601,7 @@ export default function InventoryPage() {
           unit: m.dosage_form || 'units',
           total_stock: calculatedTotalStock,
           total_medicine_count: totalMedicineCount,
-          final_total_stock: finalTotalStock,
+          final_total_stock: calculatedTotalStock, // Use calculatedTotalStock, not the sum
           min_stock_level: Number(m.minimum_stock_level ?? 0),
           batches: batchesMapped
         }
