@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Save, Plus, Trash2, Search, Package,
-  Receipt, FileText, Calculator, RotateCcw
+  Receipt, FileText, Calculator, RotateCcw, Calendar
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { getSuppliers, Supplier } from '@/src/lib/enhancedPharmacyService'
@@ -65,6 +65,91 @@ const fmt = (n: number) =>
 const fmtNum = (n: number, decimals = 2) => Number(n).toFixed(decimals)
 
 const genKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+// Date helper functions for DD/MM/YYYY format
+const formatDateForDisplay = (dateStr: string): string => {
+  if (!dateStr) return ''
+  try {
+    // If already in DD/MM/YYYY format, return as is
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      return dateStr
+    }
+    // Convert YYYY-MM-DD to DD/MM/YYYY
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  } catch {
+    return dateStr
+  }
+}
+
+const parseAndFormatDate = (input: string): string | null => {
+  if (!input) return null
+  
+  try {
+    // Remove any spaces and clean input
+    const cleanInput = input.trim().replace(/\s+/g, '')
+    
+    // If already in YYYY-MM-DD format, validate and return
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanInput)) {
+      const date = new Date(cleanInput)
+      if (!isNaN(date.getTime())) return cleanInput
+      return null
+    }
+    
+    // Parse DD/MM/YYYY, D/M/YYYY, DD/MM/YY, D/M/YY formats
+    const dateMatch = cleanInput.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/)
+    if (dateMatch) {
+      let [, day, month, year] = dateMatch
+      
+      // Convert 2-digit year to 4-digit
+      if (year.length === 2) {
+        const yearNum = parseInt(year)
+        year = yearNum >= 50 ? `19${yearNum}` : `20${yearNum}`
+      }
+      
+      const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`)
+      if (!isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100) {
+        return date.toISOString().split('T')[0]
+      }
+    }
+    
+    // Try to parse other common formats
+    const date = new Date(cleanInput)
+    if (!isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100) {
+      return date.toISOString().split('T')[0]
+    }
+    
+    return null
+  } catch {
+    return null
+  }
+}
+
+// Auto-format date input as user types
+const formatDateInput = (input: string): string => {
+  // Remove non-digit characters
+  const digits = input.replace(/\D/g, '')
+  
+  if (digits.length <= 2) {
+    return digits
+  } else if (digits.length <= 4) {
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  } else {
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(2, 6)}`
+  }
+}
+
+// Generate a short simple batch number (fallback) 6-char base36
+const generateShortBatch = () => {
+  const base = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '')
+  // Ensure at least 6 characters; slice will cap length
+  const six = (base + base).slice(0, 6)
+  return six
+}
 
 const emptyLine = (): DrugLineItem => ({
   key: genKey(),
@@ -709,7 +794,7 @@ export default function EnhancedPurchaseEntryPage() {
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit Rate</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Pack MRP</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit MRP</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[140px] border-r border-gray-200">Exp.Date</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[160px] border-r border-gray-200">Exp.Date</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[120px] border-r border-gray-200">Batch</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack Qty</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Free</th>
@@ -863,34 +948,30 @@ export default function EnhancedPurchaseEntryPage() {
                       <div className="space-y-1">
                         <div>
                           <label className="text-[10px] text-gray-500 block">Expiry</label>
-                          <input type="date" value={item.expiry_date}
-                            onChange={e => {
-                              const d = e.target.value
-                              if (d) {
-                                const y = parseInt(d.split('-')[0])
-                                if (y >= 2000 && y <= 2100) updateItem(item.key, 'expiry_date', d)
-                              } else {
-                                updateItem(item.key, 'expiry_date', '')
-                              }
-                            }}
-                            className="w-full border border-gray-300 rounded px-1 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                            min="2000-01-01" max="2100-12-31" />
+                          <div className="flex gap-1">
+                            <input
+                              type="date"
+                              value={item.expiry_date || ''}
+                              onChange={e => updateItem(item.key, 'expiry_date', e.target.value)}
+                              className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              min="2000-01-01"
+                              max="2100-12-31"
+                            />
+                          </div>
                         </div>
                         {item.free_quantity > 0 && (
                           <div>
                             <label className="text-[10px] text-orange-600 block">Free Exp</label>
-                            <input type="date" value={item.free_expiry_date || ''}
-                              onChange={e => {
-                                const d = e.target.value
-                                if (d) {
-                                  const y = parseInt(d.split('-')[0])
-                                  if (y >= 2000 && y <= 2100) updateItem(item.key, 'free_expiry_date', d)
-                                } else {
-                                  updateItem(item.key, 'free_expiry_date', '')
-                                }
-                              }}
-                              className="w-full border border-orange-200 rounded px-1 py-1 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-orange-50 transition-colors"
-                              min="2000-01-01" max="2100-12-31" />
+                            <div className="flex gap-1">
+                              <input
+                                type="date"
+                                value={item.free_expiry_date || ''}
+                                onChange={e => updateItem(item.key, 'free_expiry_date', e.target.value)}
+                                className="flex-1 border border-orange-200 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors bg-orange-50"
+                                min="2000-01-01"
+                                max="2100-12-31"
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
@@ -898,26 +979,61 @@ export default function EnhancedPurchaseEntryPage() {
 
                     {/* Batch */}
                     <td className="px-2 py-2 border-r border-gray-100">
-                      <input type="text" value={item.batch_number}
-                        onChange={e => updateItem(item.key, 'batch_number', e.target.value)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="Batch" />
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          value={item.batch_number}
+                          onChange={e => updateItem(item.key, 'batch_number', e.target.value.toUpperCase())}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors uppercase font-mono"
+                          placeholder="BATCH001"
+                          maxLength={20}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const batchNum = generateShortBatch()
+                            updateItem(item.key, 'batch_number', batchNum)
+                          }}
+                          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Generate batch number"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      </div>
                     </td>
 
                     {/* Qty */}
                     <td className="px-2 py-2 border-r border-gray-100">
-                      <input type="number" value={item.quantity || ''}
-                        onChange={e => updateItem(item.key, 'quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        min="0" />
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={item.quantity || ''}
+                          onChange={e => updateItem(item.key, 'quantity', parseInt(e.target.value) || 0)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors font-semibold"
+                          min="0" 
+                          placeholder="0"
+                        />
+                        {item.quantity > 0 && (
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" title="Quantity set" />
+                        )}
+                      </div>
                     </td>
 
                     {/* Free */}
                     <td className="px-2 py-2 border-r border-gray-100">
-                      <input type="number" value={item.free_quantity || ''}
-                        onChange={e => updateItem(item.key, 'free_quantity', parseInt(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-orange-50 transition-colors"
-                        min="0" />
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={item.free_quantity || ''}
+                          onChange={e => updateItem(item.key, 'free_quantity', parseInt(e.target.value) || 0)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-orange-50 font-semibold"
+                          min="0" 
+                          placeholder="0"
+                        />
+                        {item.free_quantity > 0 && (
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full" title="Free quantity set" />
+                        )}
+                      </div>
                     </td>
 
                     {/* GST % */}
