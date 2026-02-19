@@ -34,9 +34,7 @@ interface MedicineFormData {
   dosage_form: string;
   strength: string;
   combination: string;
-  unit_price: number;
   minimum_stock_level: number;
-  maximum_stock_level: number;
   reorder_level: number;
   storage_conditions: string;
   prescription_required: boolean;
@@ -117,9 +115,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
     dosage_form: 'Tablet',
     strength: '',
     combination: '',
-    unit_price: 0,
     minimum_stock_level: 10,
-    maximum_stock_level: 1000,
     reorder_level: 20,
     storage_conditions: 'Room Temperature',
     prescription_required: true,
@@ -392,6 +388,8 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
         .insert([
           {
             ...medicineForm,
+            // Handle empty string for supplier_id - convert to null
+            supplier_id: medicineForm.supplier_id?.trim() || null,
             // Allow DB defaults/triggers to populate missing values
             status: 'active',
             is_active: true,
@@ -701,16 +699,6 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                   <FormSection title="Pricing & Stock" icon={<DollarSign className="w-5 h-5 text-blue-600" />}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormInput
-                        label="Unit Price (₹)"
-                        type="number"
-                        step="0.01"
-                        value={medicineForm.unit_price}
-                        onChange={(e) => setMedicineForm({ ...medicineForm, unit_price: parseFloat(e.target.value) || 0 })}
-                        required
-                        error={hasError('unit_price')}
-                        errorMessage={getErrorMessage('unit_price')}
-                      />
-                      <FormInput
                         label="Location"
                         value={medicineForm.location}
                         onChange={(e) => setMedicineForm({ ...medicineForm, location: e.target.value })}
@@ -721,12 +709,6 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                         type="number"
                         value={medicineForm.minimum_stock_level}
                         onChange={(e) => setMedicineForm({ ...medicineForm, minimum_stock_level: parseInt(e.target.value) || 0 })}
-                      />
-                      <FormInput
-                        label="Max Stock Level"
-                        type="number"
-                        value={medicineForm.maximum_stock_level}
-                        onChange={(e) => setMedicineForm({ ...medicineForm, maximum_stock_level: parseInt(e.target.value) || 0 })}
                       />
                     </div>
                   </FormSection>

@@ -89,7 +89,7 @@ const Sidebar: React.FC = () => {
       // badge: '42'
     },
     {
-      href: '/inpatient',
+      href: '/under-construction',
       label: 'Inpatient (IP)',
       icon: <BedDouble size={18} />,
       color: 'text-purple-600'
@@ -119,7 +119,7 @@ const Sidebar: React.FC = () => {
       color: 'text-yellow-600'
     },
     {
-      href: '/finance',
+      href: '/under-construction',
       label: 'Finance',
       icon: <IndianRupee size={18} />,
       color: 'text-emerald-600'
@@ -221,12 +221,12 @@ const Sidebar: React.FC = () => {
     
     // Define allowed paths per role
     const permissions: Record<string, string[]> = {
-      doctor: ['/dashboard', '/patients', '/appointments', '/inpatient', '/outpatient', '/lab-xray', '/beds', '/surgery-charges'],
-      nurse: ['/dashboard', '/patients', '/inpatient', '/outpatient', '/beds'],
+      doctor: ['/dashboard', '/patients', '/appointments', '/under-construction', '/outpatient', '/lab-xray', '/beds', '/surgery-charges'],
+      nurse: ['/dashboard', '/patients', '/under-construction', '/outpatient', '/beds'],
       pharmacist: ['/dashboard', '/pharmacy', '/pharmacy/purchase', '/pharmacy/purchase-return', '/pharmacy/department-issue', '/pharmacy/newbilling', '/pharmacy/sales-return-v2', '/pharmacy/drug-broken', '/pharmacy/reports', '/pharmacy/reports?tab=gst', '/pharmacy/reports?tab=stock', '/pharmacy/cash-collection'],
       technician: ['/dashboard', '/lab-xray'],
-      receptionist: ['/dashboard', '/patients', '/appointments', '/finance', '/other-bills'],
-      accountant: ['/dashboard', '/finance', '/other-bills'],
+      receptionist: ['/dashboard', '/patients', '/appointments', '/under-construction', '/other-bills'],
+      accountant: ['/dashboard', '/under-construction', '/other-bills'],
       patient: ['/dashboard', '/appointments']
     };
     
@@ -286,7 +286,7 @@ const Sidebar: React.FC = () => {
             const isActive = pathname && (pathname === item.href || (item.href.includes('?') && pathname.includes(item.href.split('?')[0])));
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${item.label}`}
                 href={item.href}
                 className={`group flex items-center px-4 py-3 rounded-xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm ${isActive
                   ? 'bg-white/90 shadow-lg border border-gray-200/50'
@@ -326,7 +326,7 @@ const Sidebar: React.FC = () => {
             const isActive = pathname && pathname === item.href;
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${item.label}`}
                 href={item.href}
                 className={`group flex items-center px-4 py-3 rounded-xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm ${isActive
                   ? 'bg-white/90 shadow-lg border border-gray-200/50'
