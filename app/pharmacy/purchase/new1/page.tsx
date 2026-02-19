@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Save, Plus, Trash2, Search, Package,
-  Receipt, FileText, Calculator, RotateCcw, Calendar
+  Receipt, Calculator, RotateCcw, X
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { getSuppliers, Supplier } from '@/src/lib/enhancedPharmacyService'
@@ -65,83 +65,6 @@ const fmt = (n: number) =>
 const fmtNum = (n: number, decimals = 2) => Number(n).toFixed(decimals)
 
 const genKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-
-// Date helper functions for DD/MM/YYYY format
-const formatDateForDisplay = (dateStr: string): string => {
-  if (!dateStr) return ''
-  try {
-    // If already in DD/MM/YYYY format, return as is
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-      return dateStr
-    }
-    // Convert YYYY-MM-DD to DD/MM/YYYY
-    const date = new Date(dateStr)
-    if (isNaN(date.getTime())) return dateStr
-    const day = String(date.getDate()).padStart(2, '0')
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const year = date.getFullYear()
-    return `${day}/${month}/${year}`
-  } catch {
-    return dateStr
-  }
-}
-
-const parseAndFormatDate = (input: string): string | null => {
-  if (!input) return null
-  
-  try {
-    // Remove any spaces and clean input
-    const cleanInput = input.trim().replace(/\s+/g, '')
-    
-    // If already in YYYY-MM-DD format, validate and return
-    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanInput)) {
-      const date = new Date(cleanInput)
-      if (!isNaN(date.getTime())) return cleanInput
-      return null
-    }
-    
-    // Parse DD/MM/YYYY, D/M/YYYY, DD/MM/YY, D/M/YY formats
-    const dateMatch = cleanInput.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/)
-    if (dateMatch) {
-      let [, day, month, year] = dateMatch
-      
-      // Convert 2-digit year to 4-digit
-      if (year.length === 2) {
-        const yearNum = parseInt(year)
-        year = yearNum >= 50 ? `19${yearNum}` : `20${yearNum}`
-      }
-      
-      const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`)
-      if (!isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100) {
-        return date.toISOString().split('T')[0]
-      }
-    }
-    
-    // Try to parse other common formats
-    const date = new Date(cleanInput)
-    if (!isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100) {
-      return date.toISOString().split('T')[0]
-    }
-    
-    return null
-  } catch {
-    return null
-  }
-}
-
-// Auto-format date input as user types
-const formatDateInput = (input: string): string => {
-  // Remove non-digit characters
-  const digits = input.replace(/\D/g, '')
-  
-  if (digits.length <= 2) {
-    return digits
-  } else if (digits.length <= 4) {
-    return `${digits.slice(0, 2)}/${digits.slice(2)}`
-  } else {
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(2, 6)}`
-  }
-}
 
 // Generate a short simple batch number (fallback) 6-char base36
 const generateShortBatch = () => {
@@ -210,6 +133,12 @@ function recalcLine(item: DrugLineItem): DrugLineItem {
   }
 }
 
+// ─── Shared input style ─────────────────────────────────────────────────────
+
+const inputBase = 'w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-[13px] bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all'
+const inputReadonly = 'w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-[13px] bg-gray-50 text-gray-600 cursor-not-allowed'
+const labelBase = 'block text-[11px] font-medium text-gray-500 mb-0.5 uppercase tracking-wider'
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function EnhancedPurchaseEntryPage() {
@@ -220,6 +149,7 @@ export default function EnhancedPurchaseEntryPage() {
   const [submitting, setSubmitting] = useState(false)
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<any[]>([])
+  const [showSearch, setShowSearch] = useState(false)
 
   // Drug search
   const [drugSearchTerm, setDrugSearchTerm] = useState('')
@@ -237,7 +167,7 @@ export default function EnhancedPurchaseEntryPage() {
     if (sidebar && sidebar instanceof HTMLElement) {
       sidebar.style.display = 'none'
     }
-    
+
     // Restore sidebar on unmount
     return () => {
       if (sidebar && sidebar instanceof HTMLElement) {
@@ -306,7 +236,7 @@ export default function EnhancedPurchaseEntryPage() {
         ref => !ref || !ref.contains(e.target as Node)
       )
       const clickedOutsideDropdown = dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
-      
+
       if (clickedOutsideAllInputs && clickedOutsideDropdown) {
         setShowDrugDropdown(false)
         setActiveDrugSearchIndex(null)
@@ -382,6 +312,7 @@ export default function EnhancedPurchaseEntryPage() {
       })))
     }
     setSearchResults([])
+    setShowSearch(false)
   }
 
   // ─── Item helpers ──────────────────────────────────────────────────────────
@@ -390,7 +321,6 @@ export default function EnhancedPurchaseEntryPage() {
 
   const removeItem = (key: string) => {
     if (items.length <= 1) {
-      // If only one item, clear its data instead of removing it
       setItems([emptyLine()])
       return
     }
@@ -557,273 +487,300 @@ export default function EnhancedPurchaseEntryPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
-          <p className="text-gray-600">Loading purchase entry...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+          <p className="text-sm text-gray-500">Loading...</p>
         </div>
       </div>
     )
   }
 
+  const validItemCount = items.filter(i => i.medication_id).length
+
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* ── Sticky Header ─────────────────────────────────────────────────── */}
-      <div className="bg-white border-b shadow-sm sticky top-0 z-30">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* ── Top Bar ────────────────────────────────────────────────────────── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
+        <div className="px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+              <ArrowLeft className="w-4 h-4 text-gray-500" />
             </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Enhanced Purchase Entry</h1>
-              <p className="text-xs text-gray-500">Purchase No: <span className="font-semibold text-blue-600">{header.purchase_no}</span></p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-sm font-semibold text-gray-900">New Purchase Entry</h1>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-mono">
+                {header.purchase_no}
+              </span>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 text-sm">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
+            >
+              <Search className="w-3.5 h-3.5" />
+              Load Bill
+            </button>
+            <button onClick={() => router.back()} className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="px-5 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 disabled:opacity-50 text-sm font-medium shadow-sm"
+              className="px-4 py-1.5 bg-blue-600 text-white rounded-lg flex items-center gap-1.5 hover:bg-blue-700 disabled:opacity-50 text-xs font-medium transition-colors"
             >
-              <Save className="w-4 h-4" />
-              {submitting ? 'Saving...' : 'Save Purchase'}
+              <Save className="w-3.5 h-3.5" />
+              {submitting ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
+
+        {/* Inline summary bar */}
+        <div className="px-4 py-1.5 bg-slate-50 border-t border-gray-100 flex items-center gap-6 text-xs overflow-x-auto">
+          <span className="text-gray-500">Items: <strong className="text-gray-900">{validItemCount}</strong></span>
+          <span className="text-gray-500">Disc: <strong className="text-red-600">{fmt(summary.total_discount)}</strong></span>
+          <span className="text-gray-500">GST: <strong className="text-green-700">{fmt(summary.total_gst)}</strong></span>
+          <span className="text-gray-500">Total: <strong className="text-gray-900">{fmt(summary.total_amount)}</strong></span>
+          <span className="ml-auto text-gray-500">Net: <strong className="text-blue-700 text-sm">{fmt(summary.net_amount)}</strong></span>
+        </div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto px-4 py-5 space-y-5">
-
-        {/* ── Search Existing Bill ─────────────────────────────────────────── */}
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center gap-3">
-            <Search className="w-5 h-5 text-gray-400" />
+      {/* ── Search Existing Bill (collapsible) ────────────────────────────── */}
+      {showSearch && (
+        <div className="mx-4 mt-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="p-3 flex items-center gap-2">
             <input
               type="text"
               value={header.search_bill_no}
               onChange={e => setH('search_bill_no', e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearchBill()}
-              placeholder="Search existing bill by Bill No / Purchase No..."
-              className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Search by Bill No / Purchase No..."
+              className={inputBase + ' flex-1'}
+              autoFocus
             />
             <button
               onClick={handleSearchBill}
               disabled={searching}
-              className="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-900 disabled:opacity-50"
+              className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs hover:bg-gray-900 disabled:opacity-50 whitespace-nowrap"
             >
               {searching ? 'Searching...' : 'Search'}
             </button>
+            <button onClick={() => { setShowSearch(false); setSearchResults([]) }} className="p-1.5 hover:bg-gray-100 rounded-lg">
+              <X className="w-3.5 h-3.5 text-gray-400" />
+            </button>
           </div>
           {searchResults.length > 0 && (
-            <div className="mt-3 border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Purchase #</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Supplier</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Bill No</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Amount</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {searchResults.map((r: any) => (
-                    <tr key={r.id} className="hover:bg-blue-50">
-                      <td className="px-3 py-2 font-medium text-blue-600">{r.purchase_number}</td>
-                      <td className="px-3 py-2">{r.supplier?.name || 'N/A'}</td>
-                      <td className="px-3 py-2">{r.invoice_number || '-'}</td>
-                      <td className="px-3 py-2 text-right">{fmt(r.total_amount || 0)}</td>
-                      <td className="px-3 py-2 text-center">
-                        <button onClick={() => loadSearchResult(r)} className="text-blue-600 hover:underline text-xs font-medium">
-                          Load
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="border-t border-gray-100">
+              {searchResults.map((r: any) => (
+                <button
+                  key={r.id}
+                  onClick={() => loadSearchResult(r)}
+                  className="w-full px-3 py-2 flex items-center justify-between hover:bg-blue-50 text-xs border-b last:border-0 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-blue-600">{r.purchase_number}</span>
+                    <span className="text-gray-600">{r.supplier?.name || 'N/A'}</span>
+                    <span className="text-gray-400">{r.invoice_number || '-'}</span>
+                  </div>
+                  <span className="font-medium text-gray-900">{fmt(r.total_amount || 0)}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>
+      )}
 
-        {/* ── Bill Header Fields ───────────────────────────────────────────── */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="px-4 py-3 border-b bg-gradient-to-r from-blue-50 to-white">
-            <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-blue-600" />
-              Bill Information
-            </h2>
+      <div className="px-4 py-3 space-y-3">
+
+        {/* ── Bill Header ─────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+            <Receipt className="w-3.5 h-3.5 text-blue-500" />
+            <span className="text-xs font-semibold text-gray-700">Bill Information</span>
           </div>
-          <div className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-            {/* Purchase No */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Purchase No</label>
-              <input type="text" value={header.purchase_no} readOnly
-                className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed" />
+          <div className="p-3">
+            {/* Row 1: Supplier + Bill No + Dates */}
+            <div className="grid grid-cols-12 gap-2 mb-2">
+              {/* Supplier - wider */}
+              <div className="col-span-4">
+                <label className={labelBase}>Supplier *</label>
+                <select
+                  value={header.supplier_id}
+                  onChange={e => {
+                    const s = suppliers.find(s => s.id === e.target.value)
+                    setHeader(prev => ({ ...prev, supplier_id: e.target.value, supplier_name: s?.name || '' }))
+                  }}
+                  className={inputBase}
+                >
+                  <option value="">-- Select Supplier --</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.supplier_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-2">
+                <label className={labelBase}>Bill No</label>
+                <input type="text" value={header.bill_no}
+                  onChange={e => setH('bill_no', e.target.value)}
+                  placeholder="049236"
+                  className={inputBase} />
+              </div>
+
+              <div className="col-span-2">
+                <label className={labelBase}>Bill Date</label>
+                <input type="date" value={header.bill_date}
+                  onChange={e => setH('bill_date', e.target.value)}
+                  className={inputBase}
+                  min="2000-01-01" max="2100-12-31" />
+              </div>
+
+              <div className="col-span-2">
+                <label className={labelBase}>Received Date</label>
+                <input type="date" value={header.received_date}
+                  onChange={e => setH('received_date', e.target.value)}
+                  className={inputBase}
+                  min="2000-01-01" max="2100-12-31" />
+              </div>
+
+              <div className="col-span-2">
+                <label className={labelBase}>Payment</label>
+                <select value={header.payment_mode}
+                  onChange={e => setH('payment_mode', e.target.value)}
+                  className={inputBase}>
+                  <option value="CASH">CASH</option>
+                  <option value="CREDIT">CREDIT</option>
+                </select>
+              </div>
             </div>
 
-            {/* Supplier */}
-            <div className="col-span-2">
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Supplier *</label>
-              <select
-                value={header.supplier_id}
-                onChange={e => {
-                  const s = suppliers.find(s => s.id === e.target.value)
-                  setHeader(prev => ({ ...prev, supplier_id: e.target.value, supplier_name: s?.name || '' }))
-                }}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- Select Supplier --</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.supplier_code})</option>
-                ))}
-              </select>
-            </div>
+            {/* Row 2: Computed totals + extras */}
+            <div className="grid grid-cols-12 gap-2">
+              <div className="col-span-2">
+                <label className={labelBase}>Purchase Ac</label>
+                <input type="text" value={header.purchase_account}
+                  onChange={e => setH('purchase_account', e.target.value)}
+                  className={inputBase} />
+              </div>
 
-            {/* Purchase Ac */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Purchase Ac</label>
-              <input type="text" value={header.purchase_account}
-                onChange={e => setH('purchase_account', e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm" />
-            </div>
+              <div className="col-span-2">
+                <label className={labelBase}>GRN No</label>
+                <input type="text" value={header.grn_no}
+                  onChange={e => setH('grn_no', e.target.value)}
+                  className={inputBase}
+                  placeholder="GRN-001" />
+              </div>
 
-            {/* Bill No */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Bill No</label>
-              <input type="text" value={header.bill_no}
-                onChange={e => setH('bill_no', e.target.value)}
-                placeholder="049236"
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
-            </div>
+              <div className="col-span-2">
+                <label className={labelBase}>Bill Amount</label>
+                <input type="text" value={header.bill_amount ? fmtNum(header.bill_amount) : '0.00'}
+                  readOnly className={inputReadonly + ' text-right font-medium text-blue-700'} />
+              </div>
 
-            {/* Bill Amount */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Bill Amount</label>
-              <input type="number" value={header.bill_amount ? fmtNum(header.bill_amount) : ''}
-                readOnly
-                className="w-full border rounded px-2 py-1.5 text-sm bg-blue-50 text-blue-800 cursor-not-allowed" />
-            </div>
+              <div className="col-span-2">
+                <label className={labelBase}>GST Amount</label>
+                <input type="text" value={summary.total_gst ? fmtNum(summary.total_gst) : '0.00'}
+                  readOnly className={inputReadonly + ' text-right font-medium text-green-700'} />
+              </div>
 
-            {/* GST Amt */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">GST Amt</label>
-              <input type="number" value={summary.total_gst ? fmtNum(summary.total_gst) : ''}
-                readOnly
-                className="w-full border rounded px-2 py-1.5 text-sm bg-green-50 text-green-800 cursor-not-allowed" />
-            </div>
+              <div className="col-span-2">
+                <label className={labelBase}>Discount</label>
+                <input type="text" value={header.disc_amt ? fmtNum(header.disc_amt) : '0.00'}
+                  readOnly className={inputReadonly + ' text-right font-medium text-orange-600'} />
+              </div>
 
-            {/* Disc Amt */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Disc Amt</label>
-              <input type="number" value={header.disc_amt ? fmtNum(header.disc_amt) : ''}
-                readOnly
-                className="w-full border rounded px-2 py-1.5 text-sm bg-orange-50 text-orange-800 cursor-not-allowed" />
+              <div className="col-span-2">
+                <label className={labelBase}>Remarks</label>
+                <input type="text" value={header.remarks}
+                  onChange={e => setH('remarks', e.target.value)}
+                  className={inputBase}
+                  placeholder="Notes..." />
+              </div>
             </div>
-
-            
-            {/* GRN No */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">GRN No</label>
-              <input type="text" value={header.grn_no}
-                onChange={e => setH('grn_no', e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
-                placeholder="GRN-001" />
-            </div>
-
-            {/* Bill Date */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Bill Date</label>
-              <input type="date" value={header.bill_date}
-                onChange={e => setH('bill_date', e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
-                min="2000-01-01" max="2100-12-31" />
-            </div>
-
-            {/* Rec Date */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Rec Date</label>
-              <input type="date" value={header.received_date}
-                onChange={e => setH('received_date', e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
-                min="2000-01-01" max="2100-12-31" />
-            </div>
-
-            {/* Cash/Credit */}
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Cash/Credit</label>
-              <select value={header.payment_mode}
-                onChange={e => setH('payment_mode', e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
-                <option value="CASH">CASH</option>
-                <option value="CREDIT">CREDIT</option>
-              </select>
-            </div>
-
-                      </div>
+          </div>
         </div>
 
-        {/* ── Drug Entry Section ───────────────────────────────────────────── */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="px-4 py-3 border-b bg-gradient-to-r from-green-50 to-white flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <Package className="w-4 h-4 text-green-600" />
-              Drug Entry
-            </h2>
+        {/* ── Drug Entry Table ─────────────────────────────────────────────── */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-xs font-semibold text-gray-700">Drug Entry</span>
+              <span className="text-[10px] text-gray-400 bg-gray-100 rounded-full px-1.5">{items.length} rows</span>
+            </div>
             <button onClick={addItem}
-              className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-green-700 shadow-sm">
-              <Plus className="w-3.5 h-3.5" /> Add Row
+              className="px-2.5 py-1 bg-emerald-600 text-white rounded-md text-[11px] font-medium flex items-center gap-1 hover:bg-emerald-700 transition-colors">
+              <Plus className="w-3 h-3" /> Add Row
             </button>
           </div>
 
-          {/* Add a portal container for dropdowns */}
-          <div id="dropdown-portal" className="relative" />
-
-          <div className="overflow-x-auto border border-gray-200 rounded-lg">
-            <table className="w-full text-xs bg-white">
+          <div className="overflow-hidden">
+            {/* Legend */}
+            <div className="px-3 py-1.5 bg-slate-50 border-b border-gray-100 flex items-center gap-4 text-[10px] text-gray-400">
+              <span><span className="font-semibold text-gray-500">RATE / MRP</span> = Pack price</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-blue-500">U.RATE / U.MRP</span> = Per unit (÷ pack size)</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-orange-500">FREE</span> = Free units from supplier</span>
+            </div>
+            <table className="w-full" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '26px' }} />   {/* # */}
+                <col style={{ width: '18%' }} />     {/* Drug Name */}
+                <col style={{ width: '44px' }} />    {/* Pack */}
+                <col style={{ width: '64px' }} />    {/* Rate */}
+                <col style={{ width: '60px' }} />    {/* U.Rate */}
+                <col style={{ width: '64px' }} />    {/* MRP */}
+                <col style={{ width: '58px' }} />    {/* U.MRP */}
+                <col style={{ width: '50px' }} />    {/* Qty */}
+                <col style={{ width: '44px' }} />    {/* Free */}
+                <col style={{ width: '92px' }} />    {/* Batch */}
+                <col style={{ width: '106px' }} />   {/* Expiry */}
+                <col style={{ width: '44px' }} />    {/* GST% */}
+                <col style={{ width: '44px' }} />    {/* Disc% */}
+                <col style={{ width: '68px' }} />    {/* Total */}
+                <col style={{ width: '50px' }} />    {/* Profit */}
+                <col style={{ width: '26px' }} />    {/* Del */}
+              </colgroup>
               <thead>
-                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300">
-                  <th className="px-3 py-3 text-left font-semibold text-gray-700 w-8 border-r border-gray-200">Sl</th>
-                  <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[280px] border-r border-gray-200">Drug Name</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack Size</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Pack Rate</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit Rate</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Pack MRP</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Unit MRP</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[160px] border-r border-gray-200">Exp.Date</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[120px] border-r border-gray-200">Batch</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Pack Qty</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Free</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">GST%</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Disc%</th>
-                  <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[100px] border-r border-gray-200">Total</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px] border-r border-gray-200">Profit%</th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-8"></th>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">#</th>
+                  <th className="px-2 py-2 text-[10px] font-semibold text-gray-500 text-left">DRUG NAME</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">PACK</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-right">RATE</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-blue-400 text-right">U.RATE</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-right">MRP</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-blue-400 text-right">U.MRP</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">QTY</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-orange-400 text-center">FREE</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">BATCH</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">EXPIRY</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">GST%</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">DISC%</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-right">TOTAL</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center">P%</th>
+                  <th className="px-1 py-2 text-[10px] font-semibold text-gray-500 text-center"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {items.map((item, idx) => (
-                  <tr key={item.key} className={`hover:bg-blue-50/50 transition-colors ${item.drug_return ? 'bg-red-50/50' : ''}`}>
-                    {/* Sl No */}
-                    <td className="px-3 py-2 text-center text-gray-600 font-medium border-r border-gray-100">{idx + 1}</td>
+                  <tr key={item.key} className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${item.drug_return ? 'bg-red-50/40' : ''}`}>
+                    {/* # */}
+                    <td className="px-1 py-1.5 text-center text-[11px] text-gray-400">{idx + 1}</td>
 
-                    {/* Drug Name with search */}
-                    <td className="px-3 py-2 relative border-r border-gray-100">
+                    {/* Drug Name */}
+                    <td className="px-1 py-1">
                       <div ref={activeDrugSearchIndex === idx ? drugSearchRef : undefined}>
-                      {item.medication_id ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900 truncate flex-1">{item.medication_name}</span>
-                          <button onClick={() => updateItem(item.key, 'medication_id', '')}
-                            className="text-gray-400 hover:text-red-500 shrink-0 p-1 hover:bg-red-50 rounded transition-colors">
-                            <RotateCcw className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="relative">
+                        {item.medication_id ? (
+                          <div className="flex items-center gap-1 min-h-[28px]">
+                            <span className="text-[12px] font-medium text-gray-900 truncate flex-1 leading-tight">{item.medication_name}</span>
+                            <button onClick={() => updateItem(item.key, 'medication_id', '')}
+                              className="text-gray-300 hover:text-red-500 shrink-0 p-0.5 rounded transition-colors">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
                           <input
                             ref={(el) => { drugInputRefs.current[item.key] = el }}
                             type="text"
@@ -833,15 +790,13 @@ export default function EnhancedPurchaseEntryPage() {
                               setActiveDrugSearchIndex(idx)
                               setShowDrugDropdown(true)
                               setSelectedDrugIndex(0)
-                              
-                              // Calculate dropdown position
                               const input = drugInputRefs.current[item.key]
                               if (input) {
                                 const rect = input.getBoundingClientRect()
                                 setDropdownPosition({
-                                  top: rect.bottom + window.scrollY + 4,
+                                  top: rect.bottom + window.scrollY + 2,
                                   left: rect.left + window.scrollX,
-                                  width: rect.width
+                                  width: Math.max(rect.width, 320)
                                 })
                               }
                             }}
@@ -849,15 +804,13 @@ export default function EnhancedPurchaseEntryPage() {
                               setActiveDrugSearchIndex(idx)
                               setShowDrugDropdown(true)
                               setSelectedDrugIndex(0)
-                              
-                              // Calculate dropdown position on focus
                               const input = drugInputRefs.current[item.key]
                               if (input) {
                                 const rect = input.getBoundingClientRect()
                                 setDropdownPosition({
-                                  top: rect.bottom + window.scrollY + 4,
+                                  top: rect.bottom + window.scrollY + 2,
                                   left: rect.left + window.scrollX,
-                                  width: rect.width
+                                  width: Math.max(rect.width, 320)
                                 })
                               }
                             }}
@@ -883,296 +836,204 @@ export default function EnhancedPurchaseEntryPage() {
                                 setActiveDrugSearchIndex(null)
                               }
                             }}
-                            placeholder="Type to search drug..."
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="Search drug..."
+                            className="w-full border border-gray-200 rounded px-2 py-1 text-[12px] focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gray-50 placeholder-gray-400"
                           />
-                        </div>
-                      )}
+                        )}
                       </div>
                     </td>
 
-                    
                     {/* Pack Size */}
-                    <td className="px-2 py-2 border-r border-gray-100">
+                    <td className="px-0.5 py-1">
                       <input type="number" value={item.pack_size || ''}
                         onChange={e => updateItem(item.key, 'pack_size', parseInt(e.target.value) || 1)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[12px] text-center focus:ring-1 focus:ring-blue-500 outline-none"
                         min="1" />
                     </td>
 
-                    {/* Pack Rate */}
-                    <td className="px-2 py-2 border-r border-gray-100">
+                    {/* Rate */}
+                    <td className="px-0.5 py-1">
                       <input type="number" value={item.rate || ''}
                         onChange={e => updateItem(item.key, 'rate', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full border border-gray-200 rounded px-1.5 py-1 text-[12px] text-right focus:ring-1 focus:ring-blue-500 outline-none"
                         step="0.01" min="0" />
                     </td>
 
-                    {/* Unit Rate (calculated) */}
-                    <td className="px-2 py-2 border-r border-gray-100 bg-blue-50">
-                      <div className="text-sm text-right font-medium text-blue-700">
-                        ₹{item.single_unit_rate.toFixed(2)}
-                      </div>
+                    {/* Unit Rate (computed) */}
+                    <td className="px-1 py-1.5 text-right bg-blue-50/40">
+                      <span className="text-[11px] font-medium text-blue-600">{fmtNum(item.single_unit_rate)}</span>
                     </td>
 
-                    {/* Pack MRP */}
-                    <td className="px-2 py-2 border-r border-gray-100">
-                      <div className="space-y-1">
-                        <div>
-                          <input type="number" value={item.mrp || ''}
-                            onChange={e => updateItem(item.key, 'mrp', parseFloat(e.target.value) || 0)}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                            step="0.01" min="0" />
-                        </div>
-                        {item.free_quantity > 0 && (
-                          <div>
-                            <label className="text-[10px] text-orange-600 block">Free MRP</label>
-                            <input type="number" value={item.free_mrp || ''}
-                              onChange={e => updateItem(item.key, 'free_mrp', parseFloat(e.target.value) || 0)}
-                              className="w-full border border-orange-200 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-orange-50 transition-colors"
-                              step="0.01" min="0" />
-                          </div>
-                        )}
-                      </div>
+                    {/* MRP */}
+                    <td className="px-0.5 py-1">
+                      <input type="number" value={item.mrp || ''}
+                        onChange={e => updateItem(item.key, 'mrp', parseFloat(e.target.value) || 0)}
+                        className="w-full border border-gray-200 rounded px-1.5 py-1 text-[12px] text-right focus:ring-1 focus:ring-blue-500 outline-none"
+                        step="0.01" min="0" />
                     </td>
 
-                    {/* Unit MRP (calculated) */}
-                    <td className="px-2 py-2 border-r border-gray-100 bg-green-50">
-                      <div className="text-sm text-right font-medium text-green-700">
-                        ₹{((item.mrp || 0) / (item.pack_size || 1)).toFixed(2)}
-                      </div>
+                    {/* Unit MRP (computed) */}
+                    <td className="px-1 py-1.5 text-right bg-blue-50/40">
+                      <span className="text-[11px] font-medium text-blue-600">{fmtNum((item.mrp || 0) / (item.pack_size || 1))}</span>
                     </td>
 
-                    {/* Exp Date */}
-                    <td className="px-2 py-2 border-r border-gray-100">
-                      <div className="space-y-1">
-                        <div>
-                          <label className="text-[10px] text-gray-500 block">Expiry</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="date"
-                              value={item.expiry_date || ''}
-                              onChange={e => updateItem(item.key, 'expiry_date', e.target.value)}
-                              className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              min="2000-01-01"
-                              max="2100-12-31"
-                            />
-                          </div>
-                        </div>
-                        {item.free_quantity > 0 && (
-                          <div>
-                            <label className="text-[10px] text-orange-600 block">Free Exp</label>
-                            <div className="flex gap-1">
-                              <input
-                                type="date"
-                                value={item.free_expiry_date || ''}
-                                onChange={e => updateItem(item.key, 'free_expiry_date', e.target.value)}
-                                className="flex-1 border border-orange-200 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors bg-orange-50"
-                                min="2000-01-01"
-                                max="2100-12-31"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                    {/* Qty */}
+                    <td className="px-0.5 py-1">
+                      <input type="number" value={item.quantity || ''}
+                        onChange={e => updateItem(item.key, 'quantity', parseInt(e.target.value) || 0)}
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[12px] text-center font-semibold focus:ring-1 focus:ring-blue-500 outline-none"
+                        min="0" placeholder="0" />
+                    </td>
+
+                    {/* Free */}
+                    <td className="px-0.5 py-1">
+                      <input type="number" value={item.free_quantity || ''}
+                        onChange={e => updateItem(item.key, 'free_quantity', parseInt(e.target.value) || 0)}
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[12px] text-center focus:ring-1 focus:ring-blue-500 outline-none bg-orange-50/50"
+                        min="0" placeholder="0" />
                     </td>
 
                     {/* Batch */}
-                    <td className="px-2 py-2 border-r border-gray-100">
+                    <td className="px-0.5 py-1">
                       <div className="relative">
-                        <input 
-                          type="text" 
-                          value={item.batch_number}
+                        <input type="text" value={item.batch_number}
                           onChange={e => updateItem(item.key, 'batch_number', e.target.value.toUpperCase())}
-                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors uppercase font-mono"
-                          placeholder="BATCH001"
-                          maxLength={20}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const batchNum = generateShortBatch()
-                            updateItem(item.key, 'batch_number', batchNum)
-                          }}
-                          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                          title="Generate batch number"
-                        >
-                          <RotateCcw className="w-3 h-3" />
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-[11px] font-mono uppercase focus:ring-1 focus:ring-blue-500 outline-none pr-5"
+                          placeholder="BATCH"
+                          maxLength={20} />
+                        <button type="button"
+                          onClick={() => updateItem(item.key, 'batch_number', generateShortBatch())}
+                          className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-300 hover:text-blue-500 rounded"
+                          title="Generate">
+                          <RotateCcw className="w-2.5 h-2.5" />
                         </button>
                       </div>
                     </td>
 
-                    {/* Qty */}
-                    <td className="px-2 py-2 border-r border-gray-100">
-                      <div className="relative">
-                        <input 
-                          type="number" 
-                          value={item.quantity || ''}
-                          onChange={e => updateItem(item.key, 'quantity', parseInt(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors font-semibold"
-                          min="0" 
-                          placeholder="0"
-                        />
-                        {item.quantity > 0 && (
-                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" title="Quantity set" />
-                        )}
-                      </div>
+                    {/* Expiry */}
+                    <td className="px-0.5 py-1">
+                      <input type="date" value={item.expiry_date || ''}
+                        onChange={e => updateItem(item.key, 'expiry_date', e.target.value)}
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[11px] focus:ring-1 focus:ring-blue-500 outline-none"
+                        min="2000-01-01" max="2100-12-31" />
                     </td>
 
-                    {/* Free */}
-                    <td className="px-2 py-2 border-r border-gray-100">
-                      <div className="relative">
-                        <input 
-                          type="number" 
-                          value={item.free_quantity || ''}
-                          onChange={e => updateItem(item.key, 'free_quantity', parseInt(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-orange-50 font-semibold"
-                          min="0" 
-                          placeholder="0"
-                        />
-                        {item.free_quantity > 0 && (
-                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full" title="Free quantity set" />
-                        )}
-                      </div>
-                    </td>
-
-                    {/* GST % */}
-                    <td className="px-2 py-2 border-r border-gray-100">
+                    {/* GST% */}
+                    <td className="px-0.5 py-1">
                       <input type="number" value={item.gst_percent || ''}
                         onChange={e => updateItem(item.key, 'gst_percent', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[12px] text-center focus:ring-1 focus:ring-blue-500 outline-none"
                         min="0" max="28" step="0.01" />
                     </td>
 
-                    {/* Disc % */}
-                    <td className="px-2 py-2 border-r border-gray-100">
+                    {/* Disc% */}
+                    <td className="px-0.5 py-1">
                       <input type="number" value={item.discount_percent || ''}
                         onChange={e => updateItem(item.key, 'discount_percent', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full border border-gray-200 rounded px-1 py-1 text-[12px] text-center focus:ring-1 focus:ring-blue-500 outline-none"
                         min="0" max="100" step="0.01" />
                     </td>
 
                     {/* Total */}
-                    <td className="px-3 py-2 text-right font-semibold text-gray-900 text-sm border-r border-gray-100">
-                      {fmtNum(item.total_amount)}
+                    <td className="px-1 py-1.5 text-right">
+                      <span className="text-[12px] font-semibold text-gray-900">{fmtNum(item.total_amount)}</span>
                     </td>
 
-                    {/* Profit % */}
-                    <td className="px-3 py-2 text-center border-r border-gray-100">
-                      <span className={`text-sm font-medium ${item.profit_percent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {/* Profit% */}
+                    <td className="px-1 py-1.5 text-center">
+                      <span className={`text-[11px] font-medium ${item.profit_percent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                         {fmtNum(item.profit_percent, 1)}%
                       </span>
                     </td>
 
                     {/* Delete */}
-                    <td className="px-2 py-2 text-center">
+                    <td className="px-0.5 py-1.5 text-center">
                       <button onClick={() => removeItem(item.key)}
-                        className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors"
+                        className="text-gray-300 hover:text-red-500 p-0.5 rounded transition-colors"
                         title="Remove">
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {/* Free quantity details row - show below table when any item has free qty */}
+            {items.some(i => i.free_quantity > 0) && (
+              <div className="border-t border-orange-100 bg-orange-50/30 px-3 py-2">
+                <p className="text-[10px] font-semibold text-orange-600 mb-1.5 uppercase tracking-wider">Free Qty Details</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {items.filter(i => i.free_quantity > 0).map(item => (
+                    <div key={item.key} className="flex items-center gap-2 text-[11px]">
+                      <span className="text-gray-700 font-medium truncate">{item.medication_name}</span>
+                      <span className="text-orange-600">Free: {item.free_quantity}</span>
+                      <div className="flex items-center gap-1">
+                        <input type="number" value={item.free_mrp || ''}
+                          onChange={e => updateItem(item.key, 'free_mrp', parseFloat(e.target.value) || 0)}
+                          className="w-16 border border-orange-200 rounded px-1 py-0.5 text-[11px] text-right bg-white focus:ring-1 focus:ring-orange-400 outline-none"
+                          placeholder="F.MRP" step="0.01" min="0" />
+                        <input type="date" value={item.free_expiry_date || ''}
+                          onChange={e => updateItem(item.key, 'free_expiry_date', e.target.value)}
+                          className="border border-orange-200 rounded px-1 py-0.5 text-[11px] bg-white focus:ring-1 focus:ring-orange-400 outline-none"
+                          min="2000-01-01" max="2100-12-31" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* ── Grid / Purchased Drugs List ───────────────────────────────────── */}
-        {items.some(i => i.medication_id) && (
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-50 to-white">
-              <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-purple-600" />
-                Purchased Drugs List
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    {['Sl', 'Drug Name', 'Pack', 'Rate', 'M.R.P', 'Exp.Date', 'Batch', 'Qty', 'Free', 'GST%', 'Tax', 'Disc%', 'Disc Amt', 'Total Amt', 'Profit%', 'CGST Amt', 'SGST Amt', 'Flag', 'DrugRateId'].map(h => (
-                      <th key={h} className="px-2 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.filter(i => i.medication_id).map((item, idx) => (
-                    <tr key={item.key} className={`hover:bg-gray-50 ${item.drug_return ? 'bg-red-50/30' : ''}`}>
-                      <td className="px-2 py-1.5 text-gray-500">{idx + 1}</td>
-                      <td className="px-2 py-1.5 font-medium text-gray-900">{item.medication_name}</td>
-                      <td className="px-2 py-1.5 text-center">{item.pack_size}</td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.rate)}</td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.mrp)}</td>
-                      <td className="px-2 py-1.5">{item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
-                      <td className="px-2 py-1.5">{item.batch_number || '-'}</td>
-                      <td className="px-2 py-1.5 text-center">{item.quantity}</td>
-                      <td className="px-2 py-1.5 text-center text-orange-600">{item.free_quantity || 0}</td>
-                      <td className="px-2 py-1.5 text-center">{fmtNum(item.gst_percent)}</td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.tax_amount)}</td>
-                      <td className="px-2 py-1.5 text-center">{fmtNum(item.discount_percent)}</td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.disc_amount)}</td>
-                      <td className="px-2 py-1.5 text-right font-semibold">{fmtNum(item.total_amount)}</td>
-                      <td className="px-2 py-1.5 text-center">
-                        <span className={item.profit_percent >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          {fmtNum(item.profit_percent, 1)}%
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.cgst_amount)}</td>
-                      <td className="px-2 py-1.5 text-right">{fmtNum(item.sgst_amount)}</td>
-                      <td className="px-2 py-1.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          item.flag === 'Return' ? 'bg-red-100 text-red-700' :
-                          item.flag === 'Free' ? 'bg-orange-100 text-orange-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>{item.flag}</span>
-                      </td>
-                      <td className="px-2 py-1.5 text-gray-400 text-[10px]">{item.drug_rate_id || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* ── Bottom Summary ───────────────────────────────────────────────── */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="px-4 py-3 border-b bg-gradient-to-r from-amber-50 to-white">
-            <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-amber-600" />
-              Bill Summary
-            </h2>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+            <Calculator className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-semibold text-gray-700">Bill Summary</span>
           </div>
-          <div className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              <SummaryField label="Discount %" value={`${fmtNum(summary.discount_percent, 1)}%`} />
-              <SummaryField label="Total Discount" value={fmt(summary.total_discount)} color="text-red-600" />
-              <SummaryField label="Total GST" value={fmt(summary.total_gst)} color="text-green-600" />
-              <SummaryField label="Total Amount" value={fmt(summary.total_amount)} />
-              <SummaryField label="Paid Amount" value={fmt(summary.paid_amount)} />
-              <SummaryField label="Net Amount" value={fmt(summary.net_amount)} color="text-blue-700" highlight />
-            </div>
-
-            {/* Remarks */}
-            <div className="mt-4">
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">Remarks</label>
-              <textarea value={header.remarks}
-                onChange={e => setH('remarks', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-                rows={2} placeholder="Notes about this purchase..." />
+          <div className="p-3">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+              <SummaryCard label="Discount %" value={`${fmtNum(summary.discount_percent, 1)}%`} />
+              <SummaryCard label="Total Discount" value={fmt(summary.total_discount)} valueColor="text-red-600" />
+              <SummaryCard label="CGST" value={fmt(summary.total_cgst)} valueColor="text-green-700" />
+              <SummaryCard label="SGST" value={fmt(summary.total_sgst)} valueColor="text-green-700" />
+              <SummaryCard label="Total GST" value={fmt(summary.total_gst)} valueColor="text-green-700" />
+              <SummaryCard label="Net Amount" value={fmt(summary.net_amount)} valueColor="text-blue-700" highlight />
             </div>
           </div>
         </div>
+      </div>
 
+      {/* ── Sticky Bottom Action Bar ──────────────────────────────────────── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] z-30">
+        <div className="px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-gray-500">{validItemCount} item{validItemCount !== 1 ? 's' : ''}</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-500">GST: <strong className="text-green-700">{fmt(summary.total_gst)}</strong></span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-500">Disc: <strong className="text-red-600">{fmt(summary.total_discount)}</strong></span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-gray-900">Net: <span className="text-blue-700">{fmt(summary.net_amount)}</span></span>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="px-5 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-1.5 hover:bg-blue-700 disabled:opacity-50 text-sm font-medium transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              {submitting ? 'Saving...' : 'Save Purchase'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Portal-based dropdown for drug search */}
       {showDrugDropdown && activeDrugSearchIndex !== null && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed bg-white border border-gray-200 rounded-lg shadow-2xl z-[9999] max-h-80 overflow-y-auto"
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] max-h-72 overflow-y-auto"
           style={{
             top: `${dropdownPosition.top}px`,
             left: `${dropdownPosition.left}px`,
@@ -1180,7 +1041,7 @@ export default function EnhancedPurchaseEntryPage() {
           }}
         >
           {filteredDrugs.length === 0 ? (
-            <div className="px-4 py-3 text-gray-400 text-sm">No drugs found</div>
+            <div className="px-3 py-2 text-gray-400 text-xs">No drugs found</div>
           ) : (
             filteredDrugs.map((med, medIdx) => (
               <button
@@ -1196,21 +1057,21 @@ export default function EnhancedPurchaseEntryPage() {
                 onMouseDown={(e) => {
                   e.preventDefault()
                 }}
-                className={`w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 flex justify-between items-center transition-colors ${
-                  medIdx === selectedDrugIndex ? 'bg-blue-100 border-blue-200' : 'border-gray-100'
+                className={`w-full text-left px-3 py-2 hover:bg-blue-50 text-xs border-b last:border-0 flex justify-between items-center transition-colors ${
+                  medIdx === selectedDrugIndex ? 'bg-blue-50 border-blue-100' : 'border-gray-50'
                 }`}
               >
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">{med.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 truncate">{med.name}</div>
+                  <div className="text-[10px] text-gray-400 mt-0.5 truncate">
                     {med.generic_name && <span>{med.generic_name}</span>}
-                    {med.strength && <span className="ml-2">• {med.strength}</span>}
+                    {med.strength && <span className="ml-1">- {med.strength}</span>}
                   </div>
                 </div>
-                <div className="text-right ml-3">
-                  <div className="text-xs font-medium text-blue-600">{med.medication_code}</div>
+                <div className="text-right ml-2 shrink-0">
+                  <div className="text-[10px] font-medium text-blue-600">{med.medication_code}</div>
                   {med.available_stock !== undefined && (
-                    <div className="text-xs text-gray-400">Stock: {med.available_stock}</div>
+                    <div className="text-[10px] text-gray-400">Stk: {med.available_stock}</div>
                   )}
                 </div>
               </button>
@@ -1223,15 +1084,15 @@ export default function EnhancedPurchaseEntryPage() {
   )
 }
 
-// ─── Summary Field Component ─────────────────────────────────────────────────
+// ─── Summary Card Component ──────────────────────────────────────────────────
 
-function SummaryField({ label, value, color, highlight }: {
-  label: string; value: string; color?: string; highlight?: boolean
+function SummaryCard({ label, value, valueColor, highlight }: {
+  label: string; value: string; valueColor?: string; highlight?: boolean
 }) {
   return (
-    <div className={`rounded-lg p-3 ${highlight ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-50 border'}`}>
-      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-lg font-bold mt-0.5 ${color || 'text-gray-900'}`}>{value}</p>
+    <div className={`rounded-md px-2.5 py-2 ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 border border-gray-100'}`}>
+      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">{label}</p>
+      <p className={`text-sm font-bold mt-0.5 ${valueColor || 'text-gray-900'}`}>{value}</p>
     </div>
   )
 }
