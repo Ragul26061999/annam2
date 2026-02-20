@@ -87,7 +87,6 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   const [medicines, setMedicines] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [generatedBatchBarcode, setGeneratedBatchBarcode] = useState('');
-  const [suggestedBatchNumber, setSuggestedBatchNumber] = useState('');
   const [generatedBarcode, setGeneratedBarcode] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
@@ -211,31 +210,14 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
     }
   };
 
-  // Suggest next batch number when medicine changes, and recompute batch barcode on changes
+  // Recompute batch barcode when medicine/batch number changes (no auto batch number)
   useEffect(() => {
-    const updateSuggestions = async () => {
+    const updateBatchBarcodePreview = async () => {
       try {
         setGeneratedBatchBarcode('');
         const med = medicines.find(m => m.id === batchForm.medicine_id);
         if (!med) return;
-        // Suggest next batch number if empty
-        if (!batchForm.batch_number) {
-          const { data: nextBatch, error: nextErr } = await supabase.rpc('generate_next_batch_number', {
-            p_medicine_id: batchForm.medicine_id,
-          });
-          if (!nextErr && nextBatch && typeof nextBatch === 'string') {
-            const cleaned = nextBatch.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
-            if (cleaned.length === 6) {
-              setSuggestedBatchNumber(cleaned);
-              setBatchForm(prev => ({ ...prev, batch_number: cleaned }));
-            } else {
-              const local = generateShortBatch();
-              setSuggestedBatchNumber(local);
-              setBatchForm(prev => ({ ...prev, batch_number: local }));
-            }
-          }
-        }
-        const batchNum = batchForm.batch_number || suggestedBatchNumber;
+        const batchNum = (batchForm.batch_number || '').trim();
         if (batchNum) {
           const { data: bb, error: bbErr } = await supabase.rpc('generate_batch_barcode', {
             med_code: med.medication_code,
@@ -244,11 +226,11 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
           if (!bbErr && bb) setGeneratedBatchBarcode(bb);
         }
       } catch (e) {
-        console.error('Failed to suggest batch/compute barcode', e);
+        console.error('Failed to compute batch barcode preview', e);
       }
     };
     if (batchForm.medicine_id) {
-      updateSuggestions();
+      updateBatchBarcodePreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchForm.medicine_id, batchForm.batch_number]);
@@ -330,50 +312,25 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
   };
 
   const validateBatchForm = (): boolean => {
-    // All fields optional per request. Keep only basic client-side sanity, no hard requirements.
-    setErrors([]);
-    return true;
-  };
-
-  // Generate a short simple batch number (fallback) 6-char base36 (fits 5–7 requirement)
-  const generateShortBatch = () => {
-    const base = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    // Ensure at least 6 characters; slice will cap length
-    const six = (base + base).slice(0, 6);
-    return six;
-  };
-
-  // Ensure unique batch number: try RPC first, then fallback to short generator with uniqueness check
-  const ensureUniqueBatchNumber = async (medicineId?: string): Promise<string> => {
-    // 1) Try server RPC suggestion if available
-    try {
-      if (medicineId) {
-        const { data: nextBatch, error: nextErr } = await supabase.rpc('generate_next_batch_number', {
-          p_medicine_id: medicineId,
-        });
-        if (!nextErr && nextBatch && typeof nextBatch === 'string') {
-          const cleaned = nextBatch.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
-          if (cleaned.length === 6) {
-            return cleaned;
-          }
-        }
-      }
-    } catch {}
-    // 2) Fallback to short generator with simple uniqueness check
-    for (let i = 0; i < 5; i++) {
-      const candidate = generateShortBatch();
-      try {
-        const { data, error } = await supabase
-          .from('medicine_batches')
-          .select('id', { count: 'exact', head: true })
-          .eq('batch_number', candidate);
-        if (!error && (data === null || (Array.isArray(data) && data.length === 0))) {
-          return candidate;
-        }
-      } catch {}
+    const nextErrors: { field: string; message: string }[] = [];
+    const bn = (batchForm.batch_number || '').trim();
+    if (!batchForm.medicine_id) {
+      nextErrors.push({ field: 'medicine_id', message: 'Please select a medicine' });
     }
-    // 3) Last resort
-    return generateShortBatch();
+    if (!bn) {
+      nextErrors.push({ field: 'batch_number', message: 'Batch number is required' });
+    }
+    if (!batchForm.expiry_date?.trim()) {
+      nextErrors.push({ field: 'expiry_date', message: 'Expiry date is required' });
+    }
+    if (!batchForm.supplier_id?.trim()) {
+      nextErrors.push({ field: 'supplier_id', message: 'Supplier is required' });
+    }
+    if (!Number.isFinite(batchForm.received_quantity) || batchForm.received_quantity <= 0) {
+      nextErrors.push({ field: 'received_quantity', message: 'Received quantity must be greater than 0' });
+    }
+    setErrors(nextErrors);
+    return nextErrors.length === 0;
   };
 
   const handleAddMedicine = async (e: React.FormEvent) => {
@@ -432,14 +389,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
 
     setLoading(true);
     try {
-      // Ensure short, simple, unique batch number (exactly 6 chars)
-      let finalBatchNumber = batchForm.batch_number
-        ?.toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .trim();
-      if (!finalBatchNumber || finalBatchNumber.length !== 6) {
-        finalBatchNumber = await ensureUniqueBatchNumber(batchForm.medicine_id || undefined);
-      }
+      const finalBatchNumber = (batchForm.batch_number || '').trim();
 
       // Sanitize date fields: convert empty strings to null to avoid Postgres date parse errors
       const sanitizeDate = (val?: string) => (val && val.trim() ? val : null);
@@ -815,7 +765,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                 <FormSection title="Batch Information" icon={<Barcode className="w-5 h-5 text-blue-600" />}>
                   <div className="space-y-4">
                     <FormInput
-                      label="Batch Number (auto if blank)"
+                      label="Batch Number"
                       value={batchForm.batch_number}
                       onChange={(e) => setBatchForm({ ...batchForm, batch_number: e.target.value })}
                       placeholder="e.g., BATCH001"
@@ -885,7 +835,7 @@ const MedicineEntryForm: React.FC<MedicineEntryFormProps> = ({
                   <BarcodeDisplay barcode={generatedBatchBarcode} label="Batch Barcode" size="lg" />
                 ) : (
                   <div className="bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-500">
-                    Select a medicine and (optionally) batch number to preview barcode
+                    Select a medicine and enter a batch number to preview barcode
                   </div>
                 )}
               </FormSection>
